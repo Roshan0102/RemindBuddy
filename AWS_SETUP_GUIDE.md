@@ -91,6 +91,14 @@ You need to log in once to install the necessary software.
         listen 80;
         server_name _;
 
+        # Serve Flutter Web App
+        location / {
+            root /var/www/remindbuddy/frontend/build/web;
+            index index.html index.htm;
+            try_files \$uri \$uri/ /index.html;
+        }
+
+        # Proxy API requests to Node.js
         location /api {
             proxy_pass http://localhost:3000;
             proxy_http_version 1.1;

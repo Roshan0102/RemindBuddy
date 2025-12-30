@@ -43,25 +43,55 @@ jobs:
     needs: build-apk # Wait for build to ensure code is good
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     steps:
-      - name: Deploy via SSH
+    steps:
+      # 1. Checkout Code
+      - uses: actions/checkout@v3
+
+      # 2. Setup Java (for Android Build)
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 3. Setup Flutter
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+
+      # 4. Get Dependencies
+      - name: Get Dependencies
+        working-directory: ./frontend
+        run: flutter pub get
+
+      # 5. Build Web Version
+      - name: Build Web
+        working-directory: ./frontend
+        run: flutter build web --release
+
+      # 6. Copy Web Files to Server
+      - name: Deploy Web to Server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "frontend/build/web"
+          target: "/var/www/remindbuddy"
+
+      # 7. Restart Backend Server
+      - name: Restart Backend
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            # Navigate to project directory
+            # Pull latest backend code
             cd /var/www/remindbuddy
-            
-            # Pull latest changes
-            git pull origin master
+            git pull origin main
             
             # Update Backend
             cd backend
             npm install
             pm2 restart remindbuddy-api
-            
-            # Build Web (Optional: if you want to build web on server)
-            # Or you can build web in CI and transfer it. 
-            # For now, we assume the server can build or we just sync code.
-            # To be safe, let's just restart the server.
