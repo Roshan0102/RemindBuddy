@@ -28,8 +28,6 @@ jobs:
         
       - name: Setup Shorebird
         uses: shorebirdtech/setup-shorebird@v1
-        with:
-          force: true
 
       - name: Build with Shorebird
         working-directory: ./frontend
