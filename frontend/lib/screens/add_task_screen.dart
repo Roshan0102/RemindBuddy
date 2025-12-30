@@ -1,0 +1,160 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../models/task.dart';
+import '../services/api_service.dart';
+
+class AddTaskScreen extends StatefulWidget {
+  final DateTime? selectedDate;
+
+  const AddTaskScreen({super.key, this.selectedDate});
+
+  @override
+  State<AddTaskScreen> createState() => _AddTaskScreenState();
+}
+
+class _AddTaskScreenState extends State<AddTaskScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  late DateTime _date;
+  late TimeOfDay _time;
+  String _repeat = 'none';
+  final ApiService _apiService = ApiService();
+
+  @override
+  void initState() {
+    super.initState();
+    _date = widget.selectedDate ?? DateTime.now();
+    _time = TimeOfDay.now();
+  }
+
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+    );
+    if (picked != null && picked != _date) {
+      setState(() {
+        _date = picked;
+      });
+    }
+  }
+
+  Future<void> _selectTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _time,
+    );
+    if (picked != null && picked != _time) {
+      setState(() {
+        _time = picked;
+      });
+    }
+  }
+
+  Future<void> _saveTask() async {
+    if (_formKey.currentState!.validate()) {
+      final String dateStr = DateFormat('yyyy-MM-dd').format(_date);
+      final String timeStr = '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}';
+
+      final newTask = Task(
+        title: _titleController.text,
+        description: _descriptionController.text,
+        date: dateStr,
+        time: timeStr,
+        repeat: _repeat,
+      );
+
+      // Save to Backend
+      final createdTask = await _apiService.createTask(newTask);
+      
+      if (createdTask != null) {
+        if (mounted) {
+          Navigator.pop(context, true);
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to save task')),
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Add Task')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            children: [
+              TextFormField(
+                controller: _titleController,
+                decoration: const InputDecoration(labelText: 'Title'),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a title';
+                  }
+                  return null;
+                },
+              ),
+              TextFormField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(labelText: 'Description'),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Date: ${DateFormat('yyyy-MM-dd').format(_date)}'),
+                  ),
+                  TextButton(
+                    onPressed: () => _selectDate(context),
+                    child: const Text('Select Date'),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Time: ${_time.format(context)}'),
+                  ),
+                  TextButton(
+                    onPressed: () => _selectTime(context),
+                    child: const Text('Select Time'),
+                  ),
+                ],
+              ),
+              DropdownButtonFormField<String>(
+                value: _repeat,
+                decoration: const InputDecoration(labelText: 'Repeat'),
+                items: ['none', 'daily', 'weekly', 'monthly']
+                    .map((label) => DropdownMenuItem(
+                          value: label,
+                          child: Text(label),
+                        ))
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _repeat = value!;
+                  });
+                },
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _saveTask,
+                child: const Text('Save Task'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
