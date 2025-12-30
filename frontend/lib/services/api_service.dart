@@ -4,7 +4,7 @@ import '../models/task.dart';
 
 class ApiService {
   // 10.0.2.2 is localhost for Android Emulator
-  static const String baseUrl = 'http://10.0.2.2:3000/api/tasks';
+  static const String baseUrl = 'http://54.221.22.54/api/tasks';
 
   Future<List<Task>> getTasks() async {
     try {

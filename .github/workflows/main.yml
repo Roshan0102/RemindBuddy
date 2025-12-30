@@ -43,7 +43,7 @@ jobs:
     needs: build-apk # Wait for build to ensure code is good
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     steps:
-    steps:
+
       # 1. Checkout Code
       - uses: actions/checkout@v3
 
