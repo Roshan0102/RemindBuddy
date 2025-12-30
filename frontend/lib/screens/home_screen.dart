@@ -117,17 +117,19 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 8.0),
           Expanded(
-            child: ListView.builder(
-              itemCount: _selectedTasks.length,
-              itemBuilder: (context, index) {
-                final task = _selectedTasks[index];
-                return ListTile(
-                  title: Text(task.title),
-                  subtitle: Text('${task.time} - ${task.description}'),
-                  trailing: task.repeat != 'none' ? Icon(Icons.repeat) : null,
-                );
-              },
-            ),
+            child: _selectedTasks.isEmpty
+                ? const Center(child: Text('No tasks for this day'))
+                : ListView.builder(
+                    itemCount: _selectedTasks.length,
+                    itemBuilder: (context, index) {
+                      final task = _selectedTasks[index];
+                      return ListTile(
+                        title: Text(task.title),
+                        subtitle: Text('${task.time} - ${task.description}'),
+                        trailing: task.repeat != 'none' ? const Icon(Icons.repeat) : null,
+                      );
+                    },
+                  ),
           ),
         ],
       ),
