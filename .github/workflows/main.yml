@@ -35,7 +35,7 @@ jobs:
         working-directory: ./frontend
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
-        run: shorebird release android --artifact-type apk
+        run: shorebird release android --artifact apk
         
       - name: Upload APK
         uses: actions/upload-artifact@v4
