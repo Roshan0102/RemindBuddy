@@ -13,18 +13,26 @@ class NotificationService {
     return _instance;
   }
 
+  static String debugTimeZone = 'Unknown';
+  static String debugError = 'None';
+  static bool isInitialized = false;
+
   NotificationService._internal();
 
   Future<void> init() async {
     tz.initializeTimeZones();
+    
     try {
       final String timeZoneName = await FlutterTimezone.getLocalTimezone();
       tz.setLocalLocation(tz.getLocation(timeZoneName));
+      debugTimeZone = timeZoneName;
+      isInitialized = true;
     } catch (e) {
       print('Error getting local timezone: $e');
-      // If this fails, we continue. The default might be UTC, but at least the app won't crash.
-      // We could try to set a default like 'Asia/Kolkata' if we really wanted to force it,
-      // but for now, stability is key.
+      debugError = e.toString();
+      // Fallback to UTC if timezone detection fails
+      tz.setLocalLocation(tz.getLocation('UTC'));
+      debugTimeZone = 'UTC (Fallback)';
     }
     
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -47,6 +55,10 @@ class NotificationService {
   }
 
   Future<void> showTestNotification() async {
+    final String timeZoneName = tz.local.name;
+    final DateTime now = DateTime.now();
+    final tz.TZDateTime tzNow = tz.TZDateTime.now(tz.local);
+    
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
       'test_channel',
@@ -58,10 +70,11 @@ class NotificationService {
     );
     const NotificationDetails platformChannelSpecifics =
         NotificationDetails(android: androidPlatformChannelSpecifics);
+        
     await flutterLocalNotificationsPlugin.show(
       0,
-      'Test Notification',
-      'If you see this, notifications are working!',
+      'Test Notification ($timeZoneName)',
+      'System: ${now.hour}:${now.minute} | TZ: ${tzNow.hour}:${tzNow.minute}',
       platformChannelSpecifics,
     );
   }
@@ -75,7 +88,9 @@ class NotificationService {
     final List<String> dateParts = task.date.split('-');
     final List<String> timeParts = task.time.split(':');
     
-    final DateTime scheduledDate = DateTime(
+    // Construct the scheduled date in the Local Timezone
+    // We use DateTime first to parse the components safely
+    final DateTime localScheduledDate = DateTime(
       int.parse(dateParts[0]),
       int.parse(dateParts[1]),
       int.parse(dateParts[2]),
@@ -83,16 +98,27 @@ class NotificationService {
       int.parse(timeParts[1]),
     );
 
-    if (scheduledDate.isBefore(now)) {
-      // Don't schedule past tasks
+    // Convert to TZDateTime
+    // If tz.local is correctly set to 'Asia/Kolkata', this will map 1:05 PM Local -> 1:05 PM Asia/Kolkata
+    final tz.TZDateTime scheduledDate = tz.TZDateTime.from(localScheduledDate, tz.local);
+
+    if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local).subtract(const Duration(minutes: 1)))) {
+      // Don't schedule tasks that are more than 1 minute in the past
+      print('Task ${task.id} is in the past: $scheduledDate');
       return;
+    }
+    
+    // If the task is in the past but within 1 minute (e.g. processing delay), schedule it for 5 seconds from now
+    tz.TZDateTime finalScheduledDate = scheduledDate;
+    if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local))) {
+       finalScheduledDate = tz.TZDateTime.now(tz.local).add(const Duration(seconds: 5));
     }
 
     await flutterLocalNotificationsPlugin.zonedSchedule(
       task.id!,
       task.title,
       task.description,
-      tz.TZDateTime.from(scheduledDate, tz.local),
+      finalScheduledDate,
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'remindbuddy_channel',

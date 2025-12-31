@@ -136,6 +136,29 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
           ),
+          ),
+          // Debug Panel
+          Container(
+            padding: const EdgeInsets.all(8.0),
+            color: Colors.grey[200],
+            width: double.infinity,
+            child: StreamBuilder(
+              stream: Stream.periodic(const Duration(seconds: 1)),
+              builder: (context, snapshot) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('🔧 Debug Info:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text('App Time: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now())}'),
+                    Text('Timezone: ${NotificationService.debugTimeZone}'),
+                    Text('Init Status: ${NotificationService.isInitialized ? "Success" : "Pending/Failed"}'),
+                    if (NotificationService.debugError != 'None')
+                      Text('Error: ${NotificationService.debugError}', style: const TextStyle(color: Colors.red)),
+                  ],
+                );
+              }
+            ),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
