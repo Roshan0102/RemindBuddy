@@ -80,9 +80,14 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('RemindBuddy'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.notifications_active),
+            onPressed: () => NotificationService().showTestNotification(),
+            tooltip: 'Test Notification',
+          ),
+          IconButton(
             icon: const Icon(Icons.sync),
             onPressed: _syncTasks,
-          )
+          ),
         ],
       ),
       body: Column(
