@@ -6,7 +6,11 @@ import 'services/notification_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting();
-  await NotificationService().init();
+  try {
+    await NotificationService().init();
+  } catch (e) {
+    print('Error initializing notifications: $e');
+  }
   
   runApp(const RemindBuddyApp());
 }
