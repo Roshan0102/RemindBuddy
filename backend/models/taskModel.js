@@ -1,50 +1,70 @@
-// This is a temporary in-memory storage.
-// In the future, replace this with SQLite or MongoDB connection.
-
-let tasks = [];
-let currentId = 1;
+const db = require('../config/db');
 
 const TaskModel = {
-    getAll: () => tasks,
+    getAll: () => {
+        return new Promise((resolve, reject) => {
+            db.all("SELECT * FROM tasks ORDER BY date, time", [], (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows);
+            });
+        });
+    },
 
-    getById: (id) => tasks.find(t => t.id === parseInt(id)),
+    getByDate: (date) => {
+        return new Promise((resolve, reject) => {
+            db.all("SELECT * FROM tasks WHERE date = ?", [date], (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows);
+            });
+        });
+    },
+
+    getById: (id) => {
+        return new Promise((resolve, reject) => {
+            db.get("SELECT * FROM tasks WHERE id = ?", [id], (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+            });
+        });
+    },
 
     create: (taskData) => {
-        const newTask = {
-            id: currentId++,
-            title: taskData.title,
-            description: taskData.description,
-            date: taskData.date, // Format: YYYY-MM-DD
-            time: taskData.time, // Format: HH:MM
-            repeat: taskData.repeat || 'none', // none, daily, weekly, monthly
-            createdAt: new Date().toISOString()
-        };
-        tasks.push(newTask);
-        return newTask;
+        return new Promise((resolve, reject) => {
+            const { title, description, date, time, repeat } = taskData;
+            const createdAt = new Date().toISOString();
+            const query = `INSERT INTO tasks (title, description, date, time, repeat, createdAt) VALUES (?, ?, ?, ?, ?, ?)`;
+
+            db.run(query, [title, description, date, time, repeat || 'none', createdAt], function (err) {
+                if (err) reject(err);
+                else {
+                    // 'this.lastID' contains the ID of the inserted row
+                    resolve({ id: this.lastID, ...taskData, createdAt });
+                }
+            });
+        });
     },
 
     update: (id, taskData) => {
-        const index = tasks.findIndex(t => t.id === parseInt(id));
-        if (index !== -1) {
-            tasks[index] = { ...tasks[index], ...taskData };
-            return tasks[index];
-        }
-        return null;
+        return new Promise((resolve, reject) => {
+            const { title, description, date, time, repeat } = taskData;
+            const query = `UPDATE tasks SET title = ?, description = ?, date = ?, time = ?, repeat = ? WHERE id = ?`;
+
+            db.run(query, [title, description, date, time, repeat, id], function (err) {
+                if (err) reject(err);
+                else if (this.changes === 0) resolve(null); // No row updated
+                else resolve({ id, ...taskData });
+            });
+        });
     },
 
     delete: (id) => {
-        const index = tasks.findIndex(t => t.id === parseInt(id));
-        if (index !== -1) {
-            const deletedTask = tasks[index];
-            tasks.splice(index, 1);
-            return deletedTask;
-        }
-        return null;
-    },
-
-    // Helper to get tasks for a specific date
-    getByDate: (date) => {
-        return tasks.filter(t => t.date === date);
+        return new Promise((resolve, reject) => {
+            db.run("DELETE FROM tasks WHERE id = ?", [id], function (err) {
+                if (err) reject(err);
+                else if (this.changes === 0) resolve(null);
+                else resolve({ id });
+            });
+        });
     }
 };
 
