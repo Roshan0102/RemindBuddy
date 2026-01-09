@@ -17,3 +17,8 @@
 
 # Timezone
 -keep class net.wolverinebeach.flutter_timezone.** { *; }
+
+# Google Play Core (Fix for R8 Missing Class Errors)
+-dontwarn com.google.android.play.core.**
+-keep class com.google.android.play.core.** { *; }
+-dontwarn io.flutter.embedding.engine.deferredcomponents.**
