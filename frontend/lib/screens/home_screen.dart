@@ -136,7 +136,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
           ),
-          ),
           // Debug Panel
           Container(
             padding: const EdgeInsets.all(8.0),

@@ -41,9 +41,9 @@ jobs:
           name: release-apk
           path: frontend/build/app/outputs/apk/release/app-release.apk
 
-  # Job 2: Deploy to Oracle VM (Backend + Web)
+  # Job 2: Deploy to GCP VM (Backend + Web)
   deploy-server:
-    name: Deploy to Oracle VM
+    name: Deploy to GCP VM
     runs-on: ubuntu-latest
     needs: build-apk # Wait for build to ensure code is good
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
@@ -99,4 +99,5 @@ jobs:
             # Update Backend
             cd backend
             npm install
-            pm2 restart remindbuddy-api
+            # Start or Restart PM2
+            pm2 restart remindbuddy-api || pm2 start server.js --name remindbuddy-api

@@ -3,8 +3,8 @@ import 'package:http/http.dart' as http;
 import '../models/task.dart';
 
 class ApiService {
-  // 10.0.2.2 is localhost for Android Emulator
-  static const String baseUrl = 'http://54.221.22.54/api/tasks';
+  // GCP Servers
+  static const String baseUrl = 'http://35.237.49.45/api/tasks';
 
   Future<List<Task>> getTasks() async {
     try {
