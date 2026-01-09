@@ -3,6 +3,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import '../models/task.dart';
+import 'log_service.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -89,13 +90,11 @@ class NotificationService {
     if (task.id == null) return;
 
     // Parse date and time
-    // Date: YYYY-MM-DD, Time: HH:MM
     final DateTime now = DateTime.now();
     final List<String> dateParts = task.date.split('-');
     final List<String> timeParts = task.time.split(':');
     
     // Construct the scheduled date in the Local Timezone
-    // We use DateTime first to parse the components safely
     final DateTime localScheduledDate = DateTime(
       int.parse(dateParts[0]),
       int.parse(dateParts[1]),
@@ -105,41 +104,51 @@ class NotificationService {
     );
 
     // Convert to TZDateTime
-    // If tz.local is correctly set to 'Asia/Kolkata', this will map 1:05 PM Local -> 1:05 PM Asia/Kolkata
     final tz.TZDateTime scheduledDate = tz.TZDateTime.from(localScheduledDate, tz.local);
+    
+    LogService().log('Scheduling Task ${task.id}: "${task.title}"');
+    LogService().log('  - Input: ${task.date} ${task.time}');
+    LogService().log('  - Local Date: $localScheduledDate');
+    LogService().log('  - TZ Date: $scheduledDate (${scheduledDate.location})');
+    LogService().log('  - Current TZ Time: ${tz.TZDateTime.now(tz.local)}');
 
     if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local).subtract(const Duration(minutes: 1)))) {
-      // Don't schedule tasks that are more than 1 minute in the past
-      print('Task ${task.id} is in the past: $scheduledDate');
+      LogService().error('  - Task is in the past! Skipping.');
       return;
     }
     
-    // If the task is in the past but within 1 minute (e.g. processing delay), schedule it for 5 seconds from now
+    // Grace period handling
     tz.TZDateTime finalScheduledDate = scheduledDate;
     if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local))) {
+       LogService().log('  - Task is slightly past, pushing +5s');
        finalScheduledDate = tz.TZDateTime.now(tz.local).add(const Duration(seconds: 5));
     }
 
-    await flutterLocalNotificationsPlugin.zonedSchedule(
-      task.id!,
-      task.title,
-      task.description,
-      finalScheduledDate,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'remindbuddy_channel',
-          'RemindBuddy Notifications',
-          channelDescription: 'Channel for task reminders',
-          importance: Importance.max,
-          priority: Priority.high,
+    try {
+      await flutterLocalNotificationsPlugin.zonedSchedule(
+        task.id!,
+        task.title,
+        task.description,
+        finalScheduledDate,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'remindbuddy_channel',
+            'RemindBuddy Notifications',
+            channelDescription: 'Channel for task reminders',
+            importance: Importance.max,
+            priority: Priority.high,
+          ),
         ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: task.repeat == 'daily' 
-          ? DateTimeComponents.time 
-          : (task.repeat == 'weekly' ? DateTimeComponents.dayOfWeekAndTime : null),
-    );
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: task.repeat == 'daily' 
+            ? DateTimeComponents.time 
+            : (task.repeat == 'weekly' ? DateTimeComponents.dayOfWeekAndTime : null),
+      );
+      LogService().log('  - SUCCESS: Scheduled for $finalScheduledDate');
+    } catch (e) {
+      LogService().error('  - FAILED to schedule', e);
+    }
   }
 }
