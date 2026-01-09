@@ -151,7 +151,6 @@ class NotificationService {
             playSound: true,
             enableVibration: true,
             fullScreenIntent: true, // This helps bypass DND on some devices
-            sound: RawResourceAndroidNotificationSound('notification'),
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
