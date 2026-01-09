@@ -1,174 +1,183 @@
-5m 30s
-Run shorebird release android --artifact apk
-⠋ Downloading patch......
-✓ Downloading patch... (0.1s)
-⠋ Extracting patch......
-✓ Extracting patch... (0.1s)
-⠋ Downloading bundletool.jar......
-✓ Downloading bundletool.jar... (0.2s)
-⠋ Extracting bundletool.jar......
-✓ Extracting bundletool.jar... (1.2s)
-⠋ Downloading aot-tools.dill......
-✓ Downloading aot-tools.dill... (88ms)
-⠋ Extracting aot-tools.dill......
-✓ Extracting aot-tools.dill... (0.6s)
-⠋ Fetching apps...
-✓ Fetching apps (0.3s)
-Building Android app bundle with Flutter 3.38.5 (1c01b32970)
-Downloading Material fonts...                                      242ms
-Downloading Gradle Wrapper...                                       27ms
-Downloading package sky_engine...                                   99ms
-Downloading package flutter_gpu...                                  29ms
-Downloading flutter_patched_sdk tools...                           183ms
-Downloading flutter_patched_sdk_product tools...                   173ms
-Downloading linux-x64 tools...                                   1,217ms
-Downloading linux-x64/font-subset tools...                         107ms
-Downloading android-arm-profile/linux-x64 tools...                 107ms
-Downloading android-arm-release/linux-x64 tools...                  98ms
-Downloading android-arm64-profile/linux-x64 tools...               130ms
-Downloading android-arm64-release/linux-x64 tools...               104ms
-Downloading android-x64-profile/linux-x64 tools...                 110ms
-Downloading android-x64-release/linux-x64 tools...                 103ms
-Resolving dependencies...
-Downloading packages...
-  async 2.11.0 (2.13.0 available)
-  boolean_selector 2.1.1 (2.1.2 available)
-> characters 1.4.0 (was 1.3.0) (1.4.1 available)
-> clock 1.1.2 (was 1.1.1)
-> collection 1.19.1 (was 1.19.0)
-  crypto 3.0.3 (3.0.7 available)
-> fake_async 1.3.3 (was 1.3.1)
-  ffi 2.1.3 (2.1.5 available)
-  flutter_lints 3.0.2 (6.0.0 available)
-  flutter_local_notifications 17.2.4 (19.5.0 available)
-  flutter_local_notifications_linux 4.0.1 (6.0.0 available)
-  flutter_local_notifications_platform_interface 7.2.0 (9.1.0 available)
-  flutter_timezone 4.1.1 (5.0.1 available)
-  http 1.2.2 (1.6.0 available)
-  http_parser 4.0.2 (4.1.2 available)
-  intl 0.18.1 (0.20.2 available)
-> leak_tracker 11.0.2 (was 10.0.7)
-> leak_tracker_flutter_testing 3.0.10 (was 3.0.8)
-> leak_tracker_testing 3.0.2 (was 3.0.1)
-  lints 3.0.0 (6.0.0 available)
-> matcher 0.12.17 (was 0.12.16+1) (0.12.18 available)
-  material_color_utilities 0.11.1 (0.13.0 available)
-> meta 1.17.0 (was 1.15.0)
-> path 1.9.1 (was 1.9.0)
-  petitparser 6.0.2 (7.0.1 available)
-  source_span 1.10.0 (1.10.1 available)
-  sqflite 2.3.3+1 (2.4.2 available)
-  sqflite_common 2.5.4 (2.5.6 available)
-> stack_trace 1.12.1 (was 1.12.0)
-> stream_channel 2.1.4 (was 2.1.2)
-  string_scanner 1.3.0 (1.4.1 available)
-  synchronized 3.1.0+1 (3.4.0 available)
-  table_calendar 3.0.9 (3.2.0 available)
-  term_glyph 1.2.1 (1.2.2 available)
-> test_api 0.7.7 (was 0.7.3) (0.7.9 available)
-  timezone 0.9.4 (0.11.0 available)
-  typed_data 1.3.2 (1.4.0 available)
-> vector_math 2.2.0 (was 2.1.4)
-  vm_service 14.3.0 (15.0.2 available)
-  web 0.5.1 (1.1.1 available)
-  xml 6.5.0 (6.6.1 available)
-Changed 14 dependencies!
-30 packages have newer versions incompatible with dependency constraints.
-Try `flutter pub outdated` for more information.
-Running Gradle task 'bundleRelease'...                          
-Warning: Flutter support for your project's Gradle version (8.4.0) will soon be dropped. Please upgrade your Gradle version to a version of at least 8.7.0 soon.
-Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
-
-Potential fix: Your project's gradle version is typically defined in the gradle wrapper file. By default, this can be found at /home/runner/work/RemindBuddy/RemindBuddy/frontend/android/gradle/wrapper/gradle-wrapper.properties. 
-For more information, see https://docs.gradle.org/current/userguide/gradle_wrapper.html.
-
-Warning: Flutter support for your project's Android Gradle Plugin version (Android Gradle Plugin version 8.1.1) will soon be dropped. Please upgrade your Android Gradle Plugin version to a version of at least Android Gradle Plugin version 8.6.0 soon.
-Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
-
-Potential fix: Your project's AGP version is typically defined in the plugins block of the `settings.gradle` file (/home/runner/work/RemindBuddy/RemindBuddy/frontend/android/settings.gradle), by a plugin with the id of com.android.application. 
-If you don't see a plugins block, your project was likely created with an older template version. In this case it is most likely defined in the top-level build.gradle file (/home/runner/work/RemindBuddy/RemindBuddy/frontend/android/build.gradle) by the following line in the dependencies block of the buildscript: "classpath 'com.android.tools.build:gradle:<version>'".
-
-Warning: Flutter support for your project's Kotlin version (1.9.0) will soon be dropped. Please upgrade your Kotlin version to a version of at least 2.1.0 soon.
-Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
-
-Potential fix: Your project's KGP version is typically defined in the plugins block of the `settings.gradle` file (/home/runner/work/RemindBuddy/RemindBuddy/frontend/android/settings.gradle), by a plugin with the id of org.jetbrains.kotlin.android. 
-If you don't see a plugins block, your project was likely created with an older template version, in which case it is most likely defined in the top-level build.gradle file (/home/runner/work/RemindBuddy/RemindBuddy/frontend/android/build.gradle) by the ext.kotlin_version property.
-
-Checking the license for package Android SDK Build-Tools 33.0.1 in /usr/local/lib/android/sdk/licenses
-License for package Android SDK Build-Tools 33.0.1 accepted.
-Preparing "Install Android SDK Build-Tools 33.0.1 v.33.0.1".
-"Install Android SDK Build-Tools 33.0.1 v.33.0.1" ready.
-Installing Android SDK Build-Tools 33.0.1 in /usr/local/lib/android/sdk/build-tools/33.0.1
-"Install Android SDK Build-Tools 33.0.1 v.33.0.1" complete.
-"Install Android SDK Build-Tools 33.0.1 v.33.0.1" finished.
-Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 2888 bytes (99.8% reduction). Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
-Checking the license for package CMake 3.22.1 in /usr/local/lib/android/sdk/licenses
-License for package CMake 3.22.1 accepted.
-Preparing "Install CMake 3.22.1 v.3.22.1".
-"Install CMake 3.22.1 v.3.22.1" ready.
-Installing CMake 3.22.1 in /usr/local/lib/android/sdk/cmake/3.22.1
-"Install CMake 3.22.1 v.3.22.1" complete.
-"Install CMake 3.22.1 v.3.22.1" finished.
-ERROR: Missing classes detected while running R8. Please add the missing classes or apply additional keep rules that are generated in /home/runner/work/RemindBuddy/RemindBuddy/frontend/build/app/outputs/mapping/release/missing_rules.txt.
-ERROR: R8: Missing class com.google.android.play.core.splitcompat.SplitCompatApplication (referenced from: void io.flutter.embedding.android.FlutterPlayStoreSplitApplication.<init>() and 2 other contexts)
-Missing class com.google.android.play.core.splitinstall.SplitInstallException (referenced from: void io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager.lambda$installDeferredComponent$1(int, java.lang.String, java.lang.Exception))
-Missing class com.google.android.play.core.splitinstall.SplitInstallManager (referenced from: com.google.android.play.core.splitinstall.SplitInstallManager io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager.splitInstallManager and 5 other contexts)
-Missing class com.google.android.play.core.splitinstall.SplitInstallManagerFactory (referenced from: void io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager.<init>(android.content.Context, io.flutter.embedding.engine.FlutterJNI))
-Missing class com.google.android.play.core.splitinstall.SplitInstallRequest$Builder (referenced from: void io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager.installDeferredComponent(int, java.lang.String))
-Missing class com.google.android.play.core.splitinstall.SplitInstallRequest (referenced from: void io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager.installDeferredComponent(int, java.lang.String))
-Missing class com.google.android.play.core.splitinstall.SplitInstallSessionState (referenced from: void io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager$FeatureInstallStateUpdatedListener.onStateUpdate(com.google.android.play.core.splitinstall.SplitInstallSessionState) and 1 other context)
-Missing class com.google.android.play.core.splitinstall.SplitInstallStateUpdatedListener (referenced from: void io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager.<init>(android.content.Context, io.flutter.embedding.engine.FlutterJNI) and 2 other contexts)
-Missing class com.google.android.play.core.tasks.OnFailureListener (referenced from: void io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager.installDeferredComponent(int, java.lang.String))
-Missing class com.google.android.play.core.tasks.OnSuccessListener (referenced from: void io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager.installDeferredComponent(int, java.lang.String))
-Missing class com.google.android.play.core.tasks.Task (referenced from: void io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager.installDeferredComponent(int, java.lang.String) and 1 other context)
-
-FAILURE: Build failed with an exception.
-
-* What went wrong:
-Execution failed for task ':app:minifyReleaseWithR8'.
-> A failure occurred while executing com.android.build.gradle.internal.tasks.R8Task$R8Runnable
-   > Compilation failed to complete
-
-* Try:
-> Run with --stacktrace option to get the stack trace.
-> Run with --info or --debug option to get more log output.
-> Run with --scan to get full insights.
-> Get more help at https://help.gradle.org.
-
-BUILD FAILED in 5m 18s
-Running Gradle task 'bundleRelease'...                            319.2s
-Gradle task bundleRelease failed with exit code 1
-Failed to build AAB.
-Command: flutter build appbundle --release --target-platform=android-arm,android-arm64,android-x64
-Reason: Exited with code 1.
-
-💡 Fix Recommendations
-
-• Check that running `flutter build` with the same command-line arguments
-completes successfully by running the following command:
-
-flutter build appbundle --release --target-platform=android-arm,android-arm64,android-x64
-
-If the above command fails, then this is likely not a Shorebird issue and
-the underlying `flutter build` failure must be resolved for Shorebird to
-build a release.
-
-• If `flutter build` completes successfully, please ensure that you are
-providing the desired flutter version to the release command via 
-the `--flutter-version` option. If you do not specify a `--flutter-version`
-Shorebird will default to the latest stable version of Flutter.
-We strongly encourage always specifying an explicit Flutter version:
-
-shorebird release <platform> --flutter-version=3.29.0
-
-• If `flutter build` completes successfully and `shorebird release`
-fails when using the same flutter version, please file an issue:
-https://github.com/shorebirdtech/shorebird/issues/new
-
-
-If you aren't sure why this command failed, re-run with the --verbose flag to see more information.
-
-You can also [file an issue](https://github.com/shorebirdtech/shorebird/issues/new/choose) if you think this is a bug. Please include the following log file in your report:
-/home/runner/.config/shorebird/logs/1767979166660_shorebird.log
-
-Error: Process completed with exit code 70.
+[23:17:31] Scheduling Task 1: "hi"
+[23:17:31]   - Input: 2026-01-09 21:34
+[23:17:31]   - Local Date: 2026-01-09 21:34:00.000
+[23:17:31]   - TZ Date: 2026-01-09 21:34:00.000+0530 (Asia/Kolkata)
+[23:17:31]   - Current TZ Time: 2026-01-09 23:17:31.847951+0530
+🔴 [23:17:31] ERROR:   - Task is in the past! Skipping. 
+[23:17:31] Scheduling Task 2: "hi 1"
+[23:17:31]   - Input: 2026-01-09 22:17
+[23:17:31]   - Local Date: 2026-01-09 22:17:00.000
+[23:17:31]   - TZ Date: 2026-01-09 22:17:00.000+0530 (Asia/Kolkata)
+[23:17:31]   - Current TZ Time: 2026-01-09 23:17:31.851194+0530
+🔴 [23:17:31] ERROR:   - Task is in the past! Skipping. 
+[23:17:31] Scheduling Task 3: "hi 2"
+[23:17:31]   - Input: 2026-01-09 22:28
+[23:17:31]   - Local Date: 2026-01-09 22:28:00.000
+[23:17:31]   - TZ Date: 2026-01-09 22:28:00.000+0530 (Asia/Kolkata)
+[23:17:31]   - Current TZ Time: 2026-01-09 23:17:31.854001+0530
+🔴 [23:17:31] ERROR:   - Task is in the past! Skipping. 
+[23:17:31] Scheduling Task 4: "hi 2"
+[23:17:31]   - Input: 2026-01-09 22:28
+[23:17:31]   - Local Date: 2026-01-09 22:28:00.000
+[23:17:31]   - TZ Date: 2026-01-09 22:28:00.000+0530 (Asia/Kolkata)
+[23:17:31]   - Current TZ Time: 2026-01-09 23:17:31.856628+0530
+🔴 [23:17:31] ERROR:   - Task is in the past! Skipping. 
+[23:17:31] Scheduling Task 5: "hi 3"
+[23:17:31]   - Input: 2026-01-09 22:41
+[23:17:31]   - Local Date: 2026-01-09 22:41:00.000
+[23:17:31]   - TZ Date: 2026-01-09 22:41:00.000+0530 (Asia/Kolkata)
+[23:17:31]   - Current TZ Time: 2026-01-09 23:17:31.859053+0530
+🔴 [23:17:31] ERROR:   - Task is in the past! Skipping. 
+[23:17:31] Scheduling Task 6: "hi 4"
+[23:17:31]   - Input: 2026-01-09 22:43
+[23:17:31]   - Local Date: 2026-01-09 22:43:00.000
+[23:17:31]   - TZ Date: 2026-01-09 22:43:00.000+0530 (Asia/Kolkata)
+[23:17:31]   - Current TZ Time: 2026-01-09 23:17:31.861698+0530
+🔴 [23:17:31] ERROR:   - Task is in the past! Skipping. 
+[23:17:31] Scheduling Task 7: "hi 5"
+[23:17:31]   - Input: 2026-01-09 23:19
+[23:17:31]   - Local Date: 2026-01-09 23:19:00.000
+[23:17:31]   - TZ Date: 2026-01-09 23:19:00.000+0530 (Asia/Kolkata)
+[23:17:31]   - Current TZ Time: 2026-01-09 23:17:31.864119+0530
+[23:17:31]   - SUCCESS: Scheduled for 2026-01-09 23:19:00.000+0530
+[23:19:05] Scheduling Task 1: "hi"
+[23:19:05]   - Input: 2026-01-09 21:34
+[23:19:05]   - Local Date: 2026-01-09 21:34:00.000
+[23:19:05]   - TZ Date: 2026-01-09 21:34:00.000+0530 (Asia/Kolkata)
+[23:19:05]   - Current TZ Time: 2026-01-09 23:19:05.283867+0530
+🔴 [23:19:05] ERROR:   - Task is in the past! Skipping. 
+[23:19:05] Scheduling Task 2: "hi 1"
+[23:19:05]   - Input: 2026-01-09 22:17
+[23:19:05]   - Local Date: 2026-01-09 22:17:00.000
+[23:19:05]   - TZ Date: 2026-01-09 22:17:00.000+0530 (Asia/Kolkata)
+[23:19:05]   - Current TZ Time: 2026-01-09 23:19:05.285385+0530
+🔴 [23:19:05] ERROR:   - Task is in the past! Skipping. 
+[23:19:05] Scheduling Task 3: "hi 2"
+[23:19:05]   - Input: 2026-01-09 22:28
+[23:19:05]   - Local Date: 2026-01-09 22:28:00.000
+[23:19:05]   - TZ Date: 2026-01-09 22:28:00.000+0530 (Asia/Kolkata)
+[23:19:05]   - Current TZ Time: 2026-01-09 23:19:05.286555+0530
+🔴 [23:19:05] ERROR:   - Task is in the past! Skipping. 
+[23:19:05] Scheduling Task 4: "hi 2"
+[23:19:05]   - Input: 2026-01-09 22:28
+[23:19:05]   - Local Date: 2026-01-09 22:28:00.000
+[23:19:05]   - TZ Date: 2026-01-09 22:28:00.000+0530 (Asia/Kolkata)
+[23:19:05]   - Current TZ Time: 2026-01-09 23:19:05.287978+0530
+🔴 [23:19:05] ERROR:   - Task is in the past! Skipping. 
+[23:19:05] Scheduling Task 5: "hi 3"
+[23:19:05]   - Input: 2026-01-09 22:41
+[23:19:05]   - Local Date: 2026-01-09 22:41:00.000
+[23:19:05]   - TZ Date: 2026-01-09 22:41:00.000+0530 (Asia/Kolkata)
+[23:19:05]   - Current TZ Time: 2026-01-09 23:19:05.289939+0530
+🔴 [23:19:05] ERROR:   - Task is in the past! Skipping. 
+[23:19:05] Scheduling Task 6: "hi 4"
+[23:19:05]   - Input: 2026-01-09 22:43
+[23:19:05]   - Local Date: 2026-01-09 22:43:00.000
+[23:19:05]   - TZ Date: 2026-01-09 22:43:00.000+0530 (Asia/Kolkata)
+[23:19:05]   - Current TZ Time: 2026-01-09 23:19:05.292498+0530
+🔴 [23:19:05] ERROR:   - Task is in the past! Skipping. 
+[23:19:05] Scheduling Task 7: "hi 5"
+[23:19:05]   - Input: 2026-01-09 23:19
+[23:19:05]   - Local Date: 2026-01-09 23:19:00.000
+[23:19:05]   - TZ Date: 2026-01-09 23:19:00.000+0530 (Asia/Kolkata)
+[23:19:05]   - Current TZ Time: 2026-01-09 23:19:05.294763+0530
+[23:19:05]   - Task is slightly past, pushing +5s
+[23:19:05]   - SUCCESS: Scheduled for 2026-01-09 23:19:10.294945+0530
+[23:19:27] Scheduling Task 1: "hi"
+[23:19:27]   - Input: 2026-01-09 21:34
+[23:19:27]   - Local Date: 2026-01-09 21:34:00.000
+[23:19:27]   - TZ Date: 2026-01-09 21:34:00.000+0530 (Asia/Kolkata)
+[23:19:27]   - Current TZ Time: 2026-01-09 23:19:27.686344+0530
+🔴 [23:19:27] ERROR:   - Task is in the past! Skipping. 
+[23:19:27] Scheduling Task 2: "hi 1"
+[23:19:27]   - Input: 2026-01-09 22:17
+[23:19:27]   - Local Date: 2026-01-09 22:17:00.000
+[23:19:27]   - TZ Date: 2026-01-09 22:17:00.000+0530 (Asia/Kolkata)
+[23:19:27]   - Current TZ Time: 2026-01-09 23:19:27.689319+0530
+🔴 [23:19:27] ERROR:   - Task is in the past! Skipping. 
+[23:19:27] Scheduling Task 3: "hi 2"
+[23:19:27]   - Input: 2026-01-09 22:28
+[23:19:27]   - Local Date: 2026-01-09 22:28:00.000
+[23:19:27]   - TZ Date: 2026-01-09 22:28:00.000+0530 (Asia/Kolkata)
+[23:19:27]   - Current TZ Time: 2026-01-09 23:19:27.692067+0530
+🔴 [23:19:27] ERROR:   - Task is in the past! Skipping. 
+[23:19:27] Scheduling Task 4: "hi 2"
+[23:19:27]   - Input: 2026-01-09 22:28
+[23:19:27]   - Local Date: 2026-01-09 22:28:00.000
+[23:19:27]   - TZ Date: 2026-01-09 22:28:00.000+0530 (Asia/Kolkata)
+[23:19:27]   - Current TZ Time: 2026-01-09 23:19:27.694666+0530
+🔴 [23:19:27] ERROR:   - Task is in the past! Skipping. 
+[23:19:27] Scheduling Task 5: "hi 3"
+[23:19:27]   - Input: 2026-01-09 22:41
+[23:19:27]   - Local Date: 2026-01-09 22:41:00.000
+[23:19:27]   - TZ Date: 2026-01-09 22:41:00.000+0530 (Asia/Kolkata)
+[23:19:27]   - Current TZ Time: 2026-01-09 23:19:27.697398+0530
+🔴 [23:19:27] ERROR:   - Task is in the past! Skipping. 
+[23:19:27] Scheduling Task 6: "hi 4"
+[23:19:27]   - Input: 2026-01-09 22:43
+[23:19:27]   - Local Date: 2026-01-09 22:43:00.000
+[23:19:27]   - TZ Date: 2026-01-09 22:43:00.000+0530 (Asia/Kolkata)
+[23:19:27]   - Current TZ Time: 2026-01-09 23:19:27.700183+0530
+🔴 [23:19:27] ERROR:   - Task is in the past! Skipping. 
+[23:19:27] Scheduling Task 7: "hi 5"
+[23:19:27]   - Input: 2026-01-09 23:19
+[23:19:27]   - Local Date: 2026-01-09 23:19:00.000
+[23:19:27]   - TZ Date: 2026-01-09 23:19:00.000+0530 (Asia/Kolkata)
+[23:19:27]   - Current TZ Time: 2026-01-09 23:19:27.702991+0530
+[23:19:27]   - Task is slightly past, pushing +5s
+[23:19:27]   - SUCCESS: Scheduled for 2026-01-09 23:19:32.703229+0530
+[23:19:27] Scheduling Task 8: "hi 6"
+[23:19:27]   - Input: 2026-01-09 23:20
+[23:19:27]   - Local Date: 2026-01-09 23:20:00.000
+[23:19:27]   - TZ Date: 2026-01-09 23:20:00.000+0530 (Asia/Kolkata)
+[23:19:27]   - Current TZ Time: 2026-01-09 23:19:27.712814+0530
+[23:19:27]   - SUCCESS: Scheduled for 2026-01-09 23:20:00.000+0530
+[23:19:32] Scheduling Task 1: "hi"
+[23:19:32]   - Input: 2026-01-09 21:34
+[23:19:32]   - Local Date: 2026-01-09 21:34:00.000
+[23:19:32]   - TZ Date: 2026-01-09 21:34:00.000+0530 (Asia/Kolkata)
+[23:19:32]   - Current TZ Time: 2026-01-09 23:19:32.002935+0530
+🔴 [23:19:32] ERROR:   - Task is in the past! Skipping. 
+[23:19:32] Scheduling Task 2: "hi 1"
+[23:19:32]   - Input: 2026-01-09 22:17
+[23:19:32]   - Local Date: 2026-01-09 22:17:00.000
+[23:19:32]   - TZ Date: 2026-01-09 22:17:00.000+0530 (Asia/Kolkata)
+[23:19:32]   - Current TZ Time: 2026-01-09 23:19:32.008147+0530
+🔴 [23:19:32] ERROR:   - Task is in the past! Skipping. 
+[23:19:32] Scheduling Task 3: "hi 2"
+[23:19:32]   - Input: 2026-01-09 22:28
+[23:19:32]   - Local Date: 2026-01-09 22:28:00.000
+[23:19:32]   - TZ Date: 2026-01-09 22:28:00.000+0530 (Asia/Kolkata)
+[23:19:32]   - Current TZ Time: 2026-01-09 23:19:32.010046+0530
+🔴 [23:19:32] ERROR:   - Task is in the past! Skipping. 
+[23:19:32] Scheduling Task 4: "hi 2"
+[23:19:32]   - Input: 2026-01-09 22:28
+[23:19:32]   - Local Date: 2026-01-09 22:28:00.000
+[23:19:32]   - TZ Date: 2026-01-09 22:28:00.000+0530 (Asia/Kolkata)
+[23:19:32]   - Current TZ Time: 2026-01-09 23:19:32.011440+0530
+🔴 [23:19:32] ERROR:   - Task is in the past! Skipping. 
+[23:19:32] Scheduling Task 5: "hi 3"
+[23:19:32]   - Input: 2026-01-09 22:41
+[23:19:32]   - Local Date: 2026-01-09 22:41:00.000
+[23:19:32]   - TZ Date: 2026-01-09 22:41:00.000+0530 (Asia/Kolkata)
+[23:19:32]   - Current TZ Time: 2026-01-09 23:19:32.012831+0530
+🔴 [23:19:32] ERROR:   - Task is in the past! Skipping. 
+[23:19:32] Scheduling Task 6: "hi 4"
+[23:19:32]   - Input: 2026-01-09 22:43
+[23:19:32]   - Local Date: 2026-01-09 22:43:00.000
+[23:19:32]   - TZ Date: 2026-01-09 22:43:00.000+0530 (Asia/Kolkata)
+[23:19:32]   - Current TZ Time: 2026-01-09 23:19:32.014404+0530
+🔴 [23:19:32] ERROR:   - Task is in the past! Skipping. 
+[23:19:32] Scheduling Task 7: "hi 5"
+[23:19:32]   - Input: 2026-01-09 23:19
+[23:19:32]   - Local Date: 2026-01-09 23:19:00.000
+[23:19:32]   - TZ Date: 2026-01-09 23:19:00.000+0530 (Asia/Kolkata)
+[23:19:32]   - Current TZ Time: 2026-01-09 23:19:32.015734+0530
+[23:19:32]   - Task is slightly past, pushing +5s
+[23:19:32]   - SUCCESS: Scheduled for 2026-01-09 23:19:37.015900+0530
+[23:19:32] Scheduling Task 8: "hi 6"
+[23:19:32]   - Input: 2026-01-09 23:20
+[23:19:32]   - Local Date: 2026-01-09 23:20:00.000
+[23:19:32]   - TZ Date: 2026-01-09 23:20:00.000+0530 (Asia/Kolkata)
+[23:19:32]   - Current TZ Time: 2026-01-09 23:19:32.024507+0530
+[23:19:32]   - SUCCESS: Scheduled for 2026-01-09 23:20:00.000+0530

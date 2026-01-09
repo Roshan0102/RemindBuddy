@@ -36,4 +36,15 @@ class ApiService {
     }
     return null;
   }
+  Future<void> deleteTask(int id) async {
+    try {
+      final response = await http.delete(Uri.parse('$baseUrl/$id'));
+      if (response.statusCode != 200) {
+        throw Exception('Failed to delete task');
+      }
+    } catch (e) {
+      print('Error deleting task: $e');
+      rethrow;
+    }
+  }
 }

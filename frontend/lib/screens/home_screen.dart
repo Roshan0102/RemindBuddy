@@ -129,10 +129,44 @@ class _HomeScreenState extends State<HomeScreen> {
                     itemCount: _selectedTasks.length,
                     itemBuilder: (context, index) {
                       final task = _selectedTasks[index];
-                      return ListTile(
-                        title: Text(task.title),
-                        subtitle: Text('${task.time} - ${task.description}'),
-                        trailing: task.repeat != 'none' ? const Icon(Icons.repeat) : null,
+                      return Dismissible(
+                        key: Key(task.id.toString()),
+                        background: Container(
+                          color: Colors.red,
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 20.0),
+                          child: const Icon(Icons.delete, color: Colors.white),
+                        ),
+                        direction: DismissDirection.endToStart,
+                        onDismissed: (direction) async {
+                          // 1. Remove from UI immediately
+                          final deletedTask = task;
+                          setState(() {
+                            _selectedTasks.removeAt(index);
+                          });
+
+                          // 2. Delete from Local Storage & Cancel Notification
+                          await _storageService.deleteTask(deletedTask.id!);
+                          await _notificationService.cancelNotification(deletedTask.id!);
+
+                          // 3. Delete from Server (Background)
+                          try {
+                            await _apiService.deleteTask(deletedTask.id!);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Task deleted')),
+                            );
+                            _syncTasks(); // Force immediate sync to ensure consistency
+                          } catch (e) {
+                            // If server delete fails, we might want to queue it or show error
+                            // For now, just log it
+                            LogService().error('Failed to delete from server', e);
+                          }
+                        },
+                        child: ListTile(
+                          title: Text(task.title),
+                          subtitle: Text('${task.time} - ${task.description}'),
+                          trailing: task.repeat != 'none' ? const Icon(Icons.repeat) : null,
+                        ),
                       );
                     },
                   ),

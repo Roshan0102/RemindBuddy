@@ -58,6 +58,17 @@ class NotificationService {
     if (androidImplementation != null) {
       await androidImplementation.requestNotificationsPermission();
       await androidImplementation.requestExactAlarmsPermission();
+      
+      // Create the channel immediately so it shows in settings
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'remindbuddy_channel', // id
+        'RemindBuddy Notifications', // title
+        description: 'Channel for task reminders', // description
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+      );
+      await androidImplementation.createNotificationChannel(channel);
     }
   }
 
@@ -137,6 +148,10 @@ class NotificationService {
             channelDescription: 'Channel for task reminders',
             importance: Importance.max,
             priority: Priority.high,
+            playSound: true,
+            enableVibration: true,
+            fullScreenIntent: true, // This helps bypass DND on some devices
+            sound: RawResourceAndroidNotificationSound('notification'),
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -150,5 +165,9 @@ class NotificationService {
     } catch (e) {
       LogService().error('  - FAILED to schedule', e);
     }
+  }
+  Future<void> cancelNotification(int id) async {
+    await flutterLocalNotificationsPlugin.cancel(id);
+    LogService().log('Cancelled notification for Task $id');
   }
 }
