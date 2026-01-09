@@ -188,6 +188,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     Text('Init Status: ${NotificationService.isInitialized ? "Success" : "Pending/Failed"}'),
                     if (NotificationService.debugError != 'None')
                       Text('Error: ${NotificationService.debugError}', style: const TextStyle(color: Colors.red)),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton(
+                          onPressed: () => NotificationService().showImmediateNotification(),
+                          child: const Text('🔔 Test'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => NotificationService().checkPermissions(),
+                          child: const Text('⏰ Perms'),
+                        ),
+                      ],
+                    ),
                   ],
                 );
               }

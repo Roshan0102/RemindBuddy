@@ -165,6 +165,47 @@ class NotificationService {
       LogService().error('  - FAILED to schedule', e);
     }
   }
+  Future<void> showImmediateNotification() async {
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
+      'remindbuddy_channel',
+      'RemindBuddy Notifications',
+      channelDescription: 'Channel for task reminders',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: true,
+    );
+    const NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
+
+    await flutterLocalNotificationsPlugin.show(
+      999, // Special ID for test
+      'Immediate Test',
+      'If you see this, Notifications are working!',
+      platformChannelSpecifics,
+    );
+    LogService().log('Triggered Immediate Notification');
+  }
+
+  Future<void> checkPermissions() async {
+    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+        flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidImplementation != null) {
+      final bool? areNotificationsEnabled = 
+          await androidImplementation.areNotificationsEnabled();
+      LogService().log('NOTIFICATIONS ENABLED: $areNotificationsEnabled');
+      
+      // Note: exact alarm check isn't directly exposed in older versions of the plugin
+      // but we can try to request it again to see if it prompts or logs
+      await androidImplementation.requestExactAlarmsPermission();
+      LogService().log('Requested Exact Alarm Permission check');
+    }
+  }
+
   Future<void> cancelNotification(int id) async {
     await flutterLocalNotificationsPlugin.cancel(id);
     LogService().log('Cancelled notification for Task $id');
