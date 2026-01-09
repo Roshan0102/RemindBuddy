@@ -23,7 +23,13 @@ class NotificationService {
     tz.initializeTimeZones();
     
     try {
-      final String timeZoneName = await FlutterTimezone.getLocalTimezone();
+      String timeZoneName = await FlutterTimezone.getLocalTimezone();
+      
+      // FIX: Handle deprecated timezone names
+      if (timeZoneName == 'Asia/Calcutta') {
+        timeZoneName = 'Asia/Kolkata';
+      }
+      
       tz.setLocalLocation(tz.getLocation(timeZoneName));
       debugTimeZone = timeZoneName;
       isInitialized = true;
