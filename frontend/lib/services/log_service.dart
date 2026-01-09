@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 class LogService {
@@ -49,11 +50,14 @@ class LogScreen extends StatelessWidget {
           ),
           IconButton(
             icon: const Icon(Icons.copy),
-            onPressed: () {
-              // TODO: Implement copy to clipboard
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Logs copied (simulated)')),
-              );
+            onPressed: () async {
+              final String allLogs = LogService()._logs.join('\n');
+              await Clipboard.setData(ClipboardData(text: allLogs));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Logs copied to clipboard')),
+                );
+              }
             },
           ),
         ],
