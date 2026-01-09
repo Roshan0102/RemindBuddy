@@ -71,4 +71,13 @@ class StorageService {
     // Note: String comparison works for YYYY-MM-DD format
     await db.delete('tasks', where: 'date < ?', whereArgs: [today]);
   }
+
+  Future<void> deleteTask(int id) async {
+    final db = await database;
+    await db.delete(
+      'tasks',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
 }
