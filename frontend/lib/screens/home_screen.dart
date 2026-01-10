@@ -57,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBuddyMascot() {
-    int taskCount = _getTasksForDay(_selectedDay ?? _focusedDay).length;
+    int taskCount = _selectedTasks.length;
     IconData buddyIcon;
     Color buddyColor;
 
@@ -83,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _getBuddyMessage() {
-    int taskCount = _getTasksForDay(_selectedDay ?? _focusedDay).length;
+    int taskCount = _selectedTasks.length;
     if (taskCount == 0) return "All clear! Relax time. 🌿";
     if (taskCount < 3) return "You got this! 💪";
     return "Busy day ahead! 🔥";
@@ -197,7 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     Text(
-                      '${_getTasksForDay(_selectedDay ?? _focusedDay).length} tasks for today',
+                      '${_selectedTasks.length} tasks for today',
                       style: TextStyle(color: Colors.grey[600], fontSize: 12),
                     ),
                   ],

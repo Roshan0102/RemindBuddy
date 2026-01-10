@@ -1,7 +1,6 @@
-3m 1s
 Run shorebird release android --artifact apk
 ⠋ Downloading patch......
-✓ Downloading patch... (0.2s)
+✓ Downloading patch... (90ms)
 ⠋ Extracting patch......
 ✓ Extracting patch... (0.1s)
 ⠋ Downloading bundletool.jar......
@@ -9,26 +8,26 @@ Run shorebird release android --artifact apk
 ⠋ Extracting bundletool.jar......
 ✓ Extracting bundletool.jar... (1.1s)
 ⠋ Downloading aot-tools.dill......
-✓ Downloading aot-tools.dill... (0.1s)
+✓ Downloading aot-tools.dill... (70ms)
 ⠋ Extracting aot-tools.dill......
-✓ Extracting aot-tools.dill... (0.6s)
+✓ Extracting aot-tools.dill... (0.5s)
 ⠋ Fetching apps...
 ✓ Fetching apps (0.3s)
 Building Android app bundle with Flutter 3.38.5 (1c01b32970)
-Downloading Material fonts...                                      304ms
-Downloading Gradle Wrapper...                                       69ms
-Downloading package sky_engine...                                  130ms
-Downloading package flutter_gpu...                                  78ms
-Downloading flutter_patched_sdk tools...                           220ms
-Downloading flutter_patched_sdk_product tools...                   217ms
-Downloading linux-x64 tools...                                   1,160ms
-Downloading linux-x64/font-subset tools...                         130ms
-Downloading android-arm-profile/linux-x64 tools...                 148ms
-Downloading android-arm-release/linux-x64 tools...                 141ms
-Downloading android-arm64-profile/linux-x64 tools...               160ms
-Downloading android-arm64-release/linux-x64 tools...               141ms
-Downloading android-x64-profile/linux-x64 tools...                 147ms
-Downloading android-x64-release/linux-x64 tools...                 133ms
+Downloading Material fonts...                                      285ms
+Downloading Gradle Wrapper...                                       78ms
+Downloading package sky_engine...                                  173ms
+Downloading package flutter_gpu...                                 116ms
+Downloading flutter_patched_sdk tools...                           264ms
+Downloading flutter_patched_sdk_product tools...                   257ms
+Downloading linux-x64 tools...                                   1,081ms
+Downloading linux-x64/font-subset tools...                         180ms
+Downloading android-arm-profile/linux-x64 tools...                 200ms
+Downloading android-arm-release/linux-x64 tools...                 180ms
+Downloading android-arm64-profile/linux-x64 tools...               194ms
+Downloading android-arm64-release/linux-x64 tools...               182ms
+Downloading android-x64-profile/linux-x64 tools...                 195ms
+Downloading android-x64-release/linux-x64 tools...                 188ms
 Resolving dependencies...
 Downloading packages...
   async 2.11.0 (2.13.0 available)
@@ -108,9 +107,21 @@ Preparing "Install Android SDK Build-Tools 33.0.1 v.33.0.1".
 Installing Android SDK Build-Tools 33.0.1 in /usr/local/lib/android/sdk/build-tools/33.0.1
 "Install Android SDK Build-Tools 33.0.1 v.33.0.1" complete.
 "Install Android SDK Build-Tools 33.0.1 v.33.0.1" finished.
-lib/services/notification_service.dart:67:40: Error: Not a constant expression.
-            contentTitle: 'Reminder: ${payload ?? "Task"}',
-                                       ^^^^^^^
+lib/screens/home_screen.dart:60:21: Error: The method '_getTasksForDay' isn't defined for the type '_HomeScreenState'.
+ - '_HomeScreenState' is from 'package:remindbuddy/screens/home_screen.dart' ('lib/screens/home_screen.dart').
+Try correcting the name to the name of an existing method, or defining a method named '_getTasksForDay'.
+    int taskCount = _getTasksForDay(_selectedDay ?? _focusedDay).length;
+                    ^^^^^^^^^^^^^^^
+lib/screens/home_screen.dart:86:21: Error: The method '_getTasksForDay' isn't defined for the type '_HomeScreenState'.
+ - '_HomeScreenState' is from 'package:remindbuddy/screens/home_screen.dart' ('lib/screens/home_screen.dart').
+Try correcting the name to the name of an existing method, or defining a method named '_getTasksForDay'.
+    int taskCount = _getTasksForDay(_selectedDay ?? _focusedDay).length;
+                    ^^^^^^^^^^^^^^^
+lib/screens/home_screen.dart:200:26: Error: The method '_getTasksForDay' isn't defined for the type '_HomeScreenState'.
+ - '_HomeScreenState' is from 'package:remindbuddy/screens/home_screen.dart' ('lib/screens/home_screen.dart').
+Try correcting the name to the name of an existing method, or defining a method named '_getTasksForDay'.
+                      '${_getTasksForDay(_selectedDay ?? _focusedDay).length} tasks for today',
+                         ^^^^^^^^^^^^^^^
 Target kernel_snapshot_program failed: Exception
 
 
@@ -126,8 +137,8 @@ Execution failed for task ':app:compileFlutterBuildRelease'.
 > Run with --scan to get full insights.
 > Get more help at https://help.gradle.org.
 
-BUILD FAILED in 2m 49s
-Running Gradle task 'bundleRelease'...                            169.8s
+BUILD FAILED in 5m 32s
+Running Gradle task 'bundleRelease'...                            333.3s
 Gradle task bundleRelease failed with exit code 1
 Failed to build AAB.
 Command: flutter build appbundle --release --target-platform=android-arm,android-arm64,android-x64
@@ -160,6 +171,6 @@ https://github.com/shorebirdtech/shorebird/issues/new
 If you aren't sure why this command failed, re-run with the --verbose flag to see more information.
 
 You can also [file an issue](https://github.com/shorebirdtech/shorebird/issues/new/choose) if you think this is a bug. Please include the following log file in your report:
-/home/runner/.config/shorebird/logs/1768029830176_shorebird.log
+/home/runner/.config/shorebird/logs/1768030419464_shorebird.log
 
 Error: Process completed with exit code 70.
