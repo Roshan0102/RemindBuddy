@@ -206,6 +206,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        // Open Battery Optimization Settings
+                        // Since we can't easily link deep into settings without a plugin,
+                        // we will just show a SnackBar instructions for now.
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Go to Settings > Apps > RemindBuddy > Battery > Unrestricted'),
+                            duration: Duration(seconds: 5),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                      child: const Text('🔋 Fix Battery Settings', style: TextStyle(color: Colors.white)),
+                    ),
                   ],
                 );
               }
