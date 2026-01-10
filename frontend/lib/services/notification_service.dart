@@ -122,12 +122,12 @@ class NotificationService {
     LogService().log('  - Local Date: $localScheduledDate');
     LogService().log('  - TZ Date: $scheduledDate (${scheduledDate.location})');
     
-    final now = tz.TZDateTime.now(tz.local);
-    final difference = scheduledDate.difference(now);
-    LogService().log('  - Current TZ Time: $now');
+    final tzNow = tz.TZDateTime.now(tz.local);
+    final difference = scheduledDate.difference(tzNow);
+    LogService().log('  - Current TZ Time: $tzNow');
     LogService().log('  - Difference: ${difference.inSeconds} seconds');
 
-    if (scheduledDate.isBefore(now.subtract(const Duration(minutes: 1)))) {
+    if (scheduledDate.isBefore(tzNow.subtract(const Duration(minutes: 1)))) {
       LogService().error('  - Task is in the past! Skipping.');
       return;
     }
