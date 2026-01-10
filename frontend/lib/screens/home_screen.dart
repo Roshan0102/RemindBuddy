@@ -200,6 +200,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           onPressed: () => NotificationService().checkPermissions(),
                           child: const Text('⏰ Perms'),
                         ),
+                        ElevatedButton(
+                          onPressed: () => NotificationService().checkPendingNotifications(),
+                          child: const Text('📋 Pending'),
+                        ),
                       ],
                     ),
                   ],
