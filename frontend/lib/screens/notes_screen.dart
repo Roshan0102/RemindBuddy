@@ -136,7 +136,7 @@ class _NotesScreenState extends State<NotesScreen> {
           keyboardType: TextInputType.number,
           obscureText: true,
           maxLength: 4,
-          decoration: const InputDecoration(hintText: '0000'),
+          decoration: const InputDecoration(hintText: 'Enter PIN'),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),

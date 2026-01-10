@@ -62,9 +62,24 @@ class NotificationService {
           channelDescription: 'Channel for task reminders',
           importance: Importance.max,
           priority: Priority.high,
+          styleInformation: BigTextStyleInformation(
+            'You snoozed this task. Do it now!',
+            contentTitle: 'Reminder: ${payload ?? "Task"}',
+            summaryText: 'Nag Mode Active',
+          ),
           actions: [
-            AndroidNotificationAction('YES_ACTION', 'YES (Done)', showsUserInterface: false),
-            AndroidNotificationAction('NO_ACTION', 'NO (Remind in 3h)', showsUserInterface: false),
+            AndroidNotificationAction(
+              'YES_ACTION', 
+              'YES (Done)', 
+              showsUserInterface: false,
+              cancelNotification: true,
+            ),
+            AndroidNotificationAction(
+              'NO_ACTION', 
+              'NO (Remind in 3h)', 
+              showsUserInterface: false,
+              cancelNotification: true,
+            ),
           ],
         ),
       ),
@@ -207,15 +222,24 @@ class NotificationService {
           android: AndroidNotificationDetails(
             'remindbuddy_channel',
             'RemindBuddy Notifications',
-            channelDescription: 'Channel for task reminders',
-            importance: Importance.max,
-            priority: Priority.high,
-            playSound: true,
-            enableVibration: true,
-            onlyAlertOnce: true, // Prevent multiple popups for the same notification
+            styleInformation: BigTextStyleInformation(
+              task.description,
+              contentTitle: task.title,
+              summaryText: task.isAnnoying ? 'Nag Mode Active' : null,
+            ),
             actions: task.isAnnoying ? [
-              const AndroidNotificationAction('YES_ACTION', 'YES (Done)', showsUserInterface: false),
-              const AndroidNotificationAction('NO_ACTION', 'NO (Remind in 3h)', showsUserInterface: false),
+              AndroidNotificationAction(
+                'YES_ACTION', 
+                'YES (Done)', 
+                showsUserInterface: false,
+                cancelNotification: true,
+              ),
+              AndroidNotificationAction(
+                'NO_ACTION', 
+                'NO (Remind in 3h)', 
+                showsUserInterface: false,
+                cancelNotification: true,
+              ),
             ] : null,
           ),
         ),
@@ -244,15 +268,24 @@ class NotificationService {
                 android: AndroidNotificationDetails(
                   'remindbuddy_channel',
                   'RemindBuddy Notifications',
-                  channelDescription: 'Channel for task reminders',
-                  importance: Importance.max,
-                  priority: Priority.high,
-                  playSound: true,
-                  enableVibration: true,
-                  onlyAlertOnce: true,
+                  styleInformation: BigTextStyleInformation(
+                    task.description,
+                    contentTitle: task.title,
+                    summaryText: task.isAnnoying ? 'Nag Mode Active' : null,
+                  ),
                   actions: task.isAnnoying ? [
-                    const AndroidNotificationAction('YES_ACTION', 'YES (Done)', showsUserInterface: false),
-                    const AndroidNotificationAction('NO_ACTION', 'NO (Remind in 3h)', showsUserInterface: false),
+                    AndroidNotificationAction(
+                      'YES_ACTION', 
+                      'YES (Done)', 
+                      showsUserInterface: false,
+                      cancelNotification: true,
+                    ),
+                    AndroidNotificationAction(
+                      'NO_ACTION', 
+                      'NO (Remind in 3h)', 
+                      showsUserInterface: false,
+                      cancelNotification: true,
+                    ),
                   ] : null,
                 ),
               ),
