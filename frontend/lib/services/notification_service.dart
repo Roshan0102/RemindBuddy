@@ -128,15 +128,15 @@ class NotificationService {
     LogService().log('  - Difference: ${difference.inSeconds} seconds');
 
     if (scheduledDate.isBefore(tzNow.subtract(const Duration(minutes: 1)))) {
-      LogService().error('  - Task is in the past! Skipping.');
+      LogService().log('  - Task is in the past. Not scheduling notification.');
       return;
     }
     
     // Grace period handling
     tz.TZDateTime finalScheduledDate = scheduledDate;
-    if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local))) {
+    if (scheduledDate.isBefore(tzNow)) {
        LogService().log('  - Task is slightly past, pushing +5s');
-       finalScheduledDate = tz.TZDateTime.now(tz.local).add(const Duration(seconds: 5));
+       finalScheduledDate = tzNow.add(const Duration(seconds: 5));
     }
 
     try {
@@ -154,7 +154,7 @@ class NotificationService {
             priority: Priority.high,
             playSound: true,
             enableVibration: true,
-            fullScreenIntent: true, // This helps bypass DND on some devices
+            onlyAlertOnce: true, // Prevent multiple popups for the same notification
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,

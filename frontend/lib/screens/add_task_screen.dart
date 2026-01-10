@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import '../models/task.dart';
 import '../services/api_service.dart';
@@ -43,15 +44,53 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   Future<void> _selectTime(BuildContext context) async {
-    final TimeOfDay? picked = await showTimePicker(
+    showModalBottomSheet(
       context: context,
-      initialTime: _time,
+      builder: (BuildContext builder) {
+        return Container(
+          height: MediaQuery.of(context).copyWith().size.height / 3,
+          color: Colors.white,
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    child: const Text('Cancel'),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  TextButton(
+                    child: const Text('Done'),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      setState(() {}); // Refresh UI
+                    },
+                  ),
+                ],
+              ),
+              Expanded(
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.time,
+                  initialDateTime: DateTime(
+                    DateTime.now().year,
+                    DateTime.now().month,
+                    DateTime.now().day,
+                    _time.hour,
+                    _time.minute,
+                  ),
+                  onDateTimeChanged: (DateTime newDateTime) {
+                    setState(() {
+                      _time = TimeOfDay.fromDateTime(newDateTime);
+                    });
+                  },
+                  use24hFormat: false,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
-    if (picked != null && picked != _time) {
-      setState(() {
-        _time = picked;
-      });
-    }
   }
 
   Future<void> _saveTask() async {

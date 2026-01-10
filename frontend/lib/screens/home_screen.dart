@@ -58,9 +58,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // 3. Clear old tasks
-    final String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    await _storageService.clearOldTasks(today);
+    // 3. Clear old tasks - DISABLED to keep history
+    // final String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    // await _storageService.clearOldTasks(today);
 
     // 4. Refresh UI
     _loadTasksForDay(_selectedDay!);
@@ -155,11 +155,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('Task deleted')),
                             );
-                            _syncTasks(); // Force immediate sync to ensure consistency
+                            // Do NOT call _syncTasks() immediately here.
+                            // The server delete is async. If we sync too fast, we might fetch the deleted task back.
+                            // Since we already removed it from UI and Local DB, we are good.
                           } catch (e) {
-                            // If server delete fails, we might want to queue it or show error
-                            // For now, just log it
                             LogService().error('Failed to delete from server', e);
+                            // Optional: Re-add to UI if server delete fails?
                           }
                         },
                         child: ListTile(
