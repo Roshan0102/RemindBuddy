@@ -56,6 +56,39 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Widget _buildBuddyMascot() {
+    int taskCount = _getTasksForDay(_selectedDay ?? _focusedDay).length;
+    IconData buddyIcon;
+    Color buddyColor;
+
+    if (taskCount == 0) {
+      buddyIcon = Icons.sentiment_satisfied_alt; // Happy/Relaxed
+      buddyColor = Colors.green;
+    } else if (taskCount < 3) {
+      buddyIcon = Icons.sentiment_neutral; // Neutral
+      buddyColor = Colors.orange;
+    } else {
+      buddyIcon = Icons.sentiment_very_dissatisfied; // Stressed/Busy
+      buddyColor = Colors.red;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: buddyColor.withOpacity(0.2),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(buddyIcon, size: 32, color: buddyColor),
+    );
+  }
+
+  String _getBuddyMessage() {
+    int taskCount = _getTasksForDay(_selectedDay ?? _focusedDay).length;
+    if (taskCount == 0) return "All clear! Relax time. 🌿";
+    if (taskCount < 3) return "You got this! 💪";
+    return "Busy day ahead! 🔥";
+  }
+
   @override
   void dispose() {
     _syncTimer?.cancel();
@@ -148,6 +181,30 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 8.0),
+          // Buddy Mascot Area
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildBuddyMascot(),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _getBuddyMessage(),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    Text(
+                      '${_getTasksForDay(_selectedDay ?? _focusedDay).length} tasks for today',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
           Expanded(
             child: _selectedTasks.isEmpty
                 ? const Center(child: Text('No tasks for this day'))

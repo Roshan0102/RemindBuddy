@@ -55,7 +55,7 @@ class NotificationService {
       'Reminder: ${payload ?? "Task"}',
       'You snoozed this task. Do it now!',
       nextReminder,
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
           'remindbuddy_channel',
           'RemindBuddy Notifications',
