@@ -171,20 +171,41 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ],
               ),
               DropdownButtonFormField<String>(
-                value: _repeat,
+                value: _repeat.startsWith('custom') ? 'custom' : _repeat,
                 decoration: const InputDecoration(labelText: 'Repeat'),
-                items: ['none', 'daily', 'weekly', 'monthly']
+                items: ['none', 'daily', 'weekly', 'monthly', 'custom']
                     .map((label) => DropdownMenuItem(
                           value: label,
-                          child: Text(label),
+                          child: Text(label == 'custom' ? 'Custom (Every X Days)' : label),
                         ))
                     .toList(),
                 onChanged: (value) {
                   setState(() {
-                    _repeat = value!;
+                    if (value == 'custom') {
+                      _repeat = 'custom:10'; // Default to 10 days
+                    } else {
+                      _repeat = value!;
+                    }
                   });
                 },
               ),
+              if (_repeat.startsWith('custom'))
+                Padding(
+                  padding: const EdgeInsets.only(top: 16.0),
+                  child: TextFormField(
+                    initialValue: _repeat.split(':')[1],
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Repeat every (days)',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _repeat = 'custom:$value';
+                      });
+                    },
+                  ),
+                ),
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: _saveTask,

@@ -98,6 +98,9 @@ class _HomeScreenState extends State<HomeScreen> {
             lastDay: DateTime.utc(2030, 3, 14),
             focusedDay: _focusedDay,
             calendarFormat: _calendarFormat,
+            availableCalendarFormats: const {
+              CalendarFormat.month: 'Month',
+            },
             selectedDayPredicate: (day) {
               return isSameDay(_selectedDay, day);
             },
@@ -172,61 +175,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
           ),
-          // Debug Panel
-          Container(
-            padding: const EdgeInsets.all(8.0),
-            color: Colors.grey[200],
-            width: double.infinity,
-            child: StreamBuilder(
-              stream: Stream.periodic(const Duration(seconds: 1)),
-              builder: (context, snapshot) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('🔧 Debug Info:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    Text('App Time: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now())}'),
-                    Text('Timezone: ${NotificationService.debugTimeZone}'),
-                    Text('Init Status: ${NotificationService.isInitialized ? "Success" : "Pending/Failed"}'),
-                    if (NotificationService.debugError != 'None')
-                      Text('Error: ${NotificationService.debugError}', style: const TextStyle(color: Colors.red)),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        ElevatedButton(
-                          onPressed: () => NotificationService().showImmediateNotification(),
-                          child: const Text('🔔 Test'),
-                        ),
-                        ElevatedButton(
-                          onPressed: () => NotificationService().checkPermissions(),
-                          child: const Text('⏰ Perms'),
-                        ),
-                        ElevatedButton(
-                          onPressed: () => NotificationService().checkPendingNotifications(),
-                          child: const Text('📋 Pending'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        // Open Battery Optimization Settings
-                        // Since we can't easily link deep into settings without a plugin,
-                        // we will just show a SnackBar instructions for now.
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Go to Settings > Apps > RemindBuddy > Battery > Unrestricted'),
-                            duration: Duration(seconds: 5),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                      child: const Text('🔋 Fix Battery Settings', style: TextStyle(color: Colors.white)),
-                    ),
-                  ],
-                );
-              }
-            ),
           ),
         ],
       ),

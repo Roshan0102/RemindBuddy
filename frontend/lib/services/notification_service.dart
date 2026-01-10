@@ -165,6 +165,39 @@ class NotificationService {
             : (task.repeat == 'weekly' ? DateTimeComponents.dayOfWeekAndTime : null),
       );
       LogService().log('  - SUCCESS: Scheduled for $finalScheduledDate');
+
+      // Handle Custom Repeat (e.g., custom:10)
+      if (task.repeat.startsWith('custom:')) {
+        final int days = int.tryParse(task.repeat.split(':')[1]) ?? 0;
+        if (days > 0) {
+          // Schedule next 5 occurrences
+          for (int i = 1; i <= 5; i++) {
+            final nextDate = finalScheduledDate.add(Duration(days: days * i));
+            await flutterLocalNotificationsPlugin.zonedSchedule(
+              task.id! + (i * 100000), // Unique ID for future instances
+              task.title,
+              task.description,
+              nextDate,
+              const NotificationDetails(
+                android: AndroidNotificationDetails(
+                  'remindbuddy_channel',
+                  'RemindBuddy Notifications',
+                  channelDescription: 'Channel for task reminders',
+                  importance: Importance.max,
+                  priority: Priority.high,
+                  playSound: true,
+                  enableVibration: true,
+                  onlyAlertOnce: true,
+                ),
+              ),
+              androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+              uiLocalNotificationDateInterpretation:
+                  UILocalNotificationDateInterpretation.absoluteTime,
+            );
+            LogService().log('  - Scheduled future instance for $nextDate');
+          }
+        }
+      }
     } catch (e) {
       LogService().error('  - FAILED to schedule', e);
     }
