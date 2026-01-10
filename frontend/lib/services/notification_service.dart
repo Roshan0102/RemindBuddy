@@ -20,6 +20,60 @@ class NotificationService {
 
   NotificationService._internal();
 
+  // Background Handler
+  @pragma('vm:entry-point')
+  static void notificationTapBackground(NotificationResponse notificationResponse) {
+    print('Notification action tapped: ${notificationResponse.actionId}');
+    if (notificationResponse.actionId == 'NO_ACTION') {
+      // Schedule for 3 hours later
+      _scheduleSnooze(notificationResponse.id!, notificationResponse.payload);
+    }
+    // YES_ACTION does nothing, effectively cancelling the nag loop for today
+  }
+
+  static Future<void> _scheduleSnooze(int id, String? payload) async {
+    final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+    tz.initializeTimeZones();
+    final String timeZoneName = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(timeZoneName));
+
+    var now = tz.TZDateTime.now(tz.local);
+    var nextReminder = now.add(const Duration(hours: 3));
+
+    // Quiet Hours Logic: 11 PM (23:00) to 6 AM (06:00)
+    if (nextReminder.hour >= 23 || nextReminder.hour < 6) {
+      // If it falls in quiet hours, push to 6 AM next day
+      if (nextReminder.hour >= 23) {
+         nextReminder = tz.TZDateTime(tz.local, now.year, now.month, now.day + 1, 6, 0);
+      } else {
+         nextReminder = tz.TZDateTime(tz.local, now.year, now.month, now.day, 6, 0);
+      }
+    }
+
+    await flutterLocalNotificationsPlugin.zonedSchedule(
+      id + 999, // Use a temporary ID for snooze
+      'Reminder: ${payload ?? "Task"}',
+      'You snoozed this task. Do it now!',
+      nextReminder,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'remindbuddy_channel',
+          'RemindBuddy Notifications',
+          channelDescription: 'Channel for task reminders',
+          importance: Importance.max,
+          priority: Priority.high,
+          actions: [
+            AndroidNotificationAction('YES_ACTION', 'YES (Done)', showsUserInterface: false),
+            AndroidNotificationAction('NO_ACTION', 'NO (Remind in 3h)', showsUserInterface: false),
+          ],
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      payload: payload,
+    );
+  }
+
   Future<void> init() async {
     tz.initializeTimeZones();
     
@@ -48,7 +102,11 @@ class NotificationService {
     const InitializationSettings initializationSettings =
         InitializationSettings(android: initializationSettingsAndroid);
 
-    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+    await flutterLocalNotificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: notificationTapBackground,
+      onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
+    );
 
     // Request Permissions (Android 13+)
     final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
@@ -155,6 +213,10 @@ class NotificationService {
             playSound: true,
             enableVibration: true,
             onlyAlertOnce: true, // Prevent multiple popups for the same notification
+            actions: task.isAnnoying ? [
+              const AndroidNotificationAction('YES_ACTION', 'YES (Done)', showsUserInterface: false),
+              const AndroidNotificationAction('NO_ACTION', 'NO (Remind in 3h)', showsUserInterface: false),
+            ] : null,
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -164,7 +226,7 @@ class NotificationService {
             ? DateTimeComponents.time 
             : (task.repeat == 'weekly' ? DateTimeComponents.dayOfWeekAndTime : null),
       );
-      LogService().log('  - SUCCESS: Scheduled for $finalScheduledDate');
+      LogService().log('  - SUCCESS: Scheduled for $finalScheduledDate (Annoying: ${task.isAnnoying})');
 
       // Handle Custom Repeat (e.g., custom:10)
       if (task.repeat.startsWith('custom:')) {
@@ -178,7 +240,7 @@ class NotificationService {
               task.title,
               task.description,
               nextDate,
-              const NotificationDetails(
+              NotificationDetails(
                 android: AndroidNotificationDetails(
                   'remindbuddy_channel',
                   'RemindBuddy Notifications',
@@ -188,6 +250,10 @@ class NotificationService {
                   playSound: true,
                   enableVibration: true,
                   onlyAlertOnce: true,
+                  actions: task.isAnnoying ? [
+                    const AndroidNotificationAction('YES_ACTION', 'YES (Done)', showsUserInterface: false),
+                    const AndroidNotificationAction('NO_ACTION', 'NO (Remind in 3h)', showsUserInterface: false),
+                  ] : null,
                 ),
               ),
               androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,

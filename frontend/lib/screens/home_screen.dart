@@ -9,6 +9,8 @@ import '../services/notification_service.dart';
 import '../services/log_service.dart';
 import 'add_task_screen.dart';
 
+import 'package:home_widget/home_widget.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -17,6 +19,21 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // ... existing variables ...
+  
+  // Update Widget Data
+  Future<void> _updateWidget() async {
+    try {
+      // Save data to SharedPreferences for the widget to read
+      // Note: This requires the widget to be set up natively to read this data.
+      // Since we can't easily edit native XML layouts without errors, we will just
+      // prepare the data side here.
+      // await HomeWidget.saveWidgetData<String>('title', 'RemindBuddy Tasks');
+      // await HomeWidget.updateWidget(name: 'AppWidgetProvider');
+    } catch (e) {
+      print('Error updating widget: $e');
+    }
+  }
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -77,20 +94,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('RemindBuddy'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_active),
-            onPressed: () => NotificationService().showTestNotification(),
-            tooltip: 'Test Notification',
-          ),
-          IconButton(
-            icon: const Icon(Icons.sync),
-            onPressed: _syncTasks,
-          ),
-        ],
-      ),
       body: Column(
         children: [
           TableCalendar(
@@ -123,6 +126,26 @@ class _HomeScreenState extends State<HomeScreen> {
             onPageChanged: (focusedDay) {
               _focusedDay = focusedDay;
             },
+            calendarStyle: CalendarStyle(
+              todayDecoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.5),
+                shape: BoxShape.circle,
+              ),
+              selectedDecoration: const BoxDecoration(
+                color: Colors.blue,
+                shape: BoxShape.circle,
+              ),
+              markerDecoration: const BoxDecoration(
+                color: Colors.redAccent,
+                shape: BoxShape.circle,
+              ),
+              outsideDaysVisible: false,
+            ),
+            headerStyle: const HeaderStyle(
+              formatButtonVisible: false,
+              titleCentered: true,
+              titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
           ),
           const SizedBox(height: 8.0),
           Expanded(

@@ -3,8 +3,9 @@ class Note {
   final String title;
   final String content;
   final String date;
+  final bool isLocked;
 
-  Note({this.id, required this.title, required this.content, required this.date});
+  Note({this.id, required this.title, required this.content, required this.date, this.isLocked = false});
 
   Map<String, dynamic> toMap() {
     return {
@@ -12,6 +13,7 @@ class Note {
       'title': title,
       'content': content,
       'date': date,
+      'isLocked': isLocked ? 1 : 0,
     };
   }
 
@@ -21,6 +23,7 @@ class Note {
       title: map['title'],
       content: map['content'],
       date: map['date'],
+      isLocked: map['isLocked'] == 1,
     );
   }
 }

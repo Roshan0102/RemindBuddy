@@ -23,20 +23,30 @@ class StorageService {
     String path = join(await getDatabasesPath(), 'remindbuddy.db');
     return await openDatabase(
       path,
-      version: 2, // Increment version for migration
+      version: 3, // Increment version for migration
       onCreate: (db, version) async {
         await db.execute(
-          'CREATE TABLE tasks(id INTEGER PRIMARY KEY, title TEXT, description TEXT, date TEXT, time TEXT, repeat TEXT)',
+          'CREATE TABLE tasks(id INTEGER PRIMARY KEY, title TEXT, description TEXT, date TEXT, time TEXT, repeat TEXT, isAnnoying INTEGER)',
         );
         await db.execute(
-          'CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, date TEXT)',
+          'CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, date TEXT, isLocked INTEGER)',
         );
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await db.execute(
-            'CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, date TEXT)',
+            'CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, date TEXT, isLocked INTEGER)',
           );
+        }
+        if (oldVersion < 3) {
+           // Add new columns if they don't exist
+           try {
+             await db.execute('ALTER TABLE tasks ADD COLUMN isAnnoying INTEGER DEFAULT 0');
+           } catch (e) { print("Column isAnnoying might already exist"); }
+           
+           try {
+             await db.execute('ALTER TABLE notes ADD COLUMN isLocked INTEGER DEFAULT 0');
+           } catch (e) { print("Column isLocked might already exist"); }
         }
       },
     );

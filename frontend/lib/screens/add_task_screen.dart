@@ -20,6 +20,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   late DateTime _date;
   late TimeOfDay _time;
   String _repeat = 'none';
+  bool _isAnnoying = false;
   final ApiService _apiService = ApiService();
 
   @override
@@ -104,6 +105,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         date: dateStr,
         time: timeStr,
         repeat: _repeat,
+        isAnnoying: _isAnnoying,
       );
 
       // Save to Backend
@@ -206,6 +208,18 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     },
                   ),
                 ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                title: const Text('Annoying Alarm (Nag Mode)'),
+                subtitle: const Text('Keeps reminding until you say YES'),
+                value: _isAnnoying,
+                onChanged: (bool value) {
+                  setState(() {
+                    _isAnnoying = value;
+                  });
+                },
+                secondary: const Icon(Icons.alarm_on, color: Colors.red),
+              ),
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: _saveTask,

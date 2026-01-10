@@ -30,80 +30,134 @@ class _NotesScreenState extends State<NotesScreen> {
   Future<void> _addOrEditNote({Note? note}) async {
     final titleController = TextEditingController(text: note?.title ?? '');
     final contentController = TextEditingController(text: note?.content ?? '');
+    bool isLocked = note?.isLocked ?? false;
+
+    // Check Lock
+    if (note != null && note.isLocked) {
+      bool authenticated = await _showPinDialog();
+      if (!authenticated) return;
+    }
 
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          left: 16,
-          right: 16,
-          top: 16,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(
-                hintText: 'Title',
-                border: InputBorder.none,
-                hintStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+              left: 16,
+              right: 16,
+              top: 16,
             ),
-            TextField(
-              controller: contentController,
-              decoration: const InputDecoration(
-                hintText: 'Start typing...',
-                border: InputBorder.none,
-              ),
-              maxLines: 5,
-            ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Edit Note', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: Icon(isLocked ? Icons.lock : Icons.lock_open, color: isLocked ? Colors.red : Colors.green),
+                      onPressed: () {
+                        setModalState(() {
+                          isLocked = !isLocked;
+                        });
+                      },
+                      tooltip: isLocked ? 'Unlock Note' : 'Lock Note (PIN: 0000)',
+                    ),
+                  ],
                 ),
-                ElevatedButton(
-                  onPressed: () async {
-                    if (titleController.text.isNotEmpty || contentController.text.isNotEmpty) {
-                      final newNote = Note(
-                        id: note?.id,
-                        title: titleController.text,
-                        content: contentController.text,
-                        date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
-                      );
-                      if (note == null) {
-                        await _storageService.insertNote(newNote);
-                      } else {
-                        await _storageService.updateNote(newNote);
-                      }
-                      _loadNotes();
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: const Text('Save'),
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    hintText: 'Title',
+                    border: InputBorder.none,
+                    hintStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
+                TextField(
+                  controller: contentController,
+                  decoration: const InputDecoration(
+                    hintText: 'Start typing...',
+                    border: InputBorder.none,
+                  ),
+                  maxLines: 5,
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        if (titleController.text.isNotEmpty || contentController.text.isNotEmpty) {
+                          final newNote = Note(
+                            id: note?.id,
+                            title: titleController.text,
+                            content: contentController.text,
+                            date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                            isLocked: isLocked,
+                          );
+                          if (note == null) {
+                            await _storageService.insertNote(newNote);
+                          } else {
+                            await _storageService.updateNote(newNote);
+                          }
+                          _loadNotes();
+                          Navigator.pop(context);
+                        }
+                      },
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
               ],
             ),
-            const SizedBox(height: 20),
-          ],
-        ),
+          );
+        }
       ),
     );
+  }
+
+  Future<bool> _showPinDialog() async {
+    final pinController = TextEditingController();
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enter PIN'),
+        content: TextField(
+          controller: pinController,
+          keyboardType: TextInputType.number,
+          obscureText: true,
+          maxLength: 4,
+          decoration: const InputDecoration(hintText: '0000'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              if (pinController.text == '0000') {
+                Navigator.pop(context, true);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incorrect PIN')));
+              }
+            },
+            child: const Text('Unlock'),
+          ),
+        ],
+      ),
+    ) ?? false;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notes'),
-      ),
       body: _notes.isEmpty
           ? const Center(child: Text('No notes yet. Tap + to add one.'))
           : ListView.builder(
@@ -123,20 +177,26 @@ class _NotesScreenState extends State<NotesScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (note.title.isNotEmpty)
-                            Text(
-                              note.title,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              if (note.title.isNotEmpty)
+                                Text(
+                                  note.title,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              if (note.isLocked) const Icon(Icons.lock, size: 16, color: Colors.red),
+                            ],
+                          ),
                           if (note.title.isNotEmpty) const SizedBox(height: 8),
                           Text(
-                            note.content,
+                            note.isLocked ? 'Locked Content' : note.content,
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: Colors.grey[700]),
+                            style: TextStyle(color: Colors.grey[700], fontStyle: note.isLocked ? FontStyle.italic : FontStyle.normal),
                           ),
                           const SizedBox(height: 8),
                           Row(
@@ -149,6 +209,10 @@ class _NotesScreenState extends State<NotesScreen> {
                               IconButton(
                                 icon: const Icon(Icons.delete, size: 20, color: Colors.grey),
                                 onPressed: () async {
+                                  if (note.isLocked) {
+                                    bool auth = await _showPinDialog();
+                                    if (!auth) return;
+                                  }
                                   await _storageService.deleteNote(note.id!);
                                   _loadNotes();
                                 },

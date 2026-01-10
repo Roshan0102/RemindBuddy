@@ -5,6 +5,7 @@ class Task {
   final String date; // YYYY-MM-DD
   final String time; // HH:MM
   final String repeat; // none, daily, weekly, monthly
+  final bool isAnnoying;
 
   Task({
     this.id,
@@ -13,6 +14,7 @@ class Task {
     required this.date,
     required this.time,
     this.repeat = 'none',
+    this.isAnnoying = false,
   });
 
   factory Task.fromJson(Map<String, dynamic> json) {
@@ -23,6 +25,7 @@ class Task {
       date: json['date'],
       time: json['time'],
       repeat: json['repeat'] ?? 'none',
+      isAnnoying: json['isAnnoying'] == 1 || json['isAnnoying'] == true,
     );
   }
 
@@ -34,6 +37,7 @@ class Task {
       'date': date,
       'time': time,
       'repeat': repeat,
+      'isAnnoying': isAnnoying,
     };
   }
   
@@ -46,6 +50,7 @@ class Task {
       'date': date,
       'time': time,
       'repeat': repeat,
+      'isAnnoying': isAnnoying ? 1 : 0,
     };
   }
 }
