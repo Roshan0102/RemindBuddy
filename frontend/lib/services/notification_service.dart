@@ -203,7 +203,7 @@ class NotificationService {
         task.title,
         task.description,
         finalScheduledDate,
-        const NotificationDetails(
+        NotificationDetails(
           android: AndroidNotificationDetails(
             'remindbuddy_channel',
             'RemindBuddy Notifications',

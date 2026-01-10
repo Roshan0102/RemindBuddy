@@ -4,30 +4,30 @@ Run shorebird release android --artifact apk
 ⠋ Extracting patch......
 ✓ Extracting patch... (0.1s)
 ⠋ Downloading bundletool.jar......
-✓ Downloading bundletool.jar... (0.4s)
+✓ Downloading bundletool.jar... (0.1s)
 ⠋ Extracting bundletool.jar......
-✓ Extracting bundletool.jar... (1.1s)
+✓ Extracting bundletool.jar... (1.2s)
 ⠋ Downloading aot-tools.dill......
-✓ Downloading aot-tools.dill... (69ms)
+✓ Downloading aot-tools.dill... (73ms)
 ⠋ Extracting aot-tools.dill......
-✓ Extracting aot-tools.dill... (0.5s)
+✓ Extracting aot-tools.dill... (0.6s)
 ⠋ Fetching apps...
 ✓ Fetching apps (0.3s)
 Building Android app bundle with Flutter 3.38.5 (1c01b32970)
-Downloading Material fonts...                                      331ms
-Downloading Gradle Wrapper...                                      112ms
-Downloading package sky_engine...                                  136ms
-Downloading package flutter_gpu...                                  79ms
-Downloading flutter_patched_sdk tools...                           230ms
-Downloading flutter_patched_sdk_product tools...                   257ms
-Downloading linux-x64 tools...                                   1,126ms
-Downloading linux-x64/font-subset tools...                         137ms
-Downloading android-arm-profile/linux-x64 tools...                 186ms
-Downloading android-arm-release/linux-x64 tools...                 190ms
-Downloading android-arm64-profile/linux-x64 tools...               196ms
-Downloading android-arm64-release/linux-x64 tools...               188ms
-Downloading android-x64-profile/linux-x64 tools...                 192ms
-Downloading android-x64-release/linux-x64 tools...                 189ms
+Downloading Material fonts...                                      243ms
+Downloading Gradle Wrapper...                                       43ms
+Downloading package sky_engine...                                  112ms
+Downloading package flutter_gpu...                                  41ms
+Downloading flutter_patched_sdk tools...                           210ms
+Downloading flutter_patched_sdk_product tools...                   226ms
+Downloading linux-x64 tools...                                   1,206ms
+Downloading linux-x64/font-subset tools...                         148ms
+Downloading android-arm-profile/linux-x64 tools...                 156ms
+Downloading android-arm-release/linux-x64 tools...                 139ms
+Downloading android-arm64-profile/linux-x64 tools...               153ms
+Downloading android-arm64-release/linux-x64 tools...               135ms
+Downloading android-x64-profile/linux-x64 tools...                 154ms
+Downloading android-x64-release/linux-x64 tools...                 136ms
 Resolving dependencies...
 Downloading packages...
   async 2.11.0 (2.13.0 available)
@@ -43,6 +43,8 @@ Downloading packages...
   flutter_local_notifications_linux 4.0.1 (6.0.0 available)
   flutter_local_notifications_platform_interface 7.2.0 (9.1.0 available)
   flutter_timezone 4.1.1 (5.0.1 available)
+  google_fonts 6.3.0 (7.0.0 available)
+  home_widget 0.3.1 (0.9.0 available)
   http 1.2.2 (1.6.0 available)
   http_parser 4.0.2 (4.1.2 available)
   intl 0.18.1 (0.20.2 available)
@@ -54,7 +56,12 @@ Downloading packages...
   material_color_utilities 0.11.1 (0.13.0 available)
 > meta 1.17.0 (was 1.15.0)
 > path 1.9.1 (was 1.9.0)
+  path_provider_android 2.2.17 (2.2.22 available)
+  path_provider_foundation 2.4.1 (2.5.1 available)
   petitparser 6.0.2 (7.0.1 available)
+  shared_preferences 2.5.3 (2.5.4 available)
+  shared_preferences_android 2.4.11 (2.4.18 available)
+  shared_preferences_foundation 2.5.4 (2.5.6 available)
   source_span 1.10.0 (1.10.1 available)
   sqflite 2.3.3+1 (2.4.2 available)
   sqflite_common 2.5.4 (2.5.6 available)
@@ -72,10 +79,10 @@ Downloading packages...
   web 0.5.1 (1.1.1 available)
   xml 6.5.0 (6.6.1 available)
 Changed 14 dependencies!
-30 packages have newer versions incompatible with dependency constraints.
+37 packages have newer versions incompatible with dependency constraints.
 Try `flutter pub outdated` for more information.
-Running Gradle task 'bundleRelease'...                          
 Warning: Flutter support for your project's Gradle version (8.4.0) will soon be dropped. Please upgrade your Gradle version to a version of at least 8.7.0 soon.
+Running Gradle task 'bundleRelease'...                          
 Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
 
 Potential fix: Your project's gradle version is typically defined in the gradle wrapper file. By default, this can be found at /home/runner/work/RemindBuddy/RemindBuddy/frontend/android/gradle/wrapper/gradle-wrapper.properties. 
@@ -100,53 +107,15 @@ Preparing "Install Android SDK Build-Tools 33.0.1 v.33.0.1".
 Installing Android SDK Build-Tools 33.0.1 in /usr/local/lib/android/sdk/build-tools/33.0.1
 "Install Android SDK Build-Tools 33.0.1 v.33.0.1" complete.
 "Install Android SDK Build-Tools 33.0.1 v.33.0.1" finished.
-lib/screens/home_screen.dart:95:19: Error: Can't find ']' to match '['.
-        children: [
-                  ^
-lib/screens/home_screen.dart:179:9: Error: Expected an identifier, but got ']'.
-Try inserting an identifier before ']'.
-        ],
-        ^
-lib/screens/home_screen.dart:179:9: Error: Expected ')' before this.
-        ],
-        ^
-lib/screens/home_screen.dart:79:20: Error: Too many positional arguments: 0 allowed, but 1 found.
-Try removing the extra positional arguments.
-    return Scaffold(
-                   ^
-../../../../.config/shorebird/bin/cache/flutter/1c01b329708b9975c37932543355851a4a2dd23d/packages/flutter/lib/src/material/scaffold.dart:1689:9: Context: Found this candidate, but the arguments don't match.
-  const Scaffold({
-        ^^^^^^^^
-lib/screens/home_screen.dart:180:7: Error: Expected ';' after this.
-      ),
-      ^
-lib/screens/home_screen.dart:180:8: Error: Expected an identifier, but got ','.
-Try inserting an identifier before ','.
-      ),
-       ^
-lib/screens/home_screen.dart:180:8: Error: Unexpected token ';'.
-      ),
-       ^
-lib/screens/home_screen.dart:213:7: Error: Expected ';' after this.
-      ),
-      ^
-lib/screens/home_screen.dart:213:8: Error: Expected an identifier, but got ','.
-Try inserting an identifier before ','.
-      ),
-       ^
-lib/screens/home_screen.dart:213:8: Error: Unexpected token ';'.
-      ),
-       ^
-lib/screens/home_screen.dart:214:5: Error: Expected an identifier, but got ')'.
-Try inserting an identifier before ')'.
-    );
-    ^
-lib/screens/home_screen.dart:213:8: Error: Expected ';' after this.
-      ),
-       ^
-lib/screens/home_screen.dart:214:5: Error: Unexpected token ';'.
-    );
-    ^
+lib/services/notification_service.dart:216:22: Error: Not a constant expression.
+            actions: task.isAnnoying ? [
+                     ^^^^
+../../../../.pub-cache/hosted/pub.dev/home_widget-0.3.1/lib/home_widget.dart:137:11: Error: No named parameter with the name 'size'.
+          size: logicalSize,
+          ^^^^
+../../../../.config/shorebird/bin/cache/flutter/1c01b329708b9975c37932543355851a4a2dd23d/packages/flutter/lib/src/rendering/view.dart:33:9: Context: Found this candidate, but the arguments don't match.
+  const ViewConfiguration({
+        ^^^^^^^^^^^^^^^^^
 Target kernel_snapshot_program failed: Exception
 
 
@@ -162,8 +131,8 @@ Execution failed for task ':app:compileFlutterBuildRelease'.
 > Run with --scan to get full insights.
 > Get more help at https://help.gradle.org.
 
-BUILD FAILED in 3m 53s
-Running Gradle task 'bundleRelease'...                            233.8s
+BUILD FAILED in 5m 5s
+Running Gradle task 'bundleRelease'...                            306.4s
 Gradle task bundleRelease failed with exit code 1
 Failed to build AAB.
 Command: flutter build appbundle --release --target-platform=android-arm,android-arm64,android-x64
@@ -196,6 +165,6 @@ https://github.com/shorebirdtech/shorebird/issues/new
 If you aren't sure why this command failed, re-run with the --verbose flag to see more information.
 
 You can also [file an issue](https://github.com/shorebirdtech/shorebird/issues/new/choose) if you think this is a bug. Please include the following log file in your report:
-/home/runner/.config/shorebird/logs/1768023602900_shorebird.log
+/home/runner/.config/shorebird/logs/1768026760345_shorebird.log
 
 Error: Process completed with exit code 70.
