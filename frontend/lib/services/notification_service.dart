@@ -358,6 +358,87 @@ class NotificationService {
     LogService().log('-----------------------------');
   }
 
+  // Schedule Daily Reminder (repeats every day at the same time)
+  Future<void> scheduleDailyReminder(dynamic reminder) async {
+    // Support both DailyReminder and Task objects
+    final int id = (reminder.id ?? 0) + 100000; // Offset to avoid conflicts with tasks
+    final String title = reminder.title;
+    final String description = reminder.description;
+    final String timeStr = reminder.time;
+    final bool isAnnoying = reminder.isAnnoying ?? false;
+
+    // Parse time
+    final List<String> timeParts = timeStr.split(':');
+    final int hour = int.parse(timeParts[0]);
+    final int minute = int.parse(timeParts[1]);
+
+    // Create the first occurrence for today (or tomorrow if time has passed)
+    final now = tz.TZDateTime.now(tz.local);
+    var scheduledDate = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      minute,
+    );
+
+    // If the time has already passed today, schedule for tomorrow
+    if (scheduledDate.isBefore(now)) {
+      scheduledDate = scheduledDate.add(const Duration(days: 1));
+    }
+
+    LogService().log('Scheduling Daily Reminder $id: "$title"');
+    LogService().log('  - Time: $timeStr');
+    LogService().log('  - First occurrence: $scheduledDate');
+    LogService().log('  - Annoying: $isAnnoying');
+
+    try {
+      await flutterLocalNotificationsPlugin.zonedSchedule(
+        id,
+        title,
+        description,
+        scheduledDate,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            'remindbuddy_channel',
+            'RemindBuddy Notifications',
+            channelDescription: 'Channel for daily reminders',
+            importance: Importance.max,
+            priority: Priority.high,
+            styleInformation: BigTextStyleInformation(
+              description,
+              contentTitle: title,
+              summaryText: isAnnoying ? 'Daily Nag Mode Active' : 'Daily Reminder',
+            ),
+            actions: isAnnoying ? [
+              AndroidNotificationAction(
+                'YES_ACTION',
+                'YES (Done)',
+                showsUserInterface: false,
+                cancelNotification: true,
+              ),
+              AndroidNotificationAction(
+                'NO_ACTION',
+                'NO (Remind in 3h)',
+                showsUserInterface: false,
+                cancelNotification: true,
+              ),
+            ] : null,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time, // This makes it repeat daily
+      );
+      LogService().log('  - SUCCESS: Daily reminder scheduled');
+    } catch (e) {
+      LogService().error('  - FAILED to schedule daily reminder', e);
+    }
+  }
+
+
   Future<void> cancelNotification(int id) async {
     await flutterLocalNotificationsPlugin.cancel(id);
     LogService().log('Cancelled notification for Task $id');

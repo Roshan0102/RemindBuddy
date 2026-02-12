@@ -124,6 +124,15 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // Helper method to get tasks for a specific day (synchronous, returns current state)
+  List<Task> _getTasksForDay(DateTime day) {
+    // This returns the currently loaded tasks if the day matches
+    if (_selectedDay != null && isSameDay(_selectedDay, day)) {
+      return _selectedTasks;
+    }
+    return [];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
