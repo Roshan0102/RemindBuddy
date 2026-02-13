@@ -97,6 +97,24 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
     );
   }
 
+  // Helper function to get IconData from code point
+  IconData _getIconFromCode(int? code) {
+    if (code == null) return Icons.list;
+    
+    // Map common icon codes to their IconData
+    final iconMap = {
+      Icons.work.codePoint: Icons.work,
+      Icons.flight_takeoff.codePoint: Icons.flight_takeoff,
+      Icons.school.codePoint: Icons.school,
+      Icons.fitness_center.codePoint: Icons.fitness_center,
+      Icons.shopping_bag.codePoint: Icons.shopping_bag,
+      Icons.list.codePoint: Icons.list,
+    };
+    
+    return iconMap[code] ?? Icons.list;
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -116,7 +134,8 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
               itemBuilder: (context, index) {
                 final list = _checklists[index];
                 final color = Color(list['color'] ?? Colors.blue.value);
-                final icon = IconData(list['iconCode'] ?? Icons.list.codePoint, fontFamily: 'MaterialIcons');
+                final icon = _getIconFromCode(list['iconCode']);
+
 
                 return Dismissible(
                   key: Key(list['id'].toString()),
