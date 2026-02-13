@@ -33,7 +33,7 @@ jobs:
         working-directory: ./frontend
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
-        run: shorebird release android --artifact apk
+        run: shorebird release android --artifact apk --flutter-version=3.27.0
         
       - name: Upload APK
         uses: actions/upload-artifact@v4
