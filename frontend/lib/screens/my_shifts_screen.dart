@@ -411,6 +411,12 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         actions: [
           if (_hasData)
             IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadShifts,
+              tooltip: 'Refresh',
+            ),
+          if (_hasData)
+            IconButton(
               icon: const Icon(Icons.delete_outline),
               onPressed: _clearData,
               tooltip: 'Clear All Data',
