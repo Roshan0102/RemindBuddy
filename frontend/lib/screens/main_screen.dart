@@ -5,6 +5,7 @@ import 'notes_screen.dart';
 import 'daily_reminders_screen.dart';
 import 'gold_screen.dart';
 import 'checklists_screen.dart';
+import 'my_shifts_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -160,6 +161,18 @@ class _MainScreenState extends State<MainScreen> {
                   );
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.work_history, color: Colors.purple),
+                title: const Text('My Shifts'),
+                subtitle: const Text('Work schedule & reminders'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const MyShiftsScreen()),
+                  );
+                },
+              ),
               /*
               ListTile(
                 leading: const Icon(Icons.bug_report, color: Colors.grey),
@@ -192,7 +205,7 @@ class _MainScreenState extends State<MainScreen> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'RemindBuddy',
-                    applicationVersion: '1.1.0',
+                    applicationVersion: '1.0.33',
                     applicationIcon: const Icon(Icons.alarm_add, size: 48),
                     children: [
                       const Text('Your friendly daily reminder companion!'),
@@ -200,6 +213,7 @@ class _MainScreenState extends State<MainScreen> {
                       const Text('Features:'),
                       const Text('• Calendar-based reminders'),
                       const Text('• Gold Price Tracker'),
+                      const Text('• My Shifts - Work schedule manager'),
                       const Text('• My Belongings Checklists'),
                       const Text('• Secure notes with PIN lock'),
                     ],

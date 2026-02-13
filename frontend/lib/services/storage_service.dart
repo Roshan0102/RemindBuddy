@@ -39,7 +39,7 @@ class StorageService {
     String path = join(await getDatabasesPath(), 'remindbuddy.db');
     return await openDatabase(
       path,
-      version: 6, 
+      version: 7, 
       onCreate: (db, version) async {
         await _createTables(db);
       },
@@ -95,6 +95,17 @@ class StorageService {
              // await db.execute('INSERT INTO gold_prices_history (timestamp, price22k, price24k, city) SELECT date, price22k, price24k, city FROM gold_prices');
            } catch (e) { print("gold_prices_history table error: $e"); }
         }
+        if (oldVersion < 7) {
+           // Add Shifts table
+           try {
+             await db.execute(
+               'CREATE TABLE shifts(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT UNIQUE, shift_type TEXT, start_time TEXT, end_time TEXT, is_week_off INTEGER)',
+             );
+             await db.execute(
+               'CREATE TABLE shift_metadata(id INTEGER PRIMARY KEY, employee_name TEXT, month TEXT)',
+             );
+           } catch (e) { print("Shifts table error: $e"); }
+        }
       },
     );
   }
@@ -121,6 +132,12 @@ class StorageService {
     );
     await db.execute(
       'CREATE TABLE checklist_items(id INTEGER PRIMARY KEY AUTOINCREMENT, checklistId INTEGER, text TEXT, isChecked INTEGER)',
+    );
+    await db.execute(
+      'CREATE TABLE shifts(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT UNIQUE, shift_type TEXT, start_time TEXT, end_time TEXT, is_week_off INTEGER)',
+    );
+    await db.execute(
+      'CREATE TABLE shift_metadata(id INTEGER PRIMARY KEY, employee_name TEXT, month TEXT)',
     );
   }
 
@@ -416,5 +433,120 @@ class StorageService {
        price24k: maps[0]['price24k'],
        city: maps[0]['city'],
     );
+  }
+
+  // Shift Methods
+  Future<void> saveShiftRoster(String employeeName, String month, List<Map<String, dynamic>> shifts) async {
+    final db = await database;
+    
+    // Clear existing shifts
+    await db.delete('shifts');
+    await db.delete('shift_metadata');
+    
+    // Save metadata
+    await db.insert('shift_metadata', {
+      'id': 1,
+      'employee_name': employeeName,
+      'month': month,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    
+    // Save shifts
+    for (var shift in shifts) {
+      await db.insert('shifts', shift, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
+  Future<Map<String, String>?> getShiftMetadata() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('shift_metadata', where: 'id = ?', whereArgs: [1]);
+    
+    if (maps.isEmpty) return null;
+    
+    return {
+      'employee_name': maps[0]['employee_name'] as String,
+      'month': maps[0]['month'] as String,
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> getAllShifts() async {
+    final db = await database;
+    return await db.query('shifts', orderBy: 'date ASC');
+  }
+
+  Future<Map<String, dynamic>?> getShiftForDate(String date) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'shifts',
+      where: 'date = ?',
+      whereArgs: [date],
+    );
+    
+    if (maps.isEmpty) return null;
+    return maps[0];
+  }
+
+  Future<List<Map<String, dynamic>>> getUpcomingShifts(int days) async {
+    final db = await database;
+    final today = DateTime.now();
+    final endDate = today.add(Duration(days: days));
+    
+    final List<Map<String, dynamic>> maps = await db.query(
+      'shifts',
+      where: 'date >= ? AND date <= ?',
+      whereArgs: [
+        today.toIso8601String().split('T')[0],
+        endDate.toIso8601String().split('T')[0],
+      ],
+      orderBy: 'date ASC',
+    );
+    
+    return maps;
+  }
+
+  Future<Map<String, int>> getShiftStatistics(String month) async {
+    final db = await database;
+    
+    // Get all shifts for the month
+    final List<Map<String, dynamic>> maps = await db.query(
+      'shifts',
+      where: 'date LIKE ?',
+      whereArgs: ['$month%'],
+    );
+    
+    int morningCount = 0;
+    int afternoonCount = 0;
+    int nightCount = 0;
+    int weekOffCount = 0;
+    
+    for (var shift in maps) {
+      switch (shift['shift_type']) {
+        case 'morning':
+          morningCount++;
+          break;
+        case 'afternoon':
+          afternoonCount++;
+          break;
+        case 'night':
+          nightCount++;
+          break;
+        case 'week_off':
+          weekOffCount++;
+          break;
+      }
+    }
+    
+    return {
+      'morning': morningCount,
+      'afternoon': afternoonCount,
+      'night': nightCount,
+      'week_off': weekOffCount,
+      'total_working': morningCount + afternoonCount + nightCount,
+    };
+  }
+
+  Future<void> clearAllShifts() async {
+    final db = await database;
+    await db.delete('shifts');
+    await db.delete('shift_metadata');
   }
 }
