@@ -174,7 +174,7 @@ class NotificationService {
     if (task.id == null) return;
 
     // Parse date and time
-    final DateTime now = DateTime.now();
+
     final List<String> dateParts = task.date.split('-');
     final List<String> timeParts = task.time.split(':');
     

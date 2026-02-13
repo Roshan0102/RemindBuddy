@@ -22,7 +22,7 @@ class _GoldPriceTestScreenState extends State<GoldPriceTestScreen> {
   Future<void> _testFetchPrice() async {
     setState(() {
       _isLoading = true;
-      _status = 'Fetching gold price from goodreturns.in...';
+      _status = 'Fetching gold price from goodreturns.in (WebView)...';
     });
 
     try {
@@ -32,23 +32,29 @@ class _GoldPriceTestScreenState extends State<GoldPriceTestScreen> {
         // Save to database
         await _storage.saveGoldPrice(goldPrice);
         
-        setState(() {
-          _status = '✅ Successfully fetched and saved!';
-          _price22k = '₹${goldPrice.price22k.toStringAsFixed(0)}';
-          _date = goldPrice.date;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _status = '✅ Successfully fetched and saved!';
+            _price22k = '₹${goldPrice.price22k.toStringAsFixed(0)}';
+            _date = goldPrice.date;
+            _isLoading = false;
+          });
+        }
       } else {
+        if (mounted) {
+          setState(() {
+            _status = '❌ Failed to fetch price. Check console.';
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         setState(() {
-          _status = '❌ Failed to fetch price. Check console for details.';
+          _status = '❌ Error: $e';
           _isLoading = false;
         });
       }
-    } catch (e) {
-      setState(() {
-        _status = '❌ Error: $e';
-        _isLoading = false;
-      });
     }
   }
 
@@ -62,17 +68,21 @@ class _GoldPriceTestScreenState extends State<GoldPriceTestScreen> {
       final goldPrice = await _goldService.fetchGoldPriceWithFallback();
       await _storage.saveGoldPrice(goldPrice);
       
-      setState(() {
-        _status = '✅ Fetched (may be mock data)';
-        _price22k = '₹${goldPrice.price22k.toStringAsFixed(0)}';
-        _date = goldPrice.date;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _status = '✅ Fetched (may be mock data)';
+          _price22k = '₹${goldPrice.price22k.toStringAsFixed(0)}';
+          _date = goldPrice.date;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _status = '❌ Error: $e';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _status = '❌ Error: $e';
+          _isLoading = false;
+        });
+      }
     }
   }
 

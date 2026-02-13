@@ -1,9 +1,8 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:html/parser.dart' as html_parser;
-import 'package:html/dom.dart';
-import '../models/gold_price.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:intl/intl.dart';
+import '../models/gold_price.dart';
 
 class GoldPriceService {
   static final GoldPriceService _instance = GoldPriceService._internal();
@@ -14,95 +13,114 @@ class GoldPriceService {
 
   /// Fetch current gold price from goodreturns.in
   /// Uses proper HTML parsing to extract price from <span id="22k-price">
+  /// Uses HeadlessInAppWebView to bypass Cloudflare protection
   Future<GoldPrice?> fetchCurrentGoldPrice() async {
+    // Only works on mobile platforms for now
+    if (kIsWeb) return null;
+
+    final Completer<GoldPrice?> completer = Completer<GoldPrice?>();
+    
+    // Create a HEADLESS webview (invisible browser)
+    HeadlessInAppWebView? headlessWebView;
+    
     try {
-      print('🔍 Fetching gold price from: $baseUrl');
+      print('🔍 Fetching gold price using Headless WebView from: $baseUrl');
       
-      final response = await http.get(
-        Uri.parse(baseUrl),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
+      headlessWebView = HeadlessInAppWebView(
+        initialUrlRequest: URLRequest(url: WebUri(baseUrl)),
+        initialSettings: InAppWebViewSettings(
+          javaScriptEnabled: true,
+          cacheEnabled: false,
+          userAgent: 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        ),
+        onLoadStop: (controller, url) async {
+          print('✅ Headless WebView loaded page: $url');
+          try {
+            // Inject JavaScript to extract the price directly from the DOM
+            // This runs inside the invisible browser page
+            final String? priceText = await controller.evaluateJavascript(source: """
+              (function() {
+                try {
+                  // Method 1: Look for ID '22k-price'
+                  var el = document.getElementById('22k-price');
+                  if (el) return el.innerText;
+                  
+                  // Method 2: Look for class 'gold-common-head'
+                  var headers = document.querySelectorAll('.gold-common-head');
+                  for (var i = 0; i < headers.length; i++) {
+                     var text = headers[i].innerText;
+                     if (text.includes('22K') || text.includes('22k')) {
+                        // Find price in parent
+                        var parent = headers[i].parentElement;
+                        if (parent) {
+                           // Try to find a span with a number pattern
+                           var spans = parent.querySelectorAll('span');
+                           for (var j = 0; j < spans.length; j++) {
+                              var spanText = spans[j].innerText;
+                              if (spanText.includes('₹') || /\\d{2,6}/.test(spanText)) {
+                                 return spanText;
+                              }
+                           }
+                        }
+                     }
+                  }
+                  return null;
+                } catch(e) { return null; }
+              })();
+            """);
+
+            print('📊 Extracted text from WebView: $priceText');
+
+            if (priceText != null && priceText.isNotEmpty) {
+              // Extract number from text like "₹14,600" or "14,600"
+              final priceStr = priceText.replaceAll(RegExp(r'[₹,\s]'), '');
+              final price22k = double.tryParse(priceStr);
+              
+              if (price22k != null && price22k > 1000 && price22k < 100000) {
+                print('💰 Parsed 22K price: ₹$price22k');
+                completer.complete(GoldPrice(
+                  date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+                  price22k: price22k,
+                  price24k: 0.0,
+                  city: 'Chennai',
+                ));
+              } else {
+                print('⚠️ Parsed price seems invalid: $price22k');
+                completer.complete(null);
+              }
+            } else {
+              print('❌ Could not find gold price in WebView DOM');
+              completer.complete(null);
+            }
+          } catch (e) {
+            print('❌ Error evaluating JS in WebView: $e');
+            completer.complete(null);
+          }
+        },
+        onReceivedError: (controller, request, error) {
+           print('❌ WebView Error: ${error.description}');
+           if (!completer.isCompleted) completer.complete(null);
+        },
+        onReceivedHttpError: (controller, request, response) {
+           print('❌ WebView HTTP Error: ${response.statusCode}');
+           // Don't fail immediately, sometimes the page loads partial content
         },
       );
+
+      // Run the headless webview
+      await headlessWebView.run();
       
-      if (response.statusCode == 200) {
-        print('✅ Successfully fetched page (${response.body.length} bytes)');
-        
-        // Parse HTML
-        final document = html_parser.parse(response.body);
-        
-        // Method 1: Look for <span id="22k-price">
-        final price22kElement = document.getElementById('22k-price');
-        
-        if (price22kElement != null) {
-          final priceText = price22kElement.text.trim();
-          print('📊 Found 22K price element: $priceText');
-          
-          // Extract number from text like "₹14,600" or "14,600"
-          final priceStr = priceText.replaceAll(RegExp(r'[₹,\s]'), '');
-          final price22k = double.tryParse(priceStr);
-          
-          if (price22k != null && price22k > 1000 && price22k < 100000) {
-            print('💰 Parsed 22K price: ₹$price22k');
-            
-            return GoldPrice(
-              date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-              price22k: price22k,
-              price24k: 0.0, // Not fetching 24K as per user request
-              city: 'Chennai',
-            );
-          } else {
-            print('⚠️ Parsed price seems invalid: $price22k');
-          }
-        } else {
-          print('⚠️ Element with id="22k-price" not found');
-        }
-        
-        // Method 2: Fallback - search for class="gold-common-head" and nearby price
-        print('🔄 Trying fallback method...');
-        
-        final goldCommonHeads = document.querySelectorAll('.gold-common-head');
-        for (var element in goldCommonHeads) {
-          final text = element.text.trim();
-          print('   Checking element: $text');
-          
-          if (text.contains('22K') || text.contains('22k')) {
-            // Look for sibling or parent with price
-            final parent = element.parent;
-            if (parent != null) {
-              final priceSpans = parent.querySelectorAll('span');
-              for (var span in priceSpans) {
-                final spanText = span.text.trim();
-                // Look for price pattern
-                if (spanText.contains('₹') || RegExp(r'^\d{2,5}$').hasMatch(spanText.replaceAll(',', ''))) {
-                  final priceStr = spanText.replaceAll(RegExp(r'[₹,\s]'), '');
-                  final price = double.tryParse(priceStr);
-                  if (price != null && price > 1000 && price < 100000) {
-                    print('💰 Found 22K price via fallback: ₹$price');
-                    return GoldPrice(
-                      date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-                      price22k: price,
-                      price24k: 0.0,
-                      city: 'Chennai',
-                    );
-                  }
-                }
-              }
-            }
-          }
-        }
-        
-        print('❌ Could not find gold price in HTML');
+      // Set a timeout of 30 seconds
+      return await completer.future.timeout(const Duration(seconds: 30), onTimeout: () {
+        print('⏳ WebView timed out');
         return null;
-      }
-      
-      print('❌ Failed to fetch gold price: HTTP ${response.statusCode}');
-      return null;
-    } catch (e, stackTrace) {
-      print('❌ Error fetching gold price: $e');
-      print('Stack trace: $stackTrace');
+      }).whenComplete(() {
+        // Clean up
+        headlessWebView?.dispose();
+      });
+
+    } catch (e) {
+      print('❌ Error in Headless WebView service: $e');
       return null;
     }
   }
