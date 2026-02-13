@@ -46,48 +46,34 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.light),
-        fontFamily: 'Roboto', // Will use Google Fonts in HomeScreen
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
-        fontFamily: 'Roboto',
-      ),
-      themeMode: _themeMode,
-      home: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            'RemindBuddy',
-            style: GoogleFonts.pacifico( // Creative Font
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.primary,
-            ),
+    // FIX: Removed invalid nested MaterialApp. 
+    // This allows the root MaterialApp in main.dart to control navigation and theming properly.
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'RemindBuddy',
+          style: GoogleFonts.pacifico( // Creative Font
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.primary,
           ),
-          centerTitle: true,
-          actions: [
-            IconButton(
-              icon: Icon(_themeMode == ThemeMode.light ? Icons.dark_mode : Icons.light_mode),
-              onPressed: _toggleTheme,
-            ),
-            // Add Sync button back here since we removed it from HomeScreen
-            IconButton(
-              icon: const Icon(Icons.sync),
-              onPressed: () {
-                 // We need a way to trigger sync in HomeScreen. 
-                 // For now, we can just rely on auto-sync or add a global sync service.
-                 // Or just leave it out as auto-sync exists.
-                 // Let's add a simple snackbar for now.
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Syncing...')));
-              },
-            ),
-          ],
         ),
-        drawer: Drawer(
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Icon(_themeMode == ThemeMode.light ? Icons.dark_mode : Icons.light_mode),
+            onPressed: _toggleTheme,
+          ),
+          // Add Sync button 
+          IconButton(
+            icon: const Icon(Icons.sync),
+            onPressed: () {
+               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Syncing...')));
+            },
+          ),
+        ],
+      ),
+      drawer: Drawer(
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
@@ -181,6 +167,32 @@ class _MainScreenState extends State<MainScreen> {
                 },
               ),
               ListTile(
+                leading: const Icon(Icons.notifications_active, color: Colors.orange),
+                title: const Text('Fix Notifications'),
+                subtitle: const Text('If reminders don\'t pop up'),
+                onTap: () {
+                    Navigator.pop(context);
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Notification Troubleshooting'),
+                        content: const Text(
+                          'If notifications only appear when you open the app, it is likely due to Battery Optimization.\n\n'
+                          'Please go to:\n'
+                          'Settings > Apps > RemindBuddy > Battery\n'
+                          'and select "Unrestricted" or "No restrictions".'
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('OK'),
+                          ),
+                        ],
+                      ),
+                    );
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.info_outline),
                 title: const Text('About'),
                 onTap: () {
@@ -225,7 +237,6 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ],
         ),
-      ),
     );
   }
 }

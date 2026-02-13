@@ -9,10 +9,10 @@ class GoldPriceService {
   factory GoldPriceService() => _instance;
   GoldPriceService._internal();
 
-  static const String baseUrl = 'https://www.goodreturns.in/gold-rates/chennai.html';
+  static const String baseUrl = 'https://www.bankbazaar.com/gold-rate-tamil-nadu.html';
 
-  /// Fetch current gold price from goodreturns.in
-  /// Uses proper HTML parsing to extract price from <span id="22k-price">
+  /// Fetch current gold price from bankbazaar.com
+  /// Uses proper HTML parsing to extract price from the specific DOM structure
   /// Uses HeadlessInAppWebView to bypass Cloudflare protection
   Future<GoldPrice?> fetchCurrentGoldPrice() async {
     // Only works on mobile platforms for now
@@ -37,33 +37,31 @@ class GoldPriceService {
           print('✅ Headless WebView loaded page: $url');
           try {
             // Inject JavaScript to extract the price directly from the DOM
-            // This runs inside the invisible browser page
+            // based on the user provided DOM structure:
+            // <div class="bg-secondary..."> 
+            //   <h2>Today's Gold Rate...</h2>
+            //   <div> ... <span class="white-space-nowrap">₹ 14,400</span> ... </div>
+            // </div>
             final String? priceText = await controller.evaluateJavascript(source: """
               (function() {
                 try {
-                  // Method 1: Look for ID '22k-price'
-                  var el = document.getElementById('22k-price');
-                  if (el) return el.innerText;
-                  
-                  // Method 2: Look for class 'gold-common-head'
-                  var headers = document.querySelectorAll('.gold-common-head');
-                  for (var i = 0; i < headers.length; i++) {
-                     var text = headers[i].innerText;
-                     if (text.includes('22K') || text.includes('22k')) {
-                        // Find price in parent
-                        var parent = headers[i].parentElement;
-                        if (parent) {
-                           // Try to find a span with a number pattern
-                           var spans = parent.querySelectorAll('span');
-                           for (var j = 0; j < spans.length; j++) {
-                              var spanText = spans[j].innerText;
-                              if (spanText.includes('₹') || /\\d{2,6}/.test(spanText)) {
-                                 return spanText;
-                              }
-                           }
-                        }
-                     }
+                  // Method 1: Look for "Today's Gold Rate" text and find nearby price
+                  const h2Elements = document.getElementsByTagName('h2');
+                  for (let i = 0; i < h2Elements.length; i++) {
+                    if (h2Elements[i].innerText.includes("Today's Gold Rate")) {
+                      // The price is in the next sibling div -> span -> span
+                      const parentDiv = h2Elements[i].parentElement;
+                      if (parentDiv) {
+                        const priceSpan = parentDiv.querySelector('.white-space-nowrap');
+                        if (priceSpan) return priceSpan.innerText;
+                      }
+                    }
                   }
+                  
+                  // Method 2: Fallback to searching for the specific class directly
+                  const priceElement = document.querySelector('.bg-secondary .white-space-nowrap');
+                  if (priceElement) return priceElement.innerText;
+                  
                   return null;
                 } catch(e) { return null; }
               })();
@@ -72,7 +70,7 @@ class GoldPriceService {
             print('📊 Extracted text from WebView: $priceText');
 
             if (priceText != null && priceText.isNotEmpty) {
-              // Extract number from text like "₹14,600" or "14,600"
+              // Extract number from text like "₹ 14,400"
               final priceStr = priceText.replaceAll(RegExp(r'[₹,\s]'), '');
               final price22k = double.tryParse(priceStr);
               
@@ -103,7 +101,6 @@ class GoldPriceService {
         },
         onReceivedHttpError: (controller, request, response) {
            print('❌ WebView HTTP Error: ${response.statusCode}');
-           // Don't fail immediately, sometimes the page loads partial content
         },
       );
 
