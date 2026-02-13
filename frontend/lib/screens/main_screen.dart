@@ -3,7 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'home_screen.dart';
 import 'notes_screen.dart';
 import 'daily_reminders_screen.dart';
-import 'gold_price_test_screen.dart';
+import 'gold_screen.dart';
+import 'checklists_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -36,6 +37,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _screens = [
     const HomeScreen(),
     const NotesScreen(),
+    const GoldScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -63,13 +65,6 @@ class _MainScreenState extends State<MainScreen> {
           IconButton(
             icon: Icon(_themeMode == ThemeMode.light ? Icons.dark_mode : Icons.light_mode),
             onPressed: _toggleTheme,
-          ),
-          // Add Sync button 
-          IconButton(
-            icon: const Icon(Icons.sync),
-            onPressed: () {
-               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Syncing...')));
-            },
           ),
         ],
       ),
@@ -113,6 +108,19 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ),
               ListTile(
+                leading: const Icon(Icons.backpack_outlined, color: Colors.green),
+                title: const Text('My Belongings (Packing)'),
+                subtitle: const Text('Checklists for travel/office'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ChecklistsScreen()),
+                  );
+                },
+              ),
+              const Divider(),
+              ListTile(
                 leading: const Icon(Icons.calendar_today),
                 title: const Text('Reminders'),
                 selected: _selectedIndex == 0,
@@ -130,6 +138,15 @@ class _MainScreenState extends State<MainScreen> {
                   setState(() => _selectedIndex = 1);
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.monetization_on),
+                title: const Text('Gold Rates'),
+                selected: _selectedIndex == 2,
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _selectedIndex = 2);
+                },
+              ),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.alarm_on, color: Colors.blue),
@@ -143,10 +160,10 @@ class _MainScreenState extends State<MainScreen> {
                   );
                 },
               ),
+              /*
               ListTile(
-                leading: const Icon(Icons.monetization_on, color: Colors.amber),
-                title: const Text('🧪 Gold Price Test'),
-                subtitle: const Text('Test web scraping'),
+                leading: const Icon(Icons.bug_report, color: Colors.grey),
+                title: const Text('Gold Price Test (Debug)'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -155,6 +172,7 @@ class _MainScreenState extends State<MainScreen> {
                   );
                 },
               ),
+              */
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.settings),
@@ -167,32 +185,6 @@ class _MainScreenState extends State<MainScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.notifications_active, color: Colors.orange),
-                title: const Text('Fix Notifications'),
-                subtitle: const Text('If reminders don\'t pop up'),
-                onTap: () {
-                    Navigator.pop(context);
-                    showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Notification Troubleshooting'),
-                        content: const Text(
-                          'If notifications only appear when you open the app, it is likely due to Battery Optimization.\n\n'
-                          'Please go to:\n'
-                          'Settings > Apps > RemindBuddy > Battery\n'
-                          'and select "Unrestricted" or "No restrictions".'
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('OK'),
-                          ),
-                        ],
-                      ),
-                    );
-                },
-              ),
-              ListTile(
                 leading: const Icon(Icons.info_outline),
                 title: const Text('About'),
                 onTap: () {
@@ -200,15 +192,15 @@ class _MainScreenState extends State<MainScreen> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'RemindBuddy',
-                    applicationVersion: '1.0.30',
+                    applicationVersion: '1.1.0',
                     applicationIcon: const Icon(Icons.alarm_add, size: 48),
                     children: [
                       const Text('Your friendly daily reminder companion!'),
                       const SizedBox(height: 8),
                       const Text('Features:'),
                       const Text('• Calendar-based reminders'),
-                      const Text('• Daily recurring reminders'),
-                      const Text('• Annoying alarm mode'),
+                      const Text('• Gold Price Tracker'),
+                      const Text('• My Belongings Checklists'),
                       const Text('• Secure notes with PIN lock'),
                     ],
                   );
@@ -234,6 +226,11 @@ class _MainScreenState extends State<MainScreen> {
               icon: Icon(Icons.note_alt_outlined),
               selectedIcon: Icon(Icons.note_alt),
               label: 'Notes',
+            ),
+             NavigationDestination(
+              icon: Icon(Icons.monetization_on_outlined),
+              selectedIcon: Icon(Icons.monetization_on),
+              label: 'Gold',
             ),
           ],
         ),

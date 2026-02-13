@@ -14,6 +14,12 @@ class LogService {
 
   LogService._internal();
 
+  // Helper for background tasks where we might not want to init the full service
+  static void staticLog(String message) {
+     final String timestamp = DateFormat('HH:mm:ss').format(DateTime.now());
+     print('[$timestamp] $message');
+  }
+
   void log(String message) {
     final String timestamp = DateFormat('HH:mm:ss').format(DateTime.now());
     final String logEntry = '[$timestamp] $message';

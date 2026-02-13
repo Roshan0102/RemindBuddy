@@ -28,20 +28,9 @@ class StorageService {
     if (kIsWeb) {
       return await openDatabase(
         inMemoryDatabasePath,
-        version: 5,
+        version: 6,
         onCreate: (db, version) async {
-          await db.execute(
-            'CREATE TABLE tasks(id INTEGER PRIMARY KEY, title TEXT, description TEXT, date TEXT, time TEXT, repeat TEXT, isAnnoying INTEGER)',
-          );
-          await db.execute(
-            'CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, date TEXT, isLocked INTEGER)',
-          );
-          await db.execute(
-            'CREATE TABLE daily_reminders(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, time TEXT, isActive INTEGER, isAnnoying INTEGER)',
-          );
-          await db.execute(
-            'CREATE TABLE gold_prices(date TEXT PRIMARY KEY, price22k REAL, price24k REAL, city TEXT)',
-          );
+          await _createTables(db);
         },
       );
     }
@@ -50,20 +39,9 @@ class StorageService {
     String path = join(await getDatabasesPath(), 'remindbuddy.db');
     return await openDatabase(
       path,
-      version: 5, // Increment version for gold_prices table
+      version: 6, 
       onCreate: (db, version) async {
-        await db.execute(
-          'CREATE TABLE tasks(id INTEGER PRIMARY KEY, title TEXT, description TEXT, date TEXT, time TEXT, repeat TEXT, isAnnoying INTEGER)',
-        );
-        await db.execute(
-          'CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, date TEXT, isLocked INTEGER)',
-        );
-        await db.execute(
-          'CREATE TABLE daily_reminders(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, time TEXT, isActive INTEGER, isAnnoying INTEGER)',
-        );
-        await db.execute(
-          'CREATE TABLE gold_prices(date TEXT PRIMARY KEY, price22k REAL, price24k REAL, city TEXT)',
-        );
+        await _createTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -72,17 +50,14 @@ class StorageService {
           );
         }
         if (oldVersion < 3) {
-           // Add new columns if they don't exist
            try {
              await db.execute('ALTER TABLE tasks ADD COLUMN isAnnoying INTEGER DEFAULT 0');
            } catch (e) { print("Column isAnnoying might already exist"); }
-           
            try {
              await db.execute('ALTER TABLE notes ADD COLUMN isLocked INTEGER DEFAULT 0');
            } catch (e) { print("Column isLocked might already exist"); }
         }
         if (oldVersion < 4) {
-          // Add daily_reminders table
           try {
             await db.execute(
               'CREATE TABLE daily_reminders(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, time TEXT, isActive INTEGER, isAnnoying INTEGER)',
@@ -90,54 +65,66 @@ class StorageService {
           } catch (e) { print("Table daily_reminders might already exist"); }
         }
         if (oldVersion < 5) {
-          // Add gold_prices table
           try {
             await db.execute(
               'CREATE TABLE gold_prices(date TEXT PRIMARY KEY, price22k REAL, price24k REAL, city TEXT)',
             );
           } catch (e) { print("Table gold_prices might already exist"); }
         }
+        if (oldVersion < 6) {
+           // Add Checklists tables
+           try {
+             await db.execute(
+               'CREATE TABLE checklists(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, iconCode INTEGER, color INTEGER)',
+             );
+             await db.execute(
+               'CREATE TABLE checklist_items(id INTEGER PRIMARY KEY AUTOINCREMENT, checklistId INTEGER, text TEXT, isChecked INTEGER)',
+             );
+           } catch (e) { print("Checklist tables might already exist"); }
+
+           // Migrate Gold Price table to support datetime (multiple entries per day) if needed
+           // For simplicity, we'll just keep adding to it, but the primary key logic in code will change to use full timestamp or unique ID
+           // Dropping and recreating is risky for data loss, so we'll just create a new one if it doesn't exist or modify logic
+           // To support multiple updates per day, the PRIMARY KEY on 'date' (YYYY-MM-DD) is problematic.
+           // Let's CREATE a new table "gold_prices_v2" with a proper ID or allow multiple dates
+           try {
+             await db.execute(
+               'CREATE TABLE gold_prices_history(id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, price22k REAL, price24k REAL, city TEXT)',
+             );
+             // Migrate old data
+             // await db.execute('INSERT INTO gold_prices_history (timestamp, price22k, price24k, city) SELECT date, price22k, price24k, city FROM gold_prices');
+           } catch (e) { print("gold_prices_history table error: $e"); }
+        }
       },
     );
   }
 
-  // ... Task methods ...
-
-  // Note Methods
-  Future<void> insertNote(Note note) async {
-    final db = await database;
-    await db.insert(
-      'notes',
-      note.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
+  Future<void> _createTables(Database db) async {
+    await db.execute(
+      'CREATE TABLE tasks(id INTEGER PRIMARY KEY, title TEXT, description TEXT, date TEXT, time TEXT, repeat TEXT, isAnnoying INTEGER)',
+    );
+    await db.execute(
+      'CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, date TEXT, isLocked INTEGER)',
+    );
+    await db.execute(
+      'CREATE TABLE daily_reminders(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, time TEXT, isActive INTEGER, isAnnoying INTEGER)',
+    );
+    // Legacy table, kept for compatibility if needed or purely replaced by history
+    await db.execute(
+      'CREATE TABLE gold_prices(date TEXT PRIMARY KEY, price22k REAL, price24k REAL, city TEXT)',
+    );
+    await db.execute(
+      'CREATE TABLE gold_prices_history(id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, price22k REAL, price24k REAL, city TEXT)',
+    );
+    await db.execute(
+      'CREATE TABLE checklists(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, iconCode INTEGER, color INTEGER)',
+    );
+    await db.execute(
+      'CREATE TABLE checklist_items(id INTEGER PRIMARY KEY AUTOINCREMENT, checklistId INTEGER, text TEXT, isChecked INTEGER)',
     );
   }
 
-  Future<List<Note>> getNotes() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('notes', orderBy: "date DESC");
-    return List.generate(maps.length, (i) => Note.fromMap(maps[i]));
-  }
-
-  Future<void> deleteNote(int id) async {
-    final db = await database;
-    await db.delete(
-      'notes',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
-
-  Future<void> updateNote(Note note) async {
-    final db = await database;
-    await db.update(
-      'notes',
-      note.toMap(),
-      where: 'id = ?',
-      whereArgs: [note.id],
-    );
-  }
-
+  // Task Methods
   Future<void> insertTask(Task task) async {
     final db = await database;
     await db.insert(
@@ -158,10 +145,11 @@ class StorageService {
         date: maps[i]['date'],
         time: maps[i]['time'],
         repeat: maps[i]['repeat'],
+        isAnnoying: maps[i]['isAnnoying'] == 1,
       );
     });
   }
-  
+
   Future<List<Task>> getTasksForDate(String date) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -172,17 +160,60 @@ class StorageService {
     return List.generate(maps.length, (i) => Task.fromJson(maps[i]));
   }
 
-  Future<void> clearOldTasks(String today) async {
+  Future<void> updateTask(Task task) async {
     final db = await database;
-    // Simple logic: delete tasks where date < today
-    // Note: String comparison works for YYYY-MM-DD format
-    await db.delete('tasks', where: 'date < ?', whereArgs: [today]);
+    await db.update(
+      'tasks',
+      task.toMap(),
+      where: 'id = ?',
+      whereArgs: [task.id],
+    );
   }
 
   Future<void> deleteTask(int id) async {
     final db = await database;
     await db.delete(
       'tasks',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> clearOldTasks(String today) async {
+    final db = await database;
+    await db.delete('tasks', where: 'date < ?', whereArgs: [today]);
+  }
+
+  // Note Methods
+  Future<void> insertNote(Note note) async {
+    final db = await database;
+    await db.insert(
+      'notes',
+      note.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Note>> getNotes() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('notes', orderBy: "date DESC");
+    return List.generate(maps.length, (i) => Note.fromMap(maps[i]));
+  }
+
+  Future<void> updateNote(Note note) async {
+    final db = await database;
+    await db.update(
+      'notes',
+      note.toMap(),
+      where: 'id = ?',
+      whereArgs: [note.id],
+    );
+  }
+
+  Future<void> deleteNote(int id) async {
+    final db = await database;
+    await db.delete(
+      'notes',
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -244,17 +275,123 @@ class StorageService {
     );
   }
 
-  // Gold Price Methods
+
+  // Checklist Methods
+  Future<int> createChecklist(String title, int iconCode, int color) async {
+    final db = await database;
+    return await db.insert('checklists', {
+      'title': title,
+      'iconCode': iconCode,
+      'color': color,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getChecklists() async {
+    final db = await database;
+    return await db.query('checklists');
+  }
+
+  Future<void> deleteChecklist(int id) async {
+    final db = await database;
+    await db.delete('checklists', where: 'id = ?', whereArgs: [id]);
+    await db.delete('checklist_items', where: 'checklistId = ?', whereArgs: [id]);
+  }
+
+  Future<int> addChecklistItem(int checklistId, String text) async {
+    final db = await database;
+    return await db.insert('checklist_items', {
+      'checklistId': checklistId,
+      'text': text,
+      'isChecked': 0,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getChecklistItems(int checklistId) async {
+    final db = await database;
+    return await db.query('checklist_items', where: 'checklistId = ?', whereArgs: [checklistId]);
+  }
+
+  Future<void> toggleChecklistItem(int id, bool isChecked) async {
+    final db = await database;
+    await db.update(
+      'checklist_items',
+      {'isChecked': isChecked ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> deleteChecklistItem(int id) async {
+    final db = await database;
+    await db.delete('checklist_items', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> resetChecklistItems(int checklistId) async {
+    final db = await database;
+    await db.update(
+      'checklist_items',
+      {'isChecked': 0},
+      where: 'checklistId = ?',
+      whereArgs: [checklistId],
+    );
+  }
+
+  // Gold Price Methods (Updated for History)
   Future<void> saveGoldPrice(GoldPrice price) async {
     final db = await database;
+    // Save to legacy table (overwrites for the day)
     await db.insert(
       'gold_prices',
       price.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    
+    // Save to history table (keeps all updates)
+    // Add current timestamp if not present
+    await db.insert(
+      'gold_prices_history',
+      {
+        'timestamp': DateTime.now().toIso8601String(),
+        'price22k': price.price22k,
+        'price24k': price.price24k,
+        'city': price.city,
+      },
+    );
+  }
+
+  Future<List<GoldPrice>> getGoldPriceHistory({int limit = 20}) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'gold_prices_history',
+      orderBy: 'timestamp DESC',
+      limit: limit,
+    );
+    
+    // Convert history format to GoldPrice
+    return List.generate(maps.length, (i) {
+        return GoldPrice(
+           date: maps[i]['timestamp'].toString().split('T')[0], // Extract date part for display compatibility
+           price22k: maps[i]['price22k'],
+           price24k: maps[i]['price24k'],
+           city: maps[i]['city'],
+        );
+    });
+  }
+
+  Future<double?> getPreviousGoldPrice() async {
+     final db = await database;
+     final List<Map<String, dynamic>> maps = await db.query(
+      'gold_prices_history',
+      orderBy: 'timestamp DESC',
+      limit: 2,
+    );
+    
+    if (maps.length < 2) return null;
+    return maps[1]['price22k'] as double;
   }
 
   Future<List<GoldPrice>> getGoldPrices({int limit = 10}) async {
+    // Return daily snapshot (legacy table)
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'gold_prices',
@@ -267,22 +404,17 @@ class StorageService {
   Future<GoldPrice?> getLatestGoldPrice() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
-      'gold_prices',
-      orderBy: 'date DESC',
+      'gold_prices_history',
+      orderBy: 'timestamp DESC',
       limit: 1,
     );
     if (maps.isEmpty) return null;
-    return GoldPrice.fromJson(maps[0]);
-  }
-
-  Future<void> deleteOldGoldPrices(int daysToKeep) async {
-    final db = await database;
-    final cutoffDate = DateTime.now().subtract(Duration(days: daysToKeep));
-    final cutoffDateStr = cutoffDate.toIso8601String().split('T')[0];
-    await db.delete(
-      'gold_prices',
-      where: 'date < ?',
-      whereArgs: [cutoffDateStr],
+    
+    return GoldPrice(
+       date: maps[0]['timestamp'].toString().split('T')[0],
+       price22k: maps[0]['price22k'],
+       price24k: maps[0]['price24k'],
+       city: maps[0]['city'],
     );
   }
 }

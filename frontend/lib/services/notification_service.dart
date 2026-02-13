@@ -439,8 +439,46 @@ class NotificationService {
   }
 
 
+  Future<void> showGoldPriceNotification(double price, double? difference) async {
+    final String diffText;
+    if (difference != null) {
+      if (difference > 0) {
+        diffText = '📈 Up by ₹${difference.abs().toStringAsFixed(0)}';
+      } else if (difference < 0) {
+        diffText = '📉 Down by ₹${difference.abs().toStringAsFixed(0)}';
+      } else {
+        diffText = '➖ No change';
+      }
+    } else {
+      diffText = 'First update today';
+    }
+
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
+      'gold_price_channel',
+      'Gold Price Alerts',
+      channelDescription: 'Notifications for gold price updates',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+    );
+    const NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
+
+    await flutterLocalNotificationsPlugin.show(
+      8888, // Constant ID for Gold Notification
+      'Gold Price Update',
+      'Current: ₹${price.toStringAsFixed(0)} | $diffText',
+      platformChannelSpecifics,
+      payload: 'gold_tab', // Payload to navigate to Gold Tab
+    );
+    LogService().log('Shown Gold Price Notification: ₹$price');
+  }
+
   Future<void> cancelNotification(int id) async {
     await flutterLocalNotificationsPlugin.cancel(id);
     LogService().log('Cancelled notification for Task $id');
   }
 }
+

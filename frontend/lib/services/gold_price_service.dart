@@ -122,6 +122,28 @@ class GoldPriceService {
     }
   }
 
+  Future<Map<String, dynamic>?> checkAndNotifyGoldPriceChange() async {
+    try {
+      print('🔄 Background Task: Checking Gold Price...');
+      final newPrice = await fetchCurrentGoldPrice();
+      
+      if (newPrice != null) {
+         // Return data for the background handler to process
+         // The background handler (in main.dart or separate file) will:
+         // 1. Get previous price from DB
+         // 2. Save new price
+         // 3. Compare and notify
+         return {
+           'price': newPrice,
+         };
+      }
+      return null;
+    } catch (e) {
+      print('❌ Background Task Error: $e');
+      return null;
+    }
+  }
+
   /// Fetch gold price with fallback to mock data for testing
   Future<GoldPrice> fetchGoldPriceWithFallback() async {
     final price = await fetchCurrentGoldPrice();
