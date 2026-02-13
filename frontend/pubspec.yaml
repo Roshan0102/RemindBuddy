@@ -51,7 +51,7 @@ dependencies:
   fl_chart: ^1.1.1
   html: ^0.15.4
   flutter_inappwebview: ^6.1.5
-  workmanager: ^0.8.0
+  workmanager: ^0.5.2
 
 dev_dependencies:
   flutter_test:
