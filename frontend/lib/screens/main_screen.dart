@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'home_screen.dart';
 import 'notes_screen.dart';
 import 'daily_reminders_screen.dart';
@@ -16,7 +17,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
-  ThemeMode _themeMode = ThemeMode.light;
+  bool _isDarkMode = false;
 
   @override
   void initState() {
@@ -25,14 +26,18 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _loadTheme() async {
-    // Simple shared preference check could go here
-    // For now, default to light
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isDarkMode = prefs.getBool('isDarkMode') ?? false;
+    });
   }
 
-  void _toggleTheme() {
+  Future<void> _toggleTheme() async {
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+      _isDarkMode = !_isDarkMode;
     });
+    await prefs.setBool('isDarkMode', _isDarkMode);
   }
 
   final List<Widget> _screens = [
@@ -49,26 +54,40 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // FIX: Removed invalid nested MaterialApp. 
-    // This allows the root MaterialApp in main.dart to control navigation and theming properly.
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'RemindBuddy',
-          style: GoogleFonts.pacifico( // Creative Font
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.primary,
+    // FIX: Wrap with Theme to apply dark/light mode
+    return Theme(
+      data: _isDarkMode 
+        ? ThemeData.dark(useMaterial3: true).copyWith(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              brightness: Brightness.dark,
+            ),
+          )
+        : ThemeData.light(useMaterial3: true).copyWith(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              brightness: Brightness.light,
+            ),
           ),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            'RemindBuddy',
+            style: GoogleFonts.pacifico( // Creative Font
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          centerTitle: true,
+          actions: [
+            IconButton(
+              icon: Icon(_isDarkMode ? Icons.light_mode : Icons.dark_mode),
+              onPressed: _toggleTheme,
+              tooltip: _isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+            ),
+          ],
         ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: Icon(_themeMode == ThemeMode.light ? Icons.dark_mode : Icons.light_mode),
-            onPressed: _toggleTheme,
-          ),
-        ],
-      ),
       drawer: Drawer(
           child: ListView(
             padding: EdgeInsets.zero,
@@ -248,6 +267,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ],
         ),
-    );
+      ), // Close Scaffold
+    ); // Close Theme
   }
 }

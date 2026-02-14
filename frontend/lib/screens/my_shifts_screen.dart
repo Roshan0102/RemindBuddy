@@ -38,7 +38,11 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       
       if (metadata != null && shiftsData.isNotEmpty) {
         final shifts = shiftsData.map((s) => Shift.fromMap(s)).toList();
-        final stats = await _storage.getShiftStatistics(metadata['month']!.split(' ')[0]);
+        
+        // Parse month string to get YYYY-MM format for database query
+        // metadata['month'] is like "February 2026"
+        String monthForQuery = _parseMonthForQuery(metadata['month']!);
+        final stats = await _storage.getShiftStatistics(monthForQuery);
         
         setState(() {
           _metadata = metadata;
@@ -57,6 +61,34 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       LogService().error('Failed to load shifts', e);
       setState(() => _isLoading = false);
     }
+  }
+
+  /// Parse month string like "February 2026" to "2026-02" format
+  String _parseMonthForQuery(String monthStr) {
+    try {
+      // monthStr is like "February 2026"
+      final parts = monthStr.split(' ');
+      if (parts.length == 2) {
+        final monthName = parts[0];
+        final year = parts[1];
+        
+        // Convert month name to number
+        final monthNames = [
+          'January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        
+        final monthIndex = monthNames.indexOf(monthName) + 1;
+        if (monthIndex > 0) {
+          return '$year-${monthIndex.toString().padLeft(2, '0')}';
+        }
+      }
+    } catch (e) {
+      LogService().error('Error parsing month', e);
+    }
+    
+    // Fallback: return current month
+    return DateFormat('yyyy-MM').format(DateTime.now());
   }
 
   Future<void> _uploadJSON() async {

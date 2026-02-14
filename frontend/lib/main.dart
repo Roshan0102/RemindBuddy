@@ -4,6 +4,7 @@ import 'screens/main_screen.dart';
 import 'services/notification_service.dart';
 import 'services/background_service.dart';
 import 'services/gold_scheduler_service.dart';
+import 'services/app_init_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,9 @@ void main() async {
     await GoldSchedulerService().init();
     await GoldSchedulerService().scheduleGoldPriceFetching();
     print('✅ Gold price scheduler initialized');
+    
+    // Initialize app state (reschedule notifications, etc.)
+    await AppInitService().initialize();
   } catch (e) {
     print('Error initializing services: $e');
   }
