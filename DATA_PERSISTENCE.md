@@ -9,9 +9,9 @@ The RemindBuddy app **already implements data persistence** using SQLite databas
 - **Platform**: Android persistent storage (survives app updates)
 - **Version**: 7 (current)
 
-### What Persists Across App Reinstalls
+### What Persists Across App Restarts and Updates
 
-**✅ Data that WILL persist** (as long as user doesn't clear app data):
+**✅ Data that WILL persist** (across app closes and updates):
 1. **Tasks/Reminders** - All calendar-based tasks and reminders
 2. **Notes** - All notes including PIN-locked ones
 3. **Daily Reminders** - Recurring daily reminders
@@ -20,10 +20,22 @@ The RemindBuddy app **already implements data persistence** using SQLite databas
 6. **Gold Prices** - Historical gold price data
 7. **Theme Preference** - Dark/Light mode setting (via SharedPreferences)
 
-**❌ Data that will NOT persist** (if user clears app data or uninstalls):
+**⚠️ IMPORTANT**: Data persists across app updates ONLY if:
+- You install the new version without uninstalling the old one
+- You use "flutter run" or "flutter install" which updates the existing app
+- The database migration runs successfully (version 7 → 8)
+
+**❌ Data that will NOT persist** (if user uninstalls or clears app data):
 - All database contents
 - Scheduled notifications (need to be rescheduled on app restart)
 - SharedPreferences settings
+
+**🔧 If Data Disappeared After Update**:
+This can happen if:
+1. The app was uninstalled before installing the new version
+2. App data was cleared in Android settings
+3. Database migration failed (check logs for errors)
+4. The app package name changed
 
 ### How It Works
 

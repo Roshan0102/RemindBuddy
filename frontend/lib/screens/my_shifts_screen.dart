@@ -22,10 +22,27 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   Map<String, int>? _statistics;
   bool _isLoading = true;
   bool _hasData = false;
+  
+  // Multi-month support
+  List<String> _availableMonths = [];
+  String? _selectedRosterMonth;
+  String _selectedMonthView = 'current'; // 'current' or 'next'
 
   @override
   void initState() {
     super.initState();
+    _loadAvailableMonths();
+  }
+  
+  Future<void> _loadAvailableMonths() async {
+    final months = await _storage.getAvailableRosterMonths();
+    setState(() {
+      _availableMonths = months;
+      if (months.isNotEmpty) {
+        // Default to most recent month
+        _selectedRosterMonth = months.first;
+      }
+    });
     _loadShifts();
   }
 
@@ -33,8 +50,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     setState(() => _isLoading = true);
     
     try {
-      final metadata = await _storage.getShiftMetadata();
-      final shiftsData = await _storage.getAllShifts();
+      final metadata = await _storage.getShiftMetadata(rosterMonth: _selectedRosterMonth);
+      final shiftsData = await _storage.getAllShifts(rosterMonth: _selectedRosterMonth);
       
       if (metadata != null && shiftsData.isNotEmpty) {
         final shifts = shiftsData.map((s) => Shift.fromMap(s)).toList();
@@ -42,7 +59,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         // Parse month string to get YYYY-MM format for database query
         // metadata['month'] is like "February 2026"
         String monthForQuery = _parseMonthForQuery(metadata['month']!);
-        final stats = await _storage.getShiftStatistics(monthForQuery);
+        final stats = await _storage.getShiftStatistics(monthForQuery, rosterMonth: _selectedRosterMonth);
         
         setState(() {
           _metadata = metadata;
@@ -61,6 +78,23 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       LogService().error('Failed to load shifts', e);
       setState(() => _isLoading = false);
     }
+  }
+  
+  void _switchMonth(String monthView) {
+    setState(() {
+      _selectedMonthView = monthView;
+      
+      // Calculate the roster month based on selection
+      final now = DateTime.now();
+      if (monthView == 'current') {
+        _selectedRosterMonth = DateFormat('yyyy-MM').format(now);
+      } else {
+        // Next month
+        final nextMonth = DateTime(now.year, now.month + 1, 1);
+        _selectedRosterMonth = DateFormat('yyyy-MM').format(nextMonth);
+      }
+    });
+    _loadShifts();
   }
 
   /// Parse month string like "February 2026" to "2026-02" format
@@ -130,12 +164,19 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 final jsonData = json.decode(controller.text);
                 final roster = ShiftRoster.fromJson(jsonData);
                 
+                // Extract roster month from first shift date (YYYY-MM format)
+                String? rosterMonth;
+                if (roster.shifts.isNotEmpty) {
+                  rosterMonth = roster.shifts.first.date.substring(0, 7); // "2026-02-14" -> "2026-02"
+                }
+                
                 // Save to database
                 final shiftsToSave = roster.shifts.map((s) => s.toMap()).toList();
                 await _storage.saveShiftRoster(
                   roster.employeeName,
                   roster.month,
                   shiftsToSave,
+                  rosterMonth: rosterMonth,
                 );
                 
                 // Schedule notifications
@@ -143,12 +184,12 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 await _shiftService.scheduleAllAmlaReminders();
                 
                 Navigator.pop(context);
-                _loadShifts();
+                await _loadAvailableMonths(); // Reload available months
                 
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('✅ Loaded ${roster.shifts.length} shifts for ${roster.month}'),
+                      content: Text('✅ Loaded ${roster.shifts.length} shifts for ${roster.month} ($rosterMonth)'),
                       backgroundColor: Colors.green,
                     ),
                   );
@@ -484,6 +525,34 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               : SingleChildScrollView(
                   child: Column(
                     children: [
+                      // Month Toggle Buttons
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: SegmentedButton<String>(
+                                segments: const [
+                                  ButtonSegment<String>(
+                                    value: 'current',
+                                    label: Text('This Month'),
+                                    icon: Icon(Icons.calendar_today),
+                                  ),
+                                  ButtonSegment<String>(
+                                    value: 'next',
+                                    label: Text('Next Month'),
+                                    icon: Icon(Icons.calendar_month),
+                                  ),
+                                ],
+                                selected: {_selectedMonthView},
+                                onSelectionChanged: (Set<String> selection) {
+                                  _switchMonth(selection.first);
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       _buildStatisticsCard(),
                       _buildUpcomingShifts(),
                       _buildAllShiftsCalendar(),

@@ -55,10 +55,11 @@ class GoldPriceService {
                   }
                   
                   // Method 2: Old inspection method - Find price in specific structure (FALLBACK 1)
-                  const priceContainers = document.querySelectorAll('[class*="price"], [class*="rate"]');
+                  const priceContainers = document.querySelectorAll('[class*="price"], [class*="rate"], [class*="Price"], [class*="Rate"]');
                   for (let container of priceContainers) {
                     const text = container.innerText || container.textContent;
-                    if (text && text.includes('₹') && text.match(/\\d{2,}/)) {
+                    // Look for prices with at least 4 digits (like 14,400 or 14400)
+                    if (text && (text.includes('₹') || text.includes('Rs')) && text.match(/\d{1,3}(,\d{3})+|\d{4,}/)) {
                       console.log('✅ Method 2 (Inspection): Success');
                       return JSON.stringify({text: text.trim(), method: 'inspection'});
                     }
@@ -72,7 +73,7 @@ class GoldPriceService {
                       const parentDiv = h2Elements[i].parentElement;
                       if (parentDiv) {
                         const priceSpan = parentDiv.querySelector('.white-space-nowrap');
-                        if (priceSpan) {
+                        if (priceSpan && priceSpan.innerText.match(/\d{1,3}(,\d{3})+|\d{4,}/)) {
                           console.log('✅ Method 3 (Heading Search): Success');
                           return JSON.stringify({text: priceSpan.innerText.trim(), method: 'heading_search'});
                         }
@@ -80,12 +81,13 @@ class GoldPriceService {
                     }
                   }
                   
-                  // Method 4: Search for any element with white-space-nowrap containing ₹ (FALLBACK 3)
-                  const allSpans = document.querySelectorAll('.white-space-nowrap');
+                  // Method 4: Search for any element with white-space-nowrap containing ₹ and 4+ digits (FALLBACK 3)
+                  const allSpans = document.querySelectorAll('.white-space-nowrap, span, div');
                   for (let span of allSpans) {
-                    if (span.innerText.includes('₹')) {
+                    const text = span.innerText || span.textContent;
+                    if (text && (text.includes('₹') || text.includes('Rs')) && text.match(/\d{1,3}(,\d{3})+|\d{4,}/)) {
                       console.log('✅ Method 4 (Generic Search): Success');
-                      return JSON.stringify({text: span.innerText.trim(), method: 'generic_search'});
+                      return JSON.stringify({text: text.trim(), method: 'generic_search'});
                     }
                   }
                   
@@ -126,28 +128,44 @@ class GoldPriceService {
                   // Not JSON, use as is
                 }
                 
-                // Extract number from text like "₹ 14,400" or "₹14,400" or "14,400"
-                final priceStr = textToParse.replaceAll(RegExp(r'[₹,\s]'), '');
-                final price22k = double.tryParse(priceStr);
+                print('📝 Text to parse: "$textToParse"');
                 
-                if (price22k != null && price22k > 1000 && price22k < 100000) {
-                  print('💰 Parsed 22K price: ₹$price22k using method: $method');
-                  completer.complete({
-                    'price': GoldPrice(
-                      date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-                      price22k: price22k,
-                      price24k: 0.0,
-                      city: 'Chennai',
-                    ),
-                    'method': method,
-                    'debug': 'Successfully fetched using $method method',
-                  });
+                // Extract number from text - look for pattern like "14,400" or "14400"
+                // This regex finds numbers with optional commas: \d{1,3}(,\d{3})*
+                final priceMatch = RegExp(r'(\d{1,3}(?:,\d{3})+|\d{4,})').firstMatch(textToParse);
+                
+                if (priceMatch != null) {
+                  final priceStr = priceMatch.group(0)!.replaceAll(',', '');
+                  final price22k = double.tryParse(priceStr);
+                  
+                  print('🔢 Extracted price string: "$priceStr", parsed: $price22k');
+                  
+                  if (price22k != null && price22k > 1000 && price22k < 100000) {
+                    print('💰 Parsed 22K price: ₹$price22k using method: $method');
+                    completer.complete({
+                      'price': GoldPrice(
+                        date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+                        price22k: price22k,
+                        price24k: 0.0,
+                        city: 'Chennai',
+                      ),
+                      'method': method,
+                      'debug': 'Successfully fetched using $method method',
+                    });
+                  } else {
+                    print('⚠️ Parsed price out of valid range: $price22k (expected 1000-100000)');
+                    completer.complete({
+                      'price': null,
+                      'method': 'parse_failed',
+                      'debug': 'Parsed price invalid: $price22k from text: $textToParse',
+                    });
+                  }
                 } else {
-                  print('⚠️ Parsed price seems invalid: $price22k');
+                  print('⚠️ Could not extract price from text: "$textToParse"');
                   completer.complete({
                     'price': null,
                     'method': 'parse_failed',
-                    'debug': 'Parsed price invalid: $price22k from text: $textToParse',
+                    'debug': 'No valid price pattern found in text: $textToParse',
                   });
                 }
               } catch (e) {
