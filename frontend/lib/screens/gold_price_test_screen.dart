@@ -26,7 +26,10 @@ class _GoldPriceTestScreenState extends State<GoldPriceTestScreen> {
     });
 
     try {
-      final goldPrice = await _goldService.fetchCurrentGoldPrice();
+      final result = await _goldService.fetchCurrentGoldPrice();
+      final goldPrice = result['price'];
+      final method = result['method'];
+      final debug = result['debug'];
       
       if (goldPrice != null) {
         // Save to database
@@ -34,7 +37,7 @@ class _GoldPriceTestScreenState extends State<GoldPriceTestScreen> {
         
         if (mounted) {
           setState(() {
-            _status = '✅ Successfully fetched and saved!';
+            _status = '✅ Fetched via $method!';
             _price22k = '₹${goldPrice.price22k.toStringAsFixed(0)}';
             _date = goldPrice.date;
             _isLoading = false;
@@ -43,7 +46,7 @@ class _GoldPriceTestScreenState extends State<GoldPriceTestScreen> {
       } else {
         if (mounted) {
           setState(() {
-            _status = '❌ Failed to fetch price. Check console.';
+            _status = '❌ Failed: $debug';
             _isLoading = false;
           });
         }
@@ -65,16 +68,28 @@ class _GoldPriceTestScreenState extends State<GoldPriceTestScreen> {
     });
 
     try {
-      final goldPrice = await _goldService.fetchGoldPriceWithFallback();
-      await _storage.saveGoldPrice(goldPrice);
+      final result = await _goldService.fetchGoldPriceWithFallback();
+      final goldPrice = result['price'];
+      final method = result['method'];
       
-      if (mounted) {
-        setState(() {
-          _status = '✅ Fetched (may be mock data)';
-          _price22k = '₹${goldPrice.price22k.toStringAsFixed(0)}';
-          _date = goldPrice.date;
-          _isLoading = false;
-        });
+      if (goldPrice != null) {
+        await _storage.saveGoldPrice(goldPrice);
+        
+        if (mounted) {
+          setState(() {
+            _status = '✅ Fetched via $method';
+            _price22k = '₹${goldPrice.price22k.toStringAsFixed(0)}';
+            _date = goldPrice.date;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _status = '❌ All methods failed';
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       if (mounted) {

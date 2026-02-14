@@ -23,12 +23,27 @@ class NotificationService {
   // Background Handler
   @pragma('vm:entry-point')
   static void notificationTapBackground(NotificationResponse notificationResponse) {
-    print('Notification action tapped: ${notificationResponse.actionId}');
+    print('Notification tapped: ${notificationResponse.actionId}');
+    
+    // Only handle action button taps, not regular notification taps
+    // This prevents duplicate notifications when user clicks the notification itself
+    if (notificationResponse.actionId == null) {
+      // User tapped the notification body (not an action button)
+      // Just open the app, don't reschedule
+      print('Notification body tapped - opening app only');
+      return;
+    }
+    
+    // Handle action buttons
     if (notificationResponse.actionId == 'NO_ACTION') {
       // Schedule for 3 hours later
+      print('NO button tapped - scheduling snooze');
       _scheduleSnooze(notificationResponse.id!, notificationResponse.payload);
+    } else if (notificationResponse.actionId == 'YES_ACTION') {
+      // Task completed - cancel any future snoozes
+      print('YES button tapped - task completed');
+      // The notification is already set to cancelNotification: true, so it will dismiss
     }
-    // YES_ACTION does nothing, effectively cancelling the nag loop for today
   }
 
   static Future<void> _scheduleSnooze(int id, String? payload) async {

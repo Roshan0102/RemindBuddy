@@ -14,11 +14,11 @@ class GoldPriceService {
   /// Fetch current gold price from bankbazaar.com
   /// Uses XPath to extract price from the specific DOM element
   /// Uses HeadlessInAppWebView to bypass Cloudflare protection
-  Future<GoldPrice?> fetchCurrentGoldPrice() async {
+  Future<Map<String, dynamic>> fetchCurrentGoldPrice() async {
     // Only works on mobile platforms for now
-    if (kIsWeb) return null;
+    if (kIsWeb) return {'price': null, 'method': 'web_not_supported', 'debug': 'Web platform not supported'};
 
-    final Completer<GoldPrice?> completer = Completer<GoldPrice?>();
+    final Completer<Map<String, dynamic>> completer = Completer<Map<String, dynamic>>();
     
     // Create a HEADLESS webview (invisible browser)
     HeadlessInAppWebView? headlessWebView;
@@ -41,7 +41,7 @@ class GoldPriceService {
             final String? priceText = await controller.evaluateJavascript(source: """
               (function() {
                 try {
-                  // Method 1: Use XPath to find the exact element
+                  // Method 1: Use XPath to find the exact element (PRIMARY)
                   function getElementByXPath(xpath) {
                     return document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
                   }
@@ -50,10 +50,21 @@ class GoldPriceService {
                   const priceElement = getElementByXPath(xpath);
                   
                   if (priceElement && priceElement.innerText) {
-                    return priceElement.innerText.trim();
+                    console.log('✅ Method 1 (XPath): Success');
+                    return JSON.stringify({text: priceElement.innerText.trim(), method: 'xpath'});
                   }
                   
-                  // Method 2: Fallback - Look for "Today's Gold Rate" and find nearby price
+                  // Method 2: Old inspection method - Find price in specific structure (FALLBACK 1)
+                  const priceContainers = document.querySelectorAll('[class*="price"], [class*="rate"]');
+                  for (let container of priceContainers) {
+                    const text = container.innerText || container.textContent;
+                    if (text && text.includes('₹') && text.match(/\\d{2,}/)) {
+                      console.log('✅ Method 2 (Inspection): Success');
+                      return JSON.stringify({text: text.trim(), method: 'inspection'});
+                    }
+                  }
+                  
+                  // Method 3: Look for "Today's Gold Rate" heading (FALLBACK 2)
                   const h2Elements = document.getElementsByTagName('h2');
                   for (let i = 0; i < h2Elements.length; i++) {
                     if (h2Elements[i].innerText.includes("Today's Gold Rate") || 
@@ -61,19 +72,24 @@ class GoldPriceService {
                       const parentDiv = h2Elements[i].parentElement;
                       if (parentDiv) {
                         const priceSpan = parentDiv.querySelector('.white-space-nowrap');
-                        if (priceSpan) return priceSpan.innerText.trim();
+                        if (priceSpan) {
+                          console.log('✅ Method 3 (Heading Search): Success');
+                          return JSON.stringify({text: priceSpan.innerText.trim(), method: 'heading_search'});
+                        }
                       }
                     }
                   }
                   
-                  // Method 3: Search for any element with white-space-nowrap containing ₹
+                  // Method 4: Search for any element with white-space-nowrap containing ₹ (FALLBACK 3)
                   const allSpans = document.querySelectorAll('.white-space-nowrap');
                   for (let span of allSpans) {
                     if (span.innerText.includes('₹')) {
-                      return span.innerText.trim();
+                      console.log('✅ Method 4 (Generic Search): Success');
+                      return JSON.stringify({text: span.innerText.trim(), method: 'generic_search'});
                     }
                   }
                   
+                  console.error('❌ All methods failed');
                   return null;
                 } catch(e) { 
                   console.error('Error extracting price:', e);
@@ -85,34 +101,89 @@ class GoldPriceService {
             print('📊 Extracted text from WebView: $priceText');
 
             if (priceText != null && priceText.isNotEmpty) {
-              // Extract number from text like "₹ 14,400" or "₹14,400" or "14,400"
-              final priceStr = priceText.replaceAll(RegExp(r'[₹,\s]'), '');
-              final price22k = double.tryParse(priceStr);
-              
-              if (price22k != null && price22k > 1000 && price22k < 100000) {
-                print('💰 Parsed 22K price: ₹$price22k');
-                completer.complete(GoldPrice(
-                  date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-                  price22k: price22k,
-                  price24k: 0.0,
-                  city: 'Chennai',
-                ));
-              } else {
-                print('⚠️ Parsed price seems invalid: $price22k');
-                completer.complete(null);
+              try {
+                String textToParse = priceText;
+                String method = 'unknown';
+                
+                // Try to parse as JSON first (new format)
+                try {
+                  final parsed = priceText.replaceAll("'", '"');
+                  if (parsed.contains('{') && parsed.contains('}')) {
+                    final jsonStart = parsed.indexOf('{');
+                    final jsonEnd = parsed.lastIndexOf('}') + 1;
+                    final jsonStr = parsed.substring(jsonStart, jsonEnd);
+                    final data = jsonStr.split(',');
+                    for (var item in data) {
+                      if (item.contains('text')) {
+                        textToParse = item.split(':')[1].replaceAll('"', '').replaceAll('}', '').trim();
+                      }
+                      if (item.contains('method')) {
+                        method = item.split(':')[1].replaceAll('"', '').replaceAll('}', '').trim();
+                      }
+                    }
+                  }
+                } catch (e) {
+                  // Not JSON, use as is
+                }
+                
+                // Extract number from text like "₹ 14,400" or "₹14,400" or "14,400"
+                final priceStr = textToParse.replaceAll(RegExp(r'[₹,\s]'), '');
+                final price22k = double.tryParse(priceStr);
+                
+                if (price22k != null && price22k > 1000 && price22k < 100000) {
+                  print('💰 Parsed 22K price: ₹$price22k using method: $method');
+                  completer.complete({
+                    'price': GoldPrice(
+                      date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+                      price22k: price22k,
+                      price24k: 0.0,
+                      city: 'Chennai',
+                    ),
+                    'method': method,
+                    'debug': 'Successfully fetched using $method method',
+                  });
+                } else {
+                  print('⚠️ Parsed price seems invalid: $price22k');
+                  completer.complete({
+                    'price': null,
+                    'method': 'parse_failed',
+                    'debug': 'Parsed price invalid: $price22k from text: $textToParse',
+                  });
+                }
+              } catch (e) {
+                print('❌ Error parsing price: $e');
+                completer.complete({
+                  'price': null,
+                  'method': 'exception',
+                  'debug': 'Exception during parsing: $e',
+                });
               }
             } else {
               print('❌ Could not find gold price in WebView DOM');
-              completer.complete(null);
+              completer.complete({
+                'price': null,
+                'method': 'not_found',
+                'debug': 'Could not find gold price in DOM',
+              });
             }
           } catch (e) {
             print('❌ Error evaluating JS in WebView: $e');
-            completer.complete(null);
+            completer.complete({
+              'price': null,
+              'method': 'js_error',
+              'debug': 'JS evaluation error: $e',
+            });
           }
         },
         onReceivedError: (controller, request, error) {
            print('❌ WebView Error: ${error.description}');
-           if (!completer.isCompleted) completer.complete(null);
+           if (!completer.isCompleted) {
+             completer.complete({
+               'price': null,
+               'method': 'webview_error',
+               'debug': 'WebView error: ${error.description}',
+             });
+           }
         },
         onReceivedHttpError: (controller, request, response) {
            print('❌ WebView HTTP Error: ${response.statusCode}');
@@ -125,7 +196,11 @@ class GoldPriceService {
       // Set a timeout of 30 seconds
       return await completer.future.timeout(const Duration(seconds: 30), onTimeout: () {
         print('⏳ WebView timed out');
-        return null;
+        return {
+          'price': null,
+          'method': 'timeout',
+          'debug': 'WebView request timed out after 30 seconds',
+        };
       }).whenComplete(() {
         // Clean up
         headlessWebView?.dispose();
@@ -133,14 +208,19 @@ class GoldPriceService {
 
     } catch (e) {
       print('❌ Error in Headless WebView service: $e');
-      return null;
+      return {
+        'price': null,
+        'method': 'exception',
+        'debug': 'Service exception: $e',
+      };
     }
   }
 
   Future<Map<String, dynamic>?> checkAndNotifyGoldPriceChange() async {
     try {
       print('🔄 Background Task: Checking Gold Price...');
-      final newPrice = await fetchCurrentGoldPrice();
+      final result = await fetchCurrentGoldPrice();
+      final newPrice = result['price'] as GoldPrice?;
       
       if (newPrice != null) {
          // Return data for the background handler to process
@@ -150,6 +230,8 @@ class GoldPriceService {
          // 3. Compare and notify
          return {
            'price': newPrice,
+           'method': result['method'],
+           'debug': result['debug'],
          };
       }
       return null;
@@ -160,21 +242,26 @@ class GoldPriceService {
   }
 
   /// Fetch gold price with fallback to mock data for testing
-  Future<GoldPrice> fetchGoldPriceWithFallback() async {
-    final price = await fetchCurrentGoldPrice();
+  Future<Map<String, dynamic>> fetchGoldPriceWithFallback() async {
+    final result = await fetchCurrentGoldPrice();
+    final price = result['price'] as GoldPrice?;
     
     if (price != null) {
-      return price;
+      return result;
     }
     
     print('⚠️ Using fallback mock data');
     // Fallback to mock data for testing
-    return GoldPrice(
-      date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-      price22k: 14600.0,
-      price24k: 15928.0,
-      city: 'Chennai',
-    );
+    return {
+      'price': GoldPrice(
+        date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        price22k: 14600.0,
+        price24k: 15928.0,
+        city: 'Chennai',
+      ),
+      'method': 'mock_fallback',
+      'debug': 'Using mock data as fallback',
+    };
   }
 
   /// Generate mock historical data for testing

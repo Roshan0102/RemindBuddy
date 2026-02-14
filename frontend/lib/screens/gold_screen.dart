@@ -4,7 +4,6 @@ import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
 import '../services/gold_price_service.dart';
 import '../services/storage_service.dart';
-import '../services/gold_scheduler_service.dart';
 import '../models/gold_price.dart';
 
 class GoldScreen extends StatefulWidget {
@@ -54,10 +53,67 @@ class _GoldScreenState extends State<GoldScreen> {
 
   Future<void> _fetchPrice() async {
     setState(() => _isLoading = true);
-    final scheduler = GoldSchedulerService();
-    await scheduler.manualFetch();
-    // Reload data
-    await _loadData();
+    try {
+      final goldService = GoldPriceService();
+      final storage = StorageService();
+      
+      // Fetch current price with debug info
+      final result = await goldService.fetchCurrentGoldPrice();
+      final newPrice = result['price'] as GoldPrice?;
+      final method = result['method'];
+      final debug = result['debug'];
+      
+      print('📊 Fetch method: $method');
+      print('🔍 Debug: $debug');
+      
+      if (newPrice != null) {
+        // Get latest price from database
+        final latestPrice = await storage.getLatestGoldPrice();
+        
+        if (latestPrice != null && 
+            latestPrice.date == newPrice.date &&
+            (newPrice.price22k - latestPrice.price22k).abs() < 1.0) {
+          // Same day, price hasn't changed significantly - just update timestamp
+          print('✓ Price unchanged - Updating timestamp only');
+          // Don't add new row, just refresh UI
+        } else {
+          // Price changed or new day - save new entry
+          await storage.saveGoldPrice(newPrice);
+          print('✅ New price saved: ₹${newPrice.price22k}');
+        }
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Fetched via $method: ₹${newPrice.price22k.toStringAsFixed(0)}'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Failed to fetch: $debug'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error fetching price: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      // Reload data
+      await _loadData();
+    }
   }
 
   Future<void> _clearAllData() async {
@@ -155,18 +211,19 @@ class _GoldScreenState extends State<GoldScreen> {
     final price = _currentPrice!.price22k;
     final diff = _priceDiff ?? 0;
     
+    // Green for increase, Red for decrease (Issue #4)
     Color diffColor = Colors.grey;
     IconData diffIcon = Icons.remove;
-    String diffText = "No Change";
+    String diffText = "";
     
     if (diff > 0) {
-      diffColor = Colors.red;
+      diffColor = Colors.green;  // Price increased = good
       diffIcon = Icons.arrow_upward;
       diffText = "+₹${diff.toStringAsFixed(0)}";
     } else if (diff < 0) {
-      diffColor = Colors.green;
+      diffColor = Colors.red;  // Price decreased = bad
       diffIcon = Icons.arrow_downward;
-      diffText = "-₹${diff.abs().toStringAsFixed(0)}";
+      diffText = "₹${diff.toStringAsFixed(0)}";
     }
     
     return Card(
@@ -180,24 +237,29 @@ class _GoldScreenState extends State<GoldScreen> {
             const SizedBox(height: 8),
             Text(
               '₹ ${price.toStringAsFixed(0)}', 
-              style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.amber),
+              style: TextStyle(
+                fontSize: 48, 
+                fontWeight: FontWeight.bold, 
+                color: Theme.of(context).colorScheme.onSurface,  // Dark color matching background
+              ),
             ),
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(diffIcon, color: diffColor, size: 20),
-                const SizedBox(width: 4),
-                Text(
-                  diffText,
-                  style: TextStyle(color: diffColor, fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                Text(
-                  ' (vs Previous)',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-              ],
-            ),
+             if (diff != 0)  // Only show if there's a change
+               Row(
+                 mainAxisAlignment: MainAxisAlignment.center,
+                 children: [
+                   Icon(diffIcon, color: diffColor, size: 24),
+                   const SizedBox(width: 4),
+                   Text(
+                     diffText,
+                     style: TextStyle(color: diffColor, fontWeight: FontWeight.bold, fontSize: 18),
+                   ),
+                   Text(
+                     ' (vs Previous)',
+                     style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                   ),
+                 ],
+               ),
             const SizedBox(height: 8),
             Text(
               'Updated: ${_currentPrice!.date}', 
@@ -237,17 +299,17 @@ class _GoldScreenState extends State<GoldScreen> {
                     ? Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            change > 0 ? Icons.arrow_upward : change < 0 ? Icons.arrow_downward : Icons.remove,
-                            size: 16,
-                            color: change > 0 ? Colors.red : change < 0 ? Colors.green : Colors.grey,
-                          ),
-                          Text(
-                            change != 0 ? '₹${change.abs().toStringAsFixed(0)}' : '-',
-                            style: TextStyle(
-                              color: change > 0 ? Colors.red : change < 0 ? Colors.green : Colors.grey,
-                            ),
-                          ),
+                           Icon(
+                             change > 0 ? Icons.arrow_upward : change < 0 ? Icons.arrow_downward : Icons.remove,
+                             size: 16,
+                             color: change > 0 ? Colors.green : change < 0 ? Colors.red : Colors.grey,  // Green for increase
+                           ),
+                           Text(
+                             change != 0 ? '₹${change.abs().toStringAsFixed(0)}' : '-',
+                             style: TextStyle(
+                               color: change > 0 ? Colors.green : change < 0 ? Colors.red : Colors.grey,  // Green for increase
+                             ),
+                           ),
                         ],
                       )
                     : const Text('-'),

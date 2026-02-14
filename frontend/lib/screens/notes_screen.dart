@@ -38,89 +38,78 @@ class _NotesScreenState extends State<NotesScreen> {
       if (!authenticated) return;
     }
 
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-              left: 16,
-              right: 16,
-              top: 16,
-            ),
+    // Use full screen dialog instead of bottom sheet
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => Scaffold(
+          appBar: AppBar(
+            title: Text(note == null ? 'New Note' : 'Edit Note'),
+            actions: [
+              IconButton(
+                icon: Icon(isLocked ? Icons.lock : Icons.lock_open, 
+                  color: isLocked ? Colors.red : Colors.green),
+                onPressed: () {
+                  setState(() {
+                    isLocked = !isLocked;
+                  });
+                },
+                tooltip: isLocked ? 'Unlock Note' : 'Lock Note (PIN: 0000)',
+              ),
+              TextButton(
+                onPressed: () async {
+                  if (titleController.text.isNotEmpty || contentController.text.isNotEmpty) {
+                    final newNote = Note(
+                      id: note?.id,
+                      title: titleController.text,
+                      content: contentController.text,
+                      date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                      isLocked: isLocked,
+                    );
+                    if (note == null) {
+                      await _storageService.insertNote(newNote);
+                    } else {
+                      await _storageService.updateNote(newNote);
+                    }
+                    _loadNotes();
+                    if (mounted) Navigator.pop(context);
+                  }
+                },
+                child: const Text('SAVE', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(16.0),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Edit Note', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    IconButton(
-                      icon: Icon(isLocked ? Icons.lock : Icons.lock_open, color: isLocked ? Colors.red : Colors.green),
-                      onPressed: () {
-                        setModalState(() {
-                          isLocked = !isLocked;
-                        });
-                      },
-                      tooltip: isLocked ? 'Unlock Note' : 'Lock Note (PIN: 0000)',
-                    ),
-                  ],
-                ),
                 TextField(
                   controller: titleController,
                   decoration: const InputDecoration(
                     hintText: 'Title',
                     border: InputBorder.none,
-                    hintStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    hintStyle: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                   ),
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  autofocus: note == null,
                 ),
-                TextField(
-                  controller: contentController,
-                  decoration: const InputDecoration(
-                    hintText: 'Start typing...',
-                    border: InputBorder.none,
+                const Divider(),
+                Expanded(
+                  child: TextField(
+                    controller: contentController,
+                    decoration: const InputDecoration(
+                      hintText: 'Start typing your note...',
+                      border: InputBorder.none,
+                    ),
+                    maxLines: null,
+                    expands: true,
+                    textAlignVertical: TextAlignVertical.top,
                   ),
-                  maxLines: 5,
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () async {
-                        if (titleController.text.isNotEmpty || contentController.text.isNotEmpty) {
-                          final newNote = Note(
-                            id: note?.id,
-                            title: titleController.text,
-                            content: contentController.text,
-                            date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
-                            isLocked: isLocked,
-                          );
-                          if (note == null) {
-                            await _storageService.insertNote(newNote);
-                          } else {
-                            await _storageService.updateNote(newNote);
-                          }
-                          _loadNotes();
-                          Navigator.pop(context);
-                        }
-                      },
-                      child: const Text('Save'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
               ],
             ),
-          );
-        }
+          ),
+        ),
       ),
     );
   }

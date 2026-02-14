@@ -10,6 +10,7 @@ import '../models/gold_price.dart';
 class StorageService {
   static final StorageService _instance = StorageService._internal();
   static Database? _database;
+  static const int _databaseVersion = 8;  // Database version for multi-month shifts
 
   factory StorageService() {
     return _instance;
@@ -28,7 +29,7 @@ class StorageService {
     if (kIsWeb) {
       return await openDatabase(
         inMemoryDatabasePath,
-        version: 6,
+        version: _databaseVersion,
         onCreate: (db, version) async {
           await _createTables(db);
         },
@@ -36,57 +37,57 @@ class StorageService {
     }
     
     // For mobile, use persistent database
-    String path = join(await getDatabasesPath(), 'remindbuddy.db');
+    final databasesPath = await getDatabasesPath();
+    final path = join(databasesPath, 'remindbuddy.db');
+
     return await openDatabase(
       path,
-      version: 7, 
+      version: _databaseVersion,
       onCreate: (db, version) async {
         await _createTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        print('Upgrading database from $oldVersion to $newVersion');
+        
+        // Migration for version 2: Add isAnnoying column to tasks
         if (oldVersion < 2) {
-          await db.execute(
-            'CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, date TEXT, isLocked INTEGER)',
-          );
+          try {
+            await db.execute('ALTER TABLE tasks ADD COLUMN isAnnoying INTEGER DEFAULT 0');
+          } catch (e) { print("isAnnoying column error: $e"); }
         }
+        
+        // Migration for version 3: Add daily_reminders table
         if (oldVersion < 3) {
-           try {
-             await db.execute('ALTER TABLE tasks ADD COLUMN isAnnoying INTEGER DEFAULT 0');
-           } catch (e) { print("Column isAnnoying might already exist"); }
-           try {
-             await db.execute('ALTER TABLE notes ADD COLUMN isLocked INTEGER DEFAULT 0');
-           } catch (e) { print("Column isLocked might already exist"); }
-        }
-        if (oldVersion < 4) {
           try {
             await db.execute(
               'CREATE TABLE daily_reminders(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, time TEXT, isActive INTEGER, isAnnoying INTEGER)',
             );
-          } catch (e) { print("Table daily_reminders might already exist"); }
+          } catch (e) { print("daily_reminders table error: $e"); }
         }
+        
+        // Migration for version 4: Add checklists tables
+        if (oldVersion < 4) {
+          try {
+            await db.execute(
+              'CREATE TABLE checklists(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, iconCode INTEGER, color INTEGER)',
+            );
+            await db.execute(
+              'CREATE TABLE checklist_items(id INTEGER PRIMARY KEY AUTOINCREMENT, checklistId INTEGER, text TEXT, isChecked INTEGER)',
+            );
+          } catch (e) { print("checklists table error: $e"); }
+        }
+        
+        // Migration for version 5: Add gold_prices table
         if (oldVersion < 5) {
           try {
             await db.execute(
               'CREATE TABLE gold_prices(date TEXT PRIMARY KEY, price22k REAL, price24k REAL, city TEXT)',
             );
-          } catch (e) { print("Table gold_prices might already exist"); }
+          } catch (e) { print("gold_prices table error: $e"); }
         }
+        
+        // Migration for version 6: Add gold_prices_history table
         if (oldVersion < 6) {
-           // Add Checklists tables
-           try {
-             await db.execute(
-               'CREATE TABLE checklists(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, iconCode INTEGER, color INTEGER)',
-             );
-             await db.execute(
-               'CREATE TABLE checklist_items(id INTEGER PRIMARY KEY AUTOINCREMENT, checklistId INTEGER, text TEXT, isChecked INTEGER)',
-             );
-           } catch (e) { print("Checklist tables might already exist"); }
-
-           // Migrate Gold Price table to support datetime (multiple entries per day) if needed
-           // For simplicity, we'll just keep adding to it, but the primary key logic in code will change to use full timestamp or unique ID
-           // Dropping and recreating is risky for data loss, so we'll just create a new one if it doesn't exist or modify logic
-           // To support multiple updates per day, the PRIMARY KEY on 'date' (YYYY-MM-DD) is problematic.
-           // Let's CREATE a new table "gold_prices_v2" with a proper ID or allow multiple dates
            try {
              await db.execute(
                'CREATE TABLE gold_prices_history(id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, price22k REAL, price24k REAL, city TEXT)',
@@ -95,8 +96,9 @@ class StorageService {
              // await db.execute('INSERT INTO gold_prices_history (timestamp, price22k, price24k, city) SELECT date, price22k, price24k, city FROM gold_prices');
            } catch (e) { print("gold_prices_history table error: $e"); }
         }
+        
+        // Migration for version 7: Add Shifts tables
         if (oldVersion < 7) {
-           // Add Shifts table
            try {
              await db.execute(
                'CREATE TABLE shifts(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT UNIQUE, shift_type TEXT, start_time TEXT, end_time TEXT, is_week_off INTEGER)',
@@ -105,6 +107,25 @@ class StorageService {
                'CREATE TABLE shift_metadata(id INTEGER PRIMARY KEY, employee_name TEXT, month TEXT)',
              );
            } catch (e) { print("Shifts table error: $e"); }
+        }
+        
+        // Migration for version 8: Add roster_month column for multi-month support
+        if (oldVersion < 8) {
+           try {
+             // Add roster_month column to shifts table
+             await db.execute('ALTER TABLE shifts ADD COLUMN roster_month TEXT');
+             // Add roster_month column to shift_metadata table
+             await db.execute('ALTER TABLE shift_metadata ADD COLUMN roster_month TEXT');
+             
+             // Update existing shifts with their month from the date
+             await db.execute('''
+               UPDATE shifts 
+               SET roster_month = substr(date, 1, 7)
+               WHERE roster_month IS NULL
+             ''');
+             
+             print("✅ Added multi-month support to shifts tables");
+           } catch (e) { print("Multi-month shifts migration error: $e"); }
         }
       },
     );
@@ -134,10 +155,10 @@ class StorageService {
       'CREATE TABLE checklist_items(id INTEGER PRIMARY KEY AUTOINCREMENT, checklistId INTEGER, text TEXT, isChecked INTEGER)',
     );
     await db.execute(
-      'CREATE TABLE shifts(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT UNIQUE, shift_type TEXT, start_time TEXT, end_time TEXT, is_week_off INTEGER)',
+      'CREATE TABLE shifts(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT UNIQUE, shift_type TEXT, start_time TEXT, end_time TEXT, is_week_off INTEGER, roster_month TEXT)',
     );
     await db.execute(
-      'CREATE TABLE shift_metadata(id INTEGER PRIMARY KEY, employee_name TEXT, month TEXT)',
+      'CREATE TABLE shift_metadata(id INTEGER PRIMARY KEY, employee_name TEXT, month TEXT, roster_month TEXT)',
     );
   }
 
@@ -436,40 +457,58 @@ class StorageService {
   }
 
   // Shift Methods
-  Future<void> saveShiftRoster(String employeeName, String month, List<Map<String, dynamic>> shifts) async {
+  Future<void> saveShiftRoster(String employeeName, String month, List<Map<String, dynamic>> shifts, {String? rosterMonth}) async {
     final db = await database;
     
-    // Clear existing shifts
-    await db.delete('shifts');
-    await db.delete('shift_metadata');
+    // Extract roster month from the first shift date if not provided
+    final effectiveRosterMonth = rosterMonth ?? (shifts.isNotEmpty ? shifts[0]['date'].toString().substring(0, 7) : month);
     
-    // Save metadata
+    // Clear existing shifts for this specific roster month only
+    await db.delete('shifts', where: 'roster_month = ?', whereArgs: [effectiveRosterMonth]);
+    
+    // Save or update metadata for this roster month
     await db.insert('shift_metadata', {
-      'id': 1,
+      'id': effectiveRosterMonth.hashCode % 1000000,  // Unique ID based on month
       'employee_name': employeeName,
       'month': month,
+      'roster_month': effectiveRosterMonth,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
     
-    // Save shifts
+    // Save shifts with roster_month
     for (var shift in shifts) {
-      await db.insert('shifts', shift, conflictAlgorithm: ConflictAlgorithm.replace);
+      final shiftData = Map<String, dynamic>.from(shift);
+      shiftData['roster_month'] = effectiveRosterMonth;
+      await db.insert('shifts', shiftData, conflictAlgorithm: ConflictAlgorithm.replace);
     }
+    
+    print('✅ Saved ${shifts.length} shifts for roster month: $effectiveRosterMonth');
   }
 
-  Future<Map<String, String>?> getShiftMetadata() async {
+  Future<Map<String, String>?> getShiftMetadata({String? rosterMonth}) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('shift_metadata', where: 'id = ?', whereArgs: [1]);
+    List<Map<String, dynamic>> maps;
+    
+    if (rosterMonth != null) {
+      maps = await db.query('shift_metadata', where: 'roster_month = ?', whereArgs: [rosterMonth]);
+    } else {
+      // Get the most recent metadata
+      maps = await db.query('shift_metadata', orderBy: 'id DESC', limit: 1);
+    }
     
     if (maps.isEmpty) return null;
     
     return {
       'employee_name': maps[0]['employee_name'] as String,
       'month': maps[0]['month'] as String,
+      'roster_month': maps[0]['roster_month'] as String? ?? maps[0]['month'] as String,
     };
   }
 
-  Future<List<Map<String, dynamic>>> getAllShifts() async {
+  Future<List<Map<String, dynamic>>> getAllShifts({String? rosterMonth}) async {
     final db = await database;
+    if (rosterMonth != null) {
+      return await db.query('shifts', where: 'roster_month = ?', whereArgs: [rosterMonth], orderBy: 'date ASC');
+    }
     return await db.query('shifts', orderBy: 'date ASC');
   }
 
@@ -503,15 +542,24 @@ class StorageService {
     return maps;
   }
 
-  Future<Map<String, int>> getShiftStatistics(String month) async {
+  Future<Map<String, int>> getShiftStatistics(String month, {String? rosterMonth}) async {
     final db = await database;
     
     // Get all shifts for the month
-    final List<Map<String, dynamic>> maps = await db.query(
-      'shifts',
-      where: 'date LIKE ?',
-      whereArgs: ['$month%'],
-    );
+    List<Map<String, dynamic>> maps;
+    if (rosterMonth != null) {
+      maps = await db.query(
+        'shifts',
+        where: 'roster_month = ? AND date LIKE ?',
+        whereArgs: [rosterMonth, '$month%'],
+      );
+    } else {
+      maps = await db.query(
+        'shifts',
+        where: 'date LIKE ?',
+        whereArgs: ['$month%'],
+      );
+    }
     
     int morningCount = 0;
     int afternoonCount = 0;
@@ -544,9 +592,23 @@ class StorageService {
     };
   }
 
-  Future<void> clearAllShifts() async {
+  Future<void> clearAllShifts({String? rosterMonth}) async {
     final db = await database;
-    await db.delete('shifts');
-    await db.delete('shift_metadata');
+    if (rosterMonth != null) {
+      await db.delete('shifts', where: 'roster_month = ?', whereArgs: [rosterMonth]);
+      await db.delete('shift_metadata', where: 'roster_month = ?', whereArgs: [rosterMonth]);
+    } else {
+      await db.delete('shifts');
+      await db.delete('shift_metadata');
+    }
+  }
+  
+  // Get list of available roster months
+  Future<List<String>> getAvailableRosterMonths() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.rawQuery(
+      'SELECT DISTINCT roster_month FROM shifts WHERE roster_month IS NOT NULL ORDER BY roster_month DESC'
+    );
+    return maps.map((m) => m['roster_month'] as String).toList();
   }
 }

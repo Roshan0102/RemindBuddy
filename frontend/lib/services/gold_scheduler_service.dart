@@ -85,7 +85,13 @@ class GoldSchedulerService {
       final notificationService = NotificationService();
 
       // Fetch current price
-      final newPrice = await goldService.fetchCurrentGoldPrice();
+      final result = await goldService.fetchCurrentGoldPrice();
+      final newPrice = result['price'];
+      final method = result['method'];
+      final debug = result['debug'];
+      
+      LogService.staticLog('📊 Fetch method: $method');
+      LogService.staticLog('🔍 Debug: $debug');
       
       if (newPrice != null) {
         LogService.staticLog('💰 11 AM Price Fetched: ₹${newPrice.price22k}');
@@ -128,7 +134,13 @@ class GoldSchedulerService {
       final notificationService = NotificationService();
 
       // Fetch current price
-      final newPrice = await goldService.fetchCurrentGoldPrice();
+      final result = await goldService.fetchCurrentGoldPrice();
+      final newPrice = result['price'];
+      final method = result['method'];
+      final debug = result['debug'];
+      
+      LogService.staticLog('📊 Fetch method: $method');
+      LogService.staticLog('🔍 Debug: $debug');
       
       if (newPrice != null) {
         LogService.staticLog('💰 7 PM Price Fetched: ₹${newPrice.price22k}');
