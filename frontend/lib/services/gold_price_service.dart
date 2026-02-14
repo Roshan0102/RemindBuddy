@@ -13,8 +13,8 @@ class GoldPriceService {
   static const String goodReturnsUrl = 'https://www.goodreturns.in/gold-rates/chennai.html';
 
   /// Fetch current gold price
-  /// 1. Try BankBazaar (Primary) using Structure/Targeted Search
-  /// 2. If fails, Try GoodReturns (Secondary) using ID Selector
+  /// 1. Try BankBazaar (Primary)
+  /// 2. If fails or invalid (< 1000), Try GoodReturns (Secondary) using ID Selector
   Future<Map<String, dynamic>> fetchCurrentGoldPrice() async {
     // Only works on mobile platforms for now
     if (kIsWeb) return {'price': null, 'method': 'web_not_supported', 'debug': 'Web platform not supported'};
@@ -27,12 +27,16 @@ class GoldPriceService {
       _getBankBazaarScript()
     );
     
+    // Check if BankBazaar gave a valid price (> 1000 check is done in script, but double check here)
     if (bbResult['price'] != null) {
-      return bbResult;
+      final price = bbResult['price'] as GoldPrice;
+      if (price.price22k > 1000) {
+         return bbResult;
+      }
     }
     
-    // 2. Try GoodReturns
-    print('⚠️ BankBazaar failed (${bbResult['debug']}), attempting Secondary Source: GoodReturns');
+    // 2. Try GoodReturns (Fallback)
+    print('⚠️ BankBazaar failed or invalid, attempting Secondary Source: GoodReturns');
     return await _fetchFromUrl(
       goodReturnsUrl,
       'GoodReturns', 
@@ -160,11 +164,12 @@ class GoldPriceService {
     }
   }
 
-  // Script for BankBazaar: Structure Search with Validation
+  // Script for BankBazaar: Targeted Class Search with strict validation
   String _getBankBazaarScript() {
     return """
       (function() {
         try {
+            // Locate the "Today's Gold Rate" section specifically
             const h2s = document.getElementsByTagName('h2');
             for (let i = 0; i < h2s.length; i++) {
                 if (h2s[i].innerText.includes("Today's Gold Rate") || h2s[i].innerText.includes("Rate in Chennai")) {
@@ -173,12 +178,12 @@ class GoldPriceService {
                         const priceSpan = parent.querySelector('.white-space-nowrap');
                         if (priceSpan) {
                             const text = priceSpan.innerText.trim();
-                            // Client-side validation to filter out bad data like "14"
+                            // STRICT VALIDATION: Must not be a small number like "14"
                             const match = text.match(/\\d{1,3}(,\\d{3})+|\\d{4,}/);
                             if (match) {
                                 const val = parseFloat(match[0].replace(/,/g, ''));
                                 if (val > 1000) {
-                                    return JSON.stringify({text: text, method: 'structure_match'});
+                                    return JSON.stringify({text: text, method: 'bankbazaar_class_match'});
                                 }
                             }
                         }
@@ -191,31 +196,15 @@ class GoldPriceService {
     """;
   }
 
-  // Script for GoodReturns: ID Selector with Fallback
+  // Script for GoodReturns: ID SELECTOR ONLY
   String _getGoodReturnsScript() {
     return """
       (function() {
         try {
-            // Priority 1: ID Selector
+            // ID Selector: #22K-price
             const el = document.getElementById('22K-price');
             if (el && el.innerText) {
-                 const text = el.innerText.trim();
-                 const match = text.match(/\\d{1,3}(,\\d{3})+|\\d{4,}/);
-                 if (match) {
-                     return JSON.stringify({text: text, method: 'id_selector'});
-                 }
-            }
-
-            // Priority 2: Structure Search (Fallback)
-            const containers = document.querySelectorAll('.gold-each-container');
-            for (const container of containers) {
-                const head = container.querySelector('.gold-bottom .gold-common-head span');
-                if (head && head.innerText) {
-                    const text = head.innerText.trim();
-                    if (text.includes('₹') || text.match(/[\\d,]+/)) {
-                         return JSON.stringify({text: text, method: 'structure_fallback'});
-                    }
-                }
+                 return JSON.stringify({text: el.innerText.trim(), method: 'id_selector'});
             }
             return null;
         } catch(e) { return null; }
