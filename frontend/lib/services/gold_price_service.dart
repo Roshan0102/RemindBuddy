@@ -9,229 +9,199 @@ class GoldPriceService {
   factory GoldPriceService() => _instance;
   GoldPriceService._internal();
 
-  static const String baseUrl = 'https://www.bankbazaar.com/gold-rate-chennai.html';
+  static const String bankBazaarUrl = 'https://www.bankbazaar.com/gold-rate-chennai.html';
+  static const String goodReturnsUrl = 'https://www.goodreturns.in/gold-rates/chennai.html';
 
-  /// Fetch current gold price from bankbazaar.com
-  /// Uses XPath to extract price from the specific DOM element
-  /// Uses HeadlessInAppWebView to bypass Cloudflare protection
+  /// Fetch current gold price
+  /// 1. Try BankBazaar (Primary) using Structure/Targeted Search
+  /// 2. If fails, Try GoodReturns (Secondary) using ID Selector
   Future<Map<String, dynamic>> fetchCurrentGoldPrice() async {
     // Only works on mobile platforms for now
     if (kIsWeb) return {'price': null, 'method': 'web_not_supported', 'debug': 'Web platform not supported'};
 
+    // 1. Try BankBazaar
+    print('🔍 Attempting Primary Source: BankBazaar');
+    final bbResult = await _fetchFromUrl(
+      bankBazaarUrl, 
+      'BankBazaar',
+      _getBankBazaarScript()
+    );
+    
+    if (bbResult['price'] != null) {
+      return bbResult;
+    }
+    
+    // 2. Try GoodReturns
+    print('⚠️ BankBazaar failed (${bbResult['debug']}), attempting Secondary Source: GoodReturns');
+    return await _fetchFromUrl(
+      goodReturnsUrl,
+      'GoodReturns', 
+      _getGoodReturnsScript()
+    );
+  }
+
+  Future<Map<String, dynamic>> _fetchFromUrl(String url, String sourceName, String jsScript) async {
     final Completer<Map<String, dynamic>> completer = Completer<Map<String, dynamic>>();
-    
-    // Create a HEADLESS webview (invisible browser)
     HeadlessInAppWebView? headlessWebView;
-    
+
     try {
-      print('🔍 Fetching gold price using Headless WebView from: $baseUrl');
-      
       headlessWebView = HeadlessInAppWebView(
-        initialUrlRequest: URLRequest(url: WebUri(baseUrl)),
+        initialUrlRequest: URLRequest(url: WebUri(url)),
         initialSettings: InAppWebViewSettings(
           javaScriptEnabled: true,
           cacheEnabled: false,
           userAgent: 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
         ),
-        onLoadStop: (controller, url) async {
-          print('✅ Headless WebView loaded page: $url');
+        onLoadStop: (controller, loadedUrl) async {
+          print('✅ Headless WebView loaded $sourceName: $loadedUrl');
           try {
-            // Use XPath to extract the price directly from the DOM
-            // XPath: //*[@id="lp-root"]/div/div[2]/div/div[2]/div/div[3]/div[2]/div[2]/div/div[1]/span[1]/span[1]
-            final String? priceText = await controller.evaluateJavascript(source: """
-              (function() {
-                try {
-                  // Method 1: Use XPath to find the exact element (PRIMARY)
-                  function getElementByXPath(xpath) {
-                    return document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                  }
-                  
-                  const xpath = '//*[@id="lp-root"]/div/div[2]/div/div[2]/div/div[3]/div[2]/div[2]/div/div[1]/span[1]/span[1]';
-                  const priceElement = getElementByXPath(xpath);
-                  
-                  if (priceElement && priceElement.innerText) {
-                    console.log('✅ Method 1 (XPath): Success');
-                    return JSON.stringify({text: priceElement.innerText.trim(), method: 'xpath'});
-                  }
-                  
-                  // Method 2: Old inspection method - Find price in specific structure (FALLBACK 1)
-                  const priceContainers = document.querySelectorAll('[class*="price"], [class*="rate"], [class*="Price"], [class*="Rate"]');
-                  for (let container of priceContainers) {
-                    const text = container.innerText || container.textContent;
-                    // Look for prices with at least 4 digits (like 14,400 or 14400)
-                    if (text && (text.includes('₹') || text.includes('Rs')) && text.match(/\d{1,3}(,\d{3})+|\d{4,}/)) {
-                      console.log('✅ Method 2 (Inspection): Success');
-                      return JSON.stringify({text: text.trim(), method: 'inspection'});
-                    }
-                  }
-                  
-                  // Method 3: Look for "Today's Gold Rate" heading (FALLBACK 2)
-                  const h2Elements = document.getElementsByTagName('h2');
-                  for (let i = 0; i < h2Elements.length; i++) {
-                    if (h2Elements[i].innerText.includes("Today's Gold Rate") || 
-                        h2Elements[i].innerText.includes("Gold Rate")) {
-                      const parentDiv = h2Elements[i].parentElement;
-                      if (parentDiv) {
-                        const priceSpan = parentDiv.querySelector('.white-space-nowrap');
-                        if (priceSpan && priceSpan.innerText.match(/\d{1,3}(,\d{3})+|\d{4,}/)) {
-                          console.log('✅ Method 3 (Heading Search): Success');
-                          return JSON.stringify({text: priceSpan.innerText.trim(), method: 'heading_search'});
-                        }
-                      }
-                    }
-                  }
-                  
-                  // Method 4: Search for any element with white-space-nowrap containing ₹ and 4+ digits (FALLBACK 3)
-                  const allSpans = document.querySelectorAll('.white-space-nowrap, span, div');
-                  for (let span of allSpans) {
-                    const text = span.innerText || span.textContent;
-                    if (text && (text.includes('₹') || text.includes('Rs')) && text.match(/\d{1,3}(,\d{3})+|\d{4,}/)) {
-                      console.log('✅ Method 4 (Generic Search): Success');
-                      return JSON.stringify({text: text.trim(), method: 'generic_search'});
-                    }
-                  }
-                  
-                  console.error('❌ All methods failed');
-                  return null;
-                } catch(e) { 
-                  console.error('Error extracting price:', e);
-                  return null; 
-                }
-              })();
-            """);
-
-            print('📊 Extracted text from WebView: $priceText');
+            final String? priceText = await controller.evaluateJavascript(source: jsScript);
+            print('📊 Extracted text from $sourceName: $priceText');
 
             if (priceText != null && priceText.isNotEmpty) {
-              try {
-                String textToParse = priceText;
-                String method = 'unknown';
-                
-                // Try to parse as JSON first (new format)
-                try {
-                  final parsed = priceText.replaceAll("'", '"');
-                  if (parsed.contains('{') && parsed.contains('}')) {
-                    final jsonStart = parsed.indexOf('{');
-                    final jsonEnd = parsed.lastIndexOf('}') + 1;
-                    final jsonStr = parsed.substring(jsonStart, jsonEnd);
-                    final data = jsonStr.split(',');
-                    for (var item in data) {
-                      if (item.contains('text')) {
-                        textToParse = item.split(':')[1].replaceAll('"', '').replaceAll('}', '').trim();
-                      }
-                      if (item.contains('method')) {
-                        method = item.split(':')[1].replaceAll('"', '').replaceAll('}', '').trim();
-                      }
-                    }
-                  }
-                } catch (e) {
-                  // Not JSON, use as is
-                }
-                
-                print('📝 Text to parse: "$textToParse"');
-                
-                // Extract number from text - look for pattern like "14,400" or "14400"
-                // This regex finds numbers with optional commas: \d{1,3}(,\d{3})*
-                final priceMatch = RegExp(r'(\d{1,3}(?:,\d{3})+|\d{4,})').firstMatch(textToParse);
-                
-                if (priceMatch != null) {
-                  final priceStr = priceMatch.group(0)!.replaceAll(',', '');
-                  final price22k = double.tryParse(priceStr);
-                  
-                  print('🔢 Extracted price string: "$priceStr", parsed: $price22k');
-                  
-                  if (price22k != null && price22k > 1000 && price22k < 100000) {
-                    print('💰 Parsed 22K price: ₹$price22k using method: $method');
-                    completer.complete({
-                      'price': GoldPrice(
-                        date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-                        price22k: price22k,
-                        price24k: 0.0,
-                        city: 'Chennai',
-                      ),
-                      'method': method,
-                      'debug': 'Successfully fetched using $method method',
-                    });
-                  } else {
-                    print('⚠️ Parsed price out of valid range: $price22k (expected 1000-100000)');
-                    completer.complete({
-                      'price': null,
-                      'method': 'parse_failed',
-                      'debug': 'Parsed price invalid: $price22k from text: $textToParse',
-                    });
-                  }
-                } else {
-                  print('⚠️ Could not extract price from text: "$textToParse"');
-                  completer.complete({
-                    'price': null,
-                    'method': 'parse_failed',
-                    'debug': 'No valid price pattern found in text: $textToParse',
-                  });
-                }
-              } catch (e) {
-                print('❌ Error parsing price: $e');
+              await _parseAndComplete(priceText, sourceName, completer);
+            } else {
+              if (!completer.isCompleted) {
                 completer.complete({
                   'price': null,
-                  'method': 'exception',
-                  'debug': 'Exception during parsing: $e',
+                  'method': '${sourceName.toLowerCase()}_failed',
+                  'debug': 'No text returned from JS extraction',
                 });
               }
-            } else {
-              print('❌ Could not find gold price in WebView DOM');
-              completer.complete({
-                'price': null,
-                'method': 'not_found',
-                'debug': 'Could not find gold price in DOM',
-              });
             }
           } catch (e) {
-            print('❌ Error evaluating JS in WebView: $e');
-            completer.complete({
-              'price': null,
-              'method': 'js_error',
-              'debug': 'JS evaluation error: $e',
-            });
+            if (!completer.isCompleted) {
+              completer.complete({
+                'price': null,
+                'method': '${sourceName.toLowerCase()}_js_error',
+                'debug': 'JS execution error: $e',
+              });
+            }
           }
         },
-        onReceivedError: (controller, request, error) {
-           print('❌ WebView Error: ${error.description}');
+        onLoadError: (controller, url, code, message) {
            if (!completer.isCompleted) {
              completer.complete({
                'price': null,
-               'method': 'webview_error',
-               'debug': 'WebView error: ${error.description}',
+               'method': '${sourceName.toLowerCase()}_load_error',
+               'debug': 'WebView load error: $code - $message',
              });
            }
         },
-        onReceivedHttpError: (controller, request, response) {
-           print('❌ WebView HTTP Error: ${response.statusCode}');
-        },
       );
 
-      // Run the headless webview
       await headlessWebView.run();
       
-      // Set a timeout of 30 seconds
       return await completer.future.timeout(const Duration(seconds: 30), onTimeout: () {
-        print('⏳ WebView timed out');
         return {
           'price': null,
-          'method': 'timeout',
-          'debug': 'WebView request timed out after 30 seconds',
+          'method': '${sourceName.toLowerCase()}_timeout',
+          'debug': 'Timeout fetching from $sourceName',
         };
-      }).whenComplete(() {
-        // Clean up
-        headlessWebView?.dispose();
-      });
-
+      }).whenComplete(() => headlessWebView?.dispose());
+      
     } catch (e) {
-      print('❌ Error in Headless WebView service: $e');
       return {
         'price': null,
-        'method': 'exception',
+        'method': '${sourceName.toLowerCase()}_exception',
         'debug': 'Service exception: $e',
       };
     }
+  }
+
+  Future<void> _parseAndComplete(String priceText, String source, Completer<Map<String, dynamic>> completer) async {
+    try {
+      String textToParse = priceText;
+      
+      // Parse JSON if applicable (from our JS scripts)
+      // Expecting format: {"text": "...", "method": "..."}
+      String method = 'unknown';
+      try {
+         // Simple JSON check
+         if (priceText.trim().startsWith('{') && priceText.contains('text')) {
+            // Very basic manual parsing to avoid imports if possible, or just string manipulation
+            // But we can clean it up
+            final clean = priceText.replaceAll(RegExp(r'[{}"]'), '');
+            final parts = clean.split(',');
+            for (var part in parts) {
+              if (part.contains('text:')) textToParse = part.split('text:')[1].trim();
+              if (part.contains('method:')) method = part.split('method:')[1].trim();
+            }
+         }
+      } catch (e) {
+        // use original text
+      }
+
+      // Regex to extract price: 14,560 or 14560
+      final priceMatch = RegExp(r'(\d{1,3}(?:,\d{3})+|\d{4,})').firstMatch(textToParse);
+      
+      if (priceMatch != null) {
+        final priceStr = priceMatch.group(0)!.replaceAll(',', '');
+        final price22k = double.tryParse(priceStr);
+        
+        if (price22k != null && price22k > 1000 && price22k < 100000) {
+          print('💰 Parsed 22K price from $source: ₹$price22k');
+          if (!completer.isCompleted) {
+            completer.complete({
+              'price': GoldPrice(
+                date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+                price22k: price22k,
+                price24k: 0.0, // We only fetch 22k
+                city: 'Chennai',
+              ),
+              'method': '${source}_$method',
+              'debug': 'Success from $source',
+            });
+          }
+        } else {
+           if (!completer.isCompleted) completer.complete({'price': null, 'method': 'invalid_range', 'debug': 'Price out of range: $price22k'});
+        }
+      } else {
+         if (!completer.isCompleted) completer.complete({'price': null, 'method': 'parse_fail', 'debug': 'Regex failed on: $textToParse'});
+      }
+    } catch (e) {
+      if (!completer.isCompleted) completer.complete({'price': null, 'method': 'parse_exception', 'debug': 'Exception: $e'});
+    }
+  }
+
+  // Script for BankBazaar: Structure Search (Method 2)
+  String _getBankBazaarScript() {
+    return """
+      (function() {
+        try {
+            // Structure: H2 "Today's Gold Rate" -> Parent -> .white-space-nowrap
+            const h2s = document.getElementsByTagName('h2');
+            for (let i = 0; i < h2s.length; i++) {
+                if (h2s[i].innerText.includes("Today's Gold Rate") || h2s[i].innerText.includes("Rate in Chennai")) {
+                    const parent = h2s[i].parentElement;
+                    if (parent) {
+                        const priceSpan = parent.querySelector('.white-space-nowrap');
+                        if (priceSpan && priceSpan.innerText.match(/\\d{1,3}(,\\d{3})+|\\d{4,}/)) {
+                            return JSON.stringify({text: priceSpan.innerText.trim(), method: 'structure_match'});
+                        }
+                    }
+                }
+            }
+            return null;
+        } catch(e) { return null; }
+      })();
+    """;
+  }
+
+  // Script for GoodReturns: ID Selector (Method 2)
+  String _getGoodReturnsScript() {
+    return """
+      (function() {
+        try {
+            // ID Selector: #22K-price
+            const el = document.getElementById('22K-price');
+            if (el && el.innerText) {
+                 return JSON.stringify({text: el.innerText.trim(), method: 'id_selector'});
+            }
+            return null;
+        } catch(e) { return null; }
+      })();
+    """;
   }
 
   Future<Map<String, dynamic>?> checkAndNotifyGoldPriceChange() async {
