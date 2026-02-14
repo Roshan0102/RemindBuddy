@@ -439,7 +439,7 @@ class NotificationService {
   }
 
 
-  Future<void> showGoldPriceNotification(double price, double? difference) async {
+  Future<void> showGoldPriceNotification(double price, double? difference, {String? time}) async {
     final String diffText;
     if (difference != null) {
       if (difference > 0) {
@@ -452,6 +452,8 @@ class NotificationService {
     } else {
       diffText = 'First update today';
     }
+
+    final String timeText = time != null ? ' ($time)' : '';
 
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
@@ -468,12 +470,12 @@ class NotificationService {
 
     await flutterLocalNotificationsPlugin.show(
       8888, // Constant ID for Gold Notification
-      'Gold Price Update',
+      'Gold Price Update$timeText',
       'Current: ₹${price.toStringAsFixed(0)} | $diffText',
       platformChannelSpecifics,
       payload: 'gold_tab', // Payload to navigate to Gold Tab
     );
-    LogService().log('Shown Gold Price Notification: ₹$price');
+    LogService().log('Shown Gold Price Notification: ₹$price$timeText');
   }
 
   Future<void> cancelNotification(int id) async {

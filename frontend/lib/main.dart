@@ -3,14 +3,23 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'screens/main_screen.dart';
 import 'services/notification_service.dart';
 import 'services/background_service.dart';
+import 'services/gold_scheduler_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting();
   try {
     await NotificationService().init();
+    
+    // Initialize old background service (for other tasks if any)
     await BackgroundService().init();
-    await BackgroundService().registerPeriodicTask();
+    // Note: We're NOT registering the old periodic task anymore
+    // await BackgroundService().registerPeriodicTask();
+    
+    // Initialize and schedule the new gold price fetcher
+    await GoldSchedulerService().init();
+    await GoldSchedulerService().scheduleGoldPriceFetching();
+    print('✅ Gold price scheduler initialized');
   } catch (e) {
     print('Error initializing services: $e');
   }

@@ -1,9 +1,10 @@
 
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
 import '../services/gold_price_service.dart';
 import '../services/storage_service.dart';
+import '../services/gold_scheduler_service.dart';
 import '../models/gold_price.dart';
 
 class GoldScreen extends StatefulWidget {
@@ -31,7 +32,7 @@ class _GoldScreenState extends State<GoldScreen> {
       final storage = StorageService();
       // Fetch latest from DB
       _currentPrice = await storage.getLatestGoldPrice();
-      // Fetch History
+      // Fetch History (last 10 entries)
       _history = await storage.getGoldPriceHistory(limit: 10);
       
       // Calculate Diff
@@ -53,20 +54,43 @@ class _GoldScreenState extends State<GoldScreen> {
 
   Future<void> _fetchPrice() async {
     setState(() => _isLoading = true);
-    final service = GoldPriceService();
-    // Simulate background fetch logic here or call service
-    // We reuse the verify logic which saves to DB
-    final result = await service.checkAndNotifyGoldPriceChange();
-    if (result != null && result['price'] != null) {
-       // Reload data
-       await _loadData();
-    } else {
-       if (mounted) setState(() => _isLoading = false);
-       if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(
-           const SnackBar(content: Text('Could not fetch latest price. Check internet.')),
-         );
-       }
+    final scheduler = GoldSchedulerService();
+    await scheduler.manualFetch();
+    // Reload data
+    await _loadData();
+  }
+
+  Future<void> _clearAllData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear All Gold Data?'),
+        content: const Text('This will delete all gold price history. This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final storage = StorageService();
+      final db = await storage.database;
+      await db.delete('gold_prices');
+      await db.delete('gold_prices_history');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ All gold price data cleared')),
+        );
+        await _loadData();
+      }
     }
   }
 
@@ -77,8 +101,14 @@ class _GoldScreenState extends State<GoldScreen> {
         title: const Text('Gold Rates (22K)'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.delete_forever),
+            onPressed: _clearAllData,
+            tooltip: 'Clear All Data',
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _fetchPrice,
+            tooltip: 'Refresh Price',
           ),
         ],
       ),
@@ -92,7 +122,7 @@ class _GoldScreenState extends State<GoldScreen> {
                    _buildCurrentPriceCard(),
                    const SizedBox(height: 24),
                    const Text(
-                     'Recent History (Last 10 Days)',
+                     'Recent History (Last 10 Updates)',
                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                    ),
                    const SizedBox(height: 8),
@@ -103,7 +133,9 @@ class _GoldScreenState extends State<GoldScreen> {
                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                    ),
                    const SizedBox(height: 16),
-                   _buildChart(),
+                   _buildModernChart(),
+                   const SizedBox(height: 16),
+                   _buildScheduleInfo(),
                 ],
               ),
             ),
@@ -144,7 +176,7 @@ class _GoldScreenState extends State<GoldScreen> {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            const Text('Today\'s Gold Rate (22K)', style: TextStyle(fontSize: 16, color: Colors.grey)),
+            const Text('Latest Gold Rate (22K)', style: TextStyle(fontSize: 16, color: Colors.grey)),
             const SizedBox(height: 8),
             Text(
               '₹ ${price.toStringAsFixed(0)}', 
@@ -181,115 +213,185 @@ class _GoldScreenState extends State<GoldScreen> {
     if (_history.isEmpty) return const Text('No history available');
 
     return Card(
-      child: DataTable(
-        columnSpacing: 20,
-        columns: const [
-          DataColumn(label: Text('Date/Time')),
-          DataColumn(label: Text('Price (22K)')),
-          DataColumn(label: Text('City')),
-        ],
-        rows: _history.map((price) {
-          return DataRow(cells: [
-            DataCell(Text(price.date)), // date might contain timestamp part now so we might format it
-            DataCell(Text('₹ ${price.price22k.toStringAsFixed(0)}')),
-            DataCell(Text(price.city)),
-          ]);
-        }).toList(),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columnSpacing: 20,
+          columns: const [
+            DataColumn(label: Text('Date')),
+            DataColumn(label: Text('Price (22K)')),
+            DataColumn(label: Text('Change')),
+          ],
+          rows: List.generate(_history.length, (index) {
+            final price = _history[index];
+            double? change;
+            if (index < _history.length - 1) {
+              change = price.price22k - _history[index + 1].price22k;
+            }
+            
+            return DataRow(cells: [
+              DataCell(Text(_formatDate(price.date))),
+              DataCell(Text('₹ ${price.price22k.toStringAsFixed(0)}')),
+              DataCell(
+                change != null
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            change > 0 ? Icons.arrow_upward : change < 0 ? Icons.arrow_downward : Icons.remove,
+                            size: 16,
+                            color: change > 0 ? Colors.red : change < 0 ? Colors.green : Colors.grey,
+                          ),
+                          Text(
+                            change != 0 ? '₹${change.abs().toStringAsFixed(0)}' : '-',
+                            style: TextStyle(
+                              color: change > 0 ? Colors.red : change < 0 ? Colors.green : Colors.grey,
+                            ),
+                          ),
+                        ],
+                      )
+                    : const Text('-'),
+              ),
+            ]);
+          }),
+        ),
       ),
     );
   }
 
-  Widget _buildChart() {
-    if (_history.length < 2) return const SizedBox(height: 200, child: Center(child: Text("Not enough data for chart")));
+  Widget _buildModernChart() {
+    if (_history.length < 2) {
+      return const SizedBox(
+        height: 200,
+        child: Center(child: Text("Not enough data for chart")),
+      );
+    }
 
     // Sort for chart (oldest first)
     final sortedHistory = List<GoldPrice>.from(_history);
     sortedHistory.sort((a, b) => a.date.compareTo(b.date));
 
-    // Map to FlSpots
-    // We use index as X axis for simplicity in this view
-    List<FlSpot> spots = [];
-    double minPrice = double.infinity;
-    double maxPrice = double.negativeInfinity;
-
-    for (int i = 0; i < sortedHistory.length; i++) {
-        final p = sortedHistory[i].price22k;
-        if (p < minPrice) minPrice = p;
-        if (p > maxPrice) maxPrice = p;
-        spots.add(FlSpot(i.toDouble(), p));
-    }
-    
-    // Add buffer to Y axis
-    minPrice = (minPrice - 500).roundToDouble();
-    maxPrice = (maxPrice + 500).roundToDouble();
-
-    return SizedBox(
-      height: 250,
-      child: LineChart(
-        LineChartData(
-          minY: minPrice,
-          maxY: maxPrice,
-          lineTouchData: const LineTouchData(enabled: true),
-          gridData: const FlGridData(show: true, drawVerticalLine: false),
-          titlesData: FlTitlesData(
-            bottomTitles: AxisTitles(
-               sideTitles: SideTitles(
-                 showTitles: true,
-                 getTitlesWidget: (value, meta) {
-                    final index = value.toInt();
-                    if (index >= 0 && index < sortedHistory.length) {
-                       // Show partial date
-                       final date = sortedHistory[index].date;
-                       // Extract DD/MM if possible or just show short
-                       try {
-                         // date format from DB: "2024-05-10T..."
-                         // if it is full iso string
-                         final dt = DateTime.parse(date.contains("T") ? date : "$date 00:00:00");
-                         return Padding(
-                           padding: const EdgeInsets.only(top: 4.0),
-                           child: Text(DateFormat('dd/MM').format(dt), style: const TextStyle(fontSize: 10)),
-                         );
-                       } catch (e) {
-                         return const Text('');
-                       }
-                    }
-                    return const Text('');
-                 },
-                 interval: 1, // Show every point if few, or skip if many
-                 reservedSize: 22,
-               )
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SizedBox(
+          height: 300,
+          child: SfCartesianChart(
+            primaryXAxis: CategoryAxis(
+              majorGridLines: const MajorGridLines(width: 0),
+              labelRotation: -45,
             ),
-            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (value, meta) {
-                   return Text(value.toStringAsFixed(0), style: const TextStyle(fontSize: 10, color: Colors.grey));
-                },
-                interval: (maxPrice - minPrice) / 4,
-                reservedSize: 40,
-              )
+            primaryYAxis: NumericAxis(
+              numberFormat: NumberFormat.currency(symbol: '₹', decimalDigits: 0),
+              axisLine: const AxisLine(width: 0),
+              majorTickLines: const MajorTickLines(size: 0),
             ),
-          ),
-          borderData: FlBorderData(show: false),
-          lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              isCurved: true,
-              color: Colors.amber,
-              barWidth: 3,
-              isStrokeCapRound: true,
-              dotData: const FlDotData(show: true),
-              belowBarData: BarAreaData(
-                show: true,
-                color: Colors.amber.withOpacity(0.2), // Deprecated .withOpacity for Color is OK in older FL Chart? No, wait.
-                // Latest Flutter uses .withValues but .withOpacity is usually still there marked deprecated slightly. I'll use simple Opacity.
+            tooltipBehavior: TooltipBehavior(
+              enable: true,
+              format: 'point.x : ₹point.y',
+            ),
+            series: <CartesianSeries>[
+              // Area series for filled chart
+              AreaSeries<GoldPrice, String>(
+                dataSource: sortedHistory,
+                xValueMapper: (GoldPrice price, _) => _formatDate(price.date),
+                yValueMapper: (GoldPrice price, _) => price.price22k,
+                name: '22K Gold',
+                color: Colors.amber.withOpacity(0.5),
+                borderColor: Colors.amber,
+                borderWidth: 3,
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.amber.withOpacity(0.7),
+                    Colors.amber.withOpacity(0.1),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                markerSettings: const MarkerSettings(
+                  isVisible: true,
+                  shape: DataMarkerType.circle,
+                  borderColor: Colors.amber,
+                  borderWidth: 2,
+                  color: Colors.white,
+                ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScheduleInfo() {
+    return Card(
+      color: Colors.blue.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.schedule, color: Colors.blue.shade700),
+                const SizedBox(width: 8),
+                Text(
+                  'Auto-Update Schedule',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade700,
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 12),
+            _buildScheduleRow('11:00 AM IST', 'Daily price update (always saved)'),
+            const SizedBox(height: 8),
+            _buildScheduleRow('7:00 PM IST', 'Price check (saved only if changed)'),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildScheduleRow(String time, String description) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade700,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            time,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            description,
+            style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDate(String dateStr) {
+    try {
+      final dt = DateTime.parse(dateStr.contains("T") ? dateStr : "$dateStr 00:00:00");
+      return DateFormat('dd/MM HH:mm').format(dt);
+    } catch (e) {
+      return dateStr.substring(0, dateStr.length > 10 ? 10 : dateStr.length);
+    }
   }
 }

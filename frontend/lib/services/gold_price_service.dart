@@ -9,10 +9,10 @@ class GoldPriceService {
   factory GoldPriceService() => _instance;
   GoldPriceService._internal();
 
-  static const String baseUrl = 'https://www.bankbazaar.com/gold-rate-tamil-nadu.html';
+  static const String baseUrl = 'https://www.bankbazaar.com/gold-rate-chennai.html';
 
   /// Fetch current gold price from bankbazaar.com
-  /// Uses proper HTML parsing to extract price from the specific DOM structure
+  /// Uses XPath to extract price from the specific DOM element
   /// Uses HeadlessInAppWebView to bypass Cloudflare protection
   Future<GoldPrice?> fetchCurrentGoldPrice() async {
     // Only works on mobile platforms for now
@@ -36,41 +36,56 @@ class GoldPriceService {
         onLoadStop: (controller, url) async {
           print('✅ Headless WebView loaded page: $url');
           try {
-            // Inject JavaScript to extract the price directly from the DOM
-            // based on the user provided DOM structure:
-            // <div class="bg-secondary..."> 
-            //   <h2>Today's Gold Rate...</h2>
-            //   <div> ... <span class="white-space-nowrap">₹ 14,400</span> ... </div>
-            // </div>
+            // Use XPath to extract the price directly from the DOM
+            // XPath: //*[@id="lp-root"]/div/div[2]/div/div[2]/div/div[3]/div[2]/div[2]/div/div[1]/span[1]/span[1]
             final String? priceText = await controller.evaluateJavascript(source: """
               (function() {
                 try {
-                  // Method 1: Look for "Today's Gold Rate" text and find nearby price
+                  // Method 1: Use XPath to find the exact element
+                  function getElementByXPath(xpath) {
+                    return document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                  }
+                  
+                  const xpath = '//*[@id="lp-root"]/div/div[2]/div/div[2]/div/div[3]/div[2]/div[2]/div/div[1]/span[1]/span[1]';
+                  const priceElement = getElementByXPath(xpath);
+                  
+                  if (priceElement && priceElement.innerText) {
+                    return priceElement.innerText.trim();
+                  }
+                  
+                  // Method 2: Fallback - Look for "Today's Gold Rate" and find nearby price
                   const h2Elements = document.getElementsByTagName('h2');
                   for (let i = 0; i < h2Elements.length; i++) {
-                    if (h2Elements[i].innerText.includes("Today's Gold Rate")) {
-                      // The price is in the next sibling div -> span -> span
+                    if (h2Elements[i].innerText.includes("Today's Gold Rate") || 
+                        h2Elements[i].innerText.includes("Gold Rate")) {
                       const parentDiv = h2Elements[i].parentElement;
                       if (parentDiv) {
                         const priceSpan = parentDiv.querySelector('.white-space-nowrap');
-                        if (priceSpan) return priceSpan.innerText;
+                        if (priceSpan) return priceSpan.innerText.trim();
                       }
                     }
                   }
                   
-                  // Method 2: Fallback to searching for the specific class directly
-                  const priceElement = document.querySelector('.bg-secondary .white-space-nowrap');
-                  if (priceElement) return priceElement.innerText;
+                  // Method 3: Search for any element with white-space-nowrap containing ₹
+                  const allSpans = document.querySelectorAll('.white-space-nowrap');
+                  for (let span of allSpans) {
+                    if (span.innerText.includes('₹')) {
+                      return span.innerText.trim();
+                    }
+                  }
                   
                   return null;
-                } catch(e) { return null; }
+                } catch(e) { 
+                  console.error('Error extracting price:', e);
+                  return null; 
+                }
               })();
             """);
 
             print('📊 Extracted text from WebView: $priceText');
 
             if (priceText != null && priceText.isNotEmpty) {
-              // Extract number from text like "₹ 14,400"
+              // Extract number from text like "₹ 14,400" or "₹14,400" or "14,400"
               final priceStr = priceText.replaceAll(RegExp(r'[₹,\s]'), '');
               final price22k = double.tryParse(priceStr);
               
