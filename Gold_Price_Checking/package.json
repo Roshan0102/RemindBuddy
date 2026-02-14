@@ -1,0 +1,19 @@
+{
+    "name": "gold_price_checker",
+    "version": "1.0.0",
+    "description": "Standalone script to check gold price using various fallback methods",
+    "main": "check_price.js",
+    "scripts": {
+        "test": "node check_price.js"
+    },
+    "keywords": [
+        "gold-price",
+        "puppeteer",
+        "scraper"
+    ],
+    "author": "Antigravity",
+    "license": "ISC",
+    "dependencies": {
+        "puppeteer": "^21.0.0"
+    }
+}
