@@ -92,7 +92,7 @@ class GoldPriceService {
 
       await headlessWebView.run();
       
-      return await completer.future.timeout(const Duration(seconds: 30), onTimeout: () {
+      return await completer.future.timeout(const Duration(seconds: 60), onTimeout: () {
         return {
           'price': null,
           'method': '${sourceName.toLowerCase()}_timeout',
@@ -113,14 +113,10 @@ class GoldPriceService {
     try {
       String textToParse = priceText;
       
-      // Parse JSON if applicable (from our JS scripts)
-      // Expecting format: {"text": "...", "method": "..."}
+      // Parse JSON if applicable
       String method = 'unknown';
       try {
-         // Simple JSON check
          if (priceText.trim().startsWith('{') && priceText.contains('text')) {
-            // Very basic manual parsing to avoid imports if possible, or just string manipulation
-            // But we can clean it up
             final clean = priceText.replaceAll(RegExp(r'[{}"]'), '');
             final parts = clean.split(',');
             for (var part in parts) {
@@ -132,7 +128,7 @@ class GoldPriceService {
         // use original text
       }
 
-      // Regex to extract price: 14,560 or 14560
+      // Regex to extract price
       final priceMatch = RegExp(r'(\d{1,3}(?:,\d{3})+|\d{4,})').firstMatch(textToParse);
       
       if (priceMatch != null) {
@@ -146,7 +142,7 @@ class GoldPriceService {
               'price': GoldPrice(
                 date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
                 price22k: price22k,
-                price24k: 0.0, // We only fetch 22k
+                price24k: 0.0,
                 city: 'Chennai',
               ),
               'method': '${source}_$method',
@@ -164,20 +160,27 @@ class GoldPriceService {
     }
   }
 
-  // Script for BankBazaar: Structure Search (Method 2)
+  // Script for BankBazaar: Structure Search with Validation
   String _getBankBazaarScript() {
     return """
       (function() {
         try {
-            // Structure: H2 "Today's Gold Rate" -> Parent -> .white-space-nowrap
             const h2s = document.getElementsByTagName('h2');
             for (let i = 0; i < h2s.length; i++) {
                 if (h2s[i].innerText.includes("Today's Gold Rate") || h2s[i].innerText.includes("Rate in Chennai")) {
                     const parent = h2s[i].parentElement;
                     if (parent) {
                         const priceSpan = parent.querySelector('.white-space-nowrap');
-                        if (priceSpan && priceSpan.innerText.match(/\\d{1,3}(,\\d{3})+|\\d{4,}/)) {
-                            return JSON.stringify({text: priceSpan.innerText.trim(), method: 'structure_match'});
+                        if (priceSpan) {
+                            const text = priceSpan.innerText.trim();
+                            // Client-side validation to filter out bad data like "14"
+                            const match = text.match(/\\d{1,3}(,\\d{3})+|\\d{4,}/);
+                            if (match) {
+                                const val = parseFloat(match[0].replace(/,/g, ''));
+                                if (val > 1000) {
+                                    return JSON.stringify({text: text, method: 'structure_match'});
+                                }
+                            }
                         }
                     }
                 }
@@ -188,15 +191,31 @@ class GoldPriceService {
     """;
   }
 
-  // Script for GoodReturns: ID Selector (Method 2)
+  // Script for GoodReturns: ID Selector with Fallback
   String _getGoodReturnsScript() {
     return """
       (function() {
         try {
-            // ID Selector: #22K-price
+            // Priority 1: ID Selector
             const el = document.getElementById('22K-price');
             if (el && el.innerText) {
-                 return JSON.stringify({text: el.innerText.trim(), method: 'id_selector'});
+                 const text = el.innerText.trim();
+                 const match = text.match(/\\d{1,3}(,\\d{3})+|\\d{4,}/);
+                 if (match) {
+                     return JSON.stringify({text: text, method: 'id_selector'});
+                 }
+            }
+
+            // Priority 2: Structure Search (Fallback)
+            const containers = document.querySelectorAll('.gold-each-container');
+            for (const container of containers) {
+                const head = container.querySelector('.gold-bottom .gold-common-head span');
+                if (head && head.innerText) {
+                    const text = head.innerText.trim();
+                    if (text.includes('₹') || text.match(/[\\d,]+/)) {
+                         return JSON.stringify({text: text, method: 'structure_fallback'});
+                    }
+                }
             }
             return null;
         } catch(e) { return null; }
