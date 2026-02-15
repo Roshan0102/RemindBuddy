@@ -351,7 +351,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                     ),
                                 ),
 
-                            const SizedBox(height: _isLogin ? 10 : 30),
+                            SizedBox(height: _isLogin ? 10 : 30),
                             
                             // Action Button
                             SizedBox(
