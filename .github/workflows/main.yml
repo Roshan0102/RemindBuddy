@@ -87,7 +87,7 @@ jobs:
           echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
-          scp -o StrictHostKeyChecking=no -r frontend/build/web/* ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/var/www/remindbuddy
+          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -r frontend/build/web/* ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/var/www/remindbuddy
 
       # 7. Restart Backend Server
       - name: Restart Backend
