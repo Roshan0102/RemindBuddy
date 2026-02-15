@@ -6,8 +6,24 @@ class PbMigrationService {
   PbMigrationService(this.pb);
 
   Future<void> createCollections(String adminEmail, String adminPassword) async {
-    // Authenticate as admin
-    await pb.admins.authWithPassword(adminEmail, adminPassword);
+    // Attempt authentication
+    try {
+      // 1. Try standard Admin/Superuser auth
+      await pb.admins.authWithPassword(adminEmail, adminPassword);
+      print("Authenticated as Admin/Superuser.");
+    } catch (e) {
+      print("Admin auth failed (likely 404 on _superusers for older servers). Trying as regular user...");
+      try {
+        // 2. Fallback: Authenticate as a regular user in 'users' collection
+        // This is common if the "admin" is just a user with a specific role, 
+        // or if the server is older and the SDK mismatches.
+        await pb.collection('users').authWithPassword(adminEmail, adminPassword);
+        print("Authenticated as regular user (admin access presumed).");
+      } catch (e2) {
+         // Both failed
+         throw Exception("Authentication failed. \nAdmin Error: $e\nUser Error: $e2");
+      }
+    }
     
     // Create 'tasks' collection
     await _createCollection(

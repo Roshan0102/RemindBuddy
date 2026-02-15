@@ -45,23 +45,30 @@ class _AdminScreenState extends State<AdminScreen> {
     setState(() => _isLoading = true);
     try {
       final pb = AuthService().pb;
-      // To list users, we generally need admin privileges in PocketBase or an open rule.
-      // Assuming 'users' collection is listable by authed users or public.
-      // If not, this might fail unless we login as a PB admin.
-      // Given the requirement "fetched from server", we proceed.
-      // If the regular user token permissions allow listing, this works.
-      // Otherwise, we might need a workaround or assume the hardcoded creds imply app-level admin only.
       
+      // Try to authenticate as admin with the provided credentials first
+      // This ensures we have permission to list users
+      try {
+         // Try admin auth (email/pass) - but here we have username 'Roshan'. 
+         // PocketBase admins usually need email. 
+         // If 'Roshan' is a username in 'users' collection with admin rights:
+         await pb.collection('users').authWithPassword(_usernameController.text, _passwordController.text);
+      } catch (e) {
+         print("Could not auth as specific admin user, trying existing auth or public access: $e");
+      }
+
       final records = await pb.collection('users').getFullList();
       setState(() {
         _users = records;
         _isLoading = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to fetch users: $e')),
-      );
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to fetch users: $e')),
+        );
+      }
     }
   }
 
