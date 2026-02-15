@@ -2,8 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
+import '../services/storage_service.dart';
 import 'main_screen.dart';
 import 'admin_setup_screen.dart';
+import '../services/pb_migration_service.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -15,12 +17,15 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateMixin {
   bool _isLogin = true;
   bool _isLoading = false;
+  bool _isAuthenticated = false;
+  String _currentUserEmail = '';
+  
   final _formKey = GlobalKey<FormState>();
   
   // Controllers
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _emailController = TextEditingController(); // Optional, but usually good for recovery
+  final _emailController = TextEditingController(); 
 
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
@@ -34,6 +39,22 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     );
     _fadeAnimation = CurvedAnimation(parent: _animController, curve: Curves.easeIn);
     _animController.forward();
+    
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    final isLoggedIn = await StorageService().isLoggedIn();
+    if (isLoggedIn) {
+       // Ideally fetch user details from storage or Auth Service
+       // For now, let's assume we are logged in.
+       // We can try to get email from AuthService if available
+       final auth = AuthService();
+       setState(() {
+         _isAuthenticated = true;
+         _currentUserEmail = auth.pb.authStore.model?.email ?? "User"; // Get from PB store
+       });
+    }
   }
 
   @override
@@ -58,20 +79,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     
     setState(() => _isLoading = true);
     
-    setState(() => _isLoading = true);
-    
     try {
       final auth = AuthService();
       if (_isLogin) {
-        // PocketBase usually uses email/username for identity. 
-        // Our form has username and email.
-        // If login, usually use email or username. Let's use username/email from the input.
-        // Wait, the UI has separate Email field only for Signup?
-        // Let's verify UI:
-        // if (!_isLogin) ... Email Address field
-        // So for Login, we only have Username and Password shown?
-        // PocketBase allows login via Email OR Username. 
-        // So `_usernameController.text` is fine.
         await auth.login(_usernameController.text.trim(), _passwordController.text.trim());
       } else {
         await auth.signup(
@@ -82,14 +92,21 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
       }
 
       if (mounted) {
+        // After successful login/signup, update state to show "Profile View"
+        await _checkAuthStatus(); // Refresh state
         setState(() => _isLoading = false);
+        
         ScaffoldMessenger.of(context).showSnackBar(
            SnackBar(
             content: Text(_isLogin ? 'Welcome back!' : 'Account Created!'),
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const MainScreen()));
+        // We stay on this screen now to let them click "Migrate", 
+        // OR we can navigate to MainScreen. 
+        // Current User Flow: Login -> Main Screen -> Settings -> Migrate.
+        // So upon first login from this screen, let's just refresh the UI to show Migration options
+        // instead of forcing navigation away, so they see the "Run Migrate" button immediately.
       }
     } catch (e) {
       if (mounted) {
@@ -104,6 +121,49 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     }
   }
 
+  Future<void> _logout() async {
+     final auth = AuthService();
+     auth.logout();
+     await StorageService().logoutAndClearData();
+     setState(() {
+       _isAuthenticated = false;
+       _isLogin = true;
+       _usernameController.clear();
+       _passwordController.clear();
+       _emailController.clear();
+     });
+  }
+
+  Future<void> _runMigration() async {
+    // Navigate to Admin/Migration Setup
+    Navigator.of(context).push(
+       MaterialPageRoute(builder: (_) => const AdminSetupScreen()),
+    );
+  }
+  
+  Future<void> _forgotPassword() async {
+    if (_usernameController.text.isEmpty && _emailController.text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter your Email or Username to reset password')),
+        );
+        return;
+    }
+    // Simple mock or actual implementation
+    // PocketBase requestPasswordReset(email)
+    final email = _emailController.text.isNotEmpty ? _emailController.text : _usernameController.text; // Assuming they might type email in username
+     try {
+        final auth = AuthService();
+        await auth.pb.collection('users').requestPasswordReset(email);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Password reset email sent! Check your inbox.')),
+        );
+     } catch(e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send reset email: $e')),
+        );
+     }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Premium Gradient Background
@@ -112,15 +172,10 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings, color: Colors.white54),
-            tooltip: 'Server Setup',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AdminSetupScreen()),
-            ),
-          ),
-        ],
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -138,7 +193,73 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
             padding: const EdgeInsets.all(24),
             child: FadeTransition(
               opacity: _fadeAnimation,
-              child: Column(
+              child: _isAuthenticated ? _buildProfileView() : _buildAuthView(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileView() {
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+           const Icon(Icons.verified_user, size: 80, color: Colors.greenAccent),
+           const SizedBox(height: 20),
+           Text(
+             'Signed In',
+             style: GoogleFonts.poppins(
+                fontSize: 28, 
+                fontWeight: FontWeight.bold, 
+                color: Colors.white
+             ),
+           ),
+           Text(
+             _currentUserEmail,
+             style: GoogleFonts.inter(
+                fontSize: 16, 
+                color: Colors.white70
+             ),
+           ),
+           const SizedBox(height: 40),
+           
+           // Migration Button
+           SizedBox(
+             width: double.infinity,
+             height: 60,
+             child: ElevatedButton.icon(
+              icon: const Icon(Icons.cloud_upload_outlined),
+              label: const Text("Run Migration / Sync Setup"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigoAccent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              ),
+              onPressed: _runMigration,
+             ),
+           ),
+           const SizedBox(height: 15),
+           const Text(
+             "Click above to initialize your cloud database and sync local data.",
+             textAlign: TextAlign.center,
+             style: TextStyle(color: Colors.white54, fontSize: 12),
+           ),
+           
+           const SizedBox(height: 40),
+           
+           // Logout
+           TextButton.icon(
+             icon: const Icon(Icons.logout, color: Colors.redAccent),
+             label: const Text("Logout", style: TextStyle(color: Colors.redAccent)),
+             onPressed: _logout,
+           )
+        ],
+      );
+  }
+
+  Widget _buildAuthView() {
+     return Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // Logo / Icon
@@ -220,7 +341,17 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                               validator: (val) => val != null && val.length > 5 ? null : 'Password too short',
                             ),
                             
-                            const SizedBox(height: 30),
+                            // Forgot Password Button (Only for Login)
+                            if (_isLogin)
+                                Align(
+                                    alignment: Alignment.centerRight,
+                                    child: TextButton(
+                                        onPressed: _forgotPassword,
+                                        child: Text("Forgot Password?", style: TextStyle(color: Colors.blue.shade900)),
+                                    ),
+                                ),
+
+                            const SizedBox(height: _isLogin ? 10 : 30),
                             
                             // Action Button
                             SizedBox(
@@ -272,12 +403,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                     ),
                   ),
                 ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+              );
   }
 
   Widget _buildTextField({

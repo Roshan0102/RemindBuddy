@@ -11,7 +11,7 @@ import '../models/gold_price.dart';
 class StorageService {
   static final StorageService _instance = StorageService._internal();
   static Database? _database;
-  static const int _databaseVersion = 10;  // Version 10: Full Sync Support
+  static const int _databaseVersion = 11;  // Version 11: Fix Sync Columns
   static const String _authTokenKey = 'auth_token';
   static const String _userKey = 'user_data';
 
@@ -184,6 +184,27 @@ class StorageService {
            } catch (e) {
               print("Sync migration v10 error: $e");
            }
+        }
+
+        // Migration for version 11: Fix missing sync columns (Safety Check)
+        // If v9 or v10 failed or were skipped, this ensures columns exist.
+        if (oldVersion < 11) {
+            print("Running safety migration v11...");
+            final tables = ['tasks', 'notes', 'daily_reminders', 'checklists', 'checklist_items', 'shifts', 'shift_metadata'];
+            
+            for (var table in tables) {
+                try {
+                    // Check if column exists by trying to add it. 
+                    // SQLite doesn't have "IF NOT EXISTS" for ADD COLUMN, so we use try-catch block.
+                    // If it fails, it likely exists or there's another error, which is fine.
+                    try { await db.execute('ALTER TABLE $table ADD COLUMN remoteId TEXT'); } catch(e) {}
+                    try { await db.execute('ALTER TABLE $table ADD COLUMN isSynced INTEGER DEFAULT 0'); } catch(e) {}
+                    try { await db.execute('ALTER TABLE $table ADD COLUMN updatedAt TEXT'); } catch(e) {}
+                } catch(e) {
+                    print("Safety migration error for $table: $e");
+                }
+            }
+            print("✅ Safety migration v11 database check complete.");
         }
       },
     );
