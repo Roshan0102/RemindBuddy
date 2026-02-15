@@ -9,6 +9,8 @@ import 'checklists_screen.dart';
 import 'my_shifts_screen.dart';
 import 'auth_screen.dart';
 import 'admin_screen.dart';
+import '../services/sync_service.dart';
+import '../services/storage_service.dart'; // Ensure it's there for storage instance
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -25,6 +27,19 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _loadTheme();
+    _initialSync();
+  }
+
+  Future<void> _initialSync() async {
+    final storage = StorageService();
+    if (await storage.isLoggedIn()) {
+      try {
+        final auth = AuthService();
+        await SyncService(auth.pb).syncAll();
+      } catch (e) {
+        print("Initial Sync Error: $e");
+      }
+    }
   }
 
   Future<void> _loadTheme() async {

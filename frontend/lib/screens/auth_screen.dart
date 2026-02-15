@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
 import '../services/storage_service.dart';
+import '../services/sync_service.dart';
 import 'admin_setup_screen.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -117,6 +118,14 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
       }
 
       if (mounted) {
+        // Run sync immediately after login to pull data
+        try {
+           final syncService = SyncService(auth.pb);
+           await syncService.syncAll();
+        } catch (e) {
+           print("Sync error during login: $e");
+        }
+        
         await _checkAuthStatus(); 
         setState(() => _isLoading = false);
         

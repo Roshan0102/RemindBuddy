@@ -769,6 +769,7 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_authTokenKey);
     await prefs.remove(_userKey);
+    await prefs.remove('last_sync_time'); // Clear sync history
 
     // 2. Clear Local Database (Privacy: Don't keep user data after logout)
     final db = await database;
