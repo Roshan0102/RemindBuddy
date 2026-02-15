@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/task.dart';
 import '../models/note.dart';
@@ -10,7 +11,9 @@ import '../models/gold_price.dart';
 class StorageService {
   static final StorageService _instance = StorageService._internal();
   static Database? _database;
-  static const int _databaseVersion = 8;  // Database version for multi-month shifts
+  static const int _databaseVersion = 9;  // Version 9: Preparation for Sync
+  static const String _authTokenKey = 'auth_token';
+  static const String _userKey = 'user_data';
 
   factory StorageService() {
     return _instance;
@@ -126,6 +129,26 @@ class StorageService {
              
              print("✅ Added multi-month support to shifts tables");
            } catch (e) { print("Multi-month shifts migration error: $e"); }
+        }
+      },
+        
+        // Migration for version 9: Add sync columns (isSynced, remoteId, updatedAt)
+        if (oldVersion < 9) {
+           try {
+              // Add sync columns to tasks
+              await db.execute('ALTER TABLE tasks ADD COLUMN remoteId TEXT');
+              await db.execute('ALTER TABLE tasks ADD COLUMN isSynced INTEGER DEFAULT 0');
+              await db.execute('ALTER TABLE tasks ADD COLUMN updatedAt TEXT');
+
+              // Add sync columns to notes
+              await db.execute('ALTER TABLE notes ADD COLUMN remoteId TEXT');
+              await db.execute('ALTER TABLE notes ADD COLUMN isSynced INTEGER DEFAULT 0');
+              await db.execute('ALTER TABLE notes ADD COLUMN updatedAt TEXT');
+              
+              print("✅ Added sync columns for offline-first architecture");
+           } catch (e) {
+              print("Sync migration error: $e");
+           }
         }
       },
     );
@@ -611,4 +634,42 @@ class StorageService {
     );
     return maps.map((m) => m['roster_month'] as String).toList();
   }
-}
+
+  // --- Auth & Sync Helpers ---
+
+  Future<void> saveAuthToken(String token, String userData) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_authTokenKey, token);
+    await prefs.setString(_userKey, userData);
+  }
+
+  Future<String?> getAuthToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_authTokenKey);
+  }
+
+  Future<bool> isLoggedIn() async {
+    final token = await getAuthToken();
+    return token != null && token.isNotEmpty;
+  }
+
+  Future<void> logoutAndClearData() async {
+    // 1. Clear Auth Token
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_authTokenKey);
+    await prefs.remove(_userKey);
+
+    // 2. Clear Local Database (Privacy: Don't keep user data after logout)
+    final db = await database;
+    await db.delete('tasks');
+    await db.delete('notes');
+    await db.delete('shifts');
+    await db.delete('shift_metadata');
+    await db.delete('checklists');
+    await db.delete('checklist_items');
+    await db.delete('daily_reminders');
+    // We might keep gold prices as they are public data? But to be safe/clean:
+    // await db.delete('gold_prices_history'); 
+    
+    print('🔒 User logged out and local data cleared.');
+  }
