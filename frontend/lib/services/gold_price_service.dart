@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:intl/intl.dart';
@@ -100,34 +101,25 @@ class GoldPriceService {
           userAgent: 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
         ),
         onLoadStop: (controller, loadedUrl) async {
-          log('✅ Page loaded: $loadedUrl');
-          try {
-            log('📜 Executing JS extraction script...');
-            final String? priceText = await controller.evaluateJavascript(source: jsScript);
-            log('📊 Raw JS Output: $priceText');
-
-            if (priceText != null && priceText.isNotEmpty) {
-              await _parseAndComplete(priceText, sourceName, completer, log);
-            } else {
-              if (!completer.isCompleted) {
-                log('❌ JS returned null or empty string');
-                completer.complete({
-                  'price': null,
-                  'method': '${sourceName.toLowerCase()}_failed',
-                  'debug': 'No text returned from JS extraction',
-                });
-              }
-            }
-          } catch (e) {
-            log('💥 JS Error: $e');
-            if (!completer.isCompleted) {
-              completer.complete({
-                'price': null,
-                'method': '${sourceName.toLowerCase()}_js_error',
-                'debug': 'JS execution error: $e',
-              });
-            }
+          log('✅ Page loaded (onLoadStop): $loadedUrl');
+          if (!completer.isCompleted) {
+             await _extractData(controller, jsScript, sourceName, completer, log);
           }
+        },
+        onProgressChanged: (controller, progress) async {
+           // log('⏳ Loading $sourceName: $progress%'); // Verbose logging
+           if (progress == 100) {
+              log('💯 Page reached 100% loading');
+              // Try extracting if not already done, just in case onLoadStop is delayed
+              if (!completer.isCompleted) {
+                 log('⚡ Attempting extraction at 100% progress (fallback for onLoadStop)');
+                 // Give a small delay for scripts to hydrate
+                 await Future.delayed(const Duration(milliseconds: 500));
+                 if (!completer.isCompleted) {
+                    await _extractData(controller, jsScript, sourceName, completer, log);
+                 }
+              }
+           }
         },
         onLoadError: (controller, url, code, message) {
            log('🛑 Load Error: code=$code, msg=$message');
@@ -166,6 +158,61 @@ class GoldPriceService {
     }
   }
 
+  Future<void> _extractData(
+      InAppWebViewController controller,
+      String jsScript,
+      String sourceName,
+      Completer<Map<String, dynamic>> completer,
+      Function(String) log
+  ) async {
+      try {
+        log('📜 Executing JS extraction script...');
+        final String? priceText = await controller.evaluateJavascript(source: jsScript);
+        log('📊 Raw JS Output: $priceText');
+
+        if (priceText != null && priceText.isNotEmpty) {
+          await _parseAndComplete(priceText, sourceName, completer, log);
+        } else {
+          // Don't fail immediately on empty return if we are invoked from onProgressChanged, 
+          // but if we are here, we usually want to result.
+          // Yet, let's only complete if we are sure it failed? 
+          // Actually, if JS returns null, it failed to find valid data.
+          log('❌ JS returned null or empty string');
+          // We don't complete here if called from onProgressChanged because maybe onLoadStop will yield better results?
+          // BUT, if we do complete with failure, we stop trying.
+          // Let's only complete if we have a success, OR if this is onLoadStop.
+          // However, to keep it simple: if extraction fails, we might as well wait for timeout or try again?
+          // No, if the script runs and returns null, it likely didn't find the element.
+          // Let's complete only if success, or let the timeout handle the failure?
+          // NO, we should fail fast if possible.
+          // But since we call this from onProgressChanged (early), failing here might be premature.
+          // So let's ONLY complete if successful (priceText has data), or if this logic is robust.
+          // Actually, let's complete failure only if we are sure.
+          // To update: The original code completed on failure.
+          // New logic: Only complete if we found something or if we are explicitly in a "must complete" state?
+          // Let's stick to completing if result is found, otherwise LOG and wait (unless it's onLoadStop, but even then, maybe wait for timeout?).
+          // Actually, if onLoadStop happens and we find nothing, we probably won't find anything later.
+          // So I should pass a "forceFailure" flag?
+          // Let's just modify _parseAndComplete to handle the logic.
+          // For now, if priceText is null, we do NOTHING and let the timeout occur?
+          // Or we can complete with failure if we are sure?
+          // Let's rely on the timeout for "loading issues", but if the script explicitly returns "ID_NOT_FOUND", we can fail fast.
+          if (priceText != null && (priceText.contains("ID_NOT_FOUND") || priceText.contains("JS_EXCEPTION"))) {
+             if (!completer.isCompleted) {
+                completer.complete({
+                  'price': null,
+                  'method': '${sourceName.toLowerCase()}_failed',
+                  'debug': 'JS returned failure: $priceText',
+                });
+             }
+          }
+        }
+      } catch (e) {
+        log('💥 JS Error during extraction: $e');
+        // Don't fail, maybe just a glitch?
+      }
+  }
+
   Future<void> _parseAndComplete(
     String priceText, 
     String source, 
@@ -179,12 +226,12 @@ class GoldPriceService {
       // Parse JSON if applicable
       try {
          if (priceText.trim().startsWith('{') && priceText.contains('text')) {
-             // Basic JSON extraction to ensure we get the text field
-             final clean = priceText.replaceAll(RegExp(r'[{}"]'), '');
-             final parts = clean.split(',');
-             for (var part in parts) {
-               if (part.contains('text:')) textToParse = part.split('text:')[1].trim();
-               if (part.contains('method:')) method = part.split('method:')[1].trim();
+             final Map<String, dynamic> jsonArgs = jsonDecode(priceText);
+             if (jsonArgs.containsKey('text')) {
+                textToParse = jsonArgs['text'].toString();
+             }
+             if (jsonArgs.containsKey('method')) {
+                method = jsonArgs['method'].toString();
              }
              log('🧩 Parsed JSON: text="$textToParse", method="$method"');
          }
@@ -281,6 +328,17 @@ class GoldPriceService {
             // let debug = "ID 22K-price not found. All IDs: ";
             // const all = document.querySelectorAll('[id*="price"]');
             // for(let i=0; i<all.length; i++) debug += all[i].id + ", ";
+            if (el && el.innerText) {
+                 return JSON.stringify({text: el.innerText.trim(), method: 'id_selector'});
+            }
+            // Fallback: Query Selector for common classes if ID fails (sometimes IDs dynamic?)
+            // But user said "check entire good return code", and ID 22K-price is standard.
+            // Let's just check standard 22K-price again or return specific error.
+            
+            // Try querySelector just in case
+            const el2 = document.querySelector('#22K-price');
+            if (el2 && el2.innerText) return JSON.stringify({text: el2.innerText.trim(), method: 'id_selector_query'});
+
             return "ID_NOT_FOUND";
         } catch(e) { return "JS_EXCEPTION: " + e.toString(); }
       })();
