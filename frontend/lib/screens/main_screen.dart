@@ -7,6 +7,7 @@ import 'daily_reminders_screen.dart';
 import 'gold_screen.dart';
 import 'checklists_screen.dart';
 import 'my_shifts_screen.dart';
+import 'auth_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -208,11 +209,12 @@ class _MainScreenState extends State<MainScreen> {
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.settings),
-                title: const Text('Settings'),
+                title: const Text('Settings (Login/Sync)'),
                 onTap: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Settings coming soon!')),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AuthScreen()),
                   );
                 },
               ),
