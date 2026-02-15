@@ -4,6 +4,8 @@ import '../models/daily_reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../services/auth_service.dart';
+import '../services/sync_service.dart';
 
 class DailyRemindersScreen extends StatefulWidget {
   const DailyRemindersScreen({super.key});
@@ -173,6 +175,11 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                   await _scheduleDailyReminder(reminder);
                 }
 
+                // Trigger sync
+                try {
+                  SyncService(AuthService().pb).syncDailyReminders();
+                } catch (e) { print(e); }
+
                 Navigator.pop(context);
                 _loadReminders();
               },
@@ -206,6 +213,11 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
       await _notificationService.cancelNotification(reminder.id! + 100000);
     }
     
+    // Trigger sync
+    try {
+      SyncService(AuthService().pb).syncDailyReminders();
+    } catch (e) { print(e); }
+    
     _loadReminders();
   }
 
@@ -232,6 +244,9 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
     if (confirm == true) {
       await _notificationService.cancelNotification(reminder.id! + 100000);
       await _storageService.deleteDailyReminder(reminder.id!);
+      try {
+        SyncService(AuthService().pb).syncDailyReminders();
+      } catch (e) { print(e); }
       _loadReminders();
     }
   }

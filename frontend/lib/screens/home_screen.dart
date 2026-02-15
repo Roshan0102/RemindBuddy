@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import '../models/task.dart';
-import '../services/api_service.dart';
+import '../services/auth_service.dart';
+import '../services/sync_service.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import '../services/log_service.dart';
@@ -39,7 +40,6 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime? _selectedDay;
   List<Task> _selectedTasks = [];
   
-  final ApiService _apiService = ApiService();
   final StorageService _storageService = StorageService();
   final NotificationService _notificationService = NotificationService();
   Timer? _syncTimer;
@@ -96,24 +96,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _syncTasks() async {
-    print('Syncing tasks...');
-    // 1. Fetch from API
-    List<Task> serverTasks = await _apiService.getTasks();
-    
-    if (serverTasks.isNotEmpty) {
-      // 2. Store locally and schedule notifications
-      for (var task in serverTasks) {
-        await _storageService.insertTask(task);
-        await _notificationService.scheduleTaskNotification(task);
-      }
+    // 1. Trigger background sync
+    try {
+      final authService = AuthService();
+      final syncService = SyncService(authService.pb);
+      await syncService.syncTasks();
+    } catch (e) {
+      LogService().error('Sync failed', e);
     }
-
-    // 3. Clear old tasks - DISABLED to keep history
-    // final String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    // await _storageService.clearOldTasks(today);
-
-    // 4. Refresh UI
-    _loadTasksForDay(_selectedDay!);
+    
+    // 2. Refresh UI from local storage
+    if (_selectedDay != null) {
+      _loadTasksForDay(_selectedDay!);
+    }
   }
 
   Future<void> _loadTasksForDay(DateTime day) async {
@@ -241,18 +236,21 @@ class _HomeScreenState extends State<HomeScreen> {
                           await _storageService.deleteTask(deletedTask.id!);
                           await _notificationService.cancelNotification(deletedTask.id!);
 
-                          // 3. Delete from Server (Background)
-                          try {
-                            await _apiService.deleteTask(deletedTask.id!);
+                          // 3. Delete from Server (Best Effort)
+                          final deletedTaskCopy = deletedTask; // redundant but safe copy
+                          if (deletedTaskCopy.remoteId != null) {
+                             try {
+                               final auth = AuthService();
+                               await auth.pb.collection('tasks').delete(deletedTaskCopy.remoteId!);
+                             } catch (e) {
+                               LogService().error('Failed to delete from server', e);
+                             }
+                          }
+                          
+                          if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('Task deleted')),
                             );
-                            // Do NOT call _syncTasks() immediately here.
-                            // The server delete is async. If we sync too fast, we might fetch the deleted task back.
-                            // Since we already removed it from UI and Local DB, we are good.
-                          } catch (e) {
-                            LogService().error('Failed to delete from server', e);
-                            // Optional: Re-add to UI if server delete fails?
                           }
                         },
                         child: ListTile(

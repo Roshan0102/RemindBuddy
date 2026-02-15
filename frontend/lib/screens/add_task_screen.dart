@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import '../models/task.dart';
-import '../services/api_service.dart';
+import '../models/task.dart';
+import '../services/storage_service.dart';
+import '../services/sync_service.dart';
+import '../services/auth_service.dart';
 
 class AddTaskScreen extends StatefulWidget {
   final DateTime? selectedDate;
@@ -21,7 +24,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   late TimeOfDay _time;
   String _repeat = 'none';
   bool _isAnnoying = false;
-  final ApiService _apiService = ApiService();
+  bool _isAnnoying = false;
 
   @override
   void initState() {
@@ -106,19 +109,27 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         time: timeStr,
         repeat: _repeat,
         isAnnoying: _isAnnoying,
+        // Sync fields default to unsynced
       );
 
-      // Save to Backend
-      final createdTask = await _apiService.createTask(newTask);
-      
-      if (createdTask != null) {
+      // 1. Save Locally (Offline First)
+      try {
+        final storage = StorageService(); // Singleton
+        await storage.insertTask(newTask);
+        
+        // 2. Trigger Sync (Best Effort)
+        // Access PB via AuthService
+        final auth = AuthService();
+        final syncService = SyncService(auth.pb);
+        syncService.syncTasks(); // Fire and forget
+        
         if (mounted) {
           Navigator.pop(context, true);
         }
-      } else {
+      } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to save task')),
+            SnackBar(content: Text('Failed to save task: $e')),
           );
         }
       }

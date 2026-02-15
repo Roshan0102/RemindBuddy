@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/note.dart';
 import '../services/storage_service.dart';
+import '../services/auth_service.dart';
+import '../services/sync_service.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
@@ -61,6 +63,7 @@ class _NotesScreenState extends State<NotesScreen> {
                   if (titleController.text.isNotEmpty || contentController.text.isNotEmpty) {
                     final newNote = Note(
                       id: note?.id,
+                      remoteId: note?.remoteId,
                       title: titleController.text,
                       content: contentController.text,
                       date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
@@ -71,6 +74,12 @@ class _NotesScreenState extends State<NotesScreen> {
                     } else {
                       await _storageService.updateNote(newNote);
                     }
+                    
+                    // Trigger sync
+                    try {
+                      SyncService(AuthService().pb).syncNotes();
+                    } catch (e) { print(e); }
+
                     _loadNotes();
                     if (mounted) Navigator.pop(context);
                   }
@@ -203,6 +212,9 @@ class _NotesScreenState extends State<NotesScreen> {
                                     if (!auth) return;
                                   }
                                   await _storageService.deleteNote(note.id!);
+                                  try {
+                                    SyncService(AuthService().pb).syncNotes();
+                                  } catch (e) { print(e); }
                                   _loadNotes();
                                 },
                               ),

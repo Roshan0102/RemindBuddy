@@ -1,6 +1,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../services/auth_service.dart';
+import 'main_screen.dart';
+import 'admin_setup_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -55,19 +58,49 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     
     setState(() => _isLoading = true);
     
-    // Simulate network delay for "slow" feel
-    await Future.delayed(const Duration(seconds: 2));
+    setState(() => _isLoading = true);
+    
+    try {
+      final auth = AuthService();
+      if (_isLogin) {
+        // PocketBase usually uses email/username for identity. 
+        // Our form has username and email.
+        // If login, usually use email or username. Let's use username/email from the input.
+        // Wait, the UI has separate Email field only for Signup?
+        // Let's verify UI:
+        // if (!_isLogin) ... Email Address field
+        // So for Login, we only have Username and Password shown?
+        // PocketBase allows login via Email OR Username. 
+        // So `_usernameController.text` is fine.
+        await auth.login(_usernameController.text.trim(), _passwordController.text.trim());
+      } else {
+        await auth.signup(
+          _usernameController.text.trim(), 
+          _emailController.text.trim(), 
+          _passwordController.text.trim()
+        );
+      }
 
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isLogin ? 'Welcome back! (Mock)' : 'Account Created! (Mock)'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      // Navigation would happen here
-      // Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const MainScreen()));
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(
+            content: Text(_isLogin ? 'Welcome back!' : 'Account Created!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const MainScreen()));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString().replaceAll("Exception:", "")}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -75,6 +108,20 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     // Premium Gradient Background
     return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.white54),
+            tooltip: 'Server Setup',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AdminSetupScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(

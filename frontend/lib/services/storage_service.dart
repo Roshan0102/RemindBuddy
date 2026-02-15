@@ -11,7 +11,7 @@ import '../models/gold_price.dart';
 class StorageService {
   static final StorageService _instance = StorageService._internal();
   static Database? _database;
-  static const int _databaseVersion = 9;  // Version 9: Preparation for Sync
+  static const int _databaseVersion = 10;  // Version 10: Full Sync Support
   static const String _authTokenKey = 'auth_token';
   static const String _userKey = 'user_data';
 
@@ -150,6 +150,41 @@ class StorageService {
               print("Sync migration error: $e");
            }
         }
+
+        
+        // Migration for version 10: Add sync columns to remaining tables
+        if (oldVersion < 10) {
+           try {
+              // daily_reminders
+              await db.execute('ALTER TABLE daily_reminders ADD COLUMN remoteId TEXT');
+              await db.execute('ALTER TABLE daily_reminders ADD COLUMN isSynced INTEGER DEFAULT 0');
+              await db.execute('ALTER TABLE daily_reminders ADD COLUMN updatedAt TEXT');
+              
+              // checklists
+              await db.execute('ALTER TABLE checklists ADD COLUMN remoteId TEXT');
+              await db.execute('ALTER TABLE checklists ADD COLUMN isSynced INTEGER DEFAULT 0');
+              await db.execute('ALTER TABLE checklists ADD COLUMN updatedAt TEXT');
+              
+              // checklist_items
+              await db.execute('ALTER TABLE checklist_items ADD COLUMN remoteId TEXT');
+              await db.execute('ALTER TABLE checklist_items ADD COLUMN isSynced INTEGER DEFAULT 0');
+              await db.execute('ALTER TABLE checklist_items ADD COLUMN updatedAt TEXT');
+              
+              // shifts
+              await db.execute('ALTER TABLE shifts ADD COLUMN remoteId TEXT');
+              await db.execute('ALTER TABLE shifts ADD COLUMN isSynced INTEGER DEFAULT 0');
+              await db.execute('ALTER TABLE shifts ADD COLUMN updatedAt TEXT');
+              
+              // shift_metadata
+              await db.execute('ALTER TABLE shift_metadata ADD COLUMN remoteId TEXT');
+              await db.execute('ALTER TABLE shift_metadata ADD COLUMN isSynced INTEGER DEFAULT 0');
+              await db.execute('ALTER TABLE shift_metadata ADD COLUMN updatedAt TEXT');
+              
+              print("✅ Added sync columns to all remaining tables");
+           } catch (e) {
+              print("Sync migration v10 error: $e");
+           }
+        }
       },
     );
   }
@@ -188,9 +223,13 @@ class StorageService {
   // Task Methods
   Future<void> insertTask(Task task) async {
     final db = await database;
+    final map = task.toMap();
+    map['isSynced'] = 0; // Force dirty
+    map['updatedAt'] = DateTime.now().toIso8601String();
+    
     await db.insert(
       'tasks',
-      task.toMap(),
+      map,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -223,9 +262,13 @@ class StorageService {
 
   Future<void> updateTask(Task task) async {
     final db = await database;
+    final map = task.toMap();
+    map['isSynced'] = 0;
+    map['updatedAt'] = DateTime.now().toIso8601String();
+    
     await db.update(
       'tasks',
-      task.toMap(),
+      map,
       where: 'id = ?',
       whereArgs: [task.id],
     );
@@ -248,9 +291,13 @@ class StorageService {
   // Note Methods
   Future<void> insertNote(Note note) async {
     final db = await database;
+    final map = note.toMap();
+    map['isSynced'] = 0;
+    map['updatedAt'] = DateTime.now().toIso8601String();
+    
     await db.insert(
       'notes',
-      note.toMap(),
+      map,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -263,9 +310,13 @@ class StorageService {
 
   Future<void> updateNote(Note note) async {
     final db = await database;
+    final map = note.toMap();
+    map['isSynced'] = 0;
+    map['updatedAt'] = DateTime.now().toIso8601String();
+    
     await db.update(
       'notes',
-      note.toMap(),
+      map,
       where: 'id = ?',
       whereArgs: [note.id],
     );
@@ -283,9 +334,13 @@ class StorageService {
   // Daily Reminder Methods
   Future<int> insertDailyReminder(DailyReminder reminder) async {
     final db = await database;
+    final map = reminder.toMap();
+    map['isSynced'] = 0;
+    map['updatedAt'] = DateTime.now().toIso8601String();
+    
     return await db.insert(
       'daily_reminders',
-      reminder.toMap(),
+      map,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -309,9 +364,13 @@ class StorageService {
 
   Future<void> updateDailyReminder(DailyReminder reminder) async {
     final db = await database;
+    final map = reminder.toMap();
+    map['isSynced'] = 0;
+    map['updatedAt'] = DateTime.now().toIso8601String();
+
     await db.update(
       'daily_reminders',
-      reminder.toMap(),
+      map,
       where: 'id = ?',
       whereArgs: [reminder.id],
     );
@@ -330,7 +389,11 @@ class StorageService {
     final db = await database;
     await db.update(
       'daily_reminders',
-      {'isActive': isActive ? 1 : 0},
+      {
+        'isActive': isActive ? 1 : 0,
+        'isSynced': 0,
+        'updatedAt': DateTime.now().toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -376,7 +439,11 @@ class StorageService {
     final db = await database;
     await db.update(
       'checklist_items',
-      {'isChecked': isChecked ? 1 : 0},
+      {
+        'isChecked': isChecked ? 1 : 0,
+        'isSynced': 0,
+        'updatedAt': DateTime.now().toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -391,7 +458,11 @@ class StorageService {
     final db = await database;
     await db.update(
       'checklist_items',
-      {'isChecked': 0},
+      {
+        'isChecked': 0,
+        'isSynced': 0,
+        'updatedAt': DateTime.now().toIso8601String(),
+      },
       where: 'checklistId = ?',
       whereArgs: [checklistId],
     );

@@ -13,7 +13,14 @@ class DailyReminder {
     required this.time,
     this.isActive = true,
     this.isAnnoying = false,
+    this.remoteId,
+    this.isSynced = false,
+    this.updatedAt,
   });
+
+  final String? remoteId;
+  final bool isSynced;
+  final String? updatedAt;
 
   factory DailyReminder.fromJson(Map<String, dynamic> json) {
     return DailyReminder(
@@ -23,6 +30,9 @@ class DailyReminder {
       time: json['time'],
       isActive: json['isActive'] == 1 || json['isActive'] == true,
       isAnnoying: json['isAnnoying'] == 1 || json['isAnnoying'] == true,
+      remoteId: json['remoteId'],
+      isSynced: json['isSynced'] == 1 || json['isSynced'] == true,
+      updatedAt: json['updatedAt'],
     );
   }
 
@@ -34,6 +44,9 @@ class DailyReminder {
       'time': time,
       'isActive': isActive,
       'isAnnoying': isAnnoying,
+      'remoteId': remoteId,
+      'isSynced': isSynced,
+      'updatedAt': updatedAt,
     };
   }
 
@@ -46,6 +59,9 @@ class DailyReminder {
       'time': time,
       'isActive': isActive ? 1 : 0,
       'isAnnoying': isAnnoying ? 1 : 0,
+      'remoteId': remoteId,
+      'isSynced': isSynced ? 1 : 0,
+      'updatedAt': updatedAt ?? DateTime.now().toIso8601String(),
     };
   }
 }
