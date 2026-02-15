@@ -11,6 +11,7 @@ import 'auth_screen.dart';
 import 'admin_screen.dart';
 import '../services/sync_service.dart';
 import '../services/storage_service.dart'; // Ensure it's there for storage instance
+import '../services/auth_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
