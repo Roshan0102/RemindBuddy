@@ -130,7 +130,7 @@ class StorageService {
              print("✅ Added multi-month support to shifts tables");
            } catch (e) { print("Multi-month shifts migration error: $e"); }
         }
-      },
+
         
         // Migration for version 9: Add sync columns (isSynced, remoteId, updatedAt)
         if (oldVersion < 9) {

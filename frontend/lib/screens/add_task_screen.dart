@@ -24,7 +24,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   late TimeOfDay _time;
   String _repeat = 'none';
   bool _isAnnoying = false;
-  bool _isAnnoying = false;
+
 
   @override
   void initState() {
