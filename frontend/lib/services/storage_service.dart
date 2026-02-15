@@ -11,7 +11,7 @@ import '../models/gold_price.dart';
 class StorageService {
   static final StorageService _instance = StorageService._internal();
   static Database? _database;
-  static const int _databaseVersion = 11;  // Version 11: Fix Sync Columns
+  static const int _databaseVersion = 12;  // Version 12: Ensure Sync Columns for Fresh Installs
   static const String _authTokenKey = 'auth_token';
   static const String _userKey = 'user_data';
 
@@ -206,19 +206,38 @@ class StorageService {
             }
             print("✅ Safety migration v11 database check complete.");
         }
+
+        // Migration for version 12: Ensure Sync Columns for Fresh Installs
+        if (oldVersion < 12) {
+            print("Running migration v12: Ensuring sync columns for fresh installs...");
+            final tables = ['tasks', 'notes', 'daily_reminders', 'checklists', 'checklist_items', 'shifts', 'shift_metadata'];
+            
+            for (var table in tables) {
+                try {
+                    await db.execute('ALTER TABLE $table ADD COLUMN remoteId TEXT');
+                } catch(e) { /* Column likely exists */ }
+                try {
+                    await db.execute('ALTER TABLE $table ADD COLUMN isSynced INTEGER DEFAULT 0');
+                } catch(e) { /* Column likely exists */ }
+                try {
+                    await db.execute('ALTER TABLE $table ADD COLUMN updatedAt TEXT');
+                } catch(e) { /* Column likely exists */ }
+            }
+            print("✅ Migration v12 database check complete.");
+        }
       },
     );
   }
 
   Future<void> _createTables(Database db) async {
     await db.execute(
-      'CREATE TABLE tasks(id INTEGER PRIMARY KEY, title TEXT, description TEXT, date TEXT, time TEXT, repeat TEXT, isAnnoying INTEGER)',
+      'CREATE TABLE tasks(id INTEGER PRIMARY KEY, title TEXT, description TEXT, date TEXT, time TEXT, repeat TEXT, isAnnoying INTEGER, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
     );
     await db.execute(
-      'CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, date TEXT, isLocked INTEGER)',
+      'CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT, date TEXT, isLocked INTEGER, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
     );
     await db.execute(
-      'CREATE TABLE daily_reminders(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, time TEXT, isActive INTEGER, isAnnoying INTEGER)',
+      'CREATE TABLE daily_reminders(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, time TEXT, isActive INTEGER, isAnnoying INTEGER, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
     );
     // Legacy table, kept for compatibility if needed or purely replaced by history
     await db.execute(
@@ -228,16 +247,16 @@ class StorageService {
       'CREATE TABLE gold_prices_history(id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, price22k REAL, price24k REAL, city TEXT)',
     );
     await db.execute(
-      'CREATE TABLE checklists(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, iconCode INTEGER, color INTEGER)',
+      'CREATE TABLE checklists(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, iconCode INTEGER, color INTEGER, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
     );
     await db.execute(
-      'CREATE TABLE checklist_items(id INTEGER PRIMARY KEY AUTOINCREMENT, checklistId INTEGER, text TEXT, isChecked INTEGER)',
+      'CREATE TABLE checklist_items(id INTEGER PRIMARY KEY AUTOINCREMENT, checklistId INTEGER, text TEXT, isChecked INTEGER, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
     );
     await db.execute(
-      'CREATE TABLE shifts(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT UNIQUE, shift_type TEXT, start_time TEXT, end_time TEXT, is_week_off INTEGER, roster_month TEXT)',
+      'CREATE TABLE shifts(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT UNIQUE, shift_type TEXT, start_time TEXT, end_time TEXT, is_week_off INTEGER, roster_month TEXT, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
     );
     await db.execute(
-      'CREATE TABLE shift_metadata(id INTEGER PRIMARY KEY, employee_name TEXT, month TEXT, roster_month TEXT)',
+      'CREATE TABLE shift_metadata(id INTEGER PRIMARY KEY, employee_name TEXT, month TEXT, roster_month TEXT, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
     );
   }
 

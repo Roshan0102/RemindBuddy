@@ -8,6 +8,7 @@ import 'gold_screen.dart';
 import 'checklists_screen.dart';
 import 'my_shifts_screen.dart';
 import 'auth_screen.dart';
+import 'admin_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -193,29 +194,41 @@ class _MainScreenState extends State<MainScreen> {
                   );
                 },
               ),
-              /*
-              ListTile(
-                leading: const Icon(Icons.bug_report, color: Colors.grey),
-                title: const Text('Gold Price Test (Debug)'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const GoldPriceTestScreen()),
-                  );
-                },
-              ),
-              */
               const Divider(),
+              // Login / Profile Feature
               ListTile(
-                leading: const Icon(Icons.settings),
-                title: const Text('Settings (Login/Sync)'),
+                leading: const Icon(Icons.account_circle, color: Colors.teal),
+                title: const Text('Login / Profile'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const AuthScreen()),
                   );
+                },
+              ),
+              // Admin Feature
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings, color: Colors.redAccent),
+                title: const Text('Admin Console'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AdminScreen()),
+                  );
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.settings),
+                title: const Text('Settings'),
+                subtitle: const Text('Coming Soon'),
+                onTap: () {
+                   Navigator.pop(context);
+                   ScaffoldMessenger.of(context).showSnackBar(
+                     const SnackBar(content: Text('Settings feature is under development.')),
+                   );
                 },
               ),
               ListTile(
@@ -226,7 +239,7 @@ class _MainScreenState extends State<MainScreen> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'RemindBuddy',
-                    applicationVersion: '1.0.33',
+                    applicationVersion: '1.0.47',
                     applicationIcon: const Icon(Icons.alarm_add, size: 48),
                     children: [
                       const Text('Your friendly daily reminder companion!'),

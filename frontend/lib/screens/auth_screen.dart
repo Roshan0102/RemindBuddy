@@ -1,11 +1,8 @@
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
 import '../services/storage_service.dart';
-import 'main_screen.dart';
 import 'admin_setup_screen.dart';
-import '../services/pb_migration_service.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -46,13 +43,41 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   Future<void> _checkAuthStatus() async {
     final isLoggedIn = await StorageService().isLoggedIn();
     if (isLoggedIn) {
-       // Ideally fetch user details from storage or Auth Service
-       // For now, let's assume we are logged in.
-       // We can try to get email from AuthService if available
        final auth = AuthService();
+       // Safely access email from RecordModel
+       String? email;
+       try {
+         final model = auth.pb.authStore.model;
+         // Check if it's a RecordModel (user) or AdminModel (admin)
+         // Assuming standard user for now. RecordModel accesses data via data[] map or helpers if generated.
+         // But the dynamic nature means we might need to check.
+         // 'email' is usually a top-level getter on AdminModel, but on RecordModel it's in the data.
+         // However, pocketbase_dart RecordModel usually mimics the json structure.
+         // Let's use toString() or check properties safely.
+         // Actually, authStore.model is of type generic.
+         // Let's try to cast or access dynamic.
+         
+         if (model != null) {
+            // Use dynamic access to avoid strict type error if the getter is missing on specific type
+            email = (model as dynamic).email; 
+            // Fallback if dynamic access failed or returned null (though it throws NoSuchMethodError usually if missing)
+         }
+       } catch (e) {
+          // If direct access fails, try accessing via data map if it's a RecordModel
+          // Note: accessing .data on dynamic might also fail if it's AdminModel
+          try {
+             final model = auth.pb.authStore.model;
+             if (model is dynamic && model.data is Map) {
+                email = model.data['email'];
+             }
+          } catch(e2) {
+             print("Error accessing email: $e2");
+          }
+       }
+       
        setState(() {
          _isAuthenticated = true;
-         _currentUserEmail = auth.pb.authStore.model?.email ?? "User"; // Get from PB store
+         _currentUserEmail = email ?? "User";
        });
     }
   }
@@ -92,8 +117,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
       }
 
       if (mounted) {
-        // After successful login/signup, update state to show "Profile View"
-        await _checkAuthStatus(); // Refresh state
+        await _checkAuthStatus(); 
         setState(() => _isLoading = false);
         
         ScaffoldMessenger.of(context).showSnackBar(
@@ -102,11 +126,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
             backgroundColor: Colors.green,
           ),
         );
-        // We stay on this screen now to let them click "Migrate", 
-        // OR we can navigate to MainScreen. 
-        // Current User Flow: Login -> Main Screen -> Settings -> Migrate.
-        // So upon first login from this screen, let's just refresh the UI to show Migration options
-        // instead of forcing navigation away, so they see the "Run Migrate" button immediately.
       }
     } catch (e) {
       if (mounted) {
@@ -135,38 +154,13 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _runMigration() async {
-    // Navigate to Admin/Migration Setup
     Navigator.of(context).push(
        MaterialPageRoute(builder: (_) => const AdminSetupScreen()),
     );
   }
   
-  Future<void> _forgotPassword() async {
-    if (_usernameController.text.isEmpty && _emailController.text.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter your Email or Username to reset password')),
-        );
-        return;
-    }
-    // Simple mock or actual implementation
-    // PocketBase requestPasswordReset(email)
-    final email = _emailController.text.isNotEmpty ? _emailController.text : _usernameController.text; // Assuming they might type email in username
-     try {
-        final auth = AuthService();
-        await auth.pb.collection('users').requestPasswordReset(email);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Password reset email sent! Check your inbox.')),
-        );
-     } catch(e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to send reset email: $e')),
-        );
-     }
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Premium Gradient Background
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -262,7 +256,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
      return Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Logo / Icon
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -285,7 +278,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                   ),
                   const SizedBox(height: 30),
                   
-                  // Title
                   Text(
                     'RemindBuddy',
                     style: GoogleFonts.poppins(
@@ -304,11 +296,10 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                   ),
                   const SizedBox(height: 40),
 
-                  // Auth Card
                   Card(
                     elevation: 12,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    color: Colors.white.withOpacity(0.95), // Slight transparency
+                    color: Colors.white.withOpacity(0.95), 
                     child: Padding(
                       padding: const EdgeInsets.all(24.0),
                       child: Form(
@@ -341,19 +332,8 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                               validator: (val) => val != null && val.length > 5 ? null : 'Password too short',
                             ),
                             
-                            // Forgot Password Button (Only for Login)
-                            if (_isLogin)
-                                Align(
-                                    alignment: Alignment.centerRight,
-                                    child: TextButton(
-                                        onPressed: _forgotPassword,
-                                        child: Text("Forgot Password?", style: TextStyle(color: Colors.blue.shade900)),
-                                    ),
-                                ),
-
-                            SizedBox(height: _isLogin ? 10 : 30),
+                            SizedBox(height: 30),
                             
-                            // Action Button
                             SizedBox(
                               width: double.infinity,
                               height: 50,
@@ -378,7 +358,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                             
                             const SizedBox(height: 20),
                             
-                            // Switch Mode
                             TextButton(
                               onPressed: _toggleAuthMode,
                               child: RichText(
