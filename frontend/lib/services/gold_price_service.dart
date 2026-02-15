@@ -15,40 +15,83 @@ class GoldPriceService {
   /// Fetch current gold price
   /// 1. Try BankBazaar (Primary)
   /// 2. If fails or invalid (< 1000), Try GoodReturns (Secondary) using ID Selector
+  /// Fetch current gold price
+  /// Returns a map with 'price', 'method', 'debug', and 'log'
   Future<Map<String, dynamic>> fetchCurrentGoldPrice() async {
+    final StringBuffer logBuffer = StringBuffer();
+    void log(String msg) {
+      final time = DateFormat('HH:mm:ss').format(DateTime.now());
+      print('$time $msg');
+      logBuffer.writeln('$time $msg');
+    }
+
+    log('🚀 Starting Gold Price Fetch...');
+
     // Only works on mobile platforms for now
-    if (kIsWeb) return {'price': null, 'method': 'web_not_supported', 'debug': 'Web platform not supported'};
+    if (kIsWeb) {
+      log('❌ Web platform not supported');
+      return {
+        'price': null, 
+        'method': 'web_not_supported', 
+        'debug': 'Web platform not supported',
+        'log': logBuffer.toString()
+      };
+    }
 
     // 1. Try BankBazaar
-    print('🔍 Attempting Primary Source: BankBazaar');
+    log('🔍 Attempting Primary Source: BankBazaar');
+    log('🔗 URL: $bankBazaarUrl');
+    
     final bbResult = await _fetchFromUrl(
       bankBazaarUrl, 
       'BankBazaar',
-      _getBankBazaarScript()
+      _getBankBazaarScript(),
+      log
     );
     
-    // Check if BankBazaar gave a valid price (> 1000 check is done in script, but double check here)
+    log('📄 BankBazaar Result: ${bbResult['method']}');
+    
     if (bbResult['price'] != null) {
       final price = bbResult['price'] as GoldPrice;
+      log('💰 BankBazaar returned price: ₹${price.price22k}');
+      
       if (price.price22k > 1000) {
+         log('✅ BankBazaar price valid (>1000)');
+         bbResult['log'] = logBuffer.toString();
          return bbResult;
+      } else {
+         log('⚠️ BankBazaar price invalid (<1000): ${price.price22k}');
       }
+    } else {
+      log('❌ BankBazaar failed: ${bbResult['debug']}');
     }
     
     // 2. Try GoodReturns (Fallback)
-    print('⚠️ BankBazaar failed or invalid, attempting Secondary Source: GoodReturns');
-    return await _fetchFromUrl(
+    log('🔄 Switching to Secondary Source: GoodReturns');
+    log('🔗 URL: $goodReturnsUrl');
+    
+    final grResult = await _fetchFromUrl(
       goodReturnsUrl,
       'GoodReturns', 
-      _getGoodReturnsScript()
+      _getGoodReturnsScript(),
+      log
     );
+
+    grResult['log'] = logBuffer.toString();
+    return grResult;
   }
 
-  Future<Map<String, dynamic>> _fetchFromUrl(String url, String sourceName, String jsScript) async {
+  Future<Map<String, dynamic>> _fetchFromUrl(
+    String url, 
+    String sourceName, 
+    String jsScript,
+    Function(String) log
+  ) async {
     final Completer<Map<String, dynamic>> completer = Completer<Map<String, dynamic>>();
     HeadlessInAppWebView? headlessWebView;
 
     try {
+      log('🕸️ Initializing HeadlessWebView for $sourceName...');
       headlessWebView = HeadlessInAppWebView(
         initialUrlRequest: URLRequest(url: WebUri(url)),
         initialSettings: InAppWebViewSettings(
@@ -57,15 +100,17 @@ class GoldPriceService {
           userAgent: 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
         ),
         onLoadStop: (controller, loadedUrl) async {
-          print('✅ Headless WebView loaded $sourceName: $loadedUrl');
+          log('✅ Page loaded: $loadedUrl');
           try {
+            log('📜 Executing JS extraction script...');
             final String? priceText = await controller.evaluateJavascript(source: jsScript);
-            print('📊 Extracted text from $sourceName: $priceText');
+            log('📊 Raw JS Output: $priceText');
 
             if (priceText != null && priceText.isNotEmpty) {
-              await _parseAndComplete(priceText, sourceName, completer);
+              await _parseAndComplete(priceText, sourceName, completer, log);
             } else {
               if (!completer.isCompleted) {
+                log('❌ JS returned null or empty string');
                 completer.complete({
                   'price': null,
                   'method': '${sourceName.toLowerCase()}_failed',
@@ -74,6 +119,7 @@ class GoldPriceService {
               }
             }
           } catch (e) {
+            log('💥 JS Error: $e');
             if (!completer.isCompleted) {
               completer.complete({
                 'price': null,
@@ -84,6 +130,7 @@ class GoldPriceService {
           }
         },
         onLoadError: (controller, url, code, message) {
+           log('🛑 Load Error: code=$code, msg=$message');
            if (!completer.isCompleted) {
              completer.complete({
                'price': null,
@@ -94,17 +141,23 @@ class GoldPriceService {
         },
       );
 
+      log('▶️ Running HeadlessWebView...');
       await headlessWebView.run();
       
       return await completer.future.timeout(const Duration(seconds: 60), onTimeout: () {
+        log('⏰ Timeout waiting for $sourceName (60s)');
         return {
           'price': null,
           'method': '${sourceName.toLowerCase()}_timeout',
           'debug': 'Timeout fetching from $sourceName',
         };
-      }).whenComplete(() => headlessWebView?.dispose());
+      }).whenComplete(() {
+        log('🗑️ Disposing WebView for $sourceName');
+        headlessWebView?.dispose();
+      });
       
     } catch (e) {
+      log('💣 Exception in _fetchFromUrl: $e');
       return {
         'price': null,
         'method': '${sourceName.toLowerCase()}_exception',
@@ -113,34 +166,44 @@ class GoldPriceService {
     }
   }
 
-  Future<void> _parseAndComplete(String priceText, String source, Completer<Map<String, dynamic>> completer) async {
+  Future<void> _parseAndComplete(
+    String priceText, 
+    String source, 
+    Completer<Map<String, dynamic>> completer,
+    Function(String) log
+  ) async {
     try {
       String textToParse = priceText;
-      
-      // Parse JSON if applicable
       String method = 'unknown';
+
+      // Parse JSON if applicable
       try {
          if (priceText.trim().startsWith('{') && priceText.contains('text')) {
-            final clean = priceText.replaceAll(RegExp(r'[{}"]'), '');
-            final parts = clean.split(',');
-            for (var part in parts) {
-              if (part.contains('text:')) textToParse = part.split('text:')[1].trim();
-              if (part.contains('method:')) method = part.split('method:')[1].trim();
-            }
+             // Basic JSON extraction to ensure we get the text field
+             final clean = priceText.replaceAll(RegExp(r'[{}"]'), '');
+             final parts = clean.split(',');
+             for (var part in parts) {
+               if (part.contains('text:')) textToParse = part.split('text:')[1].trim();
+               if (part.contains('method:')) method = part.split('method:')[1].trim();
+             }
+             log('🧩 Parsed JSON: text="$textToParse", method="$method"');
          }
       } catch (e) {
-        // use original text
+        log('⚠️ JSON parse error (using raw text): $e');
       }
 
       // Regex to extract price
+      // \d{1,3}(?:,\d{3})+ matches 14,560
+      // \d{4,} matches 14560
       final priceMatch = RegExp(r'(\d{1,3}(?:,\d{3})+|\d{4,})').firstMatch(textToParse);
       
       if (priceMatch != null) {
         final priceStr = priceMatch.group(0)!.replaceAll(',', '');
         final price22k = double.tryParse(priceStr);
+        log('🔢 Extracted number: $price22k');
         
         if (price22k != null && price22k > 1000 && price22k < 100000) {
-          print('💰 Parsed 22K price from $source: ₹$price22k');
+          log('✅ Price Valid! Completing with success.');
           if (!completer.isCompleted) {
             completer.complete({
               'price': GoldPrice(
@@ -154,12 +217,15 @@ class GoldPriceService {
             });
           }
         } else {
+           log('❌ Price out of range (<1000 or >100k)');
            if (!completer.isCompleted) completer.complete({'price': null, 'method': 'invalid_range', 'debug': 'Price out of range: $price22k'});
         }
       } else {
+         log('❌ Regex match failed on: "$textToParse"');
          if (!completer.isCompleted) completer.complete({'price': null, 'method': 'parse_fail', 'debug': 'Regex failed on: $textToParse'});
       }
     } catch (e) {
+      log('💣 Exception in parsing: $e');
       if (!completer.isCompleted) completer.complete({'price': null, 'method': 'parse_exception', 'debug': 'Exception: $e'});
     }
   }
@@ -178,20 +244,25 @@ class GoldPriceService {
                         const priceSpan = parent.querySelector('.white-space-nowrap');
                         if (priceSpan) {
                             const text = priceSpan.innerText.trim();
-                            // STRICT VALIDATION: Must not be a small number like "14"
-                            const match = text.match(/\\d{1,3}(,\\d{3})+|\\d{4,}/);
+                            
+                            // Client-side validation
+                            // Check for at least 4 digits to avoid dates like "14"
+                            // Regex: 1,000 to 99,999
+                            const match = text.match(/(\\d{1,3},\\d{3}|\\d{4,})/);
+                            
                             if (match) {
                                 const val = parseFloat(match[0].replace(/,/g, ''));
                                 if (val > 1000) {
                                     return JSON.stringify({text: text, method: 'bankbazaar_class_match'});
                                 }
                             }
+                            return JSON.stringify({text: text + " (Invalid value)", method: 'invalid_value_check'}); 
                         }
                     }
                 }
             }
             return null;
-        } catch(e) { return null; }
+        } catch(e) { return "JS_EXCEPTION: " + e.toString(); }
       })();
     """;
   }
@@ -206,8 +277,12 @@ class GoldPriceService {
             if (el && el.innerText) {
                  return JSON.stringify({text: el.innerText.trim(), method: 'id_selector'});
             }
-            return null;
-        } catch(e) { return null; }
+            // Debug info if ID not found
+            // let debug = "ID 22K-price not found. All IDs: ";
+            // const all = document.querySelectorAll('[id*="price"]');
+            // for(let i=0; i<all.length; i++) debug += all[i].id + ", ";
+            return "ID_NOT_FOUND";
+        } catch(e) { return "JS_EXCEPTION: " + e.toString(); }
       })();
     """;
   }

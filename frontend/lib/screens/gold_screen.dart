@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
 import '../services/gold_price_service.dart';
@@ -51,6 +52,8 @@ class _GoldScreenState extends State<GoldScreen> {
     }
   }
 
+  String _lastLog = "No logs yet. Click 'Refresh' to fetch price.";
+
   Future<void> _fetchPrice() async {
     setState(() => _isLoading = true);
     try {
@@ -63,6 +66,7 @@ class _GoldScreenState extends State<GoldScreen> {
       final method = result['method'];
       final debug = result['debug'];
       
+      _lastLog = result['log'] ?? "No log returned";
       print('📊 Fetch method: $method');
       print('🔍 Debug: $debug');
       
@@ -96,11 +100,17 @@ class _GoldScreenState extends State<GoldScreen> {
             SnackBar(
               content: Text('❌ Failed to fetch: $debug'),
               backgroundColor: Colors.red,
+              action: SnackBarAction(
+                label: 'Details',
+                textColor: Colors.white,
+                onPressed: _showDebugLog,
+              ),
             ),
           );
         }
       }
     } catch (e) {
+      _lastLog += "\nCRITICAL ERROR: $e";
       print('Error fetching price: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -115,6 +125,42 @@ class _GoldScreenState extends State<GoldScreen> {
       await _loadData();
     }
   }
+
+  void _showDebugLog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Fetching Logs'),
+        content: Container(
+          width: double.maxFinite,
+          constraints: const BoxConstraints(maxHeight: 400),
+          child: SingleChildScrollView(
+            child: SelectableText(
+              _lastLog,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+        ),
+        actions: [
+            TextButton.icon(
+              icon: const Icon(Icons.copy),
+              label: const Text('Copy Log'),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: _lastLog));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Log copied to clipboard')),
+                );
+              },
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+        ],
+      ),
+    );
+  }
+
 
   Future<void> _clearAllData() async {
     final confirmed = await showDialog<bool>(
@@ -160,6 +206,11 @@ class _GoldScreenState extends State<GoldScreen> {
             icon: const Icon(Icons.delete_forever),
             onPressed: _clearAllData,
             tooltip: 'Clear All Data',
+          ),
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            onPressed: _showDebugLog,
+            tooltip: 'Show Debug Log',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
