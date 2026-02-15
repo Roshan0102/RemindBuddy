@@ -19,6 +19,7 @@ class _GoldScreenState extends State<GoldScreen> {
   List<GoldPrice> _history = [];
   bool _isLoading = true;
   double? _priceDiff;
+  Map<String, dynamic>? _lastFullData; // Store full results for debug UI
 
   @override
   void initState() {
@@ -56,6 +57,7 @@ class _GoldScreenState extends State<GoldScreen> {
 
   Future<void> _fetchPrice() async {
     setState(() => _isLoading = true);
+    _lastLog = "Starting fetch..."; // Reset log
     try {
       final goldService = GoldPriceService();
       final storage = StorageService();
@@ -67,6 +69,7 @@ class _GoldScreenState extends State<GoldScreen> {
       final debug = result['debug'];
       
       _lastLog = result['log'] ?? "No log returned";
+      _lastFullData = result['full_data']; // Capture full data
       print('📊 Fetch method: $method');
       print('🔍 Debug: $debug');
       
@@ -161,6 +164,102 @@ class _GoldScreenState extends State<GoldScreen> {
     );
   }
 
+  void _showSourceChecker() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final bbData = _lastFullData?['bankbazaar'];
+            final grData = _lastFullData?['goodreturns'];
+            
+            GoldPrice? bbPrice = bbData != null ? bbData['price'] as GoldPrice? : null;
+            GoldPrice? grPrice = grData != null ? grData['price'] as GoldPrice? : null;
+
+            return AlertDialog(
+              title: const Text('Source Checker'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildSourceStatus('BankBazaar (Primary)', bbPrice, bbData),
+                    const SizedBox(height: 16),
+                    _buildSourceStatus('GoodReturns (Secondary)', grPrice, grData),
+                    const SizedBox(height: 16),
+                    if (_isLoading) const CircularProgressIndicator(),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton.icon(
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh Both'),
+                  onPressed: () async {
+                    Navigator.pop(context); // Close dialog first to avoid context issues or just rebuild?
+                    // Better to close, trigger fetch, and maybe user opens again? 
+                    // Or keep open and update? Keeping open is complex with async.
+                    // Let's close and trigger refresh.
+                    _fetchPrice().then((_) {
+                       if (mounted) _showSourceChecker();
+                    });
+                  },
+                ),
+                TextButton.icon(
+                  icon: const Icon(Icons.bug_report),
+                  label: const Text('Debug Console'),
+                  onPressed: () {
+                     // Open debug console
+                     _showDebugLog();
+                  },
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
+  }
+
+  Widget _buildSourceStatus(String name, GoldPrice? price, Map<String, dynamic>? data) {
+    final bool isSuccess = price != null;
+    final String errorMsg = data?['debug'] ?? 'No data';
+    final String method = data?['method'] ?? 'unknown';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isSuccess ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+        border: Border.all(color: isSuccess ? Colors.green : Colors.red),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(isSuccess ? Icons.check_circle : Icons.error, 
+                   color: isSuccess ? Colors.green : Colors.red, size: 20),
+              const SizedBox(width: 8),
+              Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.bold))),
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (isSuccess)
+             Text('₹ ${price.price22k.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))
+          else
+             Text('Failed: $errorMsg', style: TextStyle(color: Colors.red[700], fontSize: 12)),
+          
+          Text('Method: $method', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
 
   Future<void> _clearAllData() async {
     final confirmed = await showDialog<bool>(
@@ -206,6 +305,11 @@ class _GoldScreenState extends State<GoldScreen> {
             icon: const Icon(Icons.delete_forever),
             onPressed: _clearAllData,
             tooltip: 'Clear All Data',
+          ),
+          IconButton(
+            icon: const Icon(Icons.compare_arrows),
+            onPressed: _showSourceChecker,
+            tooltip: 'Check Sources',
           ),
           IconButton(
             icon: const Icon(Icons.bug_report),

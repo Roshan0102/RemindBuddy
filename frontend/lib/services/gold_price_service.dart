@@ -52,23 +52,8 @@ class GoldPriceService {
     
     log('📄 BankBazaar Result: ${bbResult['method']}');
     
-    if (bbResult['price'] != null) {
-      final price = bbResult['price'] as GoldPrice;
-      log('💰 BankBazaar returned price: ₹${price.price22k}');
-      
-      if (price.price22k > 1000) {
-         log('✅ BankBazaar price valid (>1000)');
-         bbResult['log'] = logBuffer.toString();
-         return bbResult;
-      } else {
-         log('⚠️ BankBazaar price invalid (<1000): ${price.price22k}');
-      }
-    } else {
-      log('❌ BankBazaar failed: ${bbResult['debug']}');
-    }
-    
-    // 2. Try GoodReturns (Fallback)
-    log('🔄 Switching to Secondary Source: GoodReturns');
+    // 2. Try GoodReturns (Always run for visibility)
+    log('🔄 Attempting Secondary Source: GoodReturns');
     log('🔗 URL: $goodReturnsUrl');
     
     final grResult = await _fetchFromUrl(
@@ -78,8 +63,47 @@ class GoldPriceService {
       log
     );
 
-    grResult['log'] = logBuffer.toString();
-    return grResult;
+    log('📄 GoodReturns Result: ${grResult['method']}');
+
+    // DECISION LOGIC
+    Map<String, dynamic> finalResult;
+    String decisionLog = "";
+
+    bool bbValid = false;
+    if (bbResult['price'] != null) {
+      final price = bbResult['price'] as GoldPrice;
+      if (price.price22k > 1000) {
+        bbValid = true;
+        log('✅ BankBazaar price valid (>1000): ${price.price22k}');
+      } else {
+        log('⚠️ BankBazaar price invalid (<1000): ${price.price22k}');
+      }
+    }
+
+    if (bbValid) {
+       finalResult = bbResult;
+       decisionLog = "Selected: BankBazaar (Primary)";
+    } else {
+       if (grResult['price'] != null) {
+          finalResult = grResult;
+          decisionLog = "Selected: GoodReturns (Fallback user BB failed/invalid)";
+       } else {
+          finalResult = bbResult; // Both failed, return BB error usually
+          decisionLog = "Failed: Both sources returned no valid data";
+       }
+    }
+
+    log('🏁 $decisionLog');
+    
+    // attach combined logs to result
+    finalResult['log'] = logBuffer.toString();
+    // Attach both results to debug key for the UI to parse
+    finalResult['full_data'] = {
+      'bankbazaar': bbResult,
+      'goodreturns': grResult
+    };
+
+    return finalResult;
   }
 
   Future<Map<String, dynamic>> _fetchFromUrl(
