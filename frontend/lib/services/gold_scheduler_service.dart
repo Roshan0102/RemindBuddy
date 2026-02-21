@@ -28,29 +28,27 @@ class GoldSchedulerService {
 
     // Schedule 11 AM alarm
     final morning11AM = _getNextScheduledTime(11, 0);
-    await AndroidAlarmManager.periodic(
-      const Duration(days: 1),
+    await AndroidAlarmManager.oneShotAt(
+      morning11AM,
       morningAlarmId,
       _morningFetchCallback,
-      startAt: morning11AM,
       exact: true,
       wakeup: true,
       rescheduleOnReboot: true,
     );
-    print('✅ Scheduled 11 AM gold price fetch');
+    print('✅ Scheduled 11 AM gold price fetch for $morning11AM');
 
     // Schedule 7 PM alarm
     final evening7PM = _getNextScheduledTime(19, 0);
-    await AndroidAlarmManager.periodic(
-      const Duration(days: 1),
+    await AndroidAlarmManager.oneShotAt(
+      evening7PM,
       eveningAlarmId,
       _eveningFetchCallback,
-      startAt: evening7PM,
       exact: true,
       wakeup: true,
       rescheduleOnReboot: true,
     );
-    print('✅ Scheduled 7 PM gold price fetch');
+    print('✅ Scheduled 7 PM gold price fetch for $evening7PM');
   }
 
   /// Cancel all scheduled alarms
@@ -119,6 +117,22 @@ class GoldSchedulerService {
       }
     } catch (e) {
       LogService.staticLog('❌ Error in 11 AM fetch: $e');
+    } finally {
+      // Reschedule for next day (recursive oneShot for better reliability)
+      final now = DateTime.now();
+      var nextMorning = DateTime(now.year, now.month, now.day, 11, 0);
+      if (nextMorning.isBefore(now) || nextMorning.isAtSameMomentAs(now)) {
+        nextMorning = nextMorning.add(const Duration(days: 1));
+      }
+      await AndroidAlarmManager.oneShotAt(
+        nextMorning,
+        morningAlarmId,
+        _morningFetchCallback,
+        exact: true,
+        wakeup: true,
+        rescheduleOnReboot: true,
+      );
+      LogService.staticLog('✅ Rescheduled next 11 AM fetch for $nextMorning');
     }
   }
 
@@ -176,6 +190,22 @@ class GoldSchedulerService {
       }
     } catch (e) {
       LogService.staticLog('❌ Error in 7 PM fetch: $e');
+    } finally {
+      // Reschedule for next day
+      final now = DateTime.now();
+      var nextEvening = DateTime(now.year, now.month, now.day, 19, 0);
+      if (nextEvening.isBefore(now) || nextEvening.isAtSameMomentAs(now)) {
+        nextEvening = nextEvening.add(const Duration(days: 1));
+      }
+      await AndroidAlarmManager.oneShotAt(
+        nextEvening,
+        eveningAlarmId,
+        _eveningFetchCallback,
+        exact: true,
+        wakeup: true,
+        rescheduleOnReboot: true,
+      );
+      LogService.staticLog('✅ Rescheduled next 7 PM fetch for $nextEvening');
     }
   }
 

@@ -21,7 +21,7 @@ class SyncService {
     await syncTasks();
     await syncNotes();
     await syncDailyReminders();
-    // await syncChecklists(); // TODO
+    await syncChecklists();
     // await syncShifts(); // TODO
     
     // Update last sync time
@@ -266,6 +266,165 @@ class SyncService {
       }
     } catch (e) {
        print('  ❌ Error pulling daily reminders: $e');
+    }
+  }
+
+  // --- Checklists ---
+  
+  Future<void> syncChecklists() async {
+    final db = await storage.database;
+    final user = pb.authStore.model;
+    if (user == null) return;
+
+    // --- 1. Sync Checklists ---
+    
+    // a. Push local changes
+    final dirtyChecklists = await db.query('checklists', where: 'isSynced = 0');
+    if (dirtyChecklists.isNotEmpty) print('  📤 Pushing ${dirtyChecklists.length} checklists...');
+
+    for (var row in dirtyChecklists) {
+      String? remoteId = row['remoteId'] as String?;
+      try {
+        final body = {
+          'title': row['title'],
+          'iconCode': row['iconCode'],
+          'color': row['color'],
+          'user': user.id,
+        };
+        
+        if (remoteId == null || remoteId.isEmpty) {
+           final record = await pb.collection('checklists').create(body: body);
+           remoteId = record.id;
+           await db.update('checklists', {
+             'remoteId': record.id,
+             'isSynced': 1,
+             'updatedAt': record.updated,
+           }, where: 'id = ?', whereArgs: [row['id']]);
+        } else {
+           await pb.collection('checklists').update(remoteId, body: body);
+           await db.update('checklists', {
+             'isSynced': 1,
+             'updatedAt': DateTime.now().toIso8601String(),
+           }, where: 'id = ?', whereArgs: [row['id']]);
+        }
+      } catch (e) {
+        print('  ❌ Error pushing checklist ${row['id']}: $e');
+      }
+    }
+    
+    // b. Pull remote changes
+    final prefs = await SharedPreferences.getInstance();
+    final lastSync = prefs.getString(_lastSyncKey) ?? '2000-01-01 00:00:00.000Z';
+    
+    try {
+      final resultList = await pb.collection('checklists').getList(
+        filter: 'updated > "$lastSync"',
+      );
+      
+      if (resultList.items.isNotEmpty) print('  📥 Pulling ${resultList.items.length} checklists...');
+
+      for (var record in resultList.items) {
+        final local = await db.query('checklists', where: 'remoteId = ?', whereArgs: [record.id]);
+        
+        final listData = {
+          'title': record.data['title'],
+          'iconCode': record.data['iconCode'],
+          'color': record.data['color'],
+          'remoteId': record.id,
+          'isSynced': 1,
+          'updatedAt': record.updated,
+        };
+
+        if (local.isEmpty) {
+          await db.insert('checklists', listData);
+        } else {
+          await db.update('checklists', listData, where: 'remoteId = ?', whereArgs: [record.id]);
+        }
+      }
+    } catch (e) {
+       print('  ❌ Error pulling checklists: $e');
+    }
+
+    // --- 2. Sync Checklist Items ---
+    
+    // a. Push local item changes
+    final dirtyItems = await db.query('checklist_items', where: 'isSynced = 0');
+    if (dirtyItems.isNotEmpty) print('  📤 Pushing ${dirtyItems.length} checklist items...');
+
+    for (var row in dirtyItems) {
+      String? remoteId = row['remoteId'] as String?;
+      int localChecklistId = row['checklistId'] as int;
+      
+      // We must get the remoteId of the parent checklist to link in PocketBase
+      final parentList = await db.query('checklists', where: 'id = ?', whereArgs: [localChecklistId]);
+      if (parentList.isEmpty || parentList.first['remoteId'] == null) {
+        // Skip syncing if parent checklist is not synced yet (edge case)
+        continue;
+      }
+      String parentRemoteId = parentList.first['remoteId'] as String;
+
+      try {
+        final body = {
+          'checklistId': parentRemoteId,
+          'text': row['text'],
+          'isChecked': row['isChecked'] == 1,
+        };
+        
+        if (remoteId == null || remoteId.isEmpty) {
+           final record = await pb.collection('checklist_items').create(body: body);
+           await db.update('checklist_items', {
+             'remoteId': record.id,
+             'isSynced': 1,
+             'updatedAt': record.updated,
+           }, where: 'id = ?', whereArgs: [row['id']]);
+        } else {
+           await pb.collection('checklist_items').update(remoteId, body: body);
+           await db.update('checklist_items', {
+             'isSynced': 1,
+             'updatedAt': DateTime.now().toIso8601String(),
+           }, where: 'id = ?', whereArgs: [row['id']]);
+        }
+      } catch (e) {
+        print('  ❌ Error pushing checklist item ${row['id']}: $e');
+      }
+    }
+    
+    // b. Pull remote item changes
+    try {
+      final itemList = await pb.collection('checklist_items').getList(
+        filter: 'updated > "$lastSync"',
+      );
+      
+      if (itemList.items.isNotEmpty) print('  📥 Pulling ${itemList.items.length} checklist items...');
+
+      for (var record in itemList.items) {
+        // Find local parent by parent remoteId
+        final parentRemoteId = record.data['checklistId'];
+        final parentList = await db.query('checklists', where: 'remoteId = ?', whereArgs: [parentRemoteId]);
+        
+        if (parentList.isEmpty) continue; // Parent not here, skip
+        
+        int parentLocalId = parentList.first['id'] as int;
+        
+        final local = await db.query('checklist_items', where: 'remoteId = ?', whereArgs: [record.id]);
+        
+        final itemData = {
+          'checklistId': parentLocalId,
+          'text': record.data['text'],
+          'isChecked': record.data['isChecked'] == true ? 1 : 0,
+          'remoteId': record.id,
+          'isSynced': 1,
+          'updatedAt': record.updated,
+        };
+
+        if (local.isEmpty) {
+          await db.insert('checklist_items', itemData);
+        } else {
+          await db.update('checklist_items', itemData, where: 'remoteId = ?', whereArgs: [record.id]);
+        }
+      }
+    } catch (e) {
+       print('  ❌ Error pulling checklist items: $e');
     }
   }
 }

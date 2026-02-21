@@ -21,7 +21,15 @@ class AuthService {
     final token = await storage.getAuthToken();
     
     if (token != null && token.isNotEmpty) {
-      pb.authStore.save(token, null); // We might need to load model too, but token is key
+      pb.authStore.save(token, null); 
+      // Fetch user data with auth refresh so that SyncService knows who is logged in
+      try {
+        final authData = await pb.collection('users').authRefresh();
+        pb.authStore.save(authData.token, authData.record);
+      } catch (e) {
+        print("Auth refresh failed: $e");
+      }
+      
       // Trigger sync
       try {
         SyncService(pb).syncAll();

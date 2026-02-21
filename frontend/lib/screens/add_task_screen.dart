@@ -6,6 +6,7 @@ import '../models/task.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 
 class AddTaskScreen extends StatefulWidget {
   final DateTime? selectedDate;
@@ -115,7 +116,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       // 1. Save Locally (Offline First)
       try {
         final storage = StorageService(); // Singleton
-        await storage.insertTask(newTask);
+        final taskId = await storage.insertTask(newTask);
+        newTask.id = taskId;
+        
+        await NotificationService().scheduleTaskNotification(newTask);
         
         // 2. Trigger Sync (Best Effort)
         // Access PB via AuthService

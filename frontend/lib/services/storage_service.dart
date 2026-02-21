@@ -261,13 +261,13 @@ class StorageService {
   }
 
   // Task Methods
-  Future<void> insertTask(Task task) async {
+  Future<int> insertTask(Task task) async {
     final db = await database;
     final map = task.toMap();
     map['isSynced'] = 0; // Force dirty
     map['updatedAt'] = DateTime.now().toIso8601String();
     
-    await db.insert(
+    return await db.insert(
       'tasks',
       map,
       conflictAlgorithm: ConflictAlgorithm.replace,

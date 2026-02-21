@@ -74,20 +74,9 @@ class _GoldScreenState extends State<GoldScreen> {
       print('🔍 Debug: $debug');
       
       if (newPrice != null) {
-        // Get latest price from database
-        final latestPrice = await storage.getLatestGoldPrice();
-        
-        if (latestPrice != null && 
-            latestPrice.date == newPrice.date &&
-            (newPrice.price22k - latestPrice.price22k).abs() < 1.0) {
-          // Same day, price hasn't changed significantly - just update timestamp
-          print('✓ Price unchanged - Updating timestamp only');
-          // Don't add new row, just refresh UI
-        } else {
-          // Price changed or new day - save new entry
-          await storage.saveGoldPrice(newPrice);
-          print('✅ New price saved: ₹${newPrice.price22k}');
-        }
+        // Unconditionally save fetched price to update timestamp for the user
+        await storage.saveGoldPrice(newPrice);
+        print('✅ New price saved (or timestamp updated): ₹${newPrice.price22k}');
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
