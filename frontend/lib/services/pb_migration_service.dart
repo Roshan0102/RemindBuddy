@@ -8,19 +8,24 @@ class PbMigrationService {
   Future<void> createCollections(String adminEmail, String adminPassword) async {
     // Attempt authentication
     try {
-      // 1. Try standard Admin/Superuser auth
-      await pb.admins.authWithPassword(adminEmail, adminPassword);
-      print("Authenticated as Admin/Superuser.");
+      // 1. Try legacy Admin auth (for PocketBase v0.22 and below) 
+      // The Dart SDK 0.23+ redirects pb.admins to _superusers, which fails on v0.22
+      final response = await pb.send(
+        '/api/admins/auth-with-password',
+        method: 'POST',
+        body: {'identity': adminEmail, 'password': adminPassword},
+      );
+      
+      final token = response['token'] as String;
+      pb.authStore.save(token, null);
+      print("Authenticated natively to legacy admin path (/api/admins).");
+      
     } catch (e) {
-      print("Admin auth failed (likely 404 on _superusers for older servers). Trying as regular user...");
+      print("Legacy Admin auth failed: $e. Trying via newer _superusers/users collections...");
       try {
-        // 2. Fallback: Authenticate as a regular user in 'users' collection
-        // This is common if the "admin" is just a user with a specific role, 
-        // or if the server is older and the SDK mismatches.
         await pb.collection('users').authWithPassword(adminEmail, adminPassword);
         print("Authenticated as regular user (admin access presumed).");
       } catch (e2) {
-         // Both failed
          throw Exception("Authentication failed. \nAdmin Error: $e\nUser Error: $e2");
       }
     }
