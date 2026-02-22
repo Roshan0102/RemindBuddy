@@ -24,24 +24,25 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   bool _hasData = false;
   
   // Multi-month support
-  List<String> _availableMonths = [];
-  String? _selectedRosterMonth;
-  String _selectedMonthView = 'current'; // 'current' or 'next'
+  DateTime _currentDate = DateTime.now();
+  String get _selectedRosterMonth => DateFormat('yyyy-MM').format(_currentDate);
 
   @override
   void initState() {
     super.initState();
-    _loadAvailableMonths();
+    _loadShifts();
   }
   
-  Future<void> _loadAvailableMonths() async {
-    final months = await _storage.getAvailableRosterMonths();
+  void _changeMonth(int delta) {
     setState(() {
-      _availableMonths = months;
-      if (months.isNotEmpty) {
-        // Default to most recent month
-        _selectedRosterMonth = months.first;
-      }
+      _currentDate = DateTime(_currentDate.year, _currentDate.month + delta, 1);
+    });
+    _loadShifts();
+  }
+
+  void _changeYear(int delta) {
+    setState(() {
+      _currentDate = DateTime(_currentDate.year + delta, _currentDate.month, 1);
     });
     _loadShifts();
   }
@@ -56,9 +57,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       if (metadata != null && shiftsData.isNotEmpty) {
         final shifts = shiftsData.map((s) => Shift.fromMap(s)).toList();
         
-        // Parse month string to get YYYY-MM format for database query
-        // metadata['month'] is like "February 2026"
-        String monthForQuery = _parseMonthForQuery(metadata['month']!);
+        String monthForQuery = _selectedRosterMonth;
         final stats = await _storage.getShiftStatistics(monthForQuery, rosterMonth: _selectedRosterMonth);
         
         setState(() {
@@ -80,50 +79,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     }
   }
   
-  void _switchMonth(String monthView) {
-    setState(() {
-      _selectedMonthView = monthView;
-      
-      // Calculate the roster month based on selection
-      final now = DateTime.now();
-      if (monthView == 'current') {
-        _selectedRosterMonth = DateFormat('yyyy-MM').format(now);
-      } else {
-        // Next month
-        final nextMonth = DateTime(now.year, now.month + 1, 1);
-        _selectedRosterMonth = DateFormat('yyyy-MM').format(nextMonth);
-      }
-    });
-    _loadShifts();
-  }
 
-  /// Parse month string like "February 2026" to "2026-02" format
-  String _parseMonthForQuery(String monthStr) {
-    try {
-      // monthStr is like "February 2026"
-      final parts = monthStr.split(' ');
-      if (parts.length == 2) {
-        final monthName = parts[0];
-        final year = parts[1];
-        
-        // Convert month name to number
-        final monthNames = [
-          'January', 'February', 'March', 'April', 'May', 'June',
-          'July', 'August', 'September', 'October', 'November', 'December'
-        ];
-        
-        final monthIndex = monthNames.indexOf(monthName) + 1;
-        if (monthIndex > 0) {
-          return '$year-${monthIndex.toString().padLeft(2, '0')}';
-        }
-      }
-    } catch (e) {
-      LogService().error('Error parsing month', e);
-    }
-    
-    // Fallback: return current month
-    return DateFormat('yyyy-MM').format(DateTime.now());
-  }
 
   Future<void> _uploadJSON() async {
     final TextEditingController controller = TextEditingController();
@@ -185,7 +141,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 await _shiftService.scheduleAllAmlaReminders();
                 
                 Navigator.pop(context);
-                await _loadAvailableMonths(); // Reload available months
+                await _loadShifts(); // Reload current view
                 
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -288,7 +244,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Month Statistics - ${_metadata!['month']}',
+              'Month Statistics',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
@@ -477,6 +433,50 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     );
   }
 
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.teal),
+                onPressed: () => _changeYear(-1),
+              ),
+              Text(
+                DateFormat('yyyy').format(_currentDate),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                icon: const Icon(Icons.arrow_forward_ios, color: Colors.teal),
+                onPressed: () => _changeYear(1),
+              ),
+            ],
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.teal),
+                onPressed: () => _changeMonth(-1),
+              ),
+              Text(
+                DateFormat('MMMM').format(_currentDate),
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                icon: const Icon(Icons.arrow_forward_ios, color: Colors.teal),
+                onPressed: () => _changeMonth(1),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -502,65 +502,44 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         icon: const Icon(Icons.upload_file),
         label: Text(_hasData ? 'Update Roster' : 'Upload Roster'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : !_hasData
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.calendar_month, size: 80, color: Colors.grey[300]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No shift data yet',
-                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Upload your roster JSON to get started',
-                        style: TextStyle(color: Colors.grey[500]),
-                      ),
-                    ],
-                  ),
-                )
-              : SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      // Month Toggle Buttons
-                      Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Row(
+      body: Column(
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : !_hasData
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Expanded(
-                              child: SegmentedButton<String>(
-                                segments: const [
-                                  ButtonSegment<String>(
-                                    value: 'current',
-                                    label: Text('This Month'),
-                                    icon: Icon(Icons.calendar_today),
-                                  ),
-                                  ButtonSegment<String>(
-                                    value: 'next',
-                                    label: Text('Next Month'),
-                                    icon: Icon(Icons.calendar_month),
-                                  ),
-                                ],
-                                selected: {_selectedMonthView},
-                                onSelectionChanged: (Set<String> selection) {
-                                  _switchMonth(selection.first);
-                                },
-                              ),
+                            Icon(Icons.calendar_month, size: 80, color: Colors.grey[300]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No shift data yet',
+                              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Upload your roster JSON for this month',
+                              style: TextStyle(color: Colors.grey[500]),
                             ),
                           ],
                         ),
+                      )
+                    : SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            _buildStatisticsCard(),
+                            _buildUpcomingShifts(),
+                            _buildAllShiftsCalendar(),
+                            const SizedBox(height: 80), // Space for FAB
+                          ],
+                        ),
                       ),
-                      _buildStatisticsCard(),
-                      _buildUpcomingShifts(),
-                      _buildAllShiftsCalendar(),
-                      const SizedBox(height: 80), // Space for FAB
-                    ],
-                  ),
-                ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -215,17 +215,44 @@ class NotificationService {
     LogService().log('  - Current TZ Time: $tzNow');
     LogService().log('  - Difference: ${difference.inSeconds} seconds');
 
-    if (scheduledDate.isBefore(tzNow.subtract(const Duration(minutes: 1)))) {
-      LogService().log('  - Task is in the past. Not scheduling notification.');
-      return;
+  if (scheduledDate.isBefore(tzNow.subtract(const Duration(minutes: 1)))) {
+    if (task.repeat == 'none') {
+      if (scheduledDate.isBefore(tzNow.subtract(const Duration(hours: 24)))) {
+        LogService().log('  - Task is in the past (>24h). Not scheduling.');
+        return;
+      } else {
+        LogService().log('  - Task is recently missed (<24h). Scheduling now.');
+      }
+    } else {
+      LogService().log('  - Task is in the past but repeating, advancing to future...');
     }
-    
-    // Grace period handling
-    tz.TZDateTime finalScheduledDate = scheduledDate;
-    if (scheduledDate.isBefore(tzNow)) {
-       LogService().log('  - Task is slightly past, pushing +5s');
+  }
+  
+  // Grace period handling & repeating task advancement
+  tz.TZDateTime finalScheduledDate = scheduledDate;
+  if (scheduledDate.isBefore(tzNow)) {
+    if (task.repeat == 'daily') {
+       while (finalScheduledDate.isBefore(tzNow)) {
+         finalScheduledDate = finalScheduledDate.add(const Duration(days: 1));
+       }
+    } else if (task.repeat == 'weekly') {
+       while (finalScheduledDate.isBefore(tzNow)) {
+         finalScheduledDate = finalScheduledDate.add(const Duration(days: 7));
+       }
+    } else if (task.repeat.startsWith('custom:')) {
+       final int days = int.tryParse(task.repeat.split(':')[1]) ?? 1;
+       if (days > 0) {
+         while (finalScheduledDate.isBefore(tzNow)) {
+           finalScheduledDate = finalScheduledDate.add(Duration(days: days));
+         }
+       } else {
+         finalScheduledDate = tzNow.add(const Duration(seconds: 5));
+       }
+    } else {
+       LogService().log('  - Task is past, pushing +5s to notify now');
        finalScheduledDate = tzNow.add(const Duration(seconds: 5));
     }
+  }
 
     try {
       await flutterLocalNotificationsPlugin.zonedSchedule(
