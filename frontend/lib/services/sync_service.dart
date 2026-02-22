@@ -25,8 +25,22 @@ class SyncService {
 
   SyncService(this.pb);
 
+  String? _getUserId() {
+    if (pb.authStore.model != null) return pb.authStore.model.id;
+    final token = pb.authStore.token;
+    if (token.isEmpty) return null;
+    try {
+      final parts = token.split('.');
+      if (parts.length == 3) {
+        final payload = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+        return payload['id'];
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> syncAll() async {
-    if (pb.authStore.model == null) return;
+    if (pb.authStore.token.isEmpty) return;
 
     print('🔄 Starting Sync...');
     await syncTasks();
@@ -48,8 +62,8 @@ class SyncService {
     _syncingTasks = true;
     try {
       final db = await storage.database;
-      final user = pb.authStore.model;
-      if (user == null) return;
+      final userId = _getUserId();
+      if (userId == null) return;
       
       // 1. Push Local Changes
       final dirtyTasks = await db.query('tasks', where: 'isSynced = 0');
@@ -65,7 +79,8 @@ class SyncService {
             'time': task.time,
             'repeat': task.repeat,
             'is_annoying': task.isAnnoying,
-            'user': user.id,
+            'is_completed': false, // Added this field as per instruction
+            'user': userId,
           };
 
           if (task.remoteId == null || task.remoteId!.isEmpty) {
@@ -141,8 +156,8 @@ class SyncService {
     _syncingNotes = true;
     try {
       final db = await storage.database;
-      final user = pb.authStore.model;
-      if (user == null) return;
+      final userId = _getUserId();
+      if (userId == null) return;
 
     // 1. Push
     final dirtyNotes = await db.query('notes', where: 'isSynced = 0');
@@ -156,7 +171,7 @@ class SyncService {
           'content': note.content,
           'date': note.date,
           'is_locked': note.isLocked,
-          'user': user.id,
+          'user': userId,
         };
 
         if (note.remoteId == null || note.remoteId!.isEmpty) {
@@ -223,43 +238,38 @@ class SyncService {
     _syncingDaily = true;
     try {
       final db = await storage.database;
-      final user = pb.authStore.model;
-      if (user == null) return;
+      final userId = _getUserId(); // Changed from user = pb.authStore.model
+      if (userId == null) return;
 
     // 1. Push
     final dirtyReminders = await db.query('daily_reminders', where: 'isSynced = 0');
     if (dirtyReminders.isNotEmpty) print('  📤 Pushing ${dirtyReminders.length} daily reminders...');
 
     for (var row in dirtyReminders) {
-      // Create manual object if fromJson fails (but fromJson works for map)
-      // DailyReminder.fromJson(row) works.
-      String? remoteId = row['remoteId'] as String?;
-      bool isActive = row['isActive'] == 1; // row is int
-      bool isAnnoying = row['isAnnoying'] == 1;
-
+      DailyReminder reminder = DailyReminder.fromJson(row); // Changed to use DailyReminder.fromJson
       try {
         final body = {
-          'title': row['title'],
-          'description': row['description'],
-          'time': row['time'],
-          'is_active': isActive,
-          'is_annoying': isAnnoying,
-          'user': user.id,
+          'title': reminder.title,
+          'description': reminder.description,
+          'time': reminder.time,
+          'is_active': reminder.isActive,
+          'is_annoying': reminder.isAnnoying,
+          'user': userId, // Changed from user.id
         };
         
-        if (remoteId == null || remoteId.isEmpty) {
+        if (reminder.remoteId == null || reminder.remoteId!.isEmpty) { // Changed from remoteId
            final record = await pb.collection('daily_reminders').create(body: body);
            await db.update('daily_reminders', {
              'remoteId': record.id,
              'isSynced': 1,
              'updatedAt': record.updated,
-           }, where: 'id = ?', whereArgs: [row['id']]);
+           }, where: 'id = ?', whereArgs: [reminder.id]); // Changed from row['id']
         } else {
-           await pb.collection('daily_reminders').update(remoteId, body: body);
+           await pb.collection('daily_reminders').update(reminder.remoteId!, body: body); // Changed from remoteId
            await db.update('daily_reminders', {
              'isSynced': 1,
              'updatedAt': DateTime.now().toIso8601String(),
-           }, where: 'id = ?', whereArgs: [row['id']]);
+           }, where: 'id = ?', whereArgs: [reminder.id]); // Changed from row['id']
         }
       } catch (e) {
         print('  ❌ Error pushing daily reminder ${row['id']}: $e');
@@ -322,8 +332,8 @@ class SyncService {
     _syncingChecklists = true;
     try {
       final db = await storage.database;
-      final user = pb.authStore.model;
-      if (user == null) return;
+      final userId = _getUserId(); // Changed from user = pb.authStore.model
+      if (userId == null) return;
 
     // --- 1. Sync Checklists ---
     
@@ -338,7 +348,7 @@ class SyncService {
           'title': row['title'],
           'iconCode': row['iconCode'],
           'color': row['color'],
-          'user': user.id,
+          'user': userId, // Changed from user.id
         };
         
         if (remoteId == null || remoteId.isEmpty) {
@@ -487,8 +497,8 @@ class SyncService {
     _syncingShifts = true;
     try {
       final db = await storage.database;
-      final user = pb.authStore.model;
-      if (user == null) return;
+      final userId = _getUserId();
+      if (userId == null) return;
       
       // --- 1. Push Metadata ---
       final dirtyMetadata = await db.query('shift_metadata', where: 'isSynced = 0');
@@ -499,7 +509,7 @@ class SyncService {
           'employee_name': row['employee_name'],
           'month': row['month'],
           'roster_month': row['roster_month'],
-          'user': user.id,
+          'user': userId,
         };
         try {
           if (remoteId == null || remoteId.isEmpty) {
@@ -530,7 +540,7 @@ class SyncService {
           'end_time': row['end_time'],
           'is_week_off': row['is_week_off'] == 1,
           'roster_month': row['roster_month'],
-          'user': user.id,
+          'user': userId,
         };
         try {
           if (remoteId == null || remoteId.isEmpty) {

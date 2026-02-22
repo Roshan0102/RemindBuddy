@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:convert';
 import '../services/auth_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
@@ -49,32 +50,21 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
        // Safely access email from RecordModel
        String? email;
        try {
-         final model = auth.pb.authStore.model;
-         // Check if it's a RecordModel (user) or AdminModel (admin)
-         // Assuming standard user for now. RecordModel accesses data via data[] map or helpers if generated.
-         // But the dynamic nature means we might need to check.
-         // 'email' is usually a top-level getter on AdminModel, but on RecordModel it's in the data.
-         // However, pocketbase_dart RecordModel usually mimics the json structure.
-         // Let's use toString() or check properties safely.
-         // Actually, authStore.model is of type generic.
-         // Let's try to cast or access dynamic.
-         
-         if (model != null) {
-            // Use dynamic access to avoid strict type error if the getter is missing on specific type
-            email = (model as dynamic).email; 
-            // Fallback if dynamic access failed or returned null (though it throws NoSuchMethodError usually if missing)
+         final record = auth.pb.authStore.record;
+         if (record != null) {
+            email = record.getStringValue('email');
+         } else {
+            // Fallback to token if record isn't loaded but JWT exists
+            if (auth.pb.authStore.token.isNotEmpty) {
+               final parts = auth.pb.authStore.token.split('.');
+               if (parts.length == 3) {
+                  final payload = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+                  email = payload['email'];
+               }
+            }
          }
        } catch (e) {
-          // If direct access fails, try accessing via data map if it's a RecordModel
-          // Note: accessing .data on dynamic might also fail if it's AdminModel
-          try {
-             final model = auth.pb.authStore.model;
-             if (model is dynamic && model.data is Map) {
-                email = model.data['email'];
-             }
-          } catch(e2) {
-             print("Error accessing email: $e2");
-          }
+          print("Error accessing email: $e");
        }
        
        setState(() {

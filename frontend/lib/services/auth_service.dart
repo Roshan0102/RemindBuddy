@@ -3,6 +3,7 @@ import 'package:pocketbase/pocketbase.dart';
 
 import 'storage_service.dart';
 import 'sync_service.dart';
+import 'dart:convert';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -38,7 +39,19 @@ class AuthService {
   }
 
   bool get isAuthenticated => pb.authStore.isValid;
-  String? get userId => pb.authStore.model?.id;
+  String? get userId {
+    if (pb.authStore.model != null) return pb.authStore.model.id;
+    final token = pb.authStore.token;
+    if (token.isEmpty) return null;
+    try {
+      final parts = token.split('.');
+      if (parts.length == 3) {
+        final payload = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+        return payload['id'];
+      }
+    } catch (_) {}
+    return null;
+  }
 
   Future<void> login(String email, String password) async {
     try {

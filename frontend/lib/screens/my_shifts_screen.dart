@@ -120,21 +120,27 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 final jsonData = json.decode(controller.text);
                 final roster = ShiftRoster.fromJson(jsonData);
                 
-                // Extract roster month from first shift date (YYYY-MM format)
-                String? rosterMonth;
-                if (roster.shifts.isNotEmpty) {
-                  rosterMonth = roster.shifts.first.date.substring(0, 7); // "2026-02-14" -> "2026-02"
-                }
-                
-                // Save to database
-                final shiftsToSave = roster.shifts.map((s) => s.toMap()).toList();
-                await _storage.saveShiftRoster(
-                  roster.employeeName,
-                  roster.month,
-                  shiftsToSave,
-                  rosterMonth: rosterMonth,
-                  rawJson: controller.text,
-                );
+                // Extract roster month directly from UI selection
+              String rosterMonth = _selectedRosterMonth;
+              String updatedMonthLabel = DateFormat('MMMM yyyy').format(_currentDate);
+              
+              // Rewrite the shift dates to match the selected month/year!
+              // Because SQLite 'shifts' table has a UNIQUE constraint on the 'date' column.
+              final shiftsToSave = roster.shifts.map((s) {
+                 final map = s.toMap();
+                 if (map['date'].length >= 10) {
+                     map['date'] = '$rosterMonth-${map['date'].substring(8, 10)}';
+                 }
+                 return map;
+              }).toList();
+              
+              await _storage.saveShiftRoster(
+                roster.employeeName,
+                updatedMonthLabel,
+                shiftsToSave,
+                rosterMonth: rosterMonth,
+                rawJson: controller.text,
+              );
                 
                 // Schedule notifications
                 await _shiftService.scheduleDailyShiftNotification();
