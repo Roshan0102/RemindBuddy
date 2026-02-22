@@ -1,5 +1,5 @@
 class Task {
-  final int? id;
+  int? id;
   final String title;
   final String description;
   final String date; // YYYY-MM-DD
