@@ -1,10 +1,14 @@
 import 'package:pocketbase/pocketbase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'dart:convert';
+
 import 'storage_service.dart';
 import '../models/task.dart';
 import '../models/note.dart';
 import '../models/daily_reminder.dart';
+import '../models/shift.dart';
+import 'notification_service.dart';
 
 class SyncService {
   final PocketBase pb;
@@ -17,6 +21,7 @@ class SyncService {
   static bool _syncingNotes = false;
   static bool _syncingDaily = false;
   static bool _syncingChecklists = false;
+  static bool _syncingShifts = false;
 
   SyncService(this.pb);
 
@@ -28,7 +33,7 @@ class SyncService {
     await syncNotes();
     await syncDailyReminders();
     await syncChecklists();
-    // await syncShifts(); // TODO
+    await syncShifts();
     
     // Update last sync time
     final prefs = await SharedPreferences.getInstance();
@@ -112,9 +117,13 @@ class SyncService {
           };
 
           if (local.isEmpty) {
-            await db.insert('tasks', taskData);
+            int insertedId = await db.insert('tasks', taskData);
+            taskData['id'] = insertedId;
+            NotificationService().scheduleTaskNotification(Task.fromJson(taskData));
           } else {
             await db.update('tasks', taskData, where: 'remoteId = ?', whereArgs: [record.id]);
+            taskData['id'] = local.first['id'];
+            NotificationService().scheduleTaskNotification(Task.fromJson(taskData));
           }
         }
       } catch (e) {
@@ -283,9 +292,19 @@ class SyncService {
         };
 
         if (local.isEmpty) {
-          await db.insert('daily_reminders', drData);
+          int insertedId = await db.insert('daily_reminders', drData);
+          drData['id'] = insertedId;
+          if (drData['isActive'] == 1) {
+            NotificationService().scheduleDailyReminder(DailyReminder.fromJson(drData));
+          }
         } else {
           await db.update('daily_reminders', drData, where: 'remoteId = ?', whereArgs: [record.id]);
+          drData['id'] = local.first['id'];
+          if (drData['isActive'] == 1) {
+            NotificationService().scheduleDailyReminder(DailyReminder.fromJson(drData));
+          } else {
+             NotificationService().cancelNotification((drData['id'] as int) + 100000); // 100000 is the daily reminder offset
+          }
         }
       }
       } catch (e) {
@@ -458,6 +477,97 @@ class SyncService {
       }
     } finally {
        _syncingChecklists = false;
+    }
+  }
+
+  // --- Shifts ---
+  
+  Future<void> syncShifts() async {
+    if (_syncingShifts) return;
+    _syncingShifts = true;
+    try {
+      final db = await storage.database;
+      final user = pb.authStore.model;
+      if (user == null) return;
+      
+      // 1. Push
+      final dirtyRosters = await db.query('monthly_rosters', where: 'isSynced = 0');
+      if (dirtyRosters.isNotEmpty) print('  📤 Pushing ${dirtyRosters.length} monthly rosters...');
+
+      for (var row in dirtyRosters) {
+        String rosterMonth = row['roster_month'] as String;
+        String month = row['month'] as String;
+        String jsonData = row['json_data'] as String;
+        String? remoteId = row['remoteId'] as String?;
+
+        final body = {
+          'month': month,
+          'roster_month': rosterMonth,
+          'json_data': jsonData,
+          'user': user.id,
+        };
+
+        try {
+          if (remoteId == null || remoteId.isEmpty) {
+            final record = await pb.collection('monthly_rosters').create(body: body);
+            await db.update('monthly_rosters', {
+              'remoteId': record.id,
+              'isSynced': 1,
+              'updatedAt': record.updated,
+            }, where: 'roster_month = ?', whereArgs: [rosterMonth]);
+          } else {
+            await pb.collection('monthly_rosters').update(remoteId, body: body);
+            await db.update('monthly_rosters', {
+              'isSynced': 1,
+              'updatedAt': DateTime.now().toIso8601String(),
+            }, where: 'roster_month = ?', whereArgs: [rosterMonth]);
+          }
+        } catch (e) {
+          print('  ❌ Error pushing roster $rosterMonth: $e');
+        }
+      }
+
+      // 2. Pull
+      final prefs = await SharedPreferences.getInstance();
+      final lastSync = prefs.getString(_lastSyncKey) ?? '2000-01-01 00:00:00.000Z';
+      
+      try {
+        final resultList = await pb.collection('monthly_rosters').getList(
+          filter: 'updated > "$lastSync"',
+        );
+        
+        if (resultList.items.isNotEmpty) print('  📥 Pulling ${resultList.items.length} rosters...');
+
+        for (var record in resultList.items) {
+          String rosterMonth = record.data['roster_month'];
+          String month = record.data['month'];
+          String? rawJson = record.data['json_data'];
+          
+          if (rawJson == null || rawJson.isEmpty) continue;
+          
+          try {
+            final jsonData = json.decode(rawJson);
+            final roster = ShiftRoster.fromJson(jsonData);
+            final shiftsToSave = roster.shifts.map((s) => s.toMap()).toList();
+            
+            await storage.saveShiftRoster(roster.employeeName, month, shiftsToSave, rosterMonth: rosterMonth, rawJson: rawJson);
+            
+            // Now mark it as synced using DB directly
+            await db.update('monthly_rosters', {
+              'remoteId': record.id,
+              'isSynced': 1,
+              'updatedAt': record.updated,
+            }, where: 'roster_month = ?', whereArgs: [rosterMonth]);
+            
+          } catch (e) {
+            print('  ❌ Error parsing pulled roster $rosterMonth: $e');
+          }
+        }
+      } catch (e) {
+         print('  ❌ Error pulling rosters: $e');
+      }
+    } finally {
+       _syncingShifts = false;
     }
   }
 }

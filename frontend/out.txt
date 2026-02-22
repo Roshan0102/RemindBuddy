@@ -1,0 +1,243 @@
+Resolving dependencies...
+Downloading packages...
+  android_alarm_manager_plus 4.0.8 (5.0.0 available)
+  async 2.11.0 (2.13.0 available)
+  boolean_selector 2.1.1 (2.1.2 available)
+  crypto 3.0.3 (3.0.7 available)
+  dbus 0.7.11 (0.7.12 available)
+  ffi 2.1.3 (2.2.0 available)
+  fl_chart 0.69.2 (1.1.1 available)
+  flutter_inappwebview_internal_annotations 1.2.0 (1.3.0 available)
+  flutter_lints 3.0.2 (6.0.0 available)
+  flutter_local_notifications 17.2.4 (20.1.0 available)
+  flutter_local_notifications_linux 4.0.1 (7.0.0 available)
+  flutter_local_notifications_platform_interface 7.2.0 (10.0.0 available)
+  flutter_timezone 4.1.1 (5.0.1 available)
+  google_fonts 6.2.1 (8.0.2 available)
+  home_widget 0.7.0+1 (0.9.0 available)
+  http_parser 4.0.2 (4.1.2 available)
+  intl 0.18.1 (0.20.2 available)
+  json_annotation 4.9.0 (4.11.0 available)
+  lints 3.0.0 (6.1.0 available)
+  meta 1.17.0 (1.18.1 available)
+  path_provider_android 2.2.17 (2.2.22 available)
+  path_provider_foundation 2.4.1 (2.6.0 available)
+  petitparser 6.0.2 (7.0.2 available)
+  shared_preferences 2.5.3 (2.5.4 available)
+  shared_preferences_android 2.4.11 (2.4.20 available)
+  shared_preferences_foundation 2.5.4 (2.5.6 available)
+  source_span 1.10.0 (1.10.2 available)
+  sqflite 2.3.3+1 (2.4.2 available)
+  sqflite_common 2.5.4 (2.5.6 available)
+  string_scanner 1.3.0 (1.4.1 available)
+  syncfusion_flutter_charts 28.2.12 (32.2.5 available)
+  syncfusion_flutter_core 28.2.12 (32.2.5 available)
+  synchronized 3.1.0+1 (3.4.0 available)
+  table_calendar 3.0.9 (3.2.0 available)
+  term_glyph 1.2.1 (1.2.2 available)
+  test_api 0.7.8 (0.7.9 available)
+  timezone 0.9.4 (0.11.0 available)
+  typed_data 1.3.2 (1.4.0 available)
+  uuid 4.5.2 (4.5.3 available)
+  vm_service 14.3.0 (15.0.2 available)
+  workmanager 0.5.2 (0.9.0+3 available)
+  xml 6.5.0 (6.6.1 available)
+Got dependencies!
+42 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Analyzing frontend...                                           
+
+   info • Don't invoke 'print' in production code • lib/main.dart:23:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/main.dart:28:5 • avoid_print
+warning • Duplicate import • lib/screens/add_task_screen.dart:5:8 • duplicate_import
+   info • 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre • lib/screens/add_task_screen.dart:194:17 • deprecated_member_use
+warning • Unused import: 'package:google_fonts/google_fonts.dart' • lib/screens/admin_screen.dart:3:8 • unused_import
+warning • Unused import: '../services/storage_service.dart' • lib/screens/admin_screen.dart:5:8 • unused_import
+   info • Don't invoke 'print' in production code • lib/screens/admin_screen.dart:57:10 • avoid_print
+   info • Don't use 'BuildContext's across async gaps • lib/screens/admin_screen.dart:124:31 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/screens/admin_screen.dart:125:38 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/screens/admin_screen.dart:129:31 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/screens/admin_screen.dart:130:38 • use_build_context_synchronously
+   info • 'model' is deprecated and shouldn't be used. use record • lib/screens/auth_screen.dart:52:42 • deprecated_member_use
+   info • 'model' is deprecated and shouldn't be used. use record • lib/screens/auth_screen.dart:71:46 • deprecated_member_use
+warning • Unnecessary type check; the result is always 'true' • lib/screens/auth_screen.dart:72:18 • unnecessary_type_check
+   info • Don't invoke 'print' in production code • lib/screens/auth_screen.dart:76:14 • avoid_print
+   info • Don't invoke 'print' in production code • lib/screens/auth_screen.dart:135:12 • avoid_print
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/auth_screen.dart:282:43 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/auth_screen.dart:286:47 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/auth_screen.dart:321:41 • deprecated_member_use
+   info • Use 'const' with the constructor to improve performance • lib/screens/auth_screen.dart:354:29 • prefer_const_constructors
+   info • Empty catch block • lib/screens/checklists_screen.dart:37:71 • empty_catches
+   info • Empty catch block • lib/screens/checklists_screen.dart:43:71 • empty_catches
+   info • The local variable '_controller' starts with an underscore • lib/screens/checklists_screen.dart:47:33 • no_leading_underscores_for_local_identifiers
+   info • The local variable '_selectedIcon' starts with an underscore • lib/screens/checklists_screen.dart:48:9 • no_leading_underscores_for_local_identifiers
+   info • The local variable '_selectedColor' starts with an underscore • lib/screens/checklists_screen.dart:49:9 • no_leading_underscores_for_local_identifiers
+   info • 'value' is deprecated and shouldn't be used. Use component accessors like .r or .g, or toARGB32 for an explicit conversion • lib/screens/checklists_screen.dart:49:38 • deprecated_member_use
+   info • 'value' is deprecated and shouldn't be used. Use component accessors like .r or .g, or toARGB32 for an explicit conversion • lib/screens/checklists_screen.dart:140:66 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/checklists_screen.dart:161:46 • deprecated_member_use
+   info • Empty catch block • lib/screens/checklists_screen.dart:221:71 • empty_catches
+   info • Empty catch block • lib/screens/checklists_screen.dart:227:71 • empty_catches
+   info • Empty catch block • lib/screens/checklists_screen.dart:233:71 • empty_catches
+   info • Empty catch block • lib/screens/checklists_screen.dart:239:71 • empty_catches
+   info • The local variable '_controller' starts with an underscore • lib/screens/checklists_screen.dart:243:33 • no_leading_underscores_for_local_identifiers
+   info • Don't invoke 'print' in production code • lib/screens/daily_reminders_screen.dart:181:31 • avoid_print
+   info • Don't use 'BuildContext's across async gaps • lib/screens/daily_reminders_screen.dart:183:31 • use_build_context_synchronously
+   info • Don't invoke 'print' in production code • lib/screens/daily_reminders_screen.dart:219:19 • avoid_print
+   info • Don't invoke 'print' in production code • lib/screens/daily_reminders_screen.dart:249:21 • avoid_print
+   info • Don't invoke 'print' in production code • lib/screens/gold_screen.dart:50:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/screens/gold_screen.dart:73:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/screens/gold_screen.dart:74:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/screens/gold_screen.dart:84:11 • avoid_print
+   info • Don't invoke 'print' in production code • lib/screens/gold_screen.dart:86:11 • avoid_print
+   info • Use 'const' with the constructor to improve performance • lib/screens/gold_screen.dart:103:24 • prefer_const_constructors
+   info • Don't invoke 'print' in production code • lib/screens/gold_screen.dart:116:7 • avoid_print
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/gold_screen.dart:235:41 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/gold_screen.dart:235:71 • deprecated_member_use
+   info • Use 'const' with the constructor to improve performance • lib/screens/gold_screen.dart:497:27 • prefer_const_constructors
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/gold_screen.dart:517:37 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/gold_screen.dart:522:34 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/gold_screen.dart:523:34 • deprecated_member_use
+warning • The declaration '_updateWidget' isn't referenced • lib/screens/home_screen.dart:26:16 • unused_element
+   info • Don't invoke 'print' in production code • lib/screens/home_screen.dart:35:7 • avoid_print
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/home_screen.dart:78:27 • deprecated_member_use
+warning • The declaration '_getTasksForDay' isn't referenced • lib/screens/home_screen.dart:123:14 • unused_element
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/home_screen.dart:168:36 • deprecated_member_use
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/home_screen.dart:251:50 • use_build_context_synchronously
+   info • Don't invoke 'print' in production code • lib/screens/main_screen.dart:41:9 • avoid_print
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/main_screen.dart:141:45 • deprecated_member_use
+warning • The value of the field '_availableMonths' isn't used • lib/screens/my_shifts_screen.dart:27:16 • unused_field
+   info • Don't use 'BuildContext's across async gaps • lib/screens/my_shifts_screen.dart:187:31 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/my_shifts_screen.dart:191:40 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/my_shifts_screen.dart:199:31 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/my_shifts_screen.dart:201:40 • use_build_context_synchronously
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/my_shifts_screen.dart:321:26 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/my_shifts_screen.dart:384:66 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/my_shifts_screen.dart:459:62 • deprecated_member_use
+   info • Don't use 'BuildContext's across async gaps • lib/screens/notes_screen.dart:44:24 • use_build_context_synchronously
+   info • Don't invoke 'print' in production code • lib/screens/notes_screen.dart:81:35 • avoid_print
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/notes_screen.dart:84:48 • use_build_context_synchronously
+   info • Don't invoke 'print' in production code • lib/screens/notes_screen.dart:225:49 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/api_service.dart:19:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/api_service.dart:35:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/api_service.dart:46:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:30:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:36:21 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/auth_service.dart:41:38 • deprecated_member_use
+warning • The receiver can't be null, so the null-aware operator '?.' is unnecessary • lib/services/auth_service.dart:49:70 • invalid_null_aware_operator
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:52:7 • avoid_print
+warning • The receiver can't be null, so the null-aware operator '?.' is unnecessary • lib/services/auth_service.dart:52:44 • invalid_null_aware_operator
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:57:21 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:59:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:81:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/background_service.dart:71:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/background_service.dart:89:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/battery_optimization_service.dart:13:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/battery_optimization_service.dart:23:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/gold_price_service.dart:25:7 • avoid_print
+   info • 'onLoadError' is deprecated and shouldn't be used. Use onReceivedError instead • lib/services/gold_price_service.dart:148:9 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/gold_price_service.dart:374:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/gold_price_service.dart:392:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/gold_price_service.dart:406:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/gold_scheduler_service.dart:21:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/gold_scheduler_service.dart:39:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/gold_scheduler_service.dart:51:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/gold_scheduler_service.dart:58:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/log_service.dart:20:6 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/log_service.dart:28:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/log_service.dart:36:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/notification_service.dart:26:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/notification_service.dart:33:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/notification_service.dart:40:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/notification_service.dart:44:7 • avoid_print
+   info • Use 'const' with the constructor to improve performance • lib/services/notification_service.dart:86:13 • prefer_const_constructors
+   info • Use 'const' with the constructor to improve performance • lib/services/notification_service.dart:92:13 • prefer_const_constructors
+   info • Don't invoke 'print' in production code • lib/services/notification_service.dart:122:7 • avoid_print
+   info • Use 'const' with the constructor to improve performance • lib/services/notification_service.dart:246:15 • prefer_const_constructors
+   info • Use 'const' with the constructor to improve performance • lib/services/notification_service.dart:252:15 • prefer_const_constructors
+   info • Use 'const' with the constructor to improve performance • lib/services/notification_service.dart:292:21 • prefer_const_constructors
+   info • Use 'const' with the constructor to improve performance • lib/services/notification_service.dart:298:21 • prefer_const_constructors
+   info • Use 'const' with the constructor to improve performance • lib/services/notification_service.dart:430:15 • prefer_const_constructors
+   info • Use 'const' with the constructor to improve performance • lib/services/notification_service.dart:436:15 • prefer_const_constructors
+   info • Don't invoke 'print' in production code • lib/services/pb_migration_service.dart:21:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/pb_migration_service.dart:24:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/pb_migration_service.dart:27:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/pb_migration_service.dart:183:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/pb_migration_service.dart:200:17 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/pb_migration_service.dart:216:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/pb_migration_service.dart:218:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:53:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:59:25 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:68:25 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:80:25 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:89:25 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:100:26 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:112:26 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:130:14 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:131:26 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:148:15 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:150:15 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:183:15 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:185:15 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:192:13 • avoid_print
+   info • Empty catch block • lib/services/storage_service.dart:200:103 • empty_catches
+   info • Empty catch block • lib/services/storage_service.dart:201:116 • empty_catches
+   info • Empty catch block • lib/services/storage_service.dart:202:104 • empty_catches
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:204:21 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:207:13 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:212:13 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:231:27 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:232:13 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:641:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:817:5 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/sync_service.dart:29:22 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:31:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:41:5 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/sync_service.dart:51:33 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:56:34 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:77:36 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:88:11 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:101:42 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:116:33 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:130:10 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/sync_service.dart:144:33 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:149:32 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:167:34 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:177:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:190:40 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:202:31 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:212:10 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/sync_service.dart:226:33 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:231:36 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:255:34 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:265:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:278:40 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:291:31 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:311:10 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/sync_service.dart:325:33 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:332:37 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:350:34 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:360:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:373:40 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:384:31 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:394:8 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:401:32 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:427:34 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:437:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:447:38 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:466:31 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:476:10 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/sync_service.dart:490:33 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:495:36 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:516:35 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:526:11 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:539:42 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:559:35 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:563:13 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:567:10 • avoid_print
+   info • Don't invoke 'print' in production code • test_pb3.dart:7:5 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • test_pb3.dart:7:50 • deprecated_member_use
+   info • 'model' is deprecated and shouldn't be used. use record • test_pb3.dart:15:28 • deprecated_member_use
+   info • Don't invoke 'print' in production code • test_pb3.dart:17:5 • avoid_print
+   info • Don't invoke 'print' in production code • test_pb3.dart:19:5 • avoid_print
+   info • Don't invoke 'print' in production code • test_pb3.dart:21:5 • avoid_print
+

@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
 import 'admin_setup_screen.dart';
+import 'main_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -117,7 +118,15 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         );
       }
 
-      if (mounted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+             SnackBar(
+              content: Text(_isLogin ? 'Welcome back! Syncing...' : 'Account Created! Syncing...'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
         // Run sync immediately after login to pull data
         try {
            final syncService = SyncService(auth.pb);
@@ -127,15 +136,16 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         }
         
         await _checkAuthStatus(); 
-        setState(() => _isLoading = false);
         
-        ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(
-            content: Text(_isLogin ? 'Welcome back!' : 'Account Created!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+        if (mounted) {
+          setState(() => _isLoading = false);
+          
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const MainScreen()),
+            (route) => false,
+          );
+        }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);

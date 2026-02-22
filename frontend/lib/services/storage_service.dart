@@ -11,7 +11,7 @@ import '../models/gold_price.dart';
 class StorageService {
   static final StorageService _instance = StorageService._internal();
   static Database? _database;
-  static const int _databaseVersion = 12;  // Version 12: Ensure Sync Columns for Fresh Installs
+  static const int _databaseVersion = 13;  // Version 13: Add monthly rosters
   static const String _authTokenKey = 'auth_token';
   static const String _userKey = 'user_data';
 
@@ -223,6 +223,12 @@ class StorageService {
                     await db.execute('ALTER TABLE $table ADD COLUMN updatedAt TEXT');
                 } catch(e) { /* Column likely exists */ }
             }
+            // Migration for version 13: Add monthly_rosters
+            try {
+              await db.execute(
+                'CREATE TABLE IF NOT EXISTS monthly_rosters(roster_month TEXT PRIMARY KEY, month TEXT, json_data TEXT, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
+              );
+            } catch (e) { print("Error creating monthly_rosters: $e"); }
             print("✅ Migration v12 database check complete.");
         }
       },
@@ -257,6 +263,9 @@ class StorageService {
     );
     await db.execute(
       'CREATE TABLE shift_metadata(id INTEGER PRIMARY KEY, employee_name TEXT, month TEXT, roster_month TEXT, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
+    );
+    await db.execute(
+      'CREATE TABLE monthly_rosters(roster_month TEXT PRIMARY KEY, month TEXT, json_data TEXT, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
     );
   }
 
@@ -447,6 +456,8 @@ class StorageService {
       'title': title,
       'iconCode': iconCode,
       'color': color,
+      'isSynced': 0,
+      'updatedAt': DateTime.now().toIso8601String(),
     });
   }
 
@@ -467,6 +478,8 @@ class StorageService {
       'checklistId': checklistId,
       'text': text,
       'isChecked': 0,
+      'isSynced': 0,
+      'updatedAt': DateTime.now().toIso8601String(),
     });
   }
 
@@ -591,7 +604,7 @@ class StorageService {
   }
 
   // Shift Methods
-  Future<void> saveShiftRoster(String employeeName, String month, List<Map<String, dynamic>> shifts, {String? rosterMonth}) async {
+  Future<void> saveShiftRoster(String employeeName, String month, List<Map<String, dynamic>> shifts, {String? rosterMonth, String? rawJson}) async {
     final db = await database;
     
     // Extract roster month from the first shift date if not provided
@@ -613,6 +626,16 @@ class StorageService {
       final shiftData = Map<String, dynamic>.from(shift);
       shiftData['roster_month'] = effectiveRosterMonth;
       await db.insert('shifts', shiftData, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+
+    if (rawJson != null) {
+      await db.insert('monthly_rosters', {
+        'roster_month': effectiveRosterMonth,
+        'month': month,
+        'json_data': rawJson,
+        'isSynced': 0,
+        'updatedAt': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     
     print('✅ Saved ${shifts.length} shifts for roster month: $effectiveRosterMonth');
@@ -726,14 +749,21 @@ class StorageService {
     };
   }
 
+  Future<List<Map<String, dynamic>>> getMonthlyRosters() async {
+    final db = await database;
+    return await db.query('monthly_rosters');
+  }
+
   Future<void> clearAllShifts({String? rosterMonth}) async {
     final db = await database;
     if (rosterMonth != null) {
       await db.delete('shifts', where: 'roster_month = ?', whereArgs: [rosterMonth]);
       await db.delete('shift_metadata', where: 'roster_month = ?', whereArgs: [rosterMonth]);
+      await db.delete('monthly_rosters', where: 'roster_month = ?', whereArgs: [rosterMonth]);
     } else {
       await db.delete('shifts');
       await db.delete('shift_metadata');
+      await db.delete('monthly_rosters');
     }
   }
   
@@ -777,6 +807,7 @@ class StorageService {
     await db.delete('notes');
     await db.delete('shifts');
     await db.delete('shift_metadata');
+    await db.delete('monthly_rosters');
     await db.delete('checklists');
     await db.delete('checklist_items');
     await db.delete('daily_reminders');

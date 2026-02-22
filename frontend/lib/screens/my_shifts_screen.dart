@@ -177,6 +177,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                   roster.month,
                   shiftsToSave,
                   rosterMonth: rosterMonth,
+                  rawJson: controller.text,
                 );
                 
                 // Schedule notifications
