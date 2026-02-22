@@ -1,6 +1,8 @@
 
 import 'package:flutter/material.dart';
 import '../services/storage_service.dart';
+import '../services/sync_service.dart';
+import '../services/auth_service.dart';
 
 class ChecklistsScreen extends StatefulWidget {
   const ChecklistsScreen({super.key});
@@ -32,11 +34,13 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
   Future<void> _createChecklist(String title, int iconCode, int color) async {
     await _storage.createChecklist(title, iconCode, color);
     _loadChecklists();
+    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
   }
 
   Future<void> _deleteChecklist(int id) async {
     await _storage.deleteChecklist(id);
     _loadChecklists();
+    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
   }
 
   void _showAddDialog() {
@@ -214,21 +218,25 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
   Future<void> _addItem(String text) async {
     await _storage.addChecklistItem(widget.checklistId, text);
     _loadItems();
+    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
   }
 
   Future<void> _toggleItem(int id, bool isChecked) async {
     await _storage.toggleChecklistItem(id, isChecked);
     _loadItems();
+    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
   }
 
   Future<void> _deleteItem(int id) async {
     await _storage.deleteChecklistItem(id);
     _loadItems();
+    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
   }
 
   Future<void> _resetList() async {
     await _storage.resetChecklistItems(widget.checklistId);
     _loadItems();
+    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
   }
 
   void _showAddItemDialog() {

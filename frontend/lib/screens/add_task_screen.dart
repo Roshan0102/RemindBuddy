@@ -25,6 +25,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   late TimeOfDay _time;
   String _repeat = 'none';
   bool _isAnnoying = false;
+  bool _isSaving = false;
 
 
   @override
@@ -100,6 +101,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
   Future<void> _saveTask() async {
     if (_formKey.currentState!.validate()) {
+      setState(() { _isSaving = true; });
       final String dateStr = DateFormat('yyyy-MM-dd').format(_date);
       final String timeStr = '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}';
 
@@ -132,6 +134,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         }
       } catch (e) {
         if (mounted) {
+          setState(() { _isSaving = false; });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Failed to save task: $e')),
           );
@@ -237,8 +240,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               ),
               const SizedBox(height: 20),
               ElevatedButton(
-                onPressed: _saveTask,
-                child: const Text('Save Task'),
+                onPressed: _isSaving ? null : _saveTask,
+                child: _isSaving 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+                  : const Text('Save Task'),
               ),
             ],
           ),

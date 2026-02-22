@@ -12,6 +12,12 @@ class SyncService {
   
   static const String _lastSyncKey = 'last_sync_time';
 
+  // Locks to prevent concurrent sync operations
+  static bool _syncingTasks = false;
+  static bool _syncingNotes = false;
+  static bool _syncingDaily = false;
+  static bool _syncingChecklists = false;
+
   SyncService(this.pb);
 
   Future<void> syncAll() async {
@@ -33,90 +39,101 @@ class SyncService {
   // --- Tasks ---
 
   Future<void> syncTasks() async {
-    final db = await storage.database;
-    final user = pb.authStore.model;
-    
-    // 1. Push Local Changes
-    final dirtyTasks = await db.query('tasks', where: 'isSynced = 0');
-    if (dirtyTasks.isNotEmpty) print('  📤 Pushing ${dirtyTasks.length} tasks...');
-    
-    for (var row in dirtyTasks) {
-      Task task = Task.fromJson(row);
-      try {
-        final body = {
-          'title': task.title,
-          'description': task.description,
-          'date': task.date,
-          'time': task.time,
-          'repeat': task.repeat,
-          'is_annoying': task.isAnnoying,
-          'user': user.id,
-        };
+    if (_syncingTasks) return;
+    _syncingTasks = true;
+    try {
+      final db = await storage.database;
+      final user = pb.authStore.model;
+      if (user == null) return;
+      
+      // 1. Push Local Changes
+      final dirtyTasks = await db.query('tasks', where: 'isSynced = 0');
+      if (dirtyTasks.isNotEmpty) print('  📤 Pushing ${dirtyTasks.length} tasks...');
+      
+      for (var row in dirtyTasks) {
+        Task task = Task.fromJson(row);
+        try {
+          final body = {
+            'title': task.title,
+            'description': task.description,
+            'date': task.date,
+            'time': task.time,
+            'repeat': task.repeat,
+            'is_annoying': task.isAnnoying,
+            'user': user.id,
+          };
 
-        if (task.remoteId == null || task.remoteId!.isEmpty) {
-          // Create
-          final record = await pb.collection('tasks').create(body: body);
-          await db.update('tasks', {
-             'remoteId': record.id,
-             'isSynced': 1,
-             'updatedAt': record.updated,
-          }, where: 'id = ?', whereArgs: [task.id]);
-        } else {
-          // Update
-          await pb.collection('tasks').update(task.remoteId!, body: body);
-          await db.update('tasks', {
-             'isSynced': 1,
-             'updatedAt': DateTime.now().toIso8601String(),
-          }, where: 'id = ?', whereArgs: [task.id]);
+          if (task.remoteId == null || task.remoteId!.isEmpty) {
+            // Create
+            final record = await pb.collection('tasks').create(body: body);
+            await db.update('tasks', {
+               'remoteId': record.id,
+               'isSynced': 1,
+               'updatedAt': record.updated,
+            }, where: 'id = ?', whereArgs: [task.id]);
+          } else {
+            // Update
+            await pb.collection('tasks').update(task.remoteId!, body: body);
+            await db.update('tasks', {
+               'isSynced': 1,
+               'updatedAt': DateTime.now().toIso8601String(),
+            }, where: 'id = ?', whereArgs: [task.id]);
+          }
+        } catch (e) {
+          print('  ❌ Error pushing task ${task.id}: $e');
+        }
+      }
+
+      // 2. Pull Remote Changes
+      final prefs = await SharedPreferences.getInstance();
+      final lastSync = prefs.getString(_lastSyncKey) ?? '2000-01-01 00:00:00.000Z';
+      
+      try {
+        final resultList = await pb.collection('tasks').getList(
+          filter: 'updated > "$lastSync"',
+        );
+        
+        if (resultList.items.isNotEmpty) print('  📥 Pulling ${resultList.items.length} tasks...');
+
+        for (var record in resultList.items) {
+          // Check if exists locally by remoteId
+          final local = await db.query('tasks', where: 'remoteId = ?', whereArgs: [record.id]);
+          
+          final taskData = {
+            'title': record.data['title'],
+            'description': record.data['description'],
+            'date': record.data['date'],
+            'time': record.data['time'],
+            'repeat': record.data['repeat'],
+            'isAnnoying': record.data['is_annoying'] == true ? 1 : 0,
+            'remoteId': record.id,
+            'isSynced': 1,
+            'updatedAt': record.updated,
+          };
+
+          if (local.isEmpty) {
+            await db.insert('tasks', taskData);
+          } else {
+            await db.update('tasks', taskData, where: 'remoteId = ?', whereArgs: [record.id]);
+          }
         }
       } catch (e) {
-        print('  ❌ Error pushing task ${task.id}: $e');
+         print('  ❌ Error pulling tasks: $e');
       }
-    }
-
-    // 2. Pull Remote Changes
-    final prefs = await SharedPreferences.getInstance();
-    final lastSync = prefs.getString(_lastSyncKey) ?? '2000-01-01 00:00:00.000Z';
-    
-    try {
-      final resultList = await pb.collection('tasks').getList(
-        filter: 'updated > "$lastSync"',
-      );
-      
-      if (resultList.items.isNotEmpty) print('  📥 Pulling ${resultList.items.length} tasks...');
-
-      for (var record in resultList.items) {
-        // Check if exists locally by remoteId
-        final local = await db.query('tasks', where: 'remoteId = ?', whereArgs: [record.id]);
-        
-        final taskData = {
-          'title': record.data['title'],
-          'description': record.data['description'],
-          'date': record.data['date'],
-          'time': record.data['time'],
-          'repeat': record.data['repeat'],
-          'isAnnoying': record.data['is_annoying'] == true ? 1 : 0,
-          'remoteId': record.id,
-          'isSynced': 1,
-          'updatedAt': record.updated,
-        };
-
-        if (local.isEmpty) {
-          await db.insert('tasks', taskData);
-        } else {
-          await db.update('tasks', taskData, where: 'remoteId = ?', whereArgs: [record.id]);
-        }
-      }
-    } catch (e) {
-       print('  ❌ Error pulling tasks: $e');
+    } finally {
+      _syncingTasks = false;
     }
   }
 
   // --- Notes ---
 
   Future<void> syncNotes() async {
-    final db = await storage.database;
-    final user = pb.authStore.model;
+    if (_syncingNotes) return;
+    _syncingNotes = true;
+    try {
+      final db = await storage.database;
+      final user = pb.authStore.model;
+      if (user == null) return;
 
     // 1. Push
     final dirtyNotes = await db.query('notes', where: 'isSynced = 0');
@@ -184,14 +201,20 @@ class SyncService {
       }
     } catch (e) {
        print('  ❌ Error pulling notes: $e');
+    } finally {
+       _syncingNotes = false;
     }
   }
 
   // --- Daily Reminders ---
   
   Future<void> syncDailyReminders() async {
-    final db = await storage.database;
-    final user = pb.authStore.model;
+    if (_syncingDaily) return;
+    _syncingDaily = true;
+    try {
+      final db = await storage.database;
+      final user = pb.authStore.model;
+      if (user == null) return;
 
     // 1. Push
     final dirtyReminders = await db.query('daily_reminders', where: 'isSynced = 0');
@@ -266,15 +289,20 @@ class SyncService {
       }
     } catch (e) {
        print('  ❌ Error pulling daily reminders: $e');
+    } finally {
+       _syncingDaily = false;
     }
   }
 
   // --- Checklists ---
   
   Future<void> syncChecklists() async {
-    final db = await storage.database;
-    final user = pb.authStore.model;
-    if (user == null) return;
+    if (_syncingChecklists) return;
+    _syncingChecklists = true;
+    try {
+      final db = await storage.database;
+      final user = pb.authStore.model;
+      if (user == null) return;
 
     // --- 1. Sync Checklists ---
     
@@ -425,6 +453,8 @@ class SyncService {
       }
     } catch (e) {
        print('  ❌ Error pulling checklist items: $e');
+    } finally {
+       _syncingChecklists = false;
     }
   }
 }

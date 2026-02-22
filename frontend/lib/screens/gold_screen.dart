@@ -74,14 +74,24 @@ class _GoldScreenState extends State<GoldScreen> {
       print('🔍 Debug: $debug');
       
       if (newPrice != null) {
-        // Unconditionally save fetched price to update timestamp for the user
-        await storage.saveGoldPrice(newPrice);
-        print('✅ New price saved (or timestamp updated): ₹${newPrice.price22k}');
+        bool hasChanged = true;
+        if (_currentPrice != null && _currentPrice!.price22k == newPrice.price22k) {
+          hasChanged = false;
+        }
+        
+        if (hasChanged) {
+          await storage.saveGoldPrice(newPrice);
+          print('✅ New price saved: ₹${newPrice.price22k}');
+        } else {
+          print('✅ Price fetched but unchanged: ₹${newPrice.price22k}');
+        }
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('✅ Fetched via $method: ₹${newPrice.price22k.toStringAsFixed(0)}'),
+              content: Text(hasChanged 
+                ? '✅ Price updated: ₹${newPrice.price22k.toStringAsFixed(0)}' 
+                : 'ℹ️ Fetched via $method. No change.'),
               duration: const Duration(seconds: 3),
             ),
           );
@@ -90,7 +100,7 @@ class _GoldScreenState extends State<GoldScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('❌ Failed to fetch: $debug'),
+              content: Text('❌ Failed to fetch. Check Debug Log.'),
               backgroundColor: Colors.red,
               action: SnackBarAction(
                 label: 'Details',

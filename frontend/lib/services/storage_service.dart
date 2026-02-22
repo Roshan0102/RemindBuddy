@@ -542,7 +542,7 @@ class StorageService {
     // Convert history format to GoldPrice
     return List.generate(maps.length, (i) {
         return GoldPrice(
-           date: maps[i]['timestamp'].toString().split('T')[0], // Extract date part for display compatibility
+           date: maps[i]['timestamp'].toString(), // Keep the full ISO 8601 timestamp
            price22k: maps[i]['price22k'],
            price24k: maps[i]['price24k'],
            city: maps[i]['city'],
@@ -583,7 +583,7 @@ class StorageService {
     if (maps.isEmpty) return null;
     
     return GoldPrice(
-       date: maps[0]['timestamp'].toString().split('T')[0],
+       date: maps[0]['timestamp'].toString(),
        price22k: maps[0]['price22k'],
        price24k: maps[0]['price24k'],
        city: maps[0]['city'],

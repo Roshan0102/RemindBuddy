@@ -156,8 +156,16 @@ class _NotesScreenState extends State<NotesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _notes.isEmpty
-          ? const Center(child: Text('No notes yet. Tap + to add one.'))
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await SyncService(AuthService().pb).syncNotes();
+          await _loadNotes();
+        },
+        child: _notes.isEmpty
+          ? ListView(children: const [
+              SizedBox(height: 50),
+              Center(child: Text('No notes yet. Tap + to add one.\nPull down to refresh from cloud.', textAlign: TextAlign.center))
+            ])
           : ListView.builder(
               padding: const EdgeInsets.all(8),
               itemCount: _notes.length,
@@ -227,6 +235,7 @@ class _NotesScreenState extends State<NotesScreen> {
                 );
               },
             ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _addOrEditNote(),
         child: const Icon(Icons.add),
