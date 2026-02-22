@@ -172,6 +172,25 @@ class PbMigrationService {
         },
       ],
     );
+
+    // Create 'monthly_rosters' collection
+    await _createCollection(
+      name: 'monthly_rosters',
+      schema: [
+        {'name': 'month', 'type': 'text'},
+        {'name': 'roster_month', 'type': 'text'},
+        {'name': 'json_data', 'type': 'json'},
+        {
+          'name': 'user', 
+          'type': 'relation', 
+          'options': {
+            'collectionId': '_pb_users_auth_',
+            'cascadeDelete': true,
+            'maxSelect': 1,
+          }
+        },
+      ],
+    );
   }
 
   Future<void> _createCollection({required String name, required List<Map<String, dynamic>> schema}) async {
