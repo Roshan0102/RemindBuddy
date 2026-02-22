@@ -1,0 +1,88 @@
+Resolving dependencies...
+Downloading packages...
+  android_alarm_manager_plus 4.0.8 (5.0.0 available)
+  async 2.11.0 (2.13.0 available)
+  boolean_selector 2.1.1 (2.1.2 available)
+  crypto 3.0.3 (3.0.7 available)
+  dbus 0.7.11 (0.7.12 available)
+  ffi 2.1.3 (2.2.0 available)
+  fl_chart 0.69.2 (1.1.1 available)
+  flutter_inappwebview_internal_annotations 1.2.0 (1.3.0 available)
+  flutter_lints 3.0.2 (6.0.0 available)
+  flutter_local_notifications 17.2.4 (20.1.0 available)
+  flutter_local_notifications_linux 4.0.1 (7.0.0 available)
+  flutter_local_notifications_platform_interface 7.2.0 (10.0.0 available)
+  flutter_timezone 4.1.1 (5.0.1 available)
+  google_fonts 6.2.1 (8.0.2 available)
+  home_widget 0.7.0+1 (0.9.0 available)
+  http_parser 4.0.2 (4.1.2 available)
+  intl 0.18.1 (0.20.2 available)
+  json_annotation 4.9.0 (4.11.0 available)
+  lints 3.0.0 (6.1.0 available)
+  meta 1.17.0 (1.18.1 available)
+  path_provider_android 2.2.17 (2.2.22 available)
+  path_provider_foundation 2.4.1 (2.6.0 available)
+  petitparser 6.0.2 (7.0.2 available)
+  shared_preferences 2.5.3 (2.5.4 available)
+  shared_preferences_android 2.4.11 (2.4.20 available)
+  shared_preferences_foundation 2.5.4 (2.5.6 available)
+  source_span 1.10.0 (1.10.2 available)
+  sqflite 2.3.3+1 (2.4.2 available)
+  sqflite_common 2.5.4 (2.5.6 available)
+  string_scanner 1.3.0 (1.4.1 available)
+  syncfusion_flutter_charts 28.2.12 (32.2.5 available)
+  syncfusion_flutter_core 28.2.12 (32.2.5 available)
+  synchronized 3.1.0+1 (3.4.0 available)
+  table_calendar 3.0.9 (3.2.0 available)
+  term_glyph 1.2.1 (1.2.2 available)
+  test_api 0.7.8 (0.7.9 available)
+  timezone 0.9.4 (0.11.0 available)
+  typed_data 1.3.2 (1.4.0 available)
+  uuid 4.5.2 (4.5.3 available)
+  vm_service 14.3.0 (15.0.2 available)
+  workmanager 0.5.2 (0.9.0+3 available)
+  xml 6.5.0 (6.6.1 available)
+Got dependencies!
+42 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Analyzing sync_service.dart...                                  
+
+warning • Unused import: '../models/daily_reminder.dart' • lib/services/sync_service.dart:7:8 • unused_import
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/sync_service.dart:24:22 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:26:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:36:5 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/sync_service.dart:46:33 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:51:34 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:72:36 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:83:11 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:96:42 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:111:33 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:121:10 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/sync_service.dart:135:33 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:140:32 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:158:34 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:168:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:181:40 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:193:31 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:203:10 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/sync_service.dart:217:33 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:222:36 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:246:34 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:256:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:269:40 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:282:31 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:292:10 • avoid_print
+   info • 'model' is deprecated and shouldn't be used. use record • lib/services/sync_service.dart:306:33 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:313:37 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:331:34 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:341:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:354:40 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:365:31 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:375:8 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:382:32 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:408:34 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:418:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:428:38 • avoid_print
+   info • 'updated' is deprecated and shouldn't be used. updated is no longer mandatory field; use get<String>('updated') • lib/services/sync_service.dart:447:31 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/sync_service.dart:457:10 • avoid_print
+

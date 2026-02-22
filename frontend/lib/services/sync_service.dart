@@ -199,8 +199,9 @@ class SyncService {
           await db.update('notes', noteData, where: 'remoteId = ?', whereArgs: [record.id]);
         }
       }
-    } catch (e) {
-       print('  ❌ Error pulling notes: $e');
+      } catch (e) {
+         print('  ❌ Error pulling notes: $e');
+      }
     } finally {
        _syncingNotes = false;
     }
@@ -287,8 +288,9 @@ class SyncService {
           await db.update('daily_reminders', drData, where: 'remoteId = ?', whereArgs: [record.id]);
         }
       }
-    } catch (e) {
-       print('  ❌ Error pulling daily reminders: $e');
+      } catch (e) {
+         print('  ❌ Error pulling daily reminders: $e');
+      }
     } finally {
        _syncingDaily = false;
     }
@@ -451,8 +453,9 @@ class SyncService {
           await db.update('checklist_items', itemData, where: 'remoteId = ?', whereArgs: [record.id]);
         }
       }
-    } catch (e) {
-       print('  ❌ Error pulling checklist items: $e');
+      } catch (e) {
+         print('  ❌ Error pulling checklist items: $e');
+      }
     } finally {
        _syncingChecklists = false;
     }
