@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/pb_debug_logger.dart';
 
 class PBDebugScreen extends StatefulWidget {
@@ -32,6 +33,16 @@ class _PBDebugScreenState extends State<PBDebugScreen> {
         title: const Text('PB Debug Console'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.copy),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: _logs.join('\n')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Logs copied to clipboard')),
+              );
+            },
+            tooltip: 'Copy Logs',
+          ),
+          IconButton(
             icon: const Icon(Icons.delete),
             onPressed: () {
               _logger.clear();
@@ -49,7 +60,7 @@ class _PBDebugScreenState extends State<PBDebugScreen> {
               itemCount: _logs.length,
               itemBuilder: (context, index) {
                 final log = _logs[index];
-                final isError = log.contains('❌');
+                final isError = log.contains('❌') || log.toLowerCase().contains('error');
                 final isSuccess = log.contains('✅');
                 
                 Color? textColor;

@@ -129,6 +129,16 @@ class PbMigrationService {
             'maxSelect': 1,
           }
         },
+        {
+          'name': 'user', 
+          'type': 'relation', 
+          'required': true,
+          'options': {
+            'collectionId': '_pb_users_auth_',
+            'cascadeDelete': true,
+            'maxSelect': 1,
+          }
+        },
       ],
     );
 

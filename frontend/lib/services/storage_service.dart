@@ -11,7 +11,7 @@ import '../models/gold_price.dart';
 class StorageService {
   static final StorageService _instance = StorageService._internal();
   static Database? _database;
-  static const int _databaseVersion = 13;  // Version 13: Add monthly rosters
+  static const int _databaseVersion = 14;  // Version 14: Add deleted_records
   static const String _authTokenKey = 'auth_token';
   static const String _userKey = 'user_data';
 
@@ -230,6 +230,16 @@ class StorageService {
               );
             } catch (e) { print("Error creating monthly_rosters: $e"); }
             print("✅ Migration v12 database check complete.");
+
+        // Migration for version 14: Add deleted_records
+        if (oldVersion < 14) {
+             print("Running migration v14: Creating deleted_records table...");
+             try {
+               await db.execute(
+                 'CREATE TABLE IF NOT EXISTS deleted_records(id INTEGER PRIMARY KEY AUTOINCREMENT, collectionName TEXT, remoteId TEXT)',
+               );
+             } catch (e) { print("Error creating deleted_records: $e"); }
+        }
         }
       },
     );
@@ -266,9 +276,50 @@ class StorageService {
     );
     await db.execute(
       'CREATE TABLE monthly_rosters(roster_month TEXT PRIMARY KEY, month TEXT, json_data TEXT, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
+    await db.execute(
+      'CREATE TABLE deleted_records(id INTEGER PRIMARY KEY AUTOINCREMENT, collectionName TEXT, remoteId TEXT)',
+    );
     );
   }
 
+
+  Future<void> _recordDeletion(Database db, String tableName, String collectionName, int id) async {
+    final maps = await db.query(tableName, where: 'id = ?', whereArgs: [id]);
+    if (maps.isNotEmpty && maps.first['remoteId'] != null) {
+       final remoteId = maps.first['remoteId'] as String;
+       if (remoteId.isNotEmpty) {
+           await db.insert('deleted_records', {
+               'collectionName': collectionName,
+               'remoteId': remoteId,
+           });
+       }
+    }
+  }
+
+  Future<void> _recordDeletionByField(Database db, String tableName, String collectionName, String where, List<dynamic> whereArgs) async {
+    final maps = await db.query(tableName, where: where, whereArgs: whereArgs);
+    for (var map in maps) {
+       if (map['remoteId'] != null) {
+           final remoteId = map['remoteId'] as String;
+           if (remoteId.isNotEmpty) {
+               await db.insert('deleted_records', {
+                   'collectionName': collectionName,
+                   'remoteId': remoteId,
+               });
+           }
+       }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getDeletedRecords() async {
+      final db = await database;
+      return await db.query('deleted_records');
+  }
+
+  Future<void> removeDeletedRecord(int id) async {
+      final db = await database;
+      await db.delete('deleted_records', where: 'id = ?', whereArgs: [id]);
+  }
   // Task Methods
   Future<int> insertTask(Task task) async {
     final db = await database;
@@ -325,6 +376,8 @@ class StorageService {
 
   Future<void> deleteTask(int id) async {
     final db = await database;
+    await _recordDeletion(db, 'tasks', 'tasks', id);
+    final db = await database;
     await db.delete(
       'tasks',
       where: 'id = ?',
@@ -372,6 +425,8 @@ class StorageService {
   }
 
   Future<void> deleteNote(int id) async {
+    final db = await database;
+    await _recordDeletion(db, 'notes', 'notes', id);
     final db = await database;
     await db.delete(
       'notes',
@@ -427,6 +482,8 @@ class StorageService {
 
   Future<void> deleteDailyReminder(int id) async {
     final db = await database;
+    await _recordDeletion(db, 'daily_reminders', 'daily_reminders', id);
+    final db = await database;
     await db.delete(
       'daily_reminders',
       where: 'id = ?',
@@ -468,6 +525,9 @@ class StorageService {
 
   Future<void> deleteChecklist(int id) async {
     final db = await database;
+    await _recordDeletion(db, 'checklists', 'checklists', id);
+    await _recordDeletionByField(db, 'checklist_items', 'checklist_items', 'checklistId = ?', [id]);
+    final db = await database;
     await db.delete('checklists', where: 'id = ?', whereArgs: [id]);
     await db.delete('checklist_items', where: 'checklistId = ?', whereArgs: [id]);
   }
@@ -503,6 +563,8 @@ class StorageService {
   }
 
   Future<void> deleteChecklistItem(int id) async {
+    final db = await database;
+    await _recordDeletion(db, 'checklist_items', 'checklist_items', id);
     final db = await database;
     await db.delete('checklist_items', where: 'id = ?', whereArgs: [id]);
   }
@@ -755,6 +817,17 @@ class StorageService {
   }
 
   Future<void> clearAllShifts({String? rosterMonth}) async {
+
+    final db = await database;
+    if (rosterMonth != null) {
+      await _recordDeletionByField(db, 'shifts', 'shifts', 'roster_month = ?', [rosterMonth]);
+      await _recordDeletionByField(db, 'shift_metadata', 'shift_metadata', 'roster_month = ?', [rosterMonth]);
+      await _recordDeletionByField(db, 'monthly_rosters', 'monthly_rosters', 'roster_month = ?', [rosterMonth]);
+    } else {
+      await _recordDeletionByField(db, 'shifts', 'shifts', '1 = 1', []);
+      await _recordDeletionByField(db, 'shift_metadata', 'shift_metadata', '1 = 1', []);
+      await _recordDeletionByField(db, 'monthly_rosters', 'monthly_rosters', '1 = 1', []);
+    }
     final db = await database;
     if (rosterMonth != null) {
       await db.delete('shifts', where: 'roster_month = ?', whereArgs: [rosterMonth]);

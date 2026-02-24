@@ -49,11 +49,43 @@ class SyncService {
     await syncDailyReminders();
     await syncChecklists();
     await syncShifts();
+    await syncMonthlyRosters();
     
     // Update last sync time
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastSyncKey, DateTime.now().toUtc().toIso8601String());
     pbLog('✅ Sync Complete');
+  }
+
+  // --- Deletions ---
+  Future<void> syncDeletions() async {
+      try {
+          final db = await storage.database;
+          // Verify table exists just in case
+          final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='deleted_records'");
+          if (tables.isEmpty) return;
+
+          final deletedRecords = await db.query('deleted_records');
+          if (deletedRecords.isNotEmpty) pbLog('  🗑️ Processing ${deletedRecords.length} deletions...');
+          
+          for (var row in deletedRecords) {
+              final remoteId = row['remoteId'] as String;
+              final collection = row['collectionName'] as String;
+              try {
+                  await pb.collection(collection).delete(remoteId);
+                  pbLog('  ✅ Deleted $remoteId from $collection');
+                  await db.delete('deleted_records', where: 'id = ?', whereArgs: [row['id']]);
+              } catch (e) {
+                 if (e.toString().contains('404')) {
+                    await db.delete('deleted_records', where: 'id = ?', whereArgs: [row['id']]);
+                 } else {
+                    pbLog('  ❌ Error deleting $remoteId from $collection: $e');
+                 }
+              }
+          }
+      } catch (e) {
+          pbLog('  ❌ Error syncing deletions: $e');
+      }
   }
 
   // --- Tasks ---
@@ -428,6 +460,7 @@ class SyncService {
           'checklist': parentRemoteId,
           'text': row['text'],
           'is_checked': row['isChecked'] == 1,
+          'user': userId,
         };
         
         if (remoteId == null || remoteId.isEmpty) {
@@ -626,4 +659,74 @@ class SyncService {
        _syncingShifts = false;
     }
   }
+
+  // --- Monthly Rosters ---
+  
+  Future<void> syncMonthlyRosters() async {
+    try {
+      final db = await storage.database;
+      final userId = _getUserId();
+      if (userId == null) return;
+      
+      final dirtyRosters = await db.query('monthly_rosters', where: 'isSynced = 0');
+      if (dirtyRosters.isNotEmpty) pbLog('  📤 Pushing ${dirtyRosters.length} monthly rosters...');
+      
+      for (var row in dirtyRosters) {
+        String? remoteId = row['remoteId'] as String?;
+        final body = {
+          'month': row['month'],
+          'roster_month': row['roster_month'],
+          'json_data': row['json_data'],
+          'user': userId,
+        };
+        try {
+          if (remoteId == null || remoteId.isEmpty) {
+            final record = await pb.collection('monthly_rosters').create(body: body);
+            await db.update('monthly_rosters', {
+              'remoteId': record.id, 'isSynced': 1, 'updatedAt': record.updated,
+            }, where: 'roster_month = ?', whereArgs: [row['roster_month']]);
+          } else {
+            await pb.collection('monthly_rosters').update(remoteId, body: body);
+            await db.update('monthly_rosters', {
+              'isSynced': 1, 'updatedAt': DateTime.now().toIso8601String(),
+            }, where: 'roster_month = ?', whereArgs: [row['roster_month']]);
+          }
+        } catch (e) {
+          pbLog('  ❌ Error pushing monthly roster ${row['roster_month']}: $e');
+        }
+      }
+      
+      final prefs = await SharedPreferences.getInstance();
+      final lastSync = prefs.getString(_lastSyncKey) ?? '2000-01-01 00:00:00.000Z';
+      
+      try {
+        final metaList = await pb.collection('monthly_rosters').getList(filter: 'updated > "$lastSync"');
+        if (metaList.items.isNotEmpty) pbLog('  📥 Pulling ${metaList.items.length} monthly rosters...');
+        for (var record in metaList.items) {
+          final local = await db.query('monthly_rosters', where: 'remoteId = ?', whereArgs: [record.id]);
+          final metaData = {
+            'month': record.data['month'],
+            'roster_month': record.data['roster_month'],
+            'json_data': record.data['json_data'],
+            'remoteId': record.id, 'isSynced': 1, 'updatedAt': record.updated,
+          };
+          if (local.isEmpty) {
+             final existing = await db.query('monthly_rosters', where: 'roster_month = ?', whereArgs: [record.data['roster_month']]);
+             if (existing.isNotEmpty) {
+                 await db.update('monthly_rosters', metaData, where: 'roster_month = ?', whereArgs: [existing.first['roster_month']]);
+             } else {
+                 await db.insert('monthly_rosters', metaData);
+             }
+          } else {
+            await db.update('monthly_rosters', metaData, where: 'remoteId = ?', whereArgs: [record.id]);
+          }
+        }
+      } catch (e) {
+         pbLog('  ❌ Error pulling monthly rosters: $e');
+      }
+    } catch (e) {
+        pbLog('  ❌ Error in syncMonthlyRosters: $e');
+    }
+  }
 }
+

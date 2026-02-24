@@ -5,6 +5,7 @@ import '../models/shift.dart';
 import '../services/storage_service.dart';
 import '../services/shift_service.dart';
 import '../services/log_service.dart';
+import '../services/pb_debug_logger.dart';
 
 class MyShiftsScreen extends StatefulWidget {
   const MyShiftsScreen({super.key});
@@ -158,6 +159,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                   );
                 }
               } catch (e) {
+                pbLog('❌ Error uploading JSON roster: $e');
                 Navigator.pop(context);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
