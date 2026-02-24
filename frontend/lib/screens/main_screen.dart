@@ -9,6 +9,7 @@ import 'checklists_screen.dart';
 import 'my_shifts_screen.dart';
 import 'auth_screen.dart';
 import 'admin_screen.dart';
+import 'pb_debug_screen.dart';
 import '../services/sync_service.dart';
 import '../services/storage_service.dart'; // Ensure it's there for storage instance
 import '../services/auth_service.dart';
@@ -223,7 +224,6 @@ class _MainScreenState extends State<MainScreen> {
                   );
                 },
               ),
-              // Admin Feature
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings, color: Colors.redAccent),
                 title: const Text('Admin Console'),
@@ -232,6 +232,18 @@ class _MainScreenState extends State<MainScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const AdminScreen()),
+                  );
+                },
+              ),
+              // PB Debug Console
+              ListTile(
+                leading: const Icon(Icons.bug_report, color: Colors.orange),
+                title: const Text('PB Debug Console'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const PBDebugScreen()),
                   );
                 },
               ),

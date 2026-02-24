@@ -9,6 +9,7 @@ import '../models/note.dart';
 import '../models/daily_reminder.dart';
 import '../models/shift.dart';
 import 'notification_service.dart';
+import 'pb_debug_logger.dart';
 
 class SyncService {
   final PocketBase pb;
@@ -26,7 +27,7 @@ class SyncService {
   SyncService(this.pb);
 
   String? _getUserId() {
-    if (pb.authStore.model != null) return pb.authStore.model.id;
+    if (pb.authStore.record != null) return pb.authStore.record!.id;
     final token = pb.authStore.token;
     if (token.isEmpty) return null;
     try {
@@ -42,7 +43,7 @@ class SyncService {
   Future<void> syncAll() async {
     if (pb.authStore.token.isEmpty) return;
 
-    print('🔄 Starting Sync...');
+    pbLog('🔄 Starting Sync...');
     await syncTasks();
     await syncNotes();
     await syncDailyReminders();
@@ -52,7 +53,7 @@ class SyncService {
     // Update last sync time
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastSyncKey, DateTime.now().toUtc().toIso8601String());
-    print('✅ Sync Complete');
+    pbLog('✅ Sync Complete');
   }
 
   // --- Tasks ---
@@ -67,7 +68,7 @@ class SyncService {
       
       // 1. Push Local Changes
       final dirtyTasks = await db.query('tasks', where: 'isSynced = 0');
-      if (dirtyTasks.isNotEmpty) print('  📤 Pushing ${dirtyTasks.length} tasks...');
+      if (dirtyTasks.isNotEmpty) pbLog('  📤 Pushing ${dirtyTasks.length} tasks...');
       
       for (var row in dirtyTasks) {
         Task task = Task.fromJson(row);
@@ -100,7 +101,7 @@ class SyncService {
             }, where: 'id = ?', whereArgs: [task.id]);
           }
         } catch (e) {
-          print('  ❌ Error pushing task ${task.id}: $e');
+          pbLog('  ❌ Error pushing task ${task.id}: $e');
         }
       }
 
@@ -113,7 +114,7 @@ class SyncService {
           filter: 'updated > "$lastSync"',
         );
         
-        if (resultList.items.isNotEmpty) print('  📥 Pulling ${resultList.items.length} tasks...');
+        if (resultList.items.isNotEmpty) pbLog('  📥 Pulling ${resultList.items.length} tasks...');
 
         for (var record in resultList.items) {
           // Check if exists locally by remoteId
@@ -142,7 +143,7 @@ class SyncService {
           }
         }
       } catch (e) {
-         print('  ❌ Error pulling tasks: $e');
+         pbLog('  ❌ Error pulling tasks: $e');
       }
     } finally {
       _syncingTasks = false;
@@ -161,7 +162,7 @@ class SyncService {
 
     // 1. Push
     final dirtyNotes = await db.query('notes', where: 'isSynced = 0');
-    if (dirtyNotes.isNotEmpty) print('  📤 Pushing ${dirtyNotes.length} notes...');
+    if (dirtyNotes.isNotEmpty) pbLog('  📤 Pushing ${dirtyNotes.length} notes...');
 
     for (var row in dirtyNotes) {
       Note note = Note.fromMap(row);
@@ -189,7 +190,7 @@ class SyncService {
            }, where: 'id = ?', whereArgs: [note.id]);
         }
       } catch (e) {
-        print('  ❌ Error pushing note ${note.id}: $e');
+        pbLog('  ❌ Error pushing note ${note.id}: $e');
       }
     }
     
@@ -202,7 +203,7 @@ class SyncService {
         filter: 'updated > "$lastSync"',
       );
       
-      if (resultList.items.isNotEmpty) print('  📥 Pulling ${resultList.items.length} notes...');
+      if (resultList.items.isNotEmpty) pbLog('  📥 Pulling ${resultList.items.length} notes...');
 
       for (var record in resultList.items) {
         final local = await db.query('notes', where: 'remoteId = ?', whereArgs: [record.id]);
@@ -224,7 +225,7 @@ class SyncService {
         }
       }
       } catch (e) {
-         print('  ❌ Error pulling notes: $e');
+         pbLog('  ❌ Error pulling notes: $e');
       }
     } finally {
        _syncingNotes = false;
@@ -243,7 +244,7 @@ class SyncService {
 
     // 1. Push
     final dirtyReminders = await db.query('daily_reminders', where: 'isSynced = 0');
-    if (dirtyReminders.isNotEmpty) print('  📤 Pushing ${dirtyReminders.length} daily reminders...');
+    if (dirtyReminders.isNotEmpty) pbLog('  📤 Pushing ${dirtyReminders.length} daily reminders...');
 
     for (var row in dirtyReminders) {
       DailyReminder reminder = DailyReminder.fromJson(row); // Changed to use DailyReminder.fromJson
@@ -272,7 +273,7 @@ class SyncService {
            }, where: 'id = ?', whereArgs: [reminder.id]); // Changed from row['id']
         }
       } catch (e) {
-        print('  ❌ Error pushing daily reminder ${row['id']}: $e');
+        pbLog('  ❌ Error pushing daily reminder ${row['id']}: $e');
       }
     }
     
@@ -285,7 +286,7 @@ class SyncService {
         filter: 'updated > "$lastSync"',
       );
       
-      if (resultList.items.isNotEmpty) print('  📥 Pulling ${resultList.items.length} daily reminders...');
+      if (resultList.items.isNotEmpty) pbLog('  📥 Pulling ${resultList.items.length} daily reminders...');
 
       for (var record in resultList.items) {
         final local = await db.query('daily_reminders', where: 'remoteId = ?', whereArgs: [record.id]);
@@ -318,7 +319,7 @@ class SyncService {
         }
       }
       } catch (e) {
-         print('  ❌ Error pulling daily reminders: $e');
+         pbLog('  ❌ Error pulling daily reminders: $e');
       }
     } finally {
        _syncingDaily = false;
@@ -339,7 +340,7 @@ class SyncService {
     
     // a. Push local changes
     final dirtyChecklists = await db.query('checklists', where: 'isSynced = 0');
-    if (dirtyChecklists.isNotEmpty) print('  📤 Pushing ${dirtyChecklists.length} checklists...');
+    if (dirtyChecklists.isNotEmpty) pbLog('  📤 Pushing ${dirtyChecklists.length} checklists...');
 
     for (var row in dirtyChecklists) {
       String? remoteId = row['remoteId'] as String?;
@@ -367,7 +368,7 @@ class SyncService {
            }, where: 'id = ?', whereArgs: [row['id']]);
         }
       } catch (e) {
-        print('  ❌ Error pushing checklist ${row['id']}: $e');
+        pbLog('  ❌ Error pushing checklist ${row['id']}: $e');
       }
     }
     
@@ -380,7 +381,7 @@ class SyncService {
         filter: 'updated > "$lastSync"',
       );
       
-      if (resultList.items.isNotEmpty) print('  📥 Pulling ${resultList.items.length} checklists...');
+      if (resultList.items.isNotEmpty) pbLog('  📥 Pulling ${resultList.items.length} checklists...');
 
       for (var record in resultList.items) {
         final local = await db.query('checklists', where: 'remoteId = ?', whereArgs: [record.id]);
@@ -401,14 +402,14 @@ class SyncService {
         }
       }
     } catch (e) {
-       print('  ❌ Error pulling checklists: $e');
+       pbLog('  ❌ Error pulling checklists: $e');
     }
 
     // --- 2. Sync Checklist Items ---
     
     // a. Push local item changes
     final dirtyItems = await db.query('checklist_items', where: 'isSynced = 0');
-    if (dirtyItems.isNotEmpty) print('  📤 Pushing ${dirtyItems.length} checklist items...');
+    if (dirtyItems.isNotEmpty) pbLog('  📤 Pushing ${dirtyItems.length} checklist items...');
 
     for (var row in dirtyItems) {
       String? remoteId = row['remoteId'] as String?;
@@ -444,7 +445,7 @@ class SyncService {
            }, where: 'id = ?', whereArgs: [row['id']]);
         }
       } catch (e) {
-        print('  ❌ Error pushing checklist item ${row['id']}: $e');
+        pbLog('  ❌ Error pushing checklist item ${row['id']}: $e');
       }
     }
     
@@ -454,7 +455,7 @@ class SyncService {
         filter: 'updated > "$lastSync"',
       );
       
-      if (itemList.items.isNotEmpty) print('  📥 Pulling ${itemList.items.length} checklist items...');
+      if (itemList.items.isNotEmpty) pbLog('  📥 Pulling ${itemList.items.length} checklist items...');
 
       for (var record in itemList.items) {
         // Find local parent by parent remoteId
@@ -483,7 +484,7 @@ class SyncService {
         }
       }
       } catch (e) {
-         print('  ❌ Error pulling checklist items: $e');
+         pbLog('  ❌ Error pulling checklist items: $e');
       }
     } finally {
        _syncingChecklists = false;
@@ -502,7 +503,7 @@ class SyncService {
       
       // --- 1. Push Metadata ---
       final dirtyMetadata = await db.query('shift_metadata', where: 'isSynced = 0');
-      if (dirtyMetadata.isNotEmpty) print('  📤 Pushing ${dirtyMetadata.length} shift metadata...');
+      if (dirtyMetadata.isNotEmpty) pbLog('  📤 Pushing ${dirtyMetadata.length} shift metadata...');
       for (var row in dirtyMetadata) {
         String? remoteId = row['remoteId'] as String?;
         final body = {
@@ -524,13 +525,13 @@ class SyncService {
             }, where: 'id = ?', whereArgs: [row['id']]);
           }
         } catch (e) {
-          print('  ❌ Error pushing shift_metadata: $e');
+          pbLog('  ❌ Error pushing shift_metadata: $e');
         }
       }
 
       // --- 2. Push Shifts ---
       final dirtyShifts = await db.query('shifts', where: 'isSynced = 0');
-      if (dirtyShifts.isNotEmpty) print('  📤 Pushing ${dirtyShifts.length} shifts...');
+      if (dirtyShifts.isNotEmpty) pbLog('  📤 Pushing ${dirtyShifts.length} shifts...');
       for (var row in dirtyShifts) {
         String? remoteId = row['remoteId'] as String?;
         final body = {
@@ -555,7 +556,7 @@ class SyncService {
             }, where: 'id = ?', whereArgs: [row['id']]);
           }
         } catch (e) {
-          print('  ❌ Error pushing shift ${row['date']}: $e');
+          pbLog('  ❌ Error pushing shift ${row['date']}: $e');
         }
       }
 
@@ -590,7 +591,7 @@ class SyncService {
       // Pull Shifts
       try {
         final resultList = await pb.collection('shifts').getList(filter: 'updated > "$lastSync"', perPage: 500);
-        if (resultList.items.isNotEmpty) print('  📥 Pulling ${resultList.items.length} shifts...');
+        if (resultList.items.isNotEmpty) pbLog('  📥 Pulling ${resultList.items.length} shifts...');
 
         for (var record in resultList.items) {
           final local = await db.query('shifts', where: 'remoteId = ?', whereArgs: [record.id]);
@@ -619,7 +620,7 @@ class SyncService {
           }
         }
       } catch (e) {
-         print('  ❌ Error pulling shifts: $e');
+         pbLog('  ❌ Error pulling shifts: $e');
       }
     } finally {
        _syncingShifts = false;
