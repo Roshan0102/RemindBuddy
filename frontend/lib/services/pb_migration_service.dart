@@ -30,6 +30,16 @@ class PbMigrationService {
       }
     }
     
+    // Get users collection ID dynamically
+    String usersCollectionId = '_pb_users_auth_';
+    try {
+      final usersCol = await pb.collections.getOne('users');
+      usersCollectionId = usersCol.id;
+      print("Found users collection with id: $usersCollectionId");
+    } catch (e) {
+      print("Warning: could not fetch users collection id, using default.");
+    }
+
     // Create 'tasks' collection
     await _createCollection(
       name: 'tasks',
@@ -46,7 +56,7 @@ class PbMigrationService {
           'type': 'relation', 
           'required': true,
           'options': {
-            'collectionId': '_pb_users_auth_',
+            'collectionId': usersCollectionId,
             'cascadeDelete': true,
             'maxSelect': 1,
           }
@@ -66,7 +76,7 @@ class PbMigrationService {
           'name': 'user', 
           'type': 'relation', 
           'options': {
-            'collectionId': '_pb_users_auth_',
+            'collectionId': usersCollectionId,
             'cascadeDelete': true,
             'maxSelect': 1,
           }
@@ -87,7 +97,7 @@ class PbMigrationService {
           'name': 'user', 
           'type': 'relation', 
           'options': {
-            'collectionId': '_pb_users_auth_',
+            'collectionId': usersCollectionId,
             'cascadeDelete': true,
             'maxSelect': 1,
           }
@@ -106,7 +116,7 @@ class PbMigrationService {
           'name': 'user', 
           'type': 'relation', 
           'options': {
-            'collectionId': '_pb_users_auth_',
+            'collectionId': usersCollectionId,
             'cascadeDelete': true,
             'maxSelect': 1,
           }
@@ -134,7 +144,7 @@ class PbMigrationService {
           'type': 'relation', 
           'required': true,
           'options': {
-            'collectionId': '_pb_users_auth_',
+            'collectionId': usersCollectionId,
             'cascadeDelete': true,
             'maxSelect': 1,
           }
@@ -156,7 +166,7 @@ class PbMigrationService {
           'name': 'user', 
           'type': 'relation', 
           'options': {
-            'collectionId': '_pb_users_auth_',
+            'collectionId': usersCollectionId,
             'cascadeDelete': true,
             'maxSelect': 1,
           }
@@ -175,7 +185,7 @@ class PbMigrationService {
           'name': 'user', 
           'type': 'relation', 
           'options': {
-            'collectionId': '_pb_users_auth_',
+            'collectionId': usersCollectionId,
             'cascadeDelete': true,
             'maxSelect': 1,
           }
@@ -194,7 +204,7 @@ class PbMigrationService {
           'name': 'user', 
           'type': 'relation', 
           'options': {
-            'collectionId': '_pb_users_auth_',
+            'collectionId': usersCollectionId,
             'cascadeDelete': true,
             'maxSelect': 1,
           }

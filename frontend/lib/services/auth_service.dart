@@ -4,6 +4,7 @@ import 'package:pocketbase/pocketbase.dart';
 import 'storage_service.dart';
 import 'sync_service.dart';
 import 'dart:convert';
+import 'pb_debug_logger.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -28,7 +29,12 @@ class AuthService {
         final authData = await pb.collection('users').authRefresh();
         pb.authStore.save(authData.token, authData.record);
       } catch (e) {
-        print("Auth refresh failed: $e");
+        pbLog("Auth refresh failed: $e. Your session may have expired.");
+        if (e is ClientException && (e.statusCode == 401 || e.statusCode == 404)) {
+            pbLog("⚠️ Invalid session detected. Logging out...");
+            await logout();
+            return;
+        }
       }
       
       // Trigger sync
