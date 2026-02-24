@@ -276,9 +276,9 @@ class StorageService {
     );
     await db.execute(
       'CREATE TABLE monthly_rosters(roster_month TEXT PRIMARY KEY, month TEXT, json_data TEXT, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
+    );
     await db.execute(
       'CREATE TABLE deleted_records(id INTEGER PRIMARY KEY AUTOINCREMENT, collectionName TEXT, remoteId TEXT)',
-    );
     );
   }
 
@@ -377,7 +377,6 @@ class StorageService {
   Future<void> deleteTask(int id) async {
     final db = await database;
     await _recordDeletion(db, 'tasks', 'tasks', id);
-    final db = await database;
     await db.delete(
       'tasks',
       where: 'id = ?',
@@ -427,7 +426,6 @@ class StorageService {
   Future<void> deleteNote(int id) async {
     final db = await database;
     await _recordDeletion(db, 'notes', 'notes', id);
-    final db = await database;
     await db.delete(
       'notes',
       where: 'id = ?',
@@ -483,7 +481,6 @@ class StorageService {
   Future<void> deleteDailyReminder(int id) async {
     final db = await database;
     await _recordDeletion(db, 'daily_reminders', 'daily_reminders', id);
-    final db = await database;
     await db.delete(
       'daily_reminders',
       where: 'id = ?',
@@ -527,7 +524,6 @@ class StorageService {
     final db = await database;
     await _recordDeletion(db, 'checklists', 'checklists', id);
     await _recordDeletionByField(db, 'checklist_items', 'checklist_items', 'checklistId = ?', [id]);
-    final db = await database;
     await db.delete('checklists', where: 'id = ?', whereArgs: [id]);
     await db.delete('checklist_items', where: 'checklistId = ?', whereArgs: [id]);
   }
@@ -565,7 +561,6 @@ class StorageService {
   Future<void> deleteChecklistItem(int id) async {
     final db = await database;
     await _recordDeletion(db, 'checklist_items', 'checklist_items', id);
-    final db = await database;
     await db.delete('checklist_items', where: 'id = ?', whereArgs: [id]);
   }
 
@@ -817,7 +812,6 @@ class StorageService {
   }
 
   Future<void> clearAllShifts({String? rosterMonth}) async {
-
     final db = await database;
     if (rosterMonth != null) {
       await _recordDeletionByField(db, 'shifts', 'shifts', 'roster_month = ?', [rosterMonth]);
@@ -828,7 +822,6 @@ class StorageService {
       await _recordDeletionByField(db, 'shift_metadata', 'shift_metadata', '1 = 1', []);
       await _recordDeletionByField(db, 'monthly_rosters', 'monthly_rosters', '1 = 1', []);
     }
-    final db = await database;
     if (rosterMonth != null) {
       await db.delete('shifts', where: 'roster_month = ?', whereArgs: [rosterMonth]);
       await db.delete('shift_metadata', where: 'roster_month = ?', whereArgs: [rosterMonth]);
