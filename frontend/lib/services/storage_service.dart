@@ -679,12 +679,16 @@ class StorageService {
       'employee_name': employeeName,
       'month': month,
       'roster_month': effectiveRosterMonth,
+      'isSynced': 0,
+      'updatedAt': DateTime.now().toIso8601String(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
     
     // Save shifts with roster_month
     for (var shift in shifts) {
       final shiftData = Map<String, dynamic>.from(shift);
       shiftData['roster_month'] = effectiveRosterMonth;
+      shiftData['isSynced'] = 0;
+      shiftData['updatedAt'] = DateTime.now().toIso8601String();
       await db.insert('shifts', shiftData, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 
