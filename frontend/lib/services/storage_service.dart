@@ -223,13 +223,17 @@ class StorageService {
                     await db.execute('ALTER TABLE $table ADD COLUMN updatedAt TEXT');
                 } catch(e) { /* Column likely exists */ }
             }
-            // Migration for version 13: Add monthly_rosters
+            print("✅ Migration v12 database check complete.");
+        } // Close migration 12
+
+        // Migration for version 13: Add monthly_rosters
+        if (oldVersion < 13) {
             try {
               await db.execute(
                 'CREATE TABLE IF NOT EXISTS monthly_rosters(roster_month TEXT PRIMARY KEY, month TEXT, json_data TEXT, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
               );
             } catch (e) { print("Error creating monthly_rosters: $e"); }
-            print("✅ Migration v12 database check complete.");
+        }
 
         // Migration for version 14: Add deleted_records
         if (oldVersion < 14) {
@@ -239,7 +243,6 @@ class StorageService {
                  'CREATE TABLE IF NOT EXISTS deleted_records(id INTEGER PRIMARY KEY AUTOINCREMENT, collectionName TEXT, remoteId TEXT)',
                );
              } catch (e) { print("Error creating deleted_records: $e"); }
-        }
         }
       },
     );

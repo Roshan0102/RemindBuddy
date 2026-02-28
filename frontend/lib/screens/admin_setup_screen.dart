@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pocketbase/pocketbase.dart';
 
 import '../services/auth_service.dart';
 import '../services/pb_migration_service.dart';
@@ -33,8 +34,10 @@ class _AdminSetupScreenState extends State<AdminSetupScreen> {
     });
 
     try {
-      final authService = AuthService(); // Get singleton
-      final migrationService = PbMigrationService(authService.pb);
+      // Use a completely isolated PocketBase instance for Admin Setup so it doesn't 
+      // corrupt the user's active session inside AuthService().pb
+      final adminPb = PocketBase('http://35.237.49.45:8090');
+      final migrationService = PbMigrationService(adminPb);
 
       await migrationService.createCollections(
         _emailController.text.trim(),
