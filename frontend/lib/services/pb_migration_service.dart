@@ -30,14 +30,14 @@ class PbMigrationService {
       }
     }
     
-    // Get users collection ID dynamically
+    // Get users collection ID dynamically (raw HTTP to avoid SDK parsing errors between PB versions)
     String usersCollectionId = '_pb_users_auth_';
     try {
-      final usersCol = await pb.collections.getOne('users');
-      usersCollectionId = usersCol.id;
+      final response = await pb.send('/api/collections/users', method: 'GET');
+      usersCollectionId = response['id'] as String;
       print("Found users collection with id: $usersCollectionId");
     } catch (e) {
-      print("Warning: could not fetch users collection id, using default.");
+      print("Warning: could not fetch users collection id, using default. Error: $e");
     }
 
     // Create 'tasks' collection
@@ -215,17 +215,6 @@ class PbMigrationService {
 
   Future<void> _createCollection({required String name, required List<Map<String, dynamic>> schema}) async {
     try {
-      // Check if collection exists
-      try {
-        await pb.collections.getOne(name); 
-        // If successful, it exists.
-        print('Collection $name already exists.');
-        return;
-      } catch (e) {
-        // Not found or error, verify if 404
-        // Proceed to create
-      }
-      
       // Resolve relation references
       for (var field in schema) {
         if (field['type'] == 'relation') {
@@ -241,6 +230,26 @@ class PbMigrationService {
           }
         }
       }
+
+      // Check if collection exists
+      try {
+        final existingCol = await pb.collections.getOne(name); 
+        // If successful, it exists. Update it explicitly to heal broken schemas!
+        await pb.collections.update(existingCol.id, body: {
+          'schema': schema,
+          'listRule': 'user = @request.auth.id',
+          'viewRule': 'user = @request.auth.id',
+          'createRule': 'user = @request.auth.id',
+          'updateRule': 'user = @request.auth.id',
+          'deleteRule': 'user = @request.auth.id',
+        });
+        print('Collection $name updated successfully.');
+        return;
+      } catch (e) {
+        // Not found or error, verify if 404
+        // Proceed to create
+      }
+
 
       await pb.collections.create(body: {
         'name': name,
