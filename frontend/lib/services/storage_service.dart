@@ -696,9 +696,16 @@ class StorageService {
     }
 
     if (rawJson != null) {
+      final existing = await db.query('shifts_data', where: 'month_year = ?', whereArgs: [effectiveRosterMonth]);
+      String? remoteId;
+      if (existing.isNotEmpty && existing.first['remoteId'] != null) {
+         remoteId = existing.first['remoteId'] as String;
+      }
+      
       await db.insert('shifts_data', {
         'month_year': effectiveRosterMonth,
         'json_data': rawJson,
+        if (remoteId != null) 'remoteId': remoteId,
         'isSynced': skipSyncFlag ? 1 : 0,
         'updatedAt': DateTime.now().toIso8601String(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);

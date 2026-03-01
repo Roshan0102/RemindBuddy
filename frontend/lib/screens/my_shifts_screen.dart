@@ -225,7 +225,13 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       await _shiftService.cancelAllShiftNotifications();
       
       try {
-        SyncService(AuthService().pb).syncDeletions();
+        final pb = AuthService().pb;
+        // Direct PocketBase deletion fallback to fix local SQLite missing remoteId bug
+        final records = await pb.collection('shifts_data').getList(filter: 'month_year = "$_selectedRosterMonth"');
+        for (var record in records.items) {
+           await pb.collection('shifts_data').delete(record.id);
+        }
+        SyncService(pb).syncDeletions();
       } catch (e) { print(e); }
       
       _loadShifts();
