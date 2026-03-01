@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 import 'dart:convert';
 
 import 'storage_service.dart';
+import 'app_init_service.dart';
 import '../models/task.dart';
 import '../models/note.dart';
 import '../models/daily_reminder.dart';
@@ -57,6 +58,13 @@ class SyncService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastSyncKey, DateTime.now().toUtc().toIso8601String());
     pbLog('✅ Sync Complete');
+    
+    // Ensure alarms are re-validated after syncing
+    try {
+      await AppInitService().initialize();
+    } catch(e) {
+      pbLog('⚠️ Failed to initialize AppInitService after sync: $e');
+    }
   }
 
   // --- Deletions ---
@@ -340,15 +348,15 @@ class SyncService {
           int insertedId = await db.insert('daily_reminders', drData);
           drData['id'] = insertedId;
           if (drData['isActive'] == 1) {
-            NotificationService().scheduleDailyReminder(DailyReminder.fromJson(drData));
+            await NotificationService().scheduleDailyReminder(DailyReminder.fromJson(drData));
           }
         } else {
           await db.update('daily_reminders', drData, where: 'remoteId = ?', whereArgs: [record.id]);
           drData['id'] = local.first['id'];
           if (drData['isActive'] == 1) {
-            NotificationService().scheduleDailyReminder(DailyReminder.fromJson(drData));
+            await NotificationService().scheduleDailyReminder(DailyReminder.fromJson(drData));
           } else {
-             NotificationService().cancelNotification((drData['id'] as int) + 100000); // 100000 is the daily reminder offset
+             await NotificationService().cancelNotification((drData['id'] as int) + 100000); // 100000 is the daily reminder offset
           }
         }
       }

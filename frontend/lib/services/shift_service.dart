@@ -17,52 +17,70 @@ class ShiftService {
   // Schedule daily shift notification at specified time (default 10 PM)
   Future<void> scheduleDailyShiftNotification({int hour = 22, int minute = 0}) async {
     try {
-      await _notificationService.flutterLocalNotificationsPlugin.zonedSchedule(
-        9999, // Unique ID for daily shift notification
-        'Tomorrow\'s Shift',
-        'Loading shift information...',
-        _nextInstanceOfTime(hour, minute),
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'shift_reminder_channel',
-            'Shift Reminders',
-            channelDescription: 'Daily notifications about upcoming shifts',
-            importance: Importance.high,
-            priority: Priority.high,
-            playSound: true,
-            enableVibration: true,
+      await cancelAllShiftNotifications(); // Clear old notifications
+
+      final now = DateTime.now();
+      
+      // Schedule for the next 45 days (plenty of time between app opens)
+      for (int i = 0; i < 45; i++) {
+        final targetDate = now.add(Duration(days: i));
+        
+        final tz.TZDateTime tzNow = tz.TZDateTime.now(tz.local);
+        tz.TZDateTime scheduledDate = tz.TZDateTime(
+          tz.local, targetDate.year, targetDate.month, targetDate.day, hour, minute,
+        );
+        
+        // Skip if this specific alarm time has already passed
+        if (scheduledDate.isBefore(tzNow.add(const Duration(seconds: 5)))) continue;
+
+        // The shift is for tomorrow relative to targetDate
+        final tomorrow = targetDate.add(const Duration(days: 1));
+        final dayAfterTomorrow = targetDate.add(const Duration(days: 2));
+
+        final tomorrowDateStr = DateFormat('yyyy-MM-dd').format(tomorrow);
+        final dayAfterDateStr = DateFormat('yyyy-MM-dd').format(dayAfterTomorrow);
+
+        final tomorrowShift = await _storage.getShiftForDate(tomorrowDateStr);
+        final dayAfterShift = await _storage.getShiftForDate(dayAfterDateStr);
+
+        if (tomorrowShift == null) continue; // No shift data for tomorrow
+
+        final tomorrowShiftObj = Shift.fromMap(tomorrowShift);
+        String message = _formatShiftMessage('Tomorrow', tomorrowShiftObj);
+
+        if (dayAfterShift != null) {
+          final dayAfterShiftObj = Shift.fromMap(dayAfterShift);
+          message += '\n${_formatShiftMessage(DateFormat('EEEE').format(dayAfterTomorrow), dayAfterShiftObj)}';
+        }
+
+        await _notificationService.flutterLocalNotificationsPlugin.zonedSchedule(
+          9000 + i, // Unique ID per day offset
+          '📅 Upcoming Shifts',
+          message,
+          scheduledDate,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              'shift_reminder_channel',
+              'Shift Reminders',
+              channelDescription: 'Daily notifications about upcoming shifts',
+              importance: Importance.high,
+              priority: Priority.high,
+              playSound: true,
+              enableVibration: true,
+              styleInformation: BigTextStyleInformation(message),
+            ),
           ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        payload: 'shifts_tab',
-        matchDateTimeComponents: DateTimeComponents.time,
-      );
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          payload: 'shifts_tab',
+        );
+      }
 
-      LogService().log('Daily shift notification scheduled for $hour:$minute');
+      LogService().log('Scheduled precise shift notifications for next 45 days');
     } catch (e) {
-      LogService().error('Failed to schedule daily shift notification', e);
+      LogService().error('Failed to schedule daily shift notifications', e);
     }
-  }
-
-  // Get next instance of specified time
-  tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
-    final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
-    tz.TZDateTime scheduledDate = tz.TZDateTime(
-      tz.local,
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
-    );
-
-    if (scheduledDate.isBefore(now)) {
-      scheduledDate = scheduledDate.add(const Duration(days: 1));
-    }
-
-    return scheduledDate;
   }
 
   // Shows immediate notification with shift info
@@ -138,8 +156,13 @@ class ShiftService {
   // Cancel all shift-related notifications
   Future<void> cancelAllShiftNotifications() async {
     try {
-      // Cancel daily shift notification
+      // Cancel legacy generic daily shift notification
       await _notificationService.flutterLocalNotificationsPlugin.cancel(9999);
+      
+      // Cancel new dynamic shifted schedule
+      for(int i = 0; i < 45; i++) {
+         await _notificationService.flutterLocalNotificationsPlugin.cancel(9000 + i);
+      }
 
       LogService().log('Cancelled all shift notifications');
     } catch (e) {

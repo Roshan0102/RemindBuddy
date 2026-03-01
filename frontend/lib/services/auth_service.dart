@@ -1,5 +1,6 @@
 
 import 'package:pocketbase/pocketbase.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'storage_service.dart';
 import 'sync_service.dart';
@@ -67,6 +68,9 @@ class AuthService {
       final storage = StorageService();
       await storage.saveAuthToken(pb.authStore.token, authData.record?.data.toString() ?? "");
       
+      // Clear last sync time to force a fresh data pull, just in case this is a fresh install or relogin
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('last_sync_time');
 
       print("Logged in as ${authData.record?.id}");
       

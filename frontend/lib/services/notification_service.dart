@@ -431,8 +431,8 @@ class NotificationService {
       minute,
     );
 
-    // If the time has already passed today, schedule for tomorrow
-    if (scheduledDate.isBefore(now)) {
+    // If the time has already passed today (or is very close), schedule for tomorrow
+    if (scheduledDate.isBefore(now.add(const Duration(seconds: 5)))) {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }
 

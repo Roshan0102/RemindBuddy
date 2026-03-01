@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'gold_price_service.dart';
 import 'storage_service.dart';
@@ -23,34 +24,40 @@ class GoldSchedulerService {
     print('✅ Gold Scheduler Initialized');
   }
 
-  /// Schedule both 11 AM and 7 PM daily alarms
+  /// Schedule both morning and evening alarms
   Future<void> scheduleGoldPriceFetching() async {
     // Cancel any existing alarms first
     await cancelAllAlarms();
 
-    // Schedule 11 AM alarm
-    final morning11AM = _getNextScheduledTime(11, 0);
+    final prefs = await SharedPreferences.getInstance();
+    final morningHour = prefs.getInt('gold_morning_hour') ?? 11;
+    final morningMinute = prefs.getInt('gold_morning_minute') ?? 0;
+    final eveningHour = prefs.getInt('gold_evening_hour') ?? 19;
+    final eveningMinute = prefs.getInt('gold_evening_minute') ?? 0;
+
+    // Schedule morning alarm
+    final morningTime = _getNextScheduledTime(morningHour, morningMinute);
     await AndroidAlarmManager.oneShotAt(
-      morning11AM,
+      morningTime,
       morningAlarmId,
       _morningFetchCallback,
       exact: true,
       wakeup: true,
       rescheduleOnReboot: true,
     );
-    print('✅ Scheduled 11 AM gold price fetch for $morning11AM');
+    print('✅ Scheduled morning gold price fetch for $morningTime');
 
-    // Schedule 7 PM alarm
-    final evening7PM = _getNextScheduledTime(19, 0);
+    // Schedule evening alarm
+    final eveningTime = _getNextScheduledTime(eveningHour, eveningMinute);
     await AndroidAlarmManager.oneShotAt(
-      evening7PM,
+      eveningTime,
       eveningAlarmId,
       _eveningFetchCallback,
       exact: true,
       wakeup: true,
       rescheduleOnReboot: true,
     );
-    print('✅ Scheduled 7 PM gold price fetch for $evening7PM');
+    print('✅ Scheduled evening gold price fetch for $eveningTime');
   }
 
   /// Cancel all scheduled alarms
@@ -124,8 +131,12 @@ class GoldSchedulerService {
       LogService.staticLog('❌ Error in 11 AM fetch: $e');
     } finally {
       // Reschedule for next day (recursive oneShot for better reliability)
+      final prefs = await SharedPreferences.getInstance();
+      final morningHour = prefs.getInt('gold_morning_hour') ?? 11;
+      final morningMinute = prefs.getInt('gold_morning_minute') ?? 0;
+      
       final now = DateTime.now();
-      var nextMorning = DateTime(now.year, now.month, now.day, 11, 0);
+      var nextMorning = DateTime(now.year, now.month, now.day, morningHour, morningMinute);
       if (nextMorning.isBefore(now) || nextMorning.isAtSameMomentAs(now)) {
         nextMorning = nextMorning.add(const Duration(days: 1));
       }
@@ -137,7 +148,7 @@ class GoldSchedulerService {
         wakeup: true,
         rescheduleOnReboot: true,
       );
-      LogService.staticLog('✅ Rescheduled next 11 AM fetch for $nextMorning');
+      LogService.staticLog('✅ Rescheduled next morning fetch for $nextMorning');
     }
   }
 
@@ -192,8 +203,12 @@ class GoldSchedulerService {
       LogService.staticLog('❌ Error in 7 PM fetch: $e');
     } finally {
       // Reschedule for next day
+      final prefs = await SharedPreferences.getInstance();
+      final eveningHour = prefs.getInt('gold_evening_hour') ?? 19;
+      final eveningMinute = prefs.getInt('gold_evening_minute') ?? 0;
+      
       final now = DateTime.now();
-      var nextEvening = DateTime(now.year, now.month, now.day, 19, 0);
+      var nextEvening = DateTime(now.year, now.month, now.day, eveningHour, eveningMinute);
       if (nextEvening.isBefore(now) || nextEvening.isAtSameMomentAs(now)) {
         nextEvening = nextEvening.add(const Duration(days: 1));
       }
@@ -205,7 +220,7 @@ class GoldSchedulerService {
         wakeup: true,
         rescheduleOnReboot: true,
       );
-      LogService.staticLog('✅ Rescheduled next 7 PM fetch for $nextEvening');
+      LogService.staticLog('✅ Rescheduled next evening fetch for $nextEvening');
     }
   }
 
