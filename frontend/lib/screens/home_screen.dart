@@ -236,15 +236,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           await _storageService.deleteTask(deletedTask.id!);
                           await _notificationService.cancelNotification(deletedTask.id!);
 
-                          // 3. Delete from Server (Best Effort)
-                          final deletedTaskCopy = deletedTask; // redundant but safe copy
-                          if (deletedTaskCopy.remoteId != null) {
-                             try {
-                               final auth = AuthService();
-                               await auth.pb.collection('tasks').delete(deletedTaskCopy.remoteId!);
-                             } catch (e) {
-                               LogService().error('Failed to delete from server', e);
-                             }
+                          // 3. Delete from Server
+                          try {
+                            final auth = AuthService();
+                            SyncService(auth.pb).syncDeletions();
+                          } catch (e) {
+                            LogService().error('Failed to trigger deletion sync', e);
                           }
                           
                           if (mounted) {

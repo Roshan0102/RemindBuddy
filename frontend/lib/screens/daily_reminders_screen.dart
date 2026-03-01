@@ -245,7 +245,7 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
       await _notificationService.cancelNotification(reminder.id! + 100000);
       await _storageService.deleteDailyReminder(reminder.id!);
       try {
-        SyncService(AuthService().pb).syncDailyReminders();
+        SyncService(AuthService().pb).syncDeletions();
       } catch (e) { print(e); }
       _loadReminders();
     }

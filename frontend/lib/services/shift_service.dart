@@ -64,7 +64,7 @@ class ShiftService {
     return scheduledDate;
   }
 
-  // Show immediate notification with shift info
+  // Shows immediate notification with shift info
   Future<void> showShiftNotification() async {
     try {
       final tomorrow = DateTime.now().add(const Duration(days: 1));
@@ -133,84 +133,11 @@ class ShiftService {
     return '$day: $emoji ${shift.getDisplayName()} (${shift.getTimeRange()})';
   }
 
-  // Schedule Amla reminder 5 minutes after shift start
-  Future<void> scheduleAmlaReminder(Shift shift, DateTime shiftDate) async {
-    if (shift.isWeekOff || shift.startTime == null) return;
-
-    try {
-      // Parse start time
-      final timeParts = shift.startTime!.split(':');
-      final hour = int.parse(timeParts[0]);
-      final minute = int.parse(timeParts[1]);
-
-      // Schedule for 5 minutes after shift start
-      final reminderTime = DateTime(
-        shiftDate.year,
-        shiftDate.month,
-        shiftDate.day,
-        hour,
-        minute,
-      ).add(const Duration(minutes: 5));
-
-      // Only schedule if it's in the future
-      if (reminderTime.isAfter(DateTime.now())) {
-        final tzReminderTime = tz.TZDateTime.from(reminderTime, tz.local);
-
-        await _notificationService.flutterLocalNotificationsPlugin.zonedSchedule(
-          10000 + shiftDate.day, // Unique ID per day
-          '🍋 Shopping Reminder',
-          'Don\'t forget to buy Amla!',
-          tzReminderTime,
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'amla_reminder_channel',
-              'Amla Reminders',
-              channelDescription: 'Reminders to buy Amla after shift starts',
-              importance: Importance.high,
-              priority: Priority.high,
-              playSound: true,
-              enableVibration: true,
-            ),
-          ),
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-        );
-
-        LogService().log('Amla reminder scheduled for ${DateFormat('yyyy-MM-dd HH:mm').format(reminderTime)}');
-      }
-    } catch (e) {
-      LogService().error('Failed to schedule Amla reminder', e);
-    }
-  }
-
-  // Schedule all Amla reminders for upcoming shifts
-  Future<void> scheduleAllAmlaReminders() async {
-    try {
-      final upcomingShifts = await _storage.getUpcomingShifts(30); // Next 30 days
-
-      for (var shiftMap in upcomingShifts) {
-        final shift = Shift.fromMap(shiftMap);
-        final shiftDate = DateTime.parse(shift.date);
-        await scheduleAmlaReminder(shift, shiftDate);
-      }
-
-      LogService().log('Scheduled Amla reminders for ${upcomingShifts.length} upcoming shifts');
-    } catch (e) {
-      LogService().error('Failed to schedule all Amla reminders', e);
-    }
-  }
-
   // Cancel all shift-related notifications
   Future<void> cancelAllShiftNotifications() async {
     try {
       // Cancel daily shift notification
       await _notificationService.flutterLocalNotificationsPlugin.cancel(9999);
-
-      // Cancel Amla reminders (IDs 10000-10031 for 31 days)
-      for (int i = 10000; i < 10032; i++) {
-        await _notificationService.flutterLocalNotificationsPlugin.cancel(i);
-      }
 
       LogService().log('Cancelled all shift notifications');
     } catch (e) {

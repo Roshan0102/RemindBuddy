@@ -168,7 +168,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 
                 // Schedule notifications
                 await _shiftService.scheduleDailyShiftNotification();
-                await _shiftService.scheduleAllAmlaReminders();
                 
                 Navigator.pop(context);
                 await _loadShifts(); // Reload current view
@@ -205,8 +204,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Clear All Shifts?'),
-        content: const Text('This will delete all shift data and cancel notifications.'),
+        title: Text('Clear $_selectedRosterMonth Shifts?'),
+        content: Text('This will delete all shift data and cancel notifications for $_selectedRosterMonth.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -222,13 +221,18 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     );
 
     if (confirm == true) {
-      await _storage.clearAllShifts();
+      await _storage.clearAllShifts(rosterMonth: _selectedRosterMonth);
       await _shiftService.cancelAllShiftNotifications();
+      
+      try {
+        SyncService(AuthService().pb).syncDeletions();
+      } catch (e) { print(e); }
+      
       _loadShifts();
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All shift data cleared')),
+          SnackBar(content: Text('All shift data for $_selectedRosterMonth cleared')),
         );
       }
     }

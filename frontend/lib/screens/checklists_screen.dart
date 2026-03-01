@@ -40,7 +40,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
   Future<void> _deleteChecklist(int id) async {
     await _storage.deleteChecklist(id);
     _loadChecklists();
-    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
+    try { SyncService(AuthService().pb).syncDeletions(); } catch (e) {}
   }
 
   void _showAddDialog() {
@@ -230,7 +230,7 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
   Future<void> _deleteItem(int id) async {
     await _storage.deleteChecklistItem(id);
     _loadItems();
-    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
+    try { SyncService(AuthService().pb).syncDeletions(); } catch (e) {}
   }
 
   Future<void> _resetList() async {

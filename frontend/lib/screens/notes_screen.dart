@@ -221,7 +221,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                   }
                                   await _storageService.deleteNote(note.id!);
                                   try {
-                                    SyncService(AuthService().pb).syncNotes();
+                                    SyncService(AuthService().pb).syncDeletions();
                                   } catch (e) { print(e); }
                                   _loadNotes();
                                 },
