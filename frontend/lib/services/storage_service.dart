@@ -823,19 +823,13 @@ class StorageService {
   Future<void> clearAllShifts({String? rosterMonth}) async {
     final db = await database;
     if (rosterMonth != null) {
-      await _recordDeletionByField(db, 'shifts', 'shifts', 'roster_month = ?', [rosterMonth]);
-      await _recordDeletionByField(db, 'shift_metadata', 'shift_metadata', 'roster_month = ?', [rosterMonth]);
-      await _recordDeletionByField(db, 'monthly_rosters', 'monthly_rosters', 'roster_month = ?', [rosterMonth]);
-    } else {
-      await _recordDeletionByField(db, 'shifts', 'shifts', '1 = 1', []);
-      await _recordDeletionByField(db, 'shift_metadata', 'shift_metadata', '1 = 1', []);
-      await _recordDeletionByField(db, 'monthly_rosters', 'monthly_rosters', '1 = 1', []);
-    }
-    if (rosterMonth != null) {
+      await _recordDeletionByField(db, 'shifts_data', 'shifts_data', 'month_year = ?', [rosterMonth]);
+      await db.delete('shifts_data', where: 'month_year = ?', whereArgs: [rosterMonth]);
       await db.delete('shifts', where: 'roster_month = ?', whereArgs: [rosterMonth]);
       await db.delete('shift_metadata', where: 'roster_month = ?', whereArgs: [rosterMonth]);
-      await db.delete('monthly_rosters', where: 'roster_month = ?', whereArgs: [rosterMonth]);
     } else {
+      await _recordDeletionByField(db, 'shifts_data', 'shifts_data', '1 = 1', []);
+      await db.delete('shifts_data');
       await db.delete('shifts');
       await db.delete('shift_metadata');
       await db.delete('monthly_rosters');

@@ -44,6 +44,7 @@ class SyncService {
     if (pb.authStore.token.isEmpty) return;
 
     pbLog('🔄 Starting Sync...');
+    await syncDeletions();
     await syncTasks();
     await syncNotes();
     await syncDailyReminders();

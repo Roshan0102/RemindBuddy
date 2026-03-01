@@ -141,7 +141,15 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               final Map<String, dynamic> rewrittenJson = {
                  'employee_name': roster.employeeName,
                  'month': updatedMonthLabel,
-                 'shifts': shiftsToSave,
+                 'shifts': roster.shifts.map((s) {
+                     return {
+                        'date': s.date.length >= 10 ? '$rosterMonth-${s.date.substring(8, 10)}' : s.date,
+                        'shift_type': s.shiftType,
+                        'start_time': s.startTime,
+                        'end_time': s.endTime,
+                        'is_week_off': s.isWeekOff,
+                     };
+                 }).toList(),
               };
               final String newJsonString = json.encode(rewrittenJson);
               

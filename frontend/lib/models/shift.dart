@@ -19,7 +19,7 @@ class Shift {
       shiftType: json['shift_type'] as String,
       startTime: json['start_time'] as String?,
       endTime: json['end_time'] as String?,
-      isWeekOff: json['is_week_off'] as bool,
+      isWeekOff: json['is_week_off'] == true || json['is_week_off'] == 1,
     );
   }
 
