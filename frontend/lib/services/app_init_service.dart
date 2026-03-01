@@ -37,7 +37,6 @@ class AppInitService {
       if (metadata != null) {
         final shiftService = ShiftService();
         await shiftService.scheduleDailyShiftNotification();
-        await shiftService.scheduleAllAmlaReminders();
         LogService.staticLog('✅ Shift notifications rescheduled');
       }
     } catch (e) {
