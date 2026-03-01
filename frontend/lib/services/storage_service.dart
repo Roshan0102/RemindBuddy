@@ -11,7 +11,7 @@ import '../models/gold_price.dart';
 class StorageService {
   static final StorageService _instance = StorageService._internal();
   static Database? _database;
-  static const int _databaseVersion = 14;  // Version 14: Add deleted_records
+  static const int _databaseVersion = 15;  // Version 15: Replace monthly_rosters with shifts_data
   static const String _authTokenKey = 'auth_token';
   static const String _userKey = 'user_data';
 
@@ -279,6 +279,9 @@ class StorageService {
     );
     await db.execute(
       'CREATE TABLE monthly_rosters(roster_month TEXT PRIMARY KEY, month TEXT, json_data TEXT, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
+    );
+    await db.execute(
+      'CREATE TABLE shifts_data(month_year TEXT PRIMARY KEY, json_data TEXT, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
     );
     await db.execute(
       'CREATE TABLE deleted_records(id INTEGER PRIMARY KEY AUTOINCREMENT, collectionName TEXT, remoteId TEXT)',
@@ -664,7 +667,7 @@ class StorageService {
   }
 
   // Shift Methods
-  Future<void> saveShiftRoster(String employeeName, String month, List<Map<String, dynamic>> shifts, {String? rosterMonth, String? rawJson}) async {
+  Future<void> saveShiftRoster(String employeeName, String month, List<Map<String, dynamic>> shifts, {String? rosterMonth, String? rawJson, bool skipSyncFlag = false}) async {
     final db = await database;
     
     // Extract roster month from the first shift date if not provided
@@ -693,11 +696,10 @@ class StorageService {
     }
 
     if (rawJson != null) {
-      await db.insert('monthly_rosters', {
-        'roster_month': effectiveRosterMonth,
-        'month': month,
+      await db.insert('shifts_data', {
+        'month_year': effectiveRosterMonth,
         'json_data': rawJson,
-        'isSynced': 0,
+        'isSynced': skipSyncFlag ? 1 : 0,
         'updatedAt': DateTime.now().toIso8601String(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }

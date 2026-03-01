@@ -152,53 +152,11 @@ class PbMigrationService {
       ],
     );
 
-    // Create 'shifts' collection
+    // Create 'shifts_data' collection
     await _createCollection(
-      name: 'shifts',
+      name: 'shifts_data',
       schema: [
-        {'name': 'date', 'type': 'text'},
-        {'name': 'shift_type', 'type': 'text'},
-        {'name': 'start_time', 'type': 'text'},
-        {'name': 'end_time', 'type': 'text'},
-        {'name': 'is_week_off', 'type': 'bool'},
-        {'name': 'roster_month', 'type': 'text'},
-        {
-          'name': 'user', 
-          'type': 'relation', 
-          'options': {
-            'collectionId': usersCollectionId,
-            'cascadeDelete': true,
-            'maxSelect': 1,
-          }
-        },
-      ],
-    );
-
-    // Create 'shift_metadata' collection
-    await _createCollection(
-      name: 'shift_metadata',
-      schema: [
-        {'name': 'employee_name', 'type': 'text'},
-        {'name': 'month', 'type': 'text'},
-        {'name': 'roster_month', 'type': 'text'},
-        {
-          'name': 'user', 
-          'type': 'relation', 
-          'options': {
-            'collectionId': usersCollectionId,
-            'cascadeDelete': true,
-            'maxSelect': 1,
-          }
-        },
-      ],
-    );
-
-    // Create 'monthly_rosters' collection
-    await _createCollection(
-      name: 'monthly_rosters',
-      schema: [
-        {'name': 'month', 'type': 'text'},
-        {'name': 'roster_month', 'type': 'text'},
+        {'name': 'month_year', 'type': 'text'},
         {'name': 'json_data', 'type': 'json'},
         {
           'name': 'user', 

@@ -48,8 +48,7 @@ class SyncService {
     await syncNotes();
     await syncDailyReminders();
     await syncChecklists();
-    await syncShifts();
-    await syncMonthlyRosters();
+    await syncShiftsData();
     
     // Update last sync time
     final prefs = await SharedPreferences.getInstance();
@@ -524,9 +523,9 @@ class SyncService {
     }
   }
 
-  // --- Shifts ---
+  // --- Shifts Data ---
   
-  Future<void> syncShifts() async {
+  Future<void> syncShiftsData() async {
     if (_syncingShifts) return;
     _syncingShifts = true;
     try {
@@ -534,165 +533,30 @@ class SyncService {
       final userId = _getUserId();
       if (userId == null) return;
       
-      // --- 1. Push Metadata ---
-      final dirtyMetadata = await db.query('shift_metadata', where: 'isSynced = 0');
-      if (dirtyMetadata.isNotEmpty) pbLog('  📤 Pushing ${dirtyMetadata.length} shift metadata...');
-      for (var row in dirtyMetadata) {
+      final dirtyData = await db.query('shifts_data', where: 'isSynced = 0');
+      if (dirtyData.isNotEmpty) pbLog('  📤 Pushing ${dirtyData.length} shifts data...');
+      
+      for (var row in dirtyData) {
         String? remoteId = row['remoteId'] as String?;
         final body = {
-          'employee_name': row['employee_name'],
-          'month': row['month'],
-          'roster_month': row['roster_month'],
-          'user': userId,
-        };
-        try {
-          if (remoteId == null || remoteId.isEmpty) {
-            final record = await pb.collection('shift_metadata').create(body: body);
-            await db.update('shift_metadata', {
-              'remoteId': record.id, 'isSynced': 1, 'updatedAt': record.updated,
-            }, where: 'id = ?', whereArgs: [row['id']]);
-          } else {
-            await pb.collection('shift_metadata').update(remoteId, body: body);
-            await db.update('shift_metadata', {
-              'isSynced': 1, 'updatedAt': DateTime.now().toIso8601String(),
-            }, where: 'id = ?', whereArgs: [row['id']]);
-          }
-        } catch (e) {
-          pbLog('  ❌ Error pushing shift_metadata: $e');
-        }
-      }
-
-      // --- 2. Push Shifts ---
-      final dirtyShifts = await db.query('shifts', where: 'isSynced = 0');
-      if (dirtyShifts.isNotEmpty) pbLog('  📤 Pushing ${dirtyShifts.length} shifts...');
-      for (var row in dirtyShifts) {
-        String? remoteId = row['remoteId'] as String?;
-        final body = {
-          'date': row['date'],
-          'shift_type': row['shift_type'],
-          'start_time': row['start_time'],
-          'end_time': row['end_time'],
-          'is_week_off': row['is_week_off'] == 1,
-          'roster_month': row['roster_month'],
-          'user': userId,
-        };
-        try {
-          if (remoteId == null || remoteId.isEmpty) {
-            final record = await pb.collection('shifts').create(body: body);
-            await db.update('shifts', {
-              'remoteId': record.id, 'isSynced': 1, 'updatedAt': record.updated,
-            }, where: 'id = ?', whereArgs: [row['id']]);
-          } else {
-            await pb.collection('shifts').update(remoteId, body: body);
-            await db.update('shifts', {
-              'isSynced': 1, 'updatedAt': DateTime.now().toIso8601String(),
-            }, where: 'id = ?', whereArgs: [row['id']]);
-          }
-        } catch (e) {
-          pbLog('  ❌ Error pushing shift ${row['date']}: $e');
-        }
-      }
-
-      // --- 3. Pull Content ---
-      final prefs = await SharedPreferences.getInstance();
-      final lastSync = prefs.getString(_lastSyncKey) ?? '2000-01-01 00:00:00.000Z';
-      
-      // Pull Metadata
-      try {
-        final metaList = await pb.collection('shift_metadata').getList(filter: 'updated > "$lastSync"');
-        for (var record in metaList.items) {
-          final local = await db.query('shift_metadata', where: 'remoteId = ?', whereArgs: [record.id]);
-          final metaData = {
-            'employee_name': record.data['employee_name'],
-            'month': record.data['month'],
-            'roster_month': record.data['roster_month'],
-            'remoteId': record.id, 'isSynced': 1, 'updatedAt': record.updated,
-          };
-          if (local.isEmpty) {
-             final existing = await db.query('shift_metadata', where: 'roster_month = ?', whereArgs: [record.data['roster_month']]);
-             if (existing.isNotEmpty) {
-                 await db.update('shift_metadata', metaData, where: 'id = ?', whereArgs: [existing.first['id']]);
-             } else {
-                 await db.insert('shift_metadata', metaData);
-             }
-          } else {
-            await db.update('shift_metadata', metaData, where: 'remoteId = ?', whereArgs: [record.id]);
-          }
-        }
-      } catch (e) {}
-
-      // Pull Shifts
-      try {
-        final resultList = await pb.collection('shifts').getList(filter: 'updated > "$lastSync"', perPage: 500);
-        if (resultList.items.isNotEmpty) pbLog('  📥 Pulling ${resultList.items.length} shifts...');
-
-        for (var record in resultList.items) {
-          final local = await db.query('shifts', where: 'remoteId = ?', whereArgs: [record.id]);
-          
-          final shiftData = {
-            'date': record.data['date'],
-            'shift_type': record.data['shift_type'],
-            'start_time': record.data['start_time'],
-            'end_time': record.data['end_time'],
-            'is_week_off': record.data['is_week_off'] == true ? 1 : 0,
-            'roster_month': record.data['roster_month'],
-            'remoteId': record.id,
-            'isSynced': 1,
-            'updatedAt': record.updated,
-          };
-          
-          if (local.isEmpty) {
-             final existingByDate = await db.query('shifts', where: 'date = ?', whereArgs: [record.data['date']]);
-             if (existingByDate.isNotEmpty) {
-                 await db.update('shifts', shiftData, where: 'id = ?', whereArgs: [existingByDate.first['id']]);
-             } else {
-                 await db.insert('shifts', shiftData);
-             }
-          } else {
-             await db.update('shifts', shiftData, where: 'remoteId = ?', whereArgs: [record.id]);
-          }
-        }
-      } catch (e) {
-         pbLog('  ❌ Error pulling shifts: $e');
-      }
-    } finally {
-       _syncingShifts = false;
-    }
-  }
-
-  // --- Monthly Rosters ---
-  
-  Future<void> syncMonthlyRosters() async {
-    try {
-      final db = await storage.database;
-      final userId = _getUserId();
-      if (userId == null) return;
-      
-      final dirtyRosters = await db.query('monthly_rosters', where: 'isSynced = 0');
-      if (dirtyRosters.isNotEmpty) pbLog('  📤 Pushing ${dirtyRosters.length} monthly rosters...');
-      
-      for (var row in dirtyRosters) {
-        String? remoteId = row['remoteId'] as String?;
-        final body = {
-          'month': row['month'],
-          'roster_month': row['roster_month'],
+          'month_year': row['month_year'],
           'json_data': row['json_data'],
           'user': userId,
         };
         try {
           if (remoteId == null || remoteId.isEmpty) {
-            final record = await pb.collection('monthly_rosters').create(body: body);
-            await db.update('monthly_rosters', {
+            final record = await pb.collection('shifts_data').create(body: body);
+            await db.update('shifts_data', {
               'remoteId': record.id, 'isSynced': 1, 'updatedAt': record.updated,
-            }, where: 'roster_month = ?', whereArgs: [row['roster_month']]);
+            }, where: 'month_year = ?', whereArgs: [row['month_year']]);
           } else {
-            await pb.collection('monthly_rosters').update(remoteId, body: body);
-            await db.update('monthly_rosters', {
+            await pb.collection('shifts_data').update(remoteId, body: body);
+            await db.update('shifts_data', {
               'isSynced': 1, 'updatedAt': DateTime.now().toIso8601String(),
-            }, where: 'roster_month = ?', whereArgs: [row['roster_month']]);
+            }, where: 'month_year = ?', whereArgs: [row['month_year']]);
           }
         } catch (e) {
-          pbLog('  ❌ Error pushing monthly roster ${row['roster_month']}: $e');
+          pbLog('  ❌ Error pushing shifts data ${row['month_year']}: $e');
         }
       }
       
@@ -700,32 +564,51 @@ class SyncService {
       final lastSync = prefs.getString(_lastSyncKey) ?? '2000-01-01 00:00:00.000Z';
       
       try {
-        final metaList = await pb.collection('monthly_rosters').getList(filter: 'updated > "$lastSync"');
-        if (metaList.items.isNotEmpty) pbLog('  📥 Pulling ${metaList.items.length} monthly rosters...');
+        final metaList = await pb.collection('shifts_data').getList(filter: 'updated > "$lastSync"');
+        if (metaList.items.isNotEmpty) pbLog('  📥 Pulling ${metaList.items.length} shifts data...');
         for (var record in metaList.items) {
-          final local = await db.query('monthly_rosters', where: 'remoteId = ?', whereArgs: [record.id]);
+          final local = await db.query('shifts_data', where: 'remoteId = ?', whereArgs: [record.id]);
           final metaData = {
-            'month': record.data['month'],
-            'roster_month': record.data['roster_month'],
+            'month_year': record.data['month_year'],
             'json_data': record.data['json_data'],
             'remoteId': record.id, 'isSynced': 1, 'updatedAt': record.updated,
           };
           if (local.isEmpty) {
-             final existing = await db.query('monthly_rosters', where: 'roster_month = ?', whereArgs: [record.data['roster_month']]);
+             final existing = await db.query('shifts_data', where: 'month_year = ?', whereArgs: [record.data['month_year']]);
              if (existing.isNotEmpty) {
-                 await db.update('monthly_rosters', metaData, where: 'roster_month = ?', whereArgs: [existing.first['roster_month']]);
+                 await db.update('shifts_data', metaData, where: 'month_year = ?', whereArgs: [existing.first['month_year']]);
              } else {
-                 await db.insert('monthly_rosters', metaData);
+                 await db.insert('shifts_data', metaData);
              }
           } else {
-            await db.update('monthly_rosters', metaData, where: 'remoteId = ?', whereArgs: [record.id]);
+            await db.update('shifts_data', metaData, where: 'remoteId = ?', whereArgs: [record.id]);
+          }
+          
+          try {
+             final rawJson = record.data['json_data'];
+             final jsonData = json.decode(rawJson as String);
+             final roster = ShiftRoster.fromJson(jsonData);
+             final shiftsToSave = roster.shifts.map((s) => s.toMap()).toList();
+             
+             await storage.saveShiftRoster(
+                roster.employeeName,
+                record.data['month_year'] as String,
+                shiftsToSave,
+                rosterMonth: record.data['month_year'] as String,
+                rawJson: rawJson as String,
+                skipSyncFlag: true
+             );
+          } catch(e) {
+             print("Failed to auto-parse pulled shift data JSON: $e");
           }
         }
       } catch (e) {
-         pbLog('  ❌ Error pulling monthly rosters: $e');
+         pbLog('  ❌ Error pulling shifts data: $e');
       }
     } catch (e) {
-        pbLog('  ❌ Error in syncMonthlyRosters: $e');
+        pbLog('  ❌ Error in syncShiftsData: $e');
+    } finally {
+        _syncingShifts = false;
     }
   }
 }
