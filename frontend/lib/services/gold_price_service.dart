@@ -407,9 +407,8 @@ class GoldPriceService {
     return {
       'price': GoldPrice(
         date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-        price22k: 14600.0,
-        price24k: 15928.0,
-        city: 'Chennai',
+        timestamp: DateTime.now().toIso8601String(),
+        price: 14600.0,
       ),
       'method': 'mock_fallback',
       'debug': 'Using mock data as fallback',
@@ -433,9 +432,8 @@ class GoldPriceService {
       
       prices.add(GoldPrice(
         date: DateFormat('yyyy-MM-dd').format(date),
-        price22k: price,
-        price24k: price * 1.09, // 24k is typically ~9% higher
-        city: 'Chennai',
+        timestamp: date.toIso8601String(),
+        price: price,
       ));
       
       basePrice = price; // Use this as base for next day

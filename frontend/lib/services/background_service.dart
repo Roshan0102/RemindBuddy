@@ -26,7 +26,7 @@ void callbackDispatcher() {
         if (result != null) {
           final GoldPrice newPrice = result['price'] as GoldPrice;
            
-           LogService.staticLog("New Price Fetched: ${newPrice.price22k}");
+           LogService.staticLog("New Price Fetched: ${newPrice.price}");
            
            // 2. Get Previous Price for Diff
            // We need to await DB init inside StorageService, which is handled by getter
@@ -34,7 +34,7 @@ void callbackDispatcher() {
            
            double? diff;
            if (previousPrice != null) {
-             diff = newPrice.price22k - previousPrice;
+             diff = newPrice.price - previousPrice;
              LogService.staticLog("Price Difference: $diff");
            }
            
@@ -42,7 +42,7 @@ void callbackDispatcher() {
            await storageService.saveGoldPrice(newPrice);
            
            // 4. Notify
-           await notificationService.showGoldPriceNotification(newPrice.price22k, diff);
+           await notificationService.showGoldPriceNotification(newPrice.price, diff);
         }
       } catch (e) {
         LogService.staticLog("Error in background task: $e");

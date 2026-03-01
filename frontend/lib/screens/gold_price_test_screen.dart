@@ -38,7 +38,7 @@ class _GoldPriceTestScreenState extends State<GoldPriceTestScreen> {
         if (mounted) {
           setState(() {
             _status = '✅ Fetched via $method!';
-            _price22k = '₹${goldPrice.price22k.toStringAsFixed(0)}';
+            _price22k = '₹${goldPrice.price.toStringAsFixed(0)}';
             _date = goldPrice.date;
             _isLoading = false;
           });
@@ -78,7 +78,7 @@ class _GoldPriceTestScreenState extends State<GoldPriceTestScreen> {
         if (mounted) {
           setState(() {
             _status = '✅ Fetched via $method';
-            _price22k = '₹${goldPrice.price22k.toStringAsFixed(0)}';
+            _price22k = '₹${goldPrice.price.toStringAsFixed(0)}';
             _date = goldPrice.date;
             _isLoading = false;
           });
@@ -120,7 +120,7 @@ class _GoldPriceTestScreenState extends State<GoldPriceTestScreen> {
                   itemBuilder: (context, index) {
                     final price = prices[index];
                     return ListTile(
-                      title: Text('₹${price.price22k.toStringAsFixed(0)}'),
+                      title: Text('₹${price.price.toStringAsFixed(0)}'),
                       subtitle: Text(price.date),
                     );
                   },
