@@ -6,6 +6,8 @@ import '../services/storage_service.dart';
 import '../services/shift_service.dart';
 import '../services/log_service.dart';
 import '../services/pb_debug_logger.dart';
+import '../services/sync_service.dart';
+import '../services/auth_service.dart';
 
 class MyShiftsScreen extends StatefulWidget {
   const MyShiftsScreen({super.key});
@@ -135,13 +137,26 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                  return map;
               }).toList();
               
+              // Rewrite the original JSON payload too so when it's pushed, it has the correct dates!
+              final Map<String, dynamic> rewrittenJson = {
+                 'employee_name': roster.employeeName,
+                 'month': updatedMonthLabel,
+                 'shifts': shiftsToSave,
+              };
+              final String newJsonString = json.encode(rewrittenJson);
+              
               await _storage.saveShiftRoster(
                 roster.employeeName,
                 updatedMonthLabel,
                 shiftsToSave,
                 rosterMonth: rosterMonth,
-                rawJson: controller.text,
+                rawJson: newJsonString,
               );
+                
+                // Trigger auto-sync so Pocketbase gets it instantly
+                try {
+                  SyncService(AuthService().pb).syncShiftsData();
+                } catch(e) { print(e); }
                 
                 // Schedule notifications
                 await _shiftService.scheduleDailyShiftNotification();
