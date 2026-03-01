@@ -415,22 +415,3 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
 }
 
 // Extension to create a copy with modified fields
-extension DailyReminderCopyWith on DailyReminder {
-  DailyReminder copyWith({
-    int? id,
-    String? title,
-    String? description,
-    String? time,
-    bool? isActive,
-    bool? isAnnoying,
-  }) {
-    return DailyReminder(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      description: description ?? this.description,
-      time: time ?? this.time,
-      isActive: isActive ?? this.isActive,
-      isAnnoying: isAnnoying ?? this.isAnnoying,
-    );
-  }
-}

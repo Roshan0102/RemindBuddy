@@ -3,6 +3,8 @@ import 'gold_price_service.dart';
 import 'storage_service.dart';
 import 'notification_service.dart';
 import 'log_service.dart';
+import 'auth_service.dart';
+import 'sync_service.dart';
 
 /// Scheduled Gold Price Fetcher
 /// Fetches gold prices at 11 AM and 7 PM IST daily
@@ -98,6 +100,14 @@ class GoldSchedulerService {
         await storageService.saveGoldPrice(newPrice);
         LogService.staticLog('✅ 11 AM Price saved to database');
         
+        try {
+          await AuthService().init();
+          await SyncService(AuthService().pb).syncGoldPrices();
+          LogService.staticLog('✅ 11 AM Price synced to PocketBase');
+        } catch(e) {
+          LogService.staticLog('❌ Failed to sync 11 AM price to PocketBase: $e');
+        }
+        
         // Re-fetch to get calculated diff
         final savedPrice = await storageService.getLatestGoldPrice();
         
@@ -157,6 +167,14 @@ class GoldSchedulerService {
         // Always save the 7 PM price (updates time, stores new price)
         await storageService.saveGoldPrice(newPrice);
         LogService.staticLog('✅ 7 PM Price saved to database');
+        
+        try {
+          await AuthService().init();
+          await SyncService(AuthService().pb).syncGoldPrices();
+          LogService.staticLog('✅ 7 PM Price synced to PocketBase');
+        } catch(e) {
+          LogService.staticLog('❌ Failed to sync 7 PM price to PocketBase: $e');
+        }
         
         // Re-fetch to get calculated diff
         final savedPrice = await storageService.getLatestGoldPrice();

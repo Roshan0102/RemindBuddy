@@ -4,6 +4,8 @@ import 'gold_price_service.dart';
 import 'storage_service.dart';
 import 'notification_service.dart';
 import 'log_service.dart';
+import 'auth_service.dart';
+import 'sync_service.dart';
 
 // Task Name
 const String fetchGoldTask = "fetchGoldPriceTask";
@@ -41,6 +43,14 @@ void callbackDispatcher() {
            // 3. Save New Price
            await storageService.saveGoldPrice(newPrice);
            
+           try {
+             await AuthService().init();
+             await SyncService(AuthService().pb).syncGoldPrices();
+             LogService.staticLog('✅ Background Price synced to PocketBase');
+           } catch(e) {
+             LogService.staticLog('❌ Failed to sync background price to PocketBase: $e');
+           }
+
            // 4. Notify
            await notificationService.showGoldPriceNotification(newPrice.price, diff);
         }
