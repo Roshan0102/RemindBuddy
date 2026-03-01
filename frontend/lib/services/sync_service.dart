@@ -50,6 +50,7 @@ class SyncService {
     await syncDailyReminders();
     await syncChecklists();
     await syncShiftsData();
+    await syncGoldPrices();
     
     // Update last sync time
     final prefs = await SharedPreferences.getInstance();
@@ -379,9 +380,9 @@ class SyncService {
       try {
         final body = {
           'title': row['title'],
-          'iconCode': row['iconCode'],
+          'icon_code': row['iconCode'],
           'color': row['color'],
-          'user': userId, // Changed from user.id
+          'user': userId,
         };
         
         if (remoteId == null || remoteId.isEmpty) {
@@ -420,7 +421,7 @@ class SyncService {
         
         final listData = {
           'title': record.data['title'],
-          'iconCode': record.data['iconCode'],
+          'iconCode': record.data['icon_code'],
           'color': record.data['color'],
           'remoteId': record.id,
           'isSynced': 1,
@@ -449,7 +450,7 @@ class SyncService {
       
       // We must get the remoteId of the parent checklist to link in PocketBase
       final parentList = await db.query('checklists', where: 'id = ?', whereArgs: [localChecklistId]);
-      if (parentList.isEmpty || parentList.first['remoteId'] == null) {
+      if (parentList.isEmpty || parentList.first['remoteId'] == null || parentList.first['remoteId'].toString().isEmpty) {
         // Skip syncing if parent checklist is not synced yet (edge case)
         continue;
       }
@@ -610,6 +611,101 @@ class SyncService {
         pbLog('  ❌ Error in syncShiftsData: $e');
     } finally {
         _syncingShifts = false;
+    }
+  }
+  Future<void> syncGoldPrices() async {
+    final userId = _getUserId();
+    if (userId == null) return;
+    
+    try {
+      final db = await storage.database;
+      
+      // 1. Push Local Changes
+      final unsynced = await db.query('gold_prices', where: 'isSynced = 0');
+      if (unsynced.isNotEmpty) pbLog('  ⬆️ Pushing ${unsynced.length} gold prices...');
+      
+      for (var row in unsynced) {
+        final remoteId = row['remoteId'] as String?;
+        try {
+          final body = {
+            'date': row['date'],
+            'timestamp': row['timestamp'],
+            'price': row['price'],
+            'priceChange': row['priceChange'],
+            'user': userId,
+          };
+          
+          if (remoteId == null || remoteId.isEmpty) {
+            // Check if it exists by date first, maybe pulled from another device
+            final existingList = await pb.collection('gold_prices').getList(
+              filter: 'date = "${row['date']}" && user = "$userId"',
+              perPage: 1
+            );
+            
+            if (existingList.items.isNotEmpty) {
+              final record = await pb.collection('gold_prices').update(existingList.items.first.id, body: body);
+              await db.update('gold_prices', {
+                'remoteId': record.id,
+                'isSynced': 1,
+                'updatedAt': record.updated,
+              }, where: 'date = ?', whereArgs: [row['date']]);
+            } else {
+              final record = await pb.collection('gold_prices').create(body: body);
+              await db.update('gold_prices', {
+                'remoteId': record.id,
+                'isSynced': 1,
+                'updatedAt': record.updated,
+              }, where: 'date = ?', whereArgs: [row['date']]);
+            }
+          } else {
+            await pb.collection('gold_prices').update(remoteId, body: body);
+            await db.update('gold_prices', {
+              'isSynced': 1,
+              'updatedAt': DateTime.now().toIso8601String(),
+            }, where: 'remoteId = ?', whereArgs: [remoteId]);
+          }
+        } catch (e) {
+          pbLog('  ❌ Error pushing gold price for ${row['date']}: $e');
+        }
+      }
+      
+      // 2. Pull Remote Changes
+      final prefs = await SharedPreferences.getInstance();
+      final lastSync = prefs.getString(_lastSyncKey) ?? '2000-01-01 00:00:00.000Z';
+      
+      try {
+        final recordsList = await pb.collection('gold_prices').getList(
+          filter: 'updated > "$lastSync"',
+          perPage: 500, // Fetch up to 500
+        );
+        
+        if (recordsList.items.isNotEmpty) pbLog('  📥 Pulling ${recordsList.items.length} gold prices...');
+        
+        for (var record in recordsList.items) {
+          final dateStr = record.data['date'] as String;
+          final local = await db.query('gold_prices', where: 'date = ?', whereArgs: [dateStr]);
+          
+          final map = {
+            'date': dateStr,
+            'timestamp': record.data['timestamp'],
+            'price': (record.data['price'] as num).toDouble(),
+            'priceChange': (record.data['priceChange'] as num).toDouble(),
+            'remoteId': record.id,
+            'isSynced': 1,
+            'updatedAt': record.updated,
+          };
+          
+          if (local.isEmpty) {
+            await db.insert('gold_prices', map, conflictAlgorithm: ConflictAlgorithm.replace);
+          } else {
+            await db.update('gold_prices', map, where: 'date = ?', whereArgs: [dateStr]);
+          }
+        }
+      } catch (e) {
+         pbLog('  ❌ Error pulling gold prices: $e');
+      }
+    } catch (e) {
+      pbLog('  ❌ Error in syncGoldPrices: $e');
     }
   }
 }

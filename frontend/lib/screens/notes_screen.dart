@@ -219,6 +219,25 @@ class _NotesScreenState extends State<NotesScreen> {
                                     bool auth = await _showPinDialog();
                                     if (!auth) return;
                                   }
+                                  // Add confirmation dialog
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Delete Note'),
+                                      content: const Text('Are you sure you want to delete this note?'),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx, true), 
+                                          style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                          child: const Text('Delete')
+                                        ),
+                                      ],
+                                    ),
+                                  );
+
+                                  if (confirm != true) return;
+
                                   await _storageService.deleteNote(note.id!);
                                   try {
                                     SyncService(AuthService().pb).syncDeletions();

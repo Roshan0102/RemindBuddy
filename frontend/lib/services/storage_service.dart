@@ -11,7 +11,7 @@ import '../models/gold_price.dart';
 class StorageService {
   static final StorageService _instance = StorageService._internal();
   static Database? _database;
-  static const int _databaseVersion = 15;  // Version 15: Replace monthly_rosters with shifts_data
+  static const int _databaseVersion = 16;  // Version 16: New gold prices schema
   static const String _authTokenKey = 'auth_token';
   static const String _userKey = 'user_data';
 
@@ -244,6 +244,18 @@ class StorageService {
                );
              } catch (e) { print("Error creating deleted_records: $e"); }
         }
+
+        // Migration for version 16: New gold prices schema
+        if (oldVersion < 16) {
+             print("Running migration v16: Recreating gold_prices table...");
+             try {
+               await db.execute('DROP TABLE IF EXISTS gold_prices');
+               await db.execute('DROP TABLE IF EXISTS gold_prices_history');
+               await db.execute(
+                 'CREATE TABLE gold_prices(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT UNIQUE, timestamp TEXT, price REAL, priceChange REAL, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
+               );
+             } catch (e) { print("Error recreating gold_prices: $e"); }
+        }
       },
     );
   }
@@ -260,10 +272,7 @@ class StorageService {
     );
     // Legacy table, kept for compatibility if needed or purely replaced by history
     await db.execute(
-      'CREATE TABLE gold_prices(date TEXT PRIMARY KEY, price22k REAL, price24k REAL, city TEXT)',
-    );
-    await db.execute(
-      'CREATE TABLE gold_prices_history(id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, price22k REAL, price24k REAL, city TEXT)',
+      'CREATE TABLE gold_prices(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT UNIQUE, timestamp TEXT, price REAL, priceChange REAL, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
     );
     await db.execute(
       'CREATE TABLE checklists(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, iconCode INTEGER, color INTEGER, remoteId TEXT, isSynced INTEGER DEFAULT 0, updatedAt TEXT)',
@@ -584,62 +593,70 @@ class StorageService {
     );
   }
 
-  // Gold Price Methods (Updated for History)
+  // Gold Price Methods
   Future<void> saveGoldPrice(GoldPrice price) async {
     final db = await database;
-    // Save to legacy table (overwrites for the day)
+    
+    // We want strictly one row per date.
+    // Fetch the previous date's price to calculate change if not provided.
+    double change = price.priceChange;
+    if (change == 0.0) {
+      final prevPrice = await getPreviousGoldPrice(dateToExclude: price.date);
+      if (prevPrice != null) {
+        change = price.price - prevPrice;
+      }
+    }
+
+    // Always ensure the isSynced is 0 when saving locally
+    final map = price.toMap();
+    map['priceChange'] = change;
+    map['isSynced'] = 0;
+    map['updatedAt'] = DateTime.now().toIso8601String();
+
     await db.insert(
       'gold_prices',
-      price.toMap(),
+      map,
       conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    
-    // Save to history table (keeps all updates)
-    // Add current timestamp if not present
-    await db.insert(
-      'gold_prices_history',
-      {
-        'timestamp': DateTime.now().toIso8601String(),
-        'price22k': price.price22k,
-        'price24k': price.price24k,
-        'city': price.city,
-      },
     );
   }
 
   Future<List<GoldPrice>> getGoldPriceHistory({int limit = 20}) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
-      'gold_prices_history',
-      orderBy: 'timestamp DESC',
+      'gold_prices',
+      orderBy: 'date DESC',
       limit: limit,
     );
-    
-    // Convert history format to GoldPrice
-    return List.generate(maps.length, (i) {
-        return GoldPrice(
-           date: maps[i]['timestamp'].toString(), // Keep the full ISO 8601 timestamp
-           price22k: maps[i]['price22k'],
-           price24k: maps[i]['price24k'],
-           city: maps[i]['city'],
-        );
-    });
+    return List.generate(maps.length, (i) => GoldPrice.fromJson(maps[i]));
   }
 
-  Future<double?> getPreviousGoldPrice() async {
+  Future<double?> getPreviousGoldPrice({String? dateToExclude}) async {
      final db = await database;
-     final List<Map<String, dynamic>> maps = await db.query(
-      'gold_prices_history',
-      orderBy: 'timestamp DESC',
-      limit: 2,
-    );
-    
-    if (maps.length < 2) return null;
-    return maps[1]['price22k'] as double;
+     List<Map<String, dynamic>> maps;
+     
+     if (dateToExclude != null) {
+        maps = await db.query(
+          'gold_prices',
+          where: 'date < ?',
+          whereArgs: [dateToExclude],
+          orderBy: 'date DESC',
+          limit: 1,
+        );
+     } else {
+        maps = await db.query(
+          'gold_prices',
+          orderBy: 'date DESC',
+          limit: 2,
+        );
+        if (maps.length < 2) return null;
+        return maps[1]['price'] as double;
+     }
+
+     if (maps.isEmpty) return null;
+     return maps[0]['price'] as double;
   }
 
   Future<List<GoldPrice>> getGoldPrices({int limit = 10}) async {
-    // Return daily snapshot (legacy table)
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'gold_prices',
@@ -652,18 +669,12 @@ class StorageService {
   Future<GoldPrice?> getLatestGoldPrice() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
-      'gold_prices_history',
-      orderBy: 'timestamp DESC',
+      'gold_prices',
+      orderBy: 'date DESC',
       limit: 1,
     );
     if (maps.isEmpty) return null;
-    
-    return GoldPrice(
-       date: maps[0]['timestamp'].toString(),
-       price22k: maps[0]['price22k'],
-       price24k: maps[0]['price24k'],
-       city: maps[0]['city'],
-    );
+    return GoldPrice.fromJson(maps[0]);
   }
 
   // Shift Methods

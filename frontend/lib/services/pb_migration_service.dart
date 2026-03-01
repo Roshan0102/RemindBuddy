@@ -169,6 +169,27 @@ class PbMigrationService {
         },
       ],
     );
+
+    // Create 'gold_prices' collection
+    await _createCollection(
+      name: 'gold_prices',
+      schema: [
+        {'name': 'date', 'type': 'text'},
+        {'name': 'timestamp', 'type': 'text'},
+        {'name': 'price', 'type': 'number'},
+        {'name': 'priceChange', 'type': 'number'},
+        {
+          'name': 'user', 
+          'type': 'relation', 
+          'required': true,
+          'options': {
+            'collectionId': usersCollectionId,
+            'cascadeDelete': true,
+            'maxSelect': 1,
+          }
+        },
+      ],
+    );
   }
 
   Future<void> _createCollection({required String name, required List<Map<String, dynamic>> schema}) async {

@@ -91,25 +91,20 @@ class GoldSchedulerService {
       LogService.staticLog('📊 Fetch method: $method');
       LogService.staticLog('🔍 Debug: $debug');
       
-      if (newPrice != null) {
-        LogService.staticLog('💰 11 AM Price Fetched: ₹${newPrice.price22k}');
+        if (newPrice != null) {
+        LogService.staticLog('💰 11 AM Price Fetched: ₹${newPrice.price}');
         
-        // Get previous price for comparison
-        final previousPrice = await storageService.getPreviousGoldPrice();
-        
-        double? diff;
-        if (previousPrice != null) {
-          diff = newPrice.price22k - previousPrice;
-        }
-        
-        // Always save the 11 AM price
+        // Always save the 11 AM price (which also updates time and calculates change)
         await storageService.saveGoldPrice(newPrice);
         LogService.staticLog('✅ 11 AM Price saved to database');
         
+        // Re-fetch to get calculated diff
+        final savedPrice = await storageService.getLatestGoldPrice();
+        
         // Send notification
         await notificationService.showGoldPriceNotification(
-          newPrice.price22k,
-          diff,
+          newPrice.price,
+          savedPrice?.priceChange,
           time: '11 AM',
         );
       } else {
@@ -157,34 +152,21 @@ class GoldSchedulerService {
       LogService.staticLog('🔍 Debug: $debug');
       
       if (newPrice != null) {
-        LogService.staticLog('💰 7 PM Price Fetched: ₹${newPrice.price22k}');
+        LogService.staticLog('💰 7 PM Price Fetched: ₹${newPrice.price}');
         
-        // Get the latest price from database (should be from 11 AM today)
-        final latestPrice = await storageService.getLatestGoldPrice();
+        // Always save the 7 PM price (updates time, stores new price)
+        await storageService.saveGoldPrice(newPrice);
+        LogService.staticLog('✅ 7 PM Price saved to database');
         
-        if (latestPrice != null) {
-          final priceDiff = (newPrice.price22k - latestPrice.price22k).abs();
-          
-          // Only save if price has changed (tolerance of ₹1 to avoid minor fluctuations)
-          if (priceDiff > 1.0) {
-            LogService.staticLog('📈 Price changed by ₹$priceDiff - Saving new entry');
-            
-            await storageService.saveGoldPrice(newPrice);
-            
-            // Send notification about the change
-            await notificationService.showGoldPriceNotification(
-              newPrice.price22k,
-              newPrice.price22k - latestPrice.price22k,
-              time: '7 PM',
-            );
-          } else {
-            LogService.staticLog('✓ Price unchanged at 7 PM - No new entry added');
-          }
-        } else {
-          // No previous price, save this one
-          await storageService.saveGoldPrice(newPrice);
-          LogService.staticLog('✅ First 7 PM price saved');
-        }
+        // Re-fetch to get calculated diff
+        final savedPrice = await storageService.getLatestGoldPrice();
+        
+        // Send notification about the fetch
+        await notificationService.showGoldPriceNotification(
+          newPrice.price,
+          savedPrice?.priceChange,
+          time: '7 PM',
+        );
       } else {
         LogService.staticLog('❌ Failed to fetch 7 PM price');
       }

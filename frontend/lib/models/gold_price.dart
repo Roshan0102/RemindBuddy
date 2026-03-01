@@ -1,51 +1,61 @@
 class GoldPrice {
-  final String date; // YYYY-MM-DD format
-  final double price22k; // 22 carat price per gram
-  final double price24k; // 24 carat price per gram (optional)
-  final String city; // Chennai, Mumbai, etc.
+  final int? id;
+  final String date; // YYYY-MM-DD
+  final String timestamp; // ISO format or formatted time representing exact fetch
+  final double price;
+  final double priceChange;
+  final String? remoteId;
+  final bool isSynced;
+  final String? updatedAt;
 
   GoldPrice({
+    this.id,
     required this.date,
-    required this.price22k,
-    this.price24k = 0.0,
-    this.city = 'Chennai',
+    required this.timestamp,
+    required this.price,
+    this.priceChange = 0.0,
+    this.remoteId,
+    this.isSynced = false,
+    this.updatedAt,
   });
 
   factory GoldPrice.fromJson(Map<String, dynamic> json) {
     return GoldPrice(
+      id: json['id'],
       date: json['date'],
-      price22k: (json['price22k'] as num).toDouble(),
-      price24k: json['price24k'] != null ? (json['price24k'] as num).toDouble() : 0.0,
-      city: json['city'] ?? 'Chennai',
+      timestamp: json['timestamp'] ?? json['date'], // fallback
+      price: json['price'] != null ? (json['price'] as num).toDouble() : (json['price22k'] != null ? (json['price22k'] as num).toDouble() : 0.0),
+      priceChange: json['priceChange'] != null ? (json['priceChange'] as num).toDouble() : (json['price_change'] != null ? (json['price_change'] as num).toDouble() : 0.0),
+      remoteId: json['remoteId'],
+      isSynced: json['isSynced'] == 1 || json['isSynced'] == true,
+      updatedAt: json['updatedAt'],
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'date': date,
-      'price22k': price22k,
-      'price24k': price24k,
-      'city': city,
+      'timestamp': timestamp,
+      'price': price,
+      'priceChange': priceChange,
+      'remoteId': remoteId,
+      'isSynced': isSynced,
+      'updatedAt': updatedAt,
     };
   }
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'date': date,
-      'price22k': price22k,
-      'price24k': price24k,
-      'city': city,
+      'timestamp': timestamp,
+      'price': price,
+      'priceChange': priceChange,
+      'remoteId': remoteId,
+      'isSynced': isSynced ? 1 : 0,
+      'updatedAt': updatedAt ?? DateTime.now().toIso8601String(),
     };
   }
-
-  // Calculate price change from previous day
-  double getPriceChange(GoldPrice previousDay) {
-    return price22k - previousDay.price22k;
-  }
-
-  // Get percentage change
-  double getPercentageChange(GoldPrice previousDay) {
-    if (previousDay.price22k == 0) return 0.0;
-    return ((price22k - previousDay.price22k) / previousDay.price22k) * 100;
-  }
 }
+

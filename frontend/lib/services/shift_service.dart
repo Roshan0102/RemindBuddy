@@ -36,6 +36,7 @@ class ShiftService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
+        payload: 'shifts_tab',
         matchDateTimeComponents: DateTimeComponents.time,
       );
 
@@ -104,6 +105,7 @@ class ShiftService {
             enableVibration: true,
           ),
         ),
+        payload: 'shifts_tab',
       );
 
       LogService().log('Shift notification shown: $message');

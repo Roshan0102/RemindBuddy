@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +14,7 @@ import 'pb_debug_screen.dart';
 import '../services/sync_service.dart';
 import '../services/storage_service.dart'; // Ensure it's there for storage instance
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -25,11 +27,46 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   bool _isDarkMode = false;
 
+  late StreamSubscription _notificationSubscription;
+
   @override
   void initState() {
     super.initState();
     _loadTheme();
     _initialSync();
+    
+    _notificationSubscription = NotificationService.selectNotificationStream.stream.listen((String? payload) {
+      if (payload != null) {
+        _handleNotificationPayload(payload);
+      }
+    });
+
+    // Also check for initial payload if the app was launched via notification
+    NotificationService().flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails().then((details) {
+      if (details != null && details.didNotificationLaunchApp && details.notificationResponse != null) {
+        final payload = details.notificationResponse!.payload;
+        if (payload != null) {
+          _handleNotificationPayload(payload);
+        }
+      }
+    });
+  }
+
+  void _handleNotificationPayload(String payload) {
+    if (!mounted) return;
+    if (payload == 'tasks_tab' || payload == 'daily_reminders_tab') {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const DailyRemindersScreen()));
+    } else if (payload == 'shifts_tab') {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const MyShiftsScreen()));
+    } else if (payload == 'gold_tab') {
+      _onItemTapped(2);
+    }
+  }
+
+  @override
+  void dispose() {
+    _notificationSubscription.cancel();
+    super.dispose();
   }
 
   Future<void> _initialSync() async {

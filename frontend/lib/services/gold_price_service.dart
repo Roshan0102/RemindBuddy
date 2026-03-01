@@ -14,8 +14,8 @@ class GoldPriceService {
   static const String goodReturnsUrl = 'https://www.goodreturns.in/gold-rates/chennai.html';
 
   /// Fetch current gold price
-  /// 1. Try BankBazaar (Primary)
-  /// 2. If fails or invalid (< 1000), Try GoodReturns (Secondary) using ID Selector
+  /// 1. Try GoodReturns (Primary) using ID Selector
+  /// 2. If fails or invalid (< 1000), Try BankBazaar (Secondary)
   /// Fetch current gold price
   /// Returns a map with 'price', 'method', 'debug', and 'log'
   Future<Map<String, dynamic>> fetchCurrentGoldPrice() async {
@@ -39,56 +39,56 @@ class GoldPriceService {
       };
     }
 
-    // 1. Try BankBazaar
-    log('🔍 Attempting Primary Source: BankBazaar');
-    log('🔗 URL: $bankBazaarUrl');
-    
-    final bbResult = await _fetchFromUrl(
-      bankBazaarUrl, 
-      'BankBazaar',
-      _getBankBazaarScript(),
-      log
-    );
-    
-    log('📄 BankBazaar Result: ${bbResult['method']}');
-    
-    // 2. Try GoodReturns (Always run for visibility)
-    log('🔄 Attempting Secondary Source: GoodReturns');
+    // 1. Try GoodReturns (Primary)
+    log('🔍 Attempting Primary Source: GoodReturns');
     log('🔗 URL: $goodReturnsUrl');
     
     final grResult = await _fetchFromUrl(
-      goodReturnsUrl,
-      'GoodReturns', 
+      goodReturnsUrl, 
+      'GoodReturns',
       _getGoodReturnsScript(),
       log
     );
-
+    
     log('📄 GoodReturns Result: ${grResult['method']}');
+    
+    // 2. Try BankBazaar (Secondary)
+    log('🔄 Attempting Secondary Source: BankBazaar');
+    log('🔗 URL: $bankBazaarUrl');
+    
+    final bbResult = await _fetchFromUrl(
+      bankBazaarUrl,
+      'BankBazaar', 
+      _getBankBazaarScript(),
+      log
+    );
+
+    log('📄 BankBazaar Result: ${bbResult['method']}');
 
     // DECISION LOGIC
     Map<String, dynamic> finalResult;
     String decisionLog = "";
 
-    bool bbValid = false;
-    if (bbResult['price'] != null) {
-      final price = bbResult['price'] as GoldPrice;
-      if (price.price22k > 1000) {
-        bbValid = true;
-        log('✅ BankBazaar price valid (>1000): ${price.price22k}');
+    bool grValid = false;
+    if (grResult['price'] != null) {
+      final price = grResult['price'] as GoldPrice;
+      if (price.price > 1000) {
+        grValid = true;
+        log('✅ GoodReturns price valid (>1000): ${price.price}');
       } else {
-        log('⚠️ BankBazaar price invalid (<1000): ${price.price22k}');
+        log('⚠️ GoodReturns price invalid (<1000): ${price.price}');
       }
     }
 
-    if (bbValid) {
-       finalResult = bbResult;
-       decisionLog = "Selected: BankBazaar (Primary)";
+    if (grValid) {
+       finalResult = grResult;
+       decisionLog = "Selected: GoodReturns (Primary)";
     } else {
-       if (grResult['price'] != null) {
-          finalResult = grResult;
-          decisionLog = "Selected: GoodReturns (Fallback user BB failed/invalid)";
+       if (bbResult['price'] != null) {
+          finalResult = bbResult;
+          decisionLog = "Selected: BankBazaar (Fallback as GR failed/invalid)";
        } else {
-          finalResult = bbResult; // Both failed, return BB error usually
+          finalResult = grResult; // Both failed, return GR error usually
           decisionLog = "Failed: Both sources returned no valid data";
        }
     }
@@ -99,8 +99,8 @@ class GoldPriceService {
     finalResult['log'] = logBuffer.toString();
     // Attach both results to debug key for the UI to parse
     finalResult['full_data'] = {
-      'bankbazaar': bbResult,
-      'goodreturns': grResult
+      'goodreturns': grResult,
+      'bankbazaar': bbResult
     };
 
     return finalResult;
@@ -279,9 +279,8 @@ class GoldPriceService {
             completer.complete({
               'price': GoldPrice(
                 date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
-                price22k: price22k,
-                price24k: 0.0,
-                city: 'Chennai',
+                timestamp: DateTime.now().toIso8601String(),
+                price: price22k,
               ),
               'method': '${source}_$method',
               'debug': 'Success from $source',

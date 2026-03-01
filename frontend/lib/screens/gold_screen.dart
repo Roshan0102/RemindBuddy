@@ -39,7 +39,7 @@ class _GoldScreenState extends State<GoldScreen> {
       // Calculate Diff
       final double? prev = await storage.getPreviousGoldPrice();
       if (_currentPrice != null && prev != null) {
-        _priceDiff = _currentPrice!.price22k - prev;
+        _priceDiff = _currentPrice!.price - prev;
       }
       
       // If no current price today, try fetch
@@ -75,22 +75,22 @@ class _GoldScreenState extends State<GoldScreen> {
       
       if (newPrice != null) {
         bool hasChanged = true;
-        if (_currentPrice != null && _currentPrice!.price22k == newPrice.price22k) {
+        if (_currentPrice != null && _currentPrice!.price == newPrice.price) {
           hasChanged = false;
         }
         
         if (hasChanged) {
           await storage.saveGoldPrice(newPrice);
-          print('✅ New price saved: ₹${newPrice.price22k}');
+          print('✅ New price saved: ₹${newPrice.price}');
         } else {
-          print('✅ Price fetched but unchanged: ₹${newPrice.price22k}');
+          print('✅ Price fetched but unchanged: ₹${newPrice.price}');
         }
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(hasChanged 
-                ? '✅ Price updated: ₹${newPrice.price22k.toStringAsFixed(0)}' 
+                ? '✅ Price updated: ₹${newPrice.price.toStringAsFixed(0)}' 
                 : 'ℹ️ Fetched via $method. No change.'),
               duration: const Duration(seconds: 3),
             ),
@@ -249,7 +249,7 @@ class _GoldScreenState extends State<GoldScreen> {
           ),
           const SizedBox(height: 4),
           if (isSuccess)
-             Text('₹ ${price.price22k.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))
+             Text('₹ ${price.price.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))
           else
              Text('Failed: $errorMsg', style: TextStyle(color: Colors.red[700], fontSize: 12)),
           
@@ -362,7 +362,7 @@ class _GoldScreenState extends State<GoldScreen> {
       );
     }
     
-    final price = _currentPrice!.price22k;
+    final price = _currentPrice!.price;
     final diff = _priceDiff ?? 0;
     
     // Green for increase, Red for decrease (Issue #4)
@@ -440,16 +440,13 @@ class _GoldScreenState extends State<GoldScreen> {
           ],
           rows: List.generate(_history.length, (index) {
             final price = _history[index];
-            double? change;
-            if (index < _history.length - 1) {
-              change = price.price22k - _history[index + 1].price22k;
-            }
+            final change = price.priceChange;
             
             return DataRow(cells: [
-              DataCell(Text(_formatDate(price.date))),
-              DataCell(Text('₹ ${price.price22k.toStringAsFixed(0)}')),
+              DataCell(Text(_formatDate(price.timestamp))),
+              DataCell(Text('₹ ${price.price.toStringAsFixed(0)}')),
               DataCell(
-                change != null
+                change != 0
                     ? Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -512,7 +509,7 @@ class _GoldScreenState extends State<GoldScreen> {
               AreaSeries<GoldPrice, String>(
                 dataSource: sortedHistory,
                 xValueMapper: (GoldPrice price, _) => _formatDate(price.date),
-                yValueMapper: (GoldPrice price, _) => price.price22k,
+                yValueMapper: (GoldPrice price, _) => price.price,
                 name: '22K Gold',
                 color: Colors.amber.withOpacity(0.5),
                 borderColor: Colors.amber,

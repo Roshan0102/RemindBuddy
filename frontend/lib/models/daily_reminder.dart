@@ -50,6 +50,30 @@ class DailyReminder {
     };
   }
 
+  DailyReminder copyWith({
+    int? id,
+    String? title,
+    String? description,
+    String? time,
+    bool? isActive,
+    bool? isAnnoying,
+    String? remoteId,
+    bool? isSynced,
+    String? updatedAt,
+  }) {
+    return DailyReminder(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      time: time ?? this.time,
+      isActive: isActive ?? this.isActive,
+      isAnnoying: isAnnoying ?? this.isAnnoying,
+      remoteId: remoteId ?? this.remoteId,
+      isSynced: isSynced ?? this.isSynced,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
   // For SQLite
   Map<String, dynamic> toMap() {
     return {

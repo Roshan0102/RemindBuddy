@@ -225,6 +225,23 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: const Icon(Icons.delete, color: Colors.white),
                         ),
                         direction: DismissDirection.endToStart,
+                        confirmDismiss: (direction) async {
+                          return await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Delete Task?'),
+                              content: const Text('Are you sure you want to delete this task?'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                  child: const Text('Delete'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                         onDismissed: (direction) async {
                           // 1. Remove from UI immediately
                           final deletedTask = task;

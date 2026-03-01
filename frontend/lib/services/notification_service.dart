@@ -4,11 +4,15 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import '../models/task.dart';
 import 'log_service.dart';
+import 'dart:async';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
+
+  static final StreamController<String?> selectNotificationStream =
+      StreamController<String?>.broadcast();
 
   factory NotificationService() {
     return _instance;
@@ -31,6 +35,7 @@ class NotificationService {
       // User tapped the notification body (not an action button)
       // Just open the app, don't reschedule
       print('Notification body tapped - opening app only');
+      selectNotificationStream.add(notificationResponse.payload);
       return;
     }
     
@@ -288,6 +293,7 @@ class NotificationService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
+        payload: 'tasks_tab',
         matchDateTimeComponents: task.repeat == 'daily' 
             ? DateTimeComponents.time 
             : (task.repeat == 'weekly' ? DateTimeComponents.dayOfWeekAndTime : null),
@@ -472,6 +478,7 @@ class NotificationService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
+        payload: 'daily_reminders_tab',
         matchDateTimeComponents: DateTimeComponents.time, // This makes it repeat daily
       );
       LogService().log('  - SUCCESS: Daily reminder scheduled');

@@ -156,14 +156,20 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
 
                 final timeStr = '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
                 
-                final reminder = DailyReminder(
-                  id: existingReminder?.id,
-                  title: titleController.text,
-                  description: descriptionController.text,
-                  time: timeStr,
-                  isActive: existingReminder?.isActive ?? true,
-                  isAnnoying: isAnnoying,
-                );
+                final reminder = existingReminder != null
+                    ? existingReminder.copyWith(
+                        title: titleController.text,
+                        description: descriptionController.text,
+                        time: timeStr,
+                        isAnnoying: isAnnoying,
+                      )
+                    : DailyReminder(
+                        title: titleController.text,
+                        description: descriptionController.text,
+                        time: timeStr,
+                        isActive: true,
+                        isAnnoying: isAnnoying,
+                      );
 
                 if (existingReminder == null) {
                   final id = await _storageService.insertDailyReminder(reminder);
