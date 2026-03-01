@@ -226,15 +226,21 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       
       try {
         final pb = AuthService().pb;
-        // Direct PocketBase deletion fallback to fix local SQLite missing remoteId bug
-        final records = await pb.collection('shifts_data').getList(filter: 'month_year = "$_selectedRosterMonth"');
-        for (var record in records.items) {
-           await pb.collection('shifts_data').delete(record.id);
+        // Completely bypass faulty PocketBase filter syntax and fetch all user shifts to obliterate locally matched ones
+        final records = await pb.collection('shifts_data').getFullList();
+        for (var record in records) {
+           if (record.data['month_year'] == _selectedRosterMonth) {
+              await pb.collection('shifts_data').delete(record.id);
+           }
         }
-        SyncService(pb).syncDeletions();
-      } catch (e) { print(e); }
+        await SyncService(pb).syncDeletions();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cloud Delete Warning: $e')));
+        }
+      }
       
-      _loadShifts();
+      await _loadShifts();
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
