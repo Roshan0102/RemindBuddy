@@ -157,7 +157,7 @@ class PbMigrationService {
       name: 'shifts_data',
       schema: [
         {'name': 'month_year', 'type': 'text'},
-        {'name': 'json_data', 'type': 'json'},
+        {'name': 'json_data', 'type': 'text'},
         {
           'name': 'user', 
           'type': 'relation', 
