@@ -39,7 +39,4 @@ class Task {
       'isAnnoying': isAnnoying,
     };
   }
-  
-  // For SQLite fallback (while migrating UI bindings, these map smoothly to JSON)
-  Map<String, dynamic> toMap() => toJson();
-}
+

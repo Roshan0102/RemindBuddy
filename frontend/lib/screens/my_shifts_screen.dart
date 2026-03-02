@@ -124,8 +124,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               String rosterMonth = _selectedRosterMonth;
               String updatedMonthLabel = DateFormat('MMMM yyyy').format(_currentDate);
               
-              // Rewrite the shift dates to match the selected month/year!
-              // Because SQLite 'shifts' table has a UNIQUE constraint on the 'date' column.
+              // Rewrite the shift dates to match the selected month/year.
               final shiftsToSave = roster.shifts.map((s) {
                  final map = s.toMap();
                  if (map['date'].length >= 10) {

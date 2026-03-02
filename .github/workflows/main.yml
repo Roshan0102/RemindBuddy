@@ -19,7 +19,7 @@ jobs:
           
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.0'
+          flutter-version: '3.41.0'
           channel: 'stable'
           
       - name: Get Dependencies
@@ -33,7 +33,7 @@ jobs:
         working-directory: ./frontend
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
-        run: shorebird release android --artifact apk --flutter-version=3.27.0
+        run: shorebird release android --artifact apk --flutter-version=3.41.0
         
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -41,68 +41,51 @@ jobs:
           name: release-apk
           path: frontend/build/app/outputs/apk/release/app-release.apk
 
-  # Job 2: Deploy to GCP VM (Backend + Web)
-  deploy-server:
-    name: Deploy to GCP VM
+  # Job 2: Build Web Artifacts
+  build-web:
+    name: Build Web Version
     runs-on: ubuntu-latest
-    needs: build-apk # Wait for build to ensure code is good
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     steps:
-
-      # 1. Checkout Code
       - uses: actions/checkout@v3
 
-      # 2. Setup Java (for Android Build)
-      - uses: actions/setup-java@v3
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-      
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 11076708
-
-      # 3. Setup Flutter
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.0'
+          flutter-version: '3.41.0'
           channel: 'stable'
 
-      # 4. Get Dependencies
       - name: Get Dependencies
         working-directory: ./frontend
         run: flutter pub get
 
-      # 5. Build Web Version
       - name: Build Web
         working-directory: ./frontend
         run: flutter build web --release
 
-      # 6. Copy Web Files to Server
-      # 6. Copy Web Files to Server
-      - name: Deploy Web to Server
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
-          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -r frontend/build/web/* ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/var/www/remindbuddy
-
-      # 7. Restart Backend Server
-      - name: Restart Backend
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Upload Web Build
+        uses: actions/upload-artifact@v4
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            # Pull latest backend code
-            cd /var/www/remindbuddy
-            git pull origin main
-            
-            # Update Backend
-            cd backend
-            npm install
-            # Start or Restart PM2
-            pm2 restart remindbuddy-api || pm2 start server.js --name remindbuddy-api
+          name: web-build
+          path: frontend/build/web/
+
+  # Job 3: Deploy to Firebase Hosting
+  deploy-web:
+    name: Deploy to Firebase Hosting
+    runs-on: ubuntu-latest
+    needs: build-web
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download Web Build
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: frontend/build/web
+
+      - name: Deploy to Firebase Hosting
+        uses: w9jds/firebase-action@master
+        with:
+          args: deploy --only hosting
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          PROJECT_ID: remindbuddy-b68f9

@@ -1,221 +1,116 @@
 # RemindBuddy 🔔
 
-A smart reminder and task management app built with Flutter and Node.js.
+RemindBuddy is a premium, feature-rich productivity companion built with **Flutter** and **Firebase**. It provides a seamless experience for managing tasks, notes, shifts, and tracking gold prices with real-time synchronization across devices.
 
-## Features ✨
+## Hub of Features ✨
 
-### 📅 Task Management
-- Calendar-based task creation and viewing
-- One-time and recurring reminders (daily, weekly, monthly)
-- Custom repeat intervals
-- Task synchronization with backend
+### 📅 Smart Task Management
+- **Firebase Sync**: All tasks are stored in Firestore and synced instantly across your devices.
+- **Calendar Integration**: View and manage tasks via an intuitive calendar interface.
+- **Recurring Reminders**: Set one-time or repeating tasks (daily, weekly, monthly).
+- **Annoying Mode**: Optional persistent alarms that ensure you never miss critical tasks.
 
 ### ⏰ Daily Reminders
-- Separate section for recurring daily reminders
-- Toggle reminders on/off without deleting
-- "Annoying Mode" for persistent reminders
-- Reliable notification system with battery optimization handling
+- Dedicated dashboard for recurring daily habit tracking.
+- Toggle reminders active/inactive without deletion.
+- Intelligent notification system that handles timezones and device reboots.
+- Built-in battery optimization handling to ensure reliability.
 
-### 📝 Secure Notes
-- Create and manage notes
-- PIN lock protection (default: 0000)
-- Lock/unlock individual notes
+### 📝 Secured Note-Taking
+- Standard and PIN-locked notes (Default PIN: 0000).
+- Real-time Firestore persistence.
+- Full-screen editing experience with Markdown-like simplicity.
 
-### 🏆 Gold Price Tracking (New!)
-- Automatic 22K gold price fetching from goodreturns.in
-- Daily price notifications at 11 AM and 7 PM
-- Historical price tracking (last 10 days)
-- Price charts and trends
+### 🏆 Gold Price Tracking
+- **Automated Scraping**: Real-time 22K gold price fetching from multiple sources (GoodReturns, BankBazaar).
+- **History & Trends**: Track price changes over the last 10-20 days.
+- **Visual Analytics**: Interactive charts powered by `fl_chart`.
+- **Scheduled Notifications**: Receive price updates at 11 AM and 7 PM daily.
 
-### 🎨 UI/UX
-- Material Design 3
-- Dark/Light theme toggle
-- Beautiful drawer navigation
-- Google Fonts integration
-- Responsive design
+### 🏥 Shift Management (My Shifts)
+- **Roster Support**: Upload and view monthly shift rosters (JSON format).
+- **Calendar View**: Visual representation of your work schedule.
+- **Automatic Notifications**: 10 PM reminders for next-day shifts.
+
+### 🎨 Premium UI/UX
+- **Modern Aesthetics**: Sleek Material 3 design with a curated color palette.
+- **Dynamic Themes**: Seamless Dark and Light mode support.
+- **Fluid Navigation**: intuitive drawer and bottom navigation.
+- **Cross-Platform**: Optimized for Android, with supporting builds for Web and Linux.
 
 ## Tech Stack 🛠️
 
-### Frontend
-- **Flutter** - Cross-platform mobile framework
-- **Dart** - Programming language
-- **sqflite** - Local database
-- **flutter_local_notifications** - Notification system
-- **fl_chart** - Chart visualization
-- **html** - Web scraping
-- **google_fonts** - Typography
+### Core
+- **Framework**: [Flutter](https://flutter.dev/) (SDK 3.41.0+)
+- **Language**: [Dart](https://dart.dev/)
+- **Backend/Database**: [Firebase](https://firebase.google.com/) (Firestore & Authentication)
+- **CI/CD**: GitHub Actions & [Shorebird](https://shorebird.dev/) (OTA Updates)
 
-### Backend
-- **Node.js** - Server runtime
-- **Express** - Web framework
-- **SQLite** - Database
-
-## Setup Instructions 🚀
-
-### Prerequisites
-- Flutter SDK (>=3.3.0)
-- Node.js (>=14.0.0)
-- Android Studio (for Android development)
-
-### Backend Setup
-
-```bash
-cd backend
-npm install
-npm start
-```
-
-The backend will run on `http://localhost:3000`
-
-### Frontend Setup
-
-```bash
-cd frontend
-flutter pub get
-flutter run
-```
-
-## Building for Production 📦
-
-### Android APK
-
-```bash
-cd frontend
-flutter build apk --release
-```
-
-### Using Shorebird (OTA Updates)
-
-```bash
-cd frontend
-shorebird release android --artifact apk
-```
+### Key Packages
+- `cloud_firestore` & `firebase_auth`: For real-time data and user management.
+- `flutter_local_notifications`: High-reliability notification engine.
+- `fl_chart`: For beautiful data visualization.
+- `flutter_inappwebview` & `html`: For robust gold price scraping.
+- `shared_preferences`: For local settings persistence.
 
 ## Project Structure 📁
 
 ```
 RemindBuddy/
-├── frontend/           # Flutter mobile app
+├── frontend/           # The complete Flutter application
 │   ├── lib/
-│   │   ├── models/     # Data models
-│   │   ├── screens/    # UI screens
-│   │   ├── services/   # Business logic
-│   │   └── main.dart   # Entry point
-│   └── android/        # Android-specific code
-├── backend/            # Node.js server
-│   ├── server.js       # Main server file
-│   └── package.json    # Dependencies
-└── README.md           # This file
+│   │   ├── models/     # Firestore-compatible data models
+│   │   ├── screens/    # Modern UI implementation
+│   │   ├── services/   # Core business logic (Auth, Storage, Gold, etc.)
+│   │   └── main.dart   # App entry point
+│   ├── android/        # Native Android configuration (Firebase/Notifications)
+│   └── web/            # Flutter Web configuration
+├── .github/            # GitHub Actions (CI/CD Workflows)
+└── README.md           # You are here
 ```
 
-## Key Features Implementation 🔑
+## Setup & Implementation 🚀
 
-### Battery Optimization
-The app requests battery optimization exemption to ensure reliable daily reminders. This is critical for Android devices with aggressive battery management.
+### 1. Prerequisites
+- Flutter SDK (>=3.3.0)
+- Firebase Account (with Firestore & Auth enabled)
+- Android Studio (for native Android builds)
 
-### Notification System
-- Uses `flutter_local_notifications` with exact alarms
-- Handles timezone changes
-- Re-schedules after device reboot
-- Supports "Annoying Mode" with action buttons
-
-### Gold Price Scraping
-- Fetches 22K gold prices from goodreturns.in
-- Uses proper HTML parsing with fallback methods
-- Stores historical data for trend analysis
-- Automatic notifications at scheduled times
-
-## Database Schema 💾
-
-### Tasks
-- id, title, description, date, time, repeat, isAnnoying
-
-### Notes
-- id, title, content, date, isLocked
-
-### Daily Reminders
-- id, title, description, time, isActive, isAnnoying
-
-### Gold Prices
-- date, price22k, price24k, city
-
-## Permissions 🔐
-
-### Android
-- `POST_NOTIFICATIONS` - Show notifications
-- `SCHEDULE_EXACT_ALARM` - Schedule exact time alarms
-- `USE_EXACT_ALARM` - Use exact alarms
-- `RECEIVE_BOOT_COMPLETED` - Re-schedule after reboot
-- `WAKE_LOCK` - Wake device for notifications
-- `USE_FULL_SCREEN_INTENT` - Full-screen notifications
-- `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` - Battery exemption
-- `VIBRATE` - Vibration for notifications
-- `INTERNET` - API calls and web scraping
-
-## Version History 📝
-
-### v1.0.31 (Current)
-- ✅ Daily Reminders feature
-- ✅ Gold Price tracking
-- ✅ Battery optimization handling
-- ✅ Drawer navigation
-- ✅ Web compatibility fixes
-
-### v1.0.30
-- ✅ Annoying alarm mode
-- ✅ PIN lock for notes
-- ✅ Dark/Light theme
-- ✅ Home screen widget
-- ✅ Calendar UI improvements
-
-## Testing 🧪
-
-### Web Preview (UI Testing)
+### 2. Initialization
 ```bash
-cd frontend
+git clone https://github.com/Roshan0102/RemindBuddy.git
+cd RemindBuddy/frontend
+flutter pub get
+```
+
+### 3. Firebase Configuration
+Ensure you place your `google-services.json` in `frontend/android/app/`.
+
+### 4. Running the App
+```bash
+# Debug on your connected device
+flutter run
+
+# Test on Web
 flutter run -d chrome
 ```
 
-### Android Testing
-```bash
-cd frontend
-flutter run
-```
+## Building & Deployment 📦
 
-## Troubleshooting 🔧
+### Android APK Build
+The project uses GitHub Actions to automate APK generation. Every push to `main` triggers a build that:
+1. Validates the code.
+2. Builds the APK via **Shorebird**.
+3. Uploads the artifact for download.
 
-### Build Errors
-```bash
-cd frontend
-flutter clean
-flutter pub get
-flutter run
-```
+### Over-The-Air (OTA) Updates
+We use **Shorebird** to push hot-fixes and UI updates directly to user devices without requiring a full APK re-installation.
 
-### Notifications Not Working
-1. Check battery optimization is disabled
-2. Verify exact alarm permissions granted
-3. Check notification permissions
-4. View logs using the debug icon in app
-
-### Gold Price Fetching Issues
-1. Test on Android device (not web)
-2. Check internet connection
-3. View console logs for detailed errors
-4. Use test screen: Drawer → "🧪 Gold Price Test"
-
-## Contributing 🤝
-
-This is a personal project. Feel free to fork and modify for your own use.
-
-## License 📄
-
-Private project - All rights reserved.
-
-## Contact 📧
-
-For issues or questions, please create an issue in the repository.
+## Permissions & Reliability 🔐
+The app is designed for "High-Reliability" notifications on Android, requesting:
+- `SCHEDULE_EXACT_ALARM`
+- `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+- `RECEIVE_BOOT_COMPLETED`
 
 ---
-
-**Made with ❤️ using Flutter**
+**Made with ❤️ for peak productivity.**
