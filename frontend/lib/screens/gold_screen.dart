@@ -6,8 +6,6 @@ import 'package:intl/intl.dart';
 import '../services/gold_price_service.dart';
 import '../services/storage_service.dart';
 import '../models/gold_price.dart';
-import '../services/auth_service.dart';
-import '../services/sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/gold_scheduler_service.dart';
 
@@ -104,12 +102,6 @@ class _GoldScreenState extends State<GoldScreen> {
         if (hasChanged) {
           await storage.saveGoldPrice(newPrice);
           print('✅ New price saved: ₹${newPrice.price}');
-          
-          try {
-             await SyncService(AuthService().pb).syncGoldPrices();
-          } catch(e) {
-             print('Error syncing gold prices: $e');
-          }
         } else {
           print('✅ Price fetched but unchanged: ₹${newPrice.price}');
         }

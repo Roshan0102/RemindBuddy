@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "668661278882",
+    "project_id": "remindbuddy-b68f9",
+    "storage_bucket": "remindbuddy-b68f9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:668661278882:android:70a0bee09fe313fcb30ffb",
+        "android_client_info": {
+          "package_name": "com.remindbuddy.remindbuddy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCrq1DTxsaIg0S4MM7bOpjmZgX8-h97Dw4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

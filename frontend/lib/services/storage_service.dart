@@ -695,12 +695,12 @@ class StorageService {
     }
   }
 
-  // Gold Price Methods
+  // Gold Price Methods (Migrated to Firebase)
   Future<void> saveGoldPrice(GoldPrice price) async {
-    final db = await database;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
     
-    // We want strictly one row per date.
-    // Fetch the previous date's price to calculate change if not provided.
+    // Calculate price change if not provided
     double change = price.priceChange;
     if (change == 0.0) {
       final prevPrice = await getPreviousGoldPrice(dateToExclude: price.date);
@@ -709,74 +709,69 @@ class StorageService {
       }
     }
 
-    // Always ensure the isSynced is 0 when saving locally
-    final map = price.toMap();
-    map['priceChange'] = change;
-    map['isSynced'] = 0;
-    map['updatedAt'] = DateTime.now().toIso8601String();
+    final data = price.toJson();
+    data['priceChange'] = change;
 
-    await db.insert(
-      'gold_prices',
-      map,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    // Use date as document ID to ensure one entry per date
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('gold_prices')
+        .doc(price.date)
+        .set(data, SetOptions(merge: true));
   }
 
   Future<List<GoldPrice>> getGoldPriceHistory({int limit = 20}) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'gold_prices',
-      orderBy: 'date DESC',
-      limit: limit,
-    );
-    return List.generate(maps.length, (i) => GoldPrice.fromJson(maps[i]));
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+    
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('gold_prices')
+        .orderBy('date', descending: true)
+        .limit(limit)
+        .get();
+        
+    return snap.docs.map((d) => GoldPrice.fromJson(d.data(), d.id)).toList();
   }
 
   Future<double?> getPreviousGoldPrice({String? dateToExclude}) async {
-     final db = await database;
-     List<Map<String, dynamic>> maps;
-     
-     if (dateToExclude != null) {
-        maps = await db.query(
-          'gold_prices',
-          where: 'date < ?',
-          whereArgs: [dateToExclude],
-          orderBy: 'date DESC',
-          limit: 1,
-        );
-     } else {
-        maps = await db.query(
-          'gold_prices',
-          orderBy: 'date DESC',
-          limit: 2,
-        );
-        if (maps.length < 2) return null;
-        return maps[1]['price'] as double;
-     }
-
-     if (maps.isEmpty) return null;
-     return maps[0]['price'] as double;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    
+    if (dateToExclude != null) {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('gold_prices')
+          .where('date', isLessThan: dateToExclude)
+          .orderBy('date', descending: true)
+          .limit(1)
+          .get();
+      if (snap.docs.isEmpty) return null;
+      return (snap.docs.first.data()['price'] as num).toDouble();
+    } else {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('gold_prices')
+          .orderBy('date', descending: true)
+          .limit(2)
+          .get();
+      if (snap.docs.length < 2) return null;
+      return (snap.docs[1].data()['price'] as num).toDouble();
+    }
   }
 
   Future<List<GoldPrice>> getGoldPrices({int limit = 10}) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'gold_prices',
-      orderBy: 'date DESC',
-      limit: limit,
-    );
-    return List.generate(maps.length, (i) => GoldPrice.fromJson(maps[i]));
+    return getGoldPriceHistory(limit: limit);
   }
 
   Future<GoldPrice?> getLatestGoldPrice() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'gold_prices',
-      orderBy: 'date DESC',
-      limit: 1,
-    );
-    if (maps.isEmpty) return null;
-    return GoldPrice.fromJson(maps[0]);
+    final prices = await getGoldPriceHistory(limit: 1);
+    if (prices.isEmpty) return null;
+    return prices.first;
   }
 
   // Shift Methods
