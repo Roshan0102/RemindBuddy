@@ -1,6 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:pocketbase/pocketbase.dart';
 import 'storage_service.dart';
 
 class AuthService {
@@ -9,9 +8,6 @@ class AuthService {
   AuthService._internal();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  
-  // Keep this temporarily so SyncService can compile while we migrate
-  final PocketBase pb = PocketBase('http://35.237.49.45:8090');
 
   Future<void> init() async {
     // Firebase handles token persistence automatically.

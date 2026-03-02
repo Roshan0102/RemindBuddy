@@ -5,9 +5,6 @@ import '../models/shift.dart';
 import '../services/storage_service.dart';
 import '../services/shift_service.dart';
 import '../services/log_service.dart';
-import '../services/pb_debug_logger.dart';
-import '../services/sync_service.dart';
-import '../services/auth_service.dart';
 
 class MyShiftsScreen extends StatefulWidget {
   const MyShiftsScreen({super.key});
@@ -176,7 +173,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                   );
                 }
               } catch (e) {
-                pbLog('❌ Error uploading JSON roster: $e');
+                print('❌ Error uploading JSON roster: $e');
                 Navigator.pop(context);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -218,22 +215,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     if (confirm == true) {
       await _storage.clearAllShifts(rosterMonth: _selectedRosterMonth);
       await _shiftService.cancelAllShiftNotifications();
-      
-      try {
-        final pb = AuthService().pb;
-        // Completely bypass faulty PocketBase filter syntax and fetch all user shifts to obliterate locally matched ones
-        final records = await pb.collection('shifts_data').getFullList();
-        for (var record in records) {
-           if (record.data['month_year'] == _selectedRosterMonth) {
-              await pb.collection('shifts_data').delete(record.id);
-           }
-        }
-        await SyncService(pb).syncDeletions();
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cloud Delete Warning: $e')));
-        }
-      }
       
       await _loadShifts();
       

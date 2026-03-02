@@ -11,9 +11,7 @@ import 'my_shifts_screen.dart';
 import 'auth_screen.dart';
 import 'admin_screen.dart';
 import 'pb_debug_screen.dart';
-import '../services/sync_service.dart';
-import '../services/storage_service.dart'; // Ensure it's there for storage instance
-import '../services/auth_service.dart';
+
 import '../services/notification_service.dart';
 
 class MainScreen extends StatefulWidget {
@@ -70,15 +68,8 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _initialSync() async {
-    final storage = StorageService();
-    if (await storage.isLoggedIn()) {
-      try {
-        final auth = AuthService();
-        await SyncService(auth.pb).syncAll();
-      } catch (e) {
-        print("Initial Sync Error: $e");
-      }
-    }
+    // Firebase Firestore handles sync natively.
+    // No manual sync needed.
   }
 
   Future<void> _loadTheme() async {

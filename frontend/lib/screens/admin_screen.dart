@@ -1,6 +1,6 @@
 
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart';
+import 'package:pocketbase/pocketbase.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -41,7 +41,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _fetchAllUsers() async {
     setState(() => _isLoading = true);
     try {
-      final pb = AuthService().pb;
+      final pb = PocketBase('http://35.237.49.45:8090');
       
       // Try to authenticate as admin with the provided credentials first
       // This ensures we have permission to list users
@@ -113,7 +113,7 @@ class _AdminScreenState extends State<AdminScreen> {
               }
               
               try {
-                final pb = AuthService().pb;
+                final pb = PocketBase('http://35.237.49.45:8090');
                 await pb.collection('users').update(customId, body: {
                   'password': passwordController.text,
                   'passwordConfirm': confirmController.text,

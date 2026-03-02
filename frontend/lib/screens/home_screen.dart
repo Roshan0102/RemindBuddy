@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import '../models/task.dart';
-import '../services/auth_service.dart';
-import '../services/sync_service.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import '../services/log_service.dart';
@@ -83,16 +81,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _syncTasks() async {
-    // 1. Trigger background sync
-    try {
-      final authService = AuthService();
-      final syncService = SyncService(authService.pb);
-      await syncService.syncTasks();
-    } catch (e) {
-      LogService().error('Sync failed', e);
-    }
-    
-    // 2. Refresh UI from local storage
+    // Firebase Firestore handles sync natively.
+    // Just refresh UI from Firestore.
     if (_selectedDay != null) {
       _loadTasksForDay(_selectedDay!);
     }

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../services/storage_service.dart';
-import '../services/sync_service.dart';
 import 'admin_setup_screen.dart';
 import 'main_screen.dart';
 
@@ -46,23 +45,10 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   Future<void> _checkAuthStatus() async {
     final isLoggedIn = await StorageService().isLoggedIn();
     if (isLoggedIn) {
-       final auth = AuthService();
-       // Safely access email from RecordModel
        String? email;
        try {
-         final record = auth.pb.authStore.record;
-         if (record != null) {
-            email = record.getStringValue('email');
-         } else {
-            // Fallback to token if record isn't loaded but JWT exists
-            if (auth.pb.authStore.token.isNotEmpty) {
-               final parts = auth.pb.authStore.token.split('.');
-               if (parts.length == 3) {
-                  final payload = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
-                  email = payload['email'];
-               }
-            }
-         }
+         final user = FirebaseAuth.instance.currentUser;
+         email = user?.email;
        } catch (e) {
           print("Error accessing email: $e");
        }
@@ -117,13 +103,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           );
         }
 
-        // Run sync immediately after login to pull data
-        try {
-           final syncService = SyncService(auth.pb);
-           await syncService.syncAll();
-        } catch (e) {
-           print("Sync error during login: $e");
-        }
+
         
         await _checkAuthStatus(); 
         
