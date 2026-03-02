@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'storage_service.dart';
 
@@ -8,16 +9,27 @@ class AuthService {
   AuthService._internal();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   Future<void> init() async {
     // Firebase handles token persistence automatically.
-    // We just wait for the currentUser to be hydrated if needed.
   }
 
   bool get isAuthenticated => _auth.currentUser != null;
   String? get userId => _auth.currentUser?.uid;
 
-  Future<void> login(String email, String password) async {
+  Future<void> login(String emailOrUsername, String password) async {
+    String email = emailOrUsername.trim();
+    
+    // If not an email, try lookup by username
+    if (!email.contains('@')) {
+      final usernameDoc = await _db.collection('usernames').doc(email.toLowerCase()).get();
+      if (!usernameDoc.exists) {
+        throw Exception('Username not found');
+      }
+      email = usernameDoc.data()?['email'];
+    }
+
     try {
       final credential = await _auth.signInWithEmailAndPassword(
         email: email,
@@ -25,7 +37,6 @@ class AuthService {
       );
       print("Logged in via Firebase as ${credential.user?.uid}");
 
-      // Clear sync times for future migrations
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('last_sync_time');
 
@@ -37,12 +48,25 @@ class AuthService {
 
   Future<void> signup(String username, String email, String password) async {
     try {
+      // 1. Check if username is taken
+      final usernameDoc = await _db.collection('usernames').doc(username.toLowerCase()).get();
+      if (usernameDoc.exists) {
+        throw Exception('Username already taken');
+      }
+
+      // 2. Create Auth User
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
       
-      // Update display name
+      // 3. Save username map
+      await _db.collection('usernames').doc(username.toLowerCase()).set({
+        'email': email,
+        'uid': credential.user?.uid,
+      });
+
+      // 4. Update display name
       await credential.user?.updateDisplayName(username);
       
       print("Signed up via Firebase as ${credential.user?.uid}");

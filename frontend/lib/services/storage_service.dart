@@ -101,15 +101,17 @@ class StorageService {
   }
 
   // Note Methods (Migrated to Firebase Firestore)
-  Future<void> insertNote(Note note) async {
+  Future<String> insertNote(Note note) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null) return '';
     
-    await FirebaseFirestore.instance
+    final docRef = await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .collection('notes')
         .add(note.toMap());
+        
+    return docRef.id;
   }
 
   Future<List<Note>> getNotes() async {
@@ -668,16 +670,18 @@ class StorageService {
   }
 
   Future<bool> isLoggedIn() async {
-    final token = await getAuthToken();
-    return token != null && token.isNotEmpty;
+    return FirebaseAuth.instance.currentUser != null;
   }
 
   Future<void> logoutAndClearData() async {
-    // 1. Clear SharedPreferences
+    // 1. Firebase Logout
+    await FirebaseAuth.instance.signOut();
+
+    // 2. Clear SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_authTokenKey);
     await prefs.remove(_userKey);
-    await prefs.remove('last_sync_time'); // Clear sync history
+    await prefs.remove('last_sync_time');
 
     // 2. Note: SQLite is removed, and Firebase Auth handles its own session.
     // We already cleared the custom auth/user keys from SharedPreferences.

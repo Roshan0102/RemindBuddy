@@ -38,76 +38,93 @@ class _NotesScreenState extends State<NotesScreen> {
       if (!authenticated) return;
     }
 
-    // Use full screen dialog instead of bottom sheet
+    bool _isSaving = false;
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (context) => Scaffold(
-          appBar: AppBar(
-            title: Text(note == null ? 'New Note' : 'Edit Note'),
-            actions: [
-              IconButton(
-                icon: Icon(isLocked ? Icons.lock : Icons.lock_open, 
-                  color: isLocked ? Colors.red : Colors.green),
-                onPressed: () {
-                  setState(() {
-                    isLocked = !isLocked;
-                  });
-                },
-                tooltip: isLocked ? 'Unlock Note' : 'Lock Note (PIN: 0000)',
-              ),
-              TextButton(
-                onPressed: () async {
-                  if (titleController.text.isNotEmpty || contentController.text.isNotEmpty) {
-                    final newNote = Note(
-                      id: note?.id,
-                      title: titleController.text,
-                      content: contentController.text,
-                      date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
-                      isLocked: isLocked,
-                    );
-                    if (note == null) {
-                      await _storageService.insertNote(newNote);
-                    } else {
-                      await _storageService.updateNote(newNote);
-                    }
-
-                    _loadNotes();
-                    if (mounted) Navigator.pop(context);
-                  }
-                },
-                child: const Text('SAVE', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-          body: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    hintText: 'Title',
-                    border: InputBorder.none,
-                    hintStyle: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  autofocus: note == null,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => Scaffold(
+            appBar: AppBar(
+              title: Text(note == null ? 'New Note' : 'Edit Note'),
+              actions: [
+                IconButton(
+                  icon: Icon(isLocked ? Icons.lock : Icons.lock_open, 
+                    color: isLocked ? Colors.red : Colors.green),
+                  onPressed: () {
+                    setDialogState(() {
+                      isLocked = !isLocked;
+                    });
+                  },
+                  tooltip: isLocked ? 'Unlock Note' : 'Lock Note (PIN: 0000)',
                 ),
-                const Divider(),
-                Expanded(
-                  child: TextField(
-                    controller: contentController,
-                    decoration: const InputDecoration(
-                      hintText: 'Start typing your note...',
-                      border: InputBorder.none,
+                _isSaving 
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : TextButton(
+                      onPressed: () async {
+                        if (titleController.text.isNotEmpty || contentController.text.isNotEmpty) {
+                          setDialogState(() => _isSaving = true);
+                          final newNote = Note(
+                            id: note?.id,
+                            title: titleController.text,
+                            content: contentController.text,
+                            date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                            isLocked: isLocked,
+                          );
+                          try {
+                            if (note == null) {
+                              await _storageService.insertNote(newNote);
+                            } else {
+                              await _storageService.updateNote(newNote);
+                            }
+                            _loadNotes();
+                            if (mounted) Navigator.pop(context);
+                          } catch (e) {
+                            setDialogState(() => _isSaving = false);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error saving note: $e'), backgroundColor: Colors.red),
+                              );
+                            }
+                          }
+                        }
+                      },
+                      child: const Text('SAVE', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                  ),
-                ),
               ],
+            ),
+            body: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      hintText: 'Title',
+                      border: InputBorder.none,
+                      hintStyle: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    ),
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    autofocus: note == null,
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: TextField(
+                      controller: contentController,
+                      decoration: const InputDecoration(
+                        hintText: 'Start typing your note...',
+                        border: InputBorder.none,
+                      ),
+                      maxLines: null,
+                      expands: true,
+                      textAlignVertical: TextAlignVertical.top,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

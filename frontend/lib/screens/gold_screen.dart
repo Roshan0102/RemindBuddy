@@ -47,22 +47,22 @@ class _GoldScreenState extends State<GoldScreen> {
     });
   }
 
+  bool _isFetching = false;
+
   Future<void> _loadData() async {
+    if (_isFetching) return;
     setState(() => _isLoading = true);
     try {
       final storage = StorageService();
-      // Fetch latest from DB
       _currentPrice = await storage.getLatestGoldPrice();
-      // Fetch History (last 10 entries)
       _history = await storage.getGoldPriceHistory(limit: 10);
       
-      // Calculate Diff
       final double? prev = await storage.getPreviousGoldPrice();
       if (_currentPrice != null && prev != null) {
         _priceDiff = _currentPrice!.price - prev;
       }
       
-      // If no current price today, try fetch
+      // Only fetch if no data at all OR if the current data is old
       if (_currentPrice == null) {
         await _fetchPrice();
       }
@@ -76,22 +76,20 @@ class _GoldScreenState extends State<GoldScreen> {
   String _lastLog = "No logs yet. Click 'Refresh' to fetch price.";
 
   Future<void> _fetchPrice() async {
+    if (_isFetching) return;
+    _isFetching = true;
     setState(() => _isLoading = true);
-    _lastLog = "Starting fetch..."; // Reset log
+    _lastLog = "Starting fetch..."; 
     try {
       final goldService = GoldPriceService();
       final storage = StorageService();
       
-      // Fetch current price with debug info
       final result = await goldService.fetchCurrentGoldPrice();
       final newPrice = result['price'] as GoldPrice?;
       final method = result['method'];
-      final debug = result['debug'];
       
       _lastLog = result['log'] ?? "No log returned";
-      _lastFullData = result['full_data']; // Capture full data
-      print('📊 Fetch method: $method');
-      print('🔍 Debug: $debug');
+      _lastFullData = result['full_data']; 
       
       if (newPrice != null) {
         bool hasChanged = true;
@@ -101,12 +99,12 @@ class _GoldScreenState extends State<GoldScreen> {
         
         if (hasChanged) {
           await storage.saveGoldPrice(newPrice);
-          print('✅ New price saved: ₹${newPrice.price}');
-        } else {
-          print('✅ Price fetched but unchanged: ₹${newPrice.price}');
+          _currentPrice = newPrice;
+          _history = await storage.getGoldPriceHistory(limit: 10);
         }
         
         if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(hasChanged 
@@ -118,9 +116,10 @@ class _GoldScreenState extends State<GoldScreen> {
         }
       } else {
         if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('❌ Failed to fetch. Check Debug Log.'),
+              content: const Text('❌ Failed to fetch price.'),
               backgroundColor: Colors.red,
               action: SnackBarAction(
                 label: 'Details',
@@ -133,18 +132,14 @@ class _GoldScreenState extends State<GoldScreen> {
       }
     } catch (e) {
       _lastLog += "\nCRITICAL ERROR: $e";
-      print('Error fetching price: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('❌ Error: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
-      // Reload data
-      await _loadData();
+      _isFetching = false;
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

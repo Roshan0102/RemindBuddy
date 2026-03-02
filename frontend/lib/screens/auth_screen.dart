@@ -43,19 +43,11 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _checkAuthStatus() async {
-    final isLoggedIn = await StorageService().isLoggedIn();
-    if (isLoggedIn) {
-       String? email;
-       try {
-         final user = FirebaseAuth.instance.currentUser;
-         email = user?.email;
-       } catch (e) {
-          print("Error accessing email: $e");
-       }
-       
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
        setState(() {
          _isAuthenticated = true;
-         _currentUserEmail = email ?? "User";
+         _currentUserEmail = user.email ?? "User";
        });
     }
   }
@@ -85,7 +77,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     try {
       final auth = AuthService();
       if (_isLogin) {
-        await auth.login(_usernameController.text.trim(), _passwordController.text.trim());
+        await auth.login(_emailController.text.trim(), _passwordController.text.trim());
       } else {
         await auth.signup(
           _usernameController.text.trim(), 
@@ -103,8 +95,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           );
         }
 
-
-        
         await _checkAuthStatus(); 
         
         if (mounted) {
@@ -130,9 +120,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _logout() async {
-     final auth = AuthService();
-     auth.logout();
-     await StorageService().logoutAndClearData();
+     await AuthService().logout();
      setState(() {
        _isAuthenticated = false;
        _isLogin = true;
@@ -204,10 +192,19 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
            const SizedBox(height: 40),
            
            // Logout
-           TextButton.icon(
-             icon: const Icon(Icons.logout, color: Colors.redAccent),
-             label: const Text("Logout", style: TextStyle(color: Colors.redAccent)),
-             onPressed: _logout,
+           SizedBox(
+             width: double.infinity,
+             height: 50,
+             child: OutlinedButton.icon(
+               icon: const Icon(Icons.logout, color: Colors.white),
+               label: const Text("LOGOUT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+               style: OutlinedButton.styleFrom(
+                 side: const BorderSide(color: Colors.redAccent),
+                 backgroundColor: Colors.redAccent.withOpacity(0.2),
+                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+               ),
+               onPressed: _logout,
+             ),
            )
         ],
       );
@@ -267,33 +264,38 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                         key: _formKey,
                         child: Column(
                           children: [
+                            _buildTextField(
+                              controller: _emailController,
+                              label: _isLogin ? 'Email or Username' : 'Email Address',
+                              icon: _isLogin ? Icons.person_pin : Icons.email_outlined,
+                              validator: (val) {
+                                if (val == null || val.isEmpty) return 'Please enter your login';
+                                if (!_isLogin && !val.contains('@')) return 'Enter a valid email';
+                                if (val.length < 3) return 'Login too short';
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            
                             if (!_isLogin) ...[
-                               _buildTextField(
-                                controller: _emailController,
-                                label: 'Email Address',
-                                icon: Icons.email_outlined,
-                                validator: (val) => val != null && val.contains('@') ? null : 'Enter a valid email',
+                              _buildTextField(
+                                controller: _usernameController,
+                                label: 'Display Name',
+                                icon: Icons.person_outline,
+                                validator: (val) => val != null && val.length > 2 ? null : 'Name too short',
                               ),
                               const SizedBox(height: 16),
                             ],
-                            
-                            _buildTextField(
-                              controller: _usernameController,
-                              label: 'Username',
-                              icon: Icons.person_outline,
-                              validator: (val) => val != null && val.length > 3 ? null : 'Username too short',
-                            ),
-                            const SizedBox(height: 16),
                             
                             _buildTextField(
                               controller: _passwordController,
                               label: 'Password',
                               icon: Icons.lock_outline,
                               isPassword: true,
-                              validator: (val) => val != null && val.length > 5 ? null : 'Password too short',
+                              validator: (val) => val != null && val.length > 5 ? null : 'Password too short (min 6)',
                             ),
                             
-                            SizedBox(height: 30),
+                            const SizedBox(height: 30),
                             
                             SizedBox(
                               width: double.infinity,

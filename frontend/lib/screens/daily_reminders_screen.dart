@@ -43,6 +43,7 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
           )
         : TimeOfDay.now();
     bool isAnnoying = existingReminder?.isAnnoying ?? false;
+    bool _isSaving = false;
 
     await showDialog(
       context: context,
@@ -143,47 +144,60 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel'),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                if (titleController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please enter a title')),
-                  );
-                  return;
-                }
-
-                final timeStr = '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
-                
-                final reminder = existingReminder != null
-                    ? existingReminder.copyWith(
-                        title: titleController.text,
-                        description: descriptionController.text,
-                        time: timeStr,
-                        isAnnoying: isAnnoying,
-                      )
-                    : DailyReminder(
-                        title: titleController.text,
-                        description: descriptionController.text,
-                        time: timeStr,
-                        isActive: true,
-                        isAnnoying: isAnnoying,
+            _isSaving 
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              : ElevatedButton(
+                  onPressed: () async {
+                    if (titleController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please enter a title')),
                       );
+                      return;
+                    }
 
-                if (existingReminder == null) {
-                  final id = await _storageService.insertDailyReminder(reminder);
-                  // Schedule notification for the new reminder
-                  await _scheduleDailyReminder(reminder.copyWith(id: id));
-                } else {
-                  await _storageService.updateDailyReminder(reminder);
-                  // Re-schedule notification
-                  await _scheduleDailyReminder(reminder);
-                }
+                    setDialogState(() => _isSaving = true);
+                    try {
+                      final timeStr = '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
+                      
+                      final reminder = existingReminder != null
+                          ? existingReminder.copyWith(
+                              title: titleController.text,
+                              description: descriptionController.text,
+                              time: timeStr,
+                              isAnnoying: isAnnoying,
+                            )
+                          : DailyReminder(
+                              title: titleController.text,
+                              description: descriptionController.text,
+                              time: timeStr,
+                              isActive: true,
+                              isAnnoying: isAnnoying,
+                            );
 
-                Navigator.pop(context);
-                _loadReminders();
-              },
-              child: const Text('Save'),
-            ),
+                      if (existingReminder == null) {
+                        final id = await _storageService.insertDailyReminder(reminder);
+                        await _scheduleDailyReminder(reminder.copyWith(id: id));
+                      } else {
+                        await _storageService.updateDailyReminder(reminder);
+                        await _scheduleDailyReminder(reminder);
+                      }
+
+                      if (mounted) Navigator.pop(context);
+                      _loadReminders();
+                    } catch (e) {
+                      setDialogState(() => _isSaving = false);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
           ],
         ),
       ),

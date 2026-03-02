@@ -83,113 +83,122 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
   Future<void> _uploadJSON() async {
     final TextEditingController controller = TextEditingController();
+    bool _isSaving = false;
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Upload Shift Roster'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Paste your JSON roster data below:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                maxLines: 10,
-                decoration: const InputDecoration(
-                  hintText: '{\n  "employee_name": "...",\n  "month": "...",\n  "shifts": [...]\n}',
-                  border: OutlineInputBorder(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Upload Shift Roster'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Paste your JSON roster data below:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  maxLines: 10,
+                  decoration: const InputDecoration(
+                    hintText: '{\n  "employee_name": "...",\n  "month": "...",\n  "shifts": [...]\n}',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                final jsonData = json.decode(controller.text);
-                final roster = ShiftRoster.fromJson(jsonData);
-                
-                // Extract roster month directly from UI selection
-              String rosterMonth = _selectedRosterMonth;
-              String updatedMonthLabel = DateFormat('MMMM yyyy').format(_currentDate);
-              
-              // Rewrite the shift dates to match the selected month/year.
-              final shiftsToSave = roster.shifts.map((s) {
-                 final map = s.toMap();
-                 if (map['date'].length >= 10) {
-                     map['date'] = '$rosterMonth-${map['date'].substring(8, 10)}';
-                 }
-                 return map;
-              }).toList();
-              
-              // Rewrite the original JSON payload too so when it's pushed, it has the correct dates!
-              final Map<String, dynamic> rewrittenJson = {
-                 'employee_name': roster.employeeName,
-                 'month': updatedMonthLabel,
-                 'shifts': roster.shifts.map((s) {
-                     return {
-                        'date': s.date.length >= 10 ? '$rosterMonth-${s.date.substring(8, 10)}' : s.date,
-                        'shift_type': s.shiftType,
-                        'start_time': s.startTime,
-                        'end_time': s.endTime,
-                        'is_week_off': s.isWeekOff,
-                     };
-                 }).toList(),
-              };
-              final String newJsonString = json.encode(rewrittenJson);
-              
-              await _storage.saveShiftRoster(
-                roster.employeeName,
-                updatedMonthLabel,
-                shiftsToSave,
-                rosterMonth: rosterMonth,
-                rawJson: newJsonString,
-              );
-                
-                // Schedule notifications
-                await _shiftService.scheduleDailyShiftNotification();
-                
-                Navigator.pop(context);
-                await _loadShifts(); // Reload current view
-                
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('✅ Loaded ${roster.shifts.length} shifts for ${roster.month} ($rosterMonth)'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              } catch (e) {
-                print('❌ Error uploading JSON roster: $e');
-                Navigator.pop(context);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('❌ Error: ${e.toString()}'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Upload'),
-          ),
+          _isSaving 
+            ? const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              )
+            : ElevatedButton(
+                onPressed: () async {
+                  setState(() => _isSaving = true);
+                  try {
+                    final jsonData = json.decode(controller.text);
+                    final roster = ShiftRoster.fromJson(jsonData);
+                    
+                    // Extract roster month directly from UI selection
+                    String rosterMonth = _selectedRosterMonth;
+                    String updatedMonthLabel = DateFormat('MMMM yyyy').format(_currentDate);
+                    
+                    // Rewrite the shift dates to match the selected month/year.
+                    final shiftsToSave = roster.shifts.map((s) {
+                      final map = s.toMap();
+                      if (map['date'].length >= 10) {
+                          map['date'] = '$rosterMonth-${map['date'].substring(8, 10)}';
+                      }
+                      return map;
+                    }).toList();
+                    
+                    // Rewrite the original JSON payload too so when it's pushed, it has the correct dates!
+                    final Map<String, dynamic> rewrittenJson = {
+                      'employee_name': roster.employeeName,
+                      'month': updatedMonthLabel,
+                      'shifts': roster.shifts.map((s) {
+                          return {
+                            'date': s.date.length >= 10 ? '$rosterMonth-${s.date.substring(8, 10)}' : s.date,
+                            'shift_type': s.shiftType,
+                            'start_time': s.startTime,
+                            'end_time': s.endTime,
+                            'is_week_off': s.isWeekOff,
+                          };
+                      }).toList(),
+                    };
+                    final String newJsonString = json.encode(rewrittenJson);
+                    
+                    await _storage.saveShiftRoster(
+                      roster.employeeName,
+                      updatedMonthLabel,
+                      shiftsToSave,
+                      rosterMonth: rosterMonth,
+                      rawJson: newJsonString,
+                    );
+                    
+                    // Schedule notifications
+                    await _shiftService.scheduleDailyShiftNotification();
+                    
+                    if (mounted) Navigator.pop(context);
+                    await _loadShifts(); // Reload current view
+                    
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('✅ Loaded ${roster.shifts.length} shifts for ${roster.month} ($rosterMonth)'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    print('❌ Error uploading JSON roster: $e');
+                    setState(() => _isSaving = false);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('❌ Error: ${e.toString()}'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Upload'),
+              ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Future<void> _clearData() async {
     final confirm = await showDialog<bool>(

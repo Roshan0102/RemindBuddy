@@ -43,6 +43,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
     final TextEditingController _controller = TextEditingController();
     int _selectedIcon = Icons.list.codePoint;
     int _selectedColor = Colors.blue.value;
+    bool _isSaving = false;
 
     showDialog(
       context: context,
@@ -80,15 +81,25 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Cancel'),
                 ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (_controller.text.isNotEmpty) {
-                      _createChecklist(_controller.text, _selectedIcon, _selectedColor);
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: const Text('Create'),
-                ),
+                _isSaving 
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : ElevatedButton(
+                      onPressed: () async {
+                        if (_controller.text.isNotEmpty) {
+                          setState(() => _isSaving = true);
+                          try {
+                            await _createChecklist(_controller.text, _selectedIcon, _selectedColor);
+                            if (mounted) Navigator.pop(context);
+                          } catch (e) {
+                            setState(() => _isSaving = false);
+                          }
+                        }
+                      },
+                      child: const Text('Create'),
+                    ),
               ],
             );
           }
@@ -233,28 +244,41 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
 
   void _showAddItemDialog() {
     final TextEditingController _controller = TextEditingController();
+    bool _isSaving = false;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Item'),
-        content: TextField(
-          controller: _controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Item Name'),
-          textCapitalization: TextCapitalization.sentences,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              if (_controller.text.isNotEmpty) {
-                _addItem(_controller.text);
-                Navigator.pop(context);
-              }
-            }, 
-            child: const Text('Add')
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Add Item'),
+          content: TextField(
+            controller: _controller,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Item Name'),
+            textCapitalization: TextCapitalization.sentences,
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            _isSaving 
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              : ElevatedButton(
+                  onPressed: () async {
+                    if (_controller.text.isNotEmpty) {
+                      setState(() => _isSaving = true);
+                      try {
+                        await _addItem(_controller.text);
+                        if (mounted) Navigator.pop(context);
+                      } catch (e) {
+                        setState(() => _isSaving = false);
+                      }
+                    }
+                  }, 
+                  child: const Text('Add')
+                ),
+          ],
+        ),
       ),
     );
   }

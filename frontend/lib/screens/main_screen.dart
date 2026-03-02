@@ -9,6 +9,7 @@ import 'gold_screen.dart';
 import 'checklists_screen.dart';
 import 'my_shifts_screen.dart';
 import 'auth_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../services/notification_service.dart';
 
@@ -240,14 +241,17 @@ class _MainScreenState extends State<MainScreen> {
               const Divider(),
               // Login / Profile Feature
               ListTile(
-                leading: const Icon(Icons.account_circle, color: Colors.teal),
-                title: const Text('Login / Profile'),
+                leading: Icon(
+                  FirebaseAuth.instance.currentUser != null ? Icons.account_circle : Icons.login, 
+                  color: Colors.teal
+                ),
+                title: Text(FirebaseAuth.instance.currentUser != null ? 'My Profile' : 'Login'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const AuthScreen()),
-                  );
+                  ).then((_) => setState(() {})); // Refresh status on return
                 },
               ),
 
@@ -271,7 +275,7 @@ class _MainScreenState extends State<MainScreen> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'RemindBuddy',
-                    applicationVersion: '1.0.47',
+                    applicationVersion: '1.0.78',
                     applicationIcon: const Icon(Icons.alarm_add, size: 48),
                     children: [
                       const Text('Your friendly daily reminder companion!'),
