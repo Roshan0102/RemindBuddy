@@ -301,9 +301,7 @@ class _GoldScreenState extends State<GoldScreen> {
 
     if (confirmed == true) {
       final storage = StorageService();
-      final db = await storage.database;
-      await db.delete('gold_prices');
-      await db.delete('gold_prices_history');
+      await storage.clearGoldPrices();
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
