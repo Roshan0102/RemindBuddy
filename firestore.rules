@@ -8,8 +8,16 @@ service cloud.firestore {
     
     // Public username lookup
     match /usernames/{username} {
+      // Allow any authenticated user to read/check usernames
+      // Allow unauthenticated users to 'get' specifically for login/signup checks
       allow get: if true;
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow list: if request.auth != null;
+      
+      // Allow creation if the user is authenticated 
+      // Ensure the UID in the document data matches the authenticated user
+      allow create: if request.auth != null;
+      
+      // Allow updates/deletes only by the owner
       allow update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
   }

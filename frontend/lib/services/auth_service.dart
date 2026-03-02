@@ -49,18 +49,24 @@ class AuthService {
   Future<void> signup(String username, String email, String password) async {
     try {
       // 1. Check if username is taken
+      print('🔍 Checking username existence for: $username');
       final usernameDoc = await _db.collection('usernames').doc(username.toLowerCase()).get();
       if (usernameDoc.exists) {
         throw Exception('Username already taken');
       }
 
       // 2. Create Auth User
+      print('🔐 Creating auth user for: $email');
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
       
+      // Wait a moment for auth state to propagate
+      await Future.delayed(const Duration(milliseconds: 500));
+      
       // 3. Save username map
+      print('💾 Saving username map for UID: ${credential.user?.uid}');
       await _db.collection('usernames').doc(username.toLowerCase()).set({
         'email': email,
         'uid': credential.user?.uid,
@@ -69,9 +75,9 @@ class AuthService {
       // 4. Update display name
       await credential.user?.updateDisplayName(username);
       
-      print("Signed up via Firebase as ${credential.user?.uid}");
+      print("✅ Signed up via Firebase as ${credential.user?.uid}");
     } catch (e) {
-      print("Firebase Signup failed: $e");
+      print("❌ Firebase Signup failed: $e");
       throw Exception('Signup failed: ${e.toString()}');
     }
   }

@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/storage_service.dart';
 import '../services/shift_service.dart';
 import '../services/notification_service.dart';
@@ -16,6 +17,15 @@ class AppInitService {
     try {
       LogService.staticLog('🚀 Initializing app...');
       
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        LogService.staticLog('ℹ️ No user logged in, skipping notification reschedule');
+        return;
+      }
+      
+      // Reschedule task notifications
+      await _rescheduleTaskNotifications();
+      
       // Reschedule shift notifications if shifts exist
       await _rescheduleShiftNotifications();
       
@@ -25,6 +35,24 @@ class AppInitService {
       LogService.staticLog('✅ App initialization complete');
     } catch (e) {
       LogService.staticLog('❌ Error during app initialization: $e');
+    }
+  }
+
+  /// Reschedule all tasks
+  Future<void> _rescheduleTaskNotifications() async {
+    try {
+      final storage = StorageService();
+      final tasks = await storage.getTasks();
+      
+      if (tasks.isNotEmpty) {
+        final notificationService = NotificationService();
+        for (final task in tasks) {
+           await notificationService.scheduleTaskNotification(task);
+        }
+        LogService.staticLog('✅ ${tasks.length} task notifications rescheduled');
+      }
+    } catch (e) {
+      LogService.staticLog('⚠️ Could not reschedule task notifications: $e');
     }
   }
 
