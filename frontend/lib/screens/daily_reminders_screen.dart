@@ -4,8 +4,6 @@ import '../models/daily_reminder.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../services/auth_service.dart';
-import '../services/sync_service.dart';
 
 class DailyRemindersScreen extends StatefulWidget {
   const DailyRemindersScreen({super.key});

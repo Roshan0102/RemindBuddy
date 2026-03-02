@@ -300,34 +300,6 @@ class StorageService {
   }
 
 
-  Future<void> _recordDeletion(Database db, String tableName, String collectionName, int id) async {
-    final maps = await db.query(tableName, where: 'id = ?', whereArgs: [id]);
-    if (maps.isNotEmpty && maps.first['remoteId'] != null) {
-       final remoteId = maps.first['remoteId'] as String;
-       if (remoteId.isNotEmpty) {
-           await db.insert('deleted_records', {
-               'collectionName': collectionName,
-               'remoteId': remoteId,
-           });
-       }
-    }
-  }
-
-  Future<void> _recordDeletionByField(Database db, String tableName, String collectionName, String where, List<dynamic> whereArgs) async {
-    final maps = await db.query(tableName, where: where, whereArgs: whereArgs);
-    for (var map in maps) {
-       if (map['remoteId'] != null) {
-           final remoteId = map['remoteId'] as String;
-           if (remoteId.isNotEmpty) {
-               await db.insert('deleted_records', {
-                   'collectionName': collectionName,
-                   'remoteId': remoteId,
-               });
-           }
-       }
-    }
-  }
-
   Future<List<Map<String, dynamic>>> getDeletedRecords() async {
       final db = await database;
       return await db.query('deleted_records');
@@ -879,7 +851,7 @@ class StorageService {
         .where('date', isLessThanOrEqualTo: endDateStr)
         .orderBy('date', descending: false).get();
         
-    return snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+    return snap.docs.map((d) => d.data()).toList();
   }
 
   Future<Map<String, int>> getShiftStatistics(String month, {String? rosterMonth}) async {
@@ -919,7 +891,7 @@ class StorageService {
       .collection('users').doc(user.uid)
       .collection('shift_metadata').get();
       
-    return snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+    return snap.docs.map((d) => d.data()).toList();
   }
 
   Future<void> clearAllShifts({String? rosterMonth}) async {

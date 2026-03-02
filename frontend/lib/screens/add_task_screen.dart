@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import '../models/task.dart';
-import '../models/task.dart';
 import '../services/storage_service.dart';
-import '../services/sync_service.dart';
-import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 
 class AddTaskScreen extends StatefulWidget {

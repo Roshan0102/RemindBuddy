@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/note.dart';
 import '../services/storage_service.dart';
-import '../services/auth_service.dart';
-import '../services/sync_service.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});

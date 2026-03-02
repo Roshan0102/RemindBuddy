@@ -5,7 +5,6 @@ import 'storage_service.dart';
 import 'notification_service.dart';
 import 'log_service.dart';
 import 'auth_service.dart';
-import 'sync_service.dart';
 
 /// Scheduled Gold Price Fetcher
 /// Fetches gold prices at 11 AM and 7 PM IST daily

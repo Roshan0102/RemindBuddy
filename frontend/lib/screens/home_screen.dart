@@ -22,19 +22,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   // ... existing variables ...
   
-  // Update Widget Data
-  Future<void> _updateWidget() async {
-    try {
-      // Save data to SharedPreferences for the widget to read
-      // Note: This requires the widget to be set up natively to read this data.
-      // Since we can't easily edit native XML layouts without errors, we will just
-      // prepare the data side here.
-      // await HomeWidget.saveWidgetData<String>('title', 'RemindBuddy Tasks');
-      // await HomeWidget.updateWidget(name: 'AppWidgetProvider');
-    } catch (e) {
-      print('Error updating widget: $e');
-    }
-  }
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -119,14 +106,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // Helper method to get tasks for a specific day (synchronous, returns current state)
-  List<Task> _getTasksForDay(DateTime day) {
-    // This returns the currently loaded tasks if the day matches
-    if (_selectedDay != null && isSameDay(_selectedDay, day)) {
-      return _selectedTasks;
-    }
-    return [];
-  }
 
   @override
   Widget build(BuildContext context) {

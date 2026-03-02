@@ -21,7 +21,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   final ShiftService _shiftService = ShiftService();
   
   List<Shift> _shifts = [];
-  Map<String, String>? _metadata;
+
   Map<String, int>? _statistics;
   bool _isLoading = true;
   bool _hasData = false;
@@ -64,7 +64,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         final stats = await _storage.getShiftStatistics(monthForQuery, rosterMonth: _selectedRosterMonth);
         
         setState(() {
-          _metadata = metadata;
+
           _shifts = shifts;
           _statistics = stats;
           _hasData = true;

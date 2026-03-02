@@ -1,16 +1,8 @@
 import 'package:pocketbase/pocketbase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart';
-
-import 'dart:convert';
 
 import 'storage_service.dart';
 import 'app_init_service.dart';
-import '../models/task.dart';
-import '../models/note.dart';
-import '../models/daily_reminder.dart';
-import '../models/shift.dart';
-import 'notification_service.dart';
 import 'pb_debug_logger.dart';
 
 class SyncService {
@@ -19,28 +11,7 @@ class SyncService {
   
   static const String _lastSyncKey = 'last_sync_time';
 
-  // Locks to prevent concurrent sync operations
-  static bool _syncingTasks = false;
-  static bool _syncingNotes = false;
-  static bool _syncingDaily = false;
-  static bool _syncingChecklists = false;
-  static bool _syncingShifts = false;
-
   SyncService(this.pb);
-
-  String? _getUserId() {
-    if (pb.authStore.record != null) return pb.authStore.record!.id;
-    final token = pb.authStore.token;
-    if (token.isEmpty) return null;
-    try {
-      final parts = token.split('.');
-      if (parts.length == 3) {
-        final payload = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
-        return payload['id'];
-      }
-    } catch (_) {}
-    return null;
-  }
 
   Future<void> syncAll() async {
     if (pb.authStore.token.isEmpty) return;

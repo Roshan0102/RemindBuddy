@@ -1,8 +1,6 @@
 
 import 'package:flutter/material.dart';
 import '../services/storage_service.dart';
-import '../services/sync_service.dart';
-import '../services/auth_service.dart';
 
 class ChecklistsScreen extends StatefulWidget {
   const ChecklistsScreen({super.key});

@@ -5,7 +5,6 @@ import 'storage_service.dart';
 import 'notification_service.dart';
 import 'log_service.dart';
 import 'auth_service.dart';
-import 'sync_service.dart';
 
 // Task Name
 const String fetchGoldTask = "fetchGoldPriceTask";
