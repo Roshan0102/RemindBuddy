@@ -9,8 +9,6 @@ import 'gold_screen.dart';
 import 'checklists_screen.dart';
 import 'my_shifts_screen.dart';
 import 'auth_screen.dart';
-import 'admin_screen.dart';
-import 'pb_debug_screen.dart';
 
 import '../services/notification_service.dart';
 
@@ -252,29 +250,7 @@ class _MainScreenState extends State<MainScreen> {
                   );
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.admin_panel_settings, color: Colors.redAccent),
-                title: const Text('Admin Console'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const AdminScreen()),
-                  );
-                },
-              ),
-              // PB Debug Console
-              ListTile(
-                leading: const Icon(Icons.bug_report, color: Colors.orange),
-                title: const Text('PB Debug Console'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const PBDebugScreen()),
-                  );
-                },
-              ),
+
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.settings),

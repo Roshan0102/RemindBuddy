@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../services/storage_service.dart';
-import 'admin_setup_screen.dart';
+
 import 'main_screen.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -142,11 +142,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
      });
   }
 
-  Future<void> _runMigration() async {
-    Navigator.of(context).push(
-       MaterialPageRoute(builder: (_) => const AdminSetupScreen()),
-    );
-  }
+
   
   @override
   Widget build(BuildContext context) {
@@ -205,30 +201,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                 color: Colors.white70
              ),
            ),
-           const SizedBox(height: 40),
-           
-           // Migration Button
-           SizedBox(
-             width: double.infinity,
-             height: 60,
-             child: ElevatedButton.icon(
-              icon: const Icon(Icons.cloud_upload_outlined),
-              label: const Text("Run Migration / Sync Setup"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.indigoAccent,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              ),
-              onPressed: _runMigration,
-             ),
-           ),
-           const SizedBox(height: 15),
-           const Text(
-             "Click above to initialize your cloud database and sync local data.",
-             textAlign: TextAlign.center,
-             style: TextStyle(color: Colors.white54, fontSize: 12),
-           ),
-           
            const SizedBox(height: 40),
            
            // Logout
