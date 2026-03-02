@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'gold_price_service.dart';
 import 'storage_service.dart';
 import 'notification_service.dart';
@@ -86,9 +87,13 @@ class GoldSchedulerService {
     try {
       LogService.staticLog('🌅 11 AM Gold Price Fetch Started');
       
+      // Essential: Initialize Firebase and Notification Service in the background isolate
+      await Firebase.initializeApp();
+      final notificationService = NotificationService();
+      await notificationService.init();
+
       final goldService = GoldPriceService();
       final storageService = StorageService();
-      final notificationService = NotificationService();
 
       // Fetch current price
       final result = await goldService.fetchCurrentGoldPrice();
@@ -157,9 +162,13 @@ class GoldSchedulerService {
     try {
       LogService.staticLog('🌆 7 PM Gold Price Fetch Started');
       
+      // Essential: Initialize Firebase and Notification Service in the background isolate
+      await Firebase.initializeApp();
+      final notificationService = NotificationService();
+      await notificationService.init();
+
       final goldService = GoldPriceService();
       final storageService = StorageService();
-      final notificationService = NotificationService();
 
       // Fetch current price
       final result = await goldService.fetchCurrentGoldPrice();

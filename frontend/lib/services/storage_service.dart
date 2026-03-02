@@ -546,12 +546,18 @@ class StorageService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return [];
     
-    Query q = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shifts');
-    if (rosterMonth != null) {
-      q = q.where('roster_month', isEqualTo: rosterMonth);
-    }
-    final snap = await q.orderBy('date', descending: false).get();
-    return snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+    final snap = await FirebaseFirestore.instance
+        .collection('users').doc(user.uid)
+        .collection('shifts')
+        .where('roster_month', isEqualTo: rosterMonth)
+        .get();
+        
+    final shifts = snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+    
+    // Sort in memory to avoid needing a composite index for where + orderBy
+    shifts.sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
+    
+    return shifts;
   }
 
   Future<Map<String, dynamic>?> getShiftForDate(String date) async {
@@ -678,14 +684,10 @@ class StorageService {
     await FirebaseAuth.instance.signOut();
 
     // 2. Clear SharedPreferences
+    // 2. Clear SharedPreferences completely to wipe all local settings/data
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_authTokenKey);
-    await prefs.remove(_userKey);
-    await prefs.remove('last_sync_time');
+    await prefs.clear();
 
-    // 2. Note: SQLite is removed, and Firebase Auth handles its own session.
-    // We already cleared the custom auth/user keys from SharedPreferences.
-    
-    print('🔒 User logged out and local preferences cleared.');
+    print('🔒 User logged out, local preferences cleared, and session closed.');
   }
 }
