@@ -161,11 +161,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 rawJson: newJsonString,
               );
                 
-                // Trigger auto-sync so Pocketbase gets it instantly
-                try {
-                  SyncService(AuthService().pb).syncShiftsData();
-                } catch(e) { print(e); }
-                
                 // Schedule notifications
                 await _shiftService.scheduleDailyShiftNotification();
                 

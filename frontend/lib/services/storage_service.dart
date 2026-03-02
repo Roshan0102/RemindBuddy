@@ -781,148 +781,129 @@ class StorageService {
 
   // Shift Methods
   Future<void> saveShiftRoster(String employeeName, String month, List<Map<String, dynamic>> shifts, {String? rosterMonth, String? rawJson, bool skipSyncFlag = false}) async {
-    final db = await database;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
     
-    // Extract roster month from the first shift date if not provided
     final effectiveRosterMonth = rosterMonth ?? (shifts.isNotEmpty ? shifts[0]['date'].toString().substring(0, 7) : month);
     
-    // Clear existing shifts for this specific roster month only
-    await db.delete('shifts', where: 'roster_month = ?', whereArgs: [effectiveRosterMonth]);
+    final batch = FirebaseFirestore.instance.batch();
     
-    // Save or update metadata for this roster month
-    await db.insert('shift_metadata', {
-      'id': effectiveRosterMonth.hashCode % 1000000,  // Unique ID based on month
+    final metadataRef = FirebaseFirestore.instance
+        .collection('users').doc(user.uid)
+        .collection('shift_metadata').doc(effectiveRosterMonth);
+        
+    batch.set(metadataRef, {
       'employee_name': employeeName,
       'month': month,
       'roster_month': effectiveRosterMonth,
-      'isSynced': 0,
-      'updatedAt': DateTime.now().toIso8601String(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+      'raw_json': rawJson,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
     
-    // Save shifts with roster_month
     for (var shift in shifts) {
+      final date = shift['date'] as String;
+      final shiftRef = FirebaseFirestore.instance
+        .collection('users').doc(user.uid)
+        .collection('shifts').doc(date);
+        
       final shiftData = Map<String, dynamic>.from(shift);
       shiftData['roster_month'] = effectiveRosterMonth;
-      shiftData['isSynced'] = 0;
-      shiftData['updatedAt'] = DateTime.now().toIso8601String();
-      await db.insert('shifts', shiftData, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-
-    if (rawJson != null) {
-      final existing = await db.query('shifts_data', where: 'month_year = ?', whereArgs: [effectiveRosterMonth]);
-      String? remoteId;
-      if (existing.isNotEmpty && existing.first['remoteId'] != null) {
-         remoteId = existing.first['remoteId'] as String;
-      }
-      
-      await db.insert('shifts_data', {
-        'month_year': effectiveRosterMonth,
-        'json_data': rawJson,
-        if (remoteId != null) 'remoteId': remoteId,
-        'isSynced': skipSyncFlag ? 1 : 0,
-        'updatedAt': DateTime.now().toIso8601String(),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.set(shiftRef, shiftData, SetOptions(merge: true));
     }
     
-    print('✅ Saved ${shifts.length} shifts for roster month: $effectiveRosterMonth');
+    await batch.commit();
+    print('✅ Saved ${shifts.length} shifts for roster month: $effectiveRosterMonth to Firestore');
   }
 
   Future<Map<String, String>?> getShiftMetadata({String? rosterMonth}) async {
-    final db = await database;
-    List<Map<String, dynamic>> maps;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
     
     if (rosterMonth != null) {
-      maps = await db.query('shift_metadata', where: 'roster_month = ?', whereArgs: [rosterMonth]);
+      final doc = await FirebaseFirestore.instance
+        .collection('users').doc(user.uid)
+        .collection('shift_metadata').doc(rosterMonth).get();
+      if (!doc.exists) return null;
+      final data = doc.data()!;
+      return {
+        'employee_name': data['employee_name'] as String,
+        'month': data['month'] as String,
+        'roster_month': data['roster_month'] as String? ?? data['month'] as String,
+      };
     } else {
-      // Get the most recent metadata
-      maps = await db.query('shift_metadata', orderBy: 'id DESC', limit: 1);
+      final snap = await FirebaseFirestore.instance
+        .collection('users').doc(user.uid)
+        .collection('shift_metadata')
+        .orderBy('roster_month', descending: true)
+        .limit(1).get();
+      if (snap.docs.isEmpty) return null;
+      final data = snap.docs.first.data();
+      return {
+        'employee_name': data['employee_name'] as String,
+        'month': data['month'] as String,
+        'roster_month': data['roster_month'] as String? ?? data['month'] as String,
+      };
     }
-    
-    if (maps.isEmpty) return null;
-    
-    return {
-      'employee_name': maps[0]['employee_name'] as String,
-      'month': maps[0]['month'] as String,
-      'roster_month': maps[0]['roster_month'] as String? ?? maps[0]['month'] as String,
-    };
   }
 
   Future<List<Map<String, dynamic>>> getAllShifts({String? rosterMonth}) async {
-    final db = await database;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+    
+    Query q = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shifts');
     if (rosterMonth != null) {
-      return await db.query('shifts', where: 'roster_month = ?', whereArgs: [rosterMonth], orderBy: 'date ASC');
+      q = q.where('roster_month', isEqualTo: rosterMonth);
     }
-    return await db.query('shifts', orderBy: 'date ASC');
+    final snap = await q.orderBy('date', descending: false).get();
+    return snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
   }
 
   Future<Map<String, dynamic>?> getShiftForDate(String date) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'shifts',
-      where: 'date = ?',
-      whereArgs: [date],
-    );
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
     
-    if (maps.isEmpty) return null;
-    return maps[0];
+    final doc = await FirebaseFirestore.instance
+        .collection('users').doc(user.uid)
+        .collection('shifts').doc(date).get();
+        
+    if (!doc.exists) return null;
+    return doc.data() as Map<String, dynamic>;
   }
 
   Future<List<Map<String, dynamic>>> getUpcomingShifts(int days) async {
-    final db = await database;
-    final today = DateTime.now();
-    final endDate = today.add(Duration(days: days));
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
     
-    final List<Map<String, dynamic>> maps = await db.query(
-      'shifts',
-      where: 'date >= ? AND date <= ?',
-      whereArgs: [
-        today.toIso8601String().split('T')[0],
-        endDate.toIso8601String().split('T')[0],
-      ],
-      orderBy: 'date ASC',
-    );
+    final todayStr = DateTime.now().toIso8601String().split('T')[0];
+    final endDateStr = DateTime.now().add(Duration(days: days)).toIso8601String().split('T')[0];
     
-    return maps;
+    final snap = await FirebaseFirestore.instance
+        .collection('users').doc(user.uid)
+        .collection('shifts')
+        .where('date', isGreaterThanOrEqualTo: todayStr)
+        .where('date', isLessThanOrEqualTo: endDateStr)
+        .orderBy('date', descending: false).get();
+        
+    return snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
   }
 
   Future<Map<String, int>> getShiftStatistics(String month, {String? rosterMonth}) async {
-    final db = await database;
-    
-    // Get all shifts for the month
-    List<Map<String, dynamic>> maps;
-    if (rosterMonth != null) {
-      maps = await db.query(
-        'shifts',
-        where: 'roster_month = ? AND date LIKE ?',
-        whereArgs: [rosterMonth, '$month%'],
-      );
-    } else {
-      maps = await db.query(
-        'shifts',
-        where: 'date LIKE ?',
-        whereArgs: ['$month%'],
-      );
-    }
+    final shifts = await getAllShifts(rosterMonth: rosterMonth);
     
     int morningCount = 0;
     int afternoonCount = 0;
     int nightCount = 0;
     int weekOffCount = 0;
     
-    for (var shift in maps) {
+    for (var shift in shifts) {
+      final d = shift['date'] as String;
+      if (!d.startsWith(month)) continue;
+      
       switch (shift['shift_type']) {
-        case 'morning':
-          morningCount++;
-          break;
-        case 'afternoon':
-          afternoonCount++;
-          break;
-        case 'night':
-          nightCount++;
-          break;
-        case 'week_off':
-          weekOffCount++;
-          break;
+        case 'morning': morningCount++; break;
+        case 'afternoon': afternoonCount++; break;
+        case 'night': nightCount++; break;
+        case 'week_off': weekOffCount++; break;
       }
     }
     
@@ -936,33 +917,47 @@ class StorageService {
   }
 
   Future<List<Map<String, dynamic>>> getMonthlyRosters() async {
-    final db = await database;
-    return await db.query('monthly_rosters');
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+    
+    final snap = await FirebaseFirestore.instance
+      .collection('users').doc(user.uid)
+      .collection('shift_metadata').get();
+      
+    return snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
   }
 
   Future<void> clearAllShifts({String? rosterMonth}) async {
-    final db = await database;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    final batch = FirebaseFirestore.instance.batch();
     if (rosterMonth != null) {
-      await _recordDeletionByField(db, 'shifts_data', 'shifts_data', 'month_year = ?', [rosterMonth]);
-      await db.delete('shifts_data', where: 'month_year = ?', whereArgs: [rosterMonth]);
-      await db.delete('shifts', where: 'roster_month = ?', whereArgs: [rosterMonth]);
-      await db.delete('shift_metadata', where: 'roster_month = ?', whereArgs: [rosterMonth]);
+      final metaRef = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shift_metadata').doc(rosterMonth);
+      batch.delete(metaRef);
+      final shiftsSnap = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shifts').where('roster_month', isEqualTo: rosterMonth).get();
+      for (var d in shiftsSnap.docs) { batch.delete(d.reference); }
+      await batch.commit();
     } else {
-      await _recordDeletionByField(db, 'shifts_data', 'shifts_data', '1 = 1', []);
-      await db.delete('shifts_data');
-      await db.delete('shifts');
-      await db.delete('shift_metadata');
-      await db.delete('monthly_rosters');
+      final metaSnap = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shift_metadata').get();
+      final shiftsSnap = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shifts').get();
+      for (var d in metaSnap.docs) { batch.delete(d.reference); }
+      for (var d in shiftsSnap.docs) { batch.delete(d.reference); }
+      await batch.commit();
     }
   }
   
   // Get list of available roster months
   Future<List<String>> getAvailableRosterMonths() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.rawQuery(
-      'SELECT DISTINCT roster_month FROM shifts WHERE roster_month IS NOT NULL ORDER BY roster_month DESC'
-    );
-    return maps.map((m) => m['roster_month'] as String).toList();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+    
+    final snap = await FirebaseFirestore.instance
+      .collection('users').doc(user.uid)
+      .collection('shift_metadata')
+      .orderBy('roster_month', descending: true).get();
+      
+    return snap.docs.map((d) => d.id).toList();
   }
 
   // --- Auth & Sync Helpers ---
