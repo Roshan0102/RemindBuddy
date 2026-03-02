@@ -40,3 +40,5 @@ class Task {
     };
   }
 
+  Map<String, dynamic> toMap() => toJson();
+}
