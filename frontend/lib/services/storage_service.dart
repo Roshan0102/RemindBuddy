@@ -471,72 +471,82 @@ class StorageService {
   }
 
   // Daily Reminder Methods
-  Future<int> insertDailyReminder(DailyReminder reminder) async {
-    final db = await database;
-    final map = reminder.toMap();
-    map['isSynced'] = 0;
-    map['updatedAt'] = DateTime.now().toIso8601String();
+  Future<String> insertDailyReminder(DailyReminder reminder) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return '';
     
-    return await db.insert(
-      'daily_reminders',
-      map,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final docRef = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('daily_reminders')
+        .add(reminder.toMap());
+    
+    return docRef.id;
   }
 
   Future<List<DailyReminder>> getDailyReminders() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('daily_reminders', orderBy: "time ASC");
-    return List.generate(maps.length, (i) => DailyReminder.fromJson(maps[i]));
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+    
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('daily_reminders')
+        .orderBy('time', descending: false)
+        .get();
+        
+    return snap.docs.map((d) => DailyReminder.fromJson(d.data(), d.id)).toList();
   }
 
   Future<List<DailyReminder>> getActiveDailyReminders() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'daily_reminders',
-      where: 'isActive = ?',
-      whereArgs: [1],
-      orderBy: "time ASC",
-    );
-    return List.generate(maps.length, (i) => DailyReminder.fromJson(maps[i]));
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+    
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('daily_reminders')
+        .where('isActive', isEqualTo: true)
+        .orderBy('time', descending: false)
+        .get();
+        
+    return snap.docs.map((d) => DailyReminder.fromJson(d.data(), d.id)).toList();
   }
 
   Future<void> updateDailyReminder(DailyReminder reminder) async {
-    final db = await database;
-    final map = reminder.toMap();
-    map['isSynced'] = 0;
-    map['updatedAt'] = DateTime.now().toIso8601String();
-
-    await db.update(
-      'daily_reminders',
-      map,
-      where: 'id = ?',
-      whereArgs: [reminder.id],
-    );
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || reminder.id == null) return;
+    
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('daily_reminders')
+        .doc(reminder.id)
+        .update(reminder.toMap());
   }
 
-  Future<void> deleteDailyReminder(int id) async {
-    final db = await database;
-    await _recordDeletion(db, 'daily_reminders', 'daily_reminders', id);
-    await db.delete(
-      'daily_reminders',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+  Future<void> deleteDailyReminder(String id) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('daily_reminders')
+        .doc(id)
+        .delete();
   }
 
-  Future<void> toggleDailyReminderActive(int id, bool isActive) async {
-    final db = await database;
-    await db.update(
-      'daily_reminders',
-      {
-        'isActive': isActive ? 1 : 0,
-        'isSynced': 0,
-        'updatedAt': DateTime.now().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+  Future<void> toggleDailyReminderActive(String id, bool isActive) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('daily_reminders')
+        .doc(id)
+        .update({'isActive': isActive});
   }
 
 

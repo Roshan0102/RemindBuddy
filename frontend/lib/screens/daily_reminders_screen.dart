@@ -181,11 +181,6 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                   await _scheduleDailyReminder(reminder);
                 }
 
-                // Trigger sync
-                try {
-                  SyncService(AuthService().pb).syncDailyReminders();
-                } catch (e) { print(e); }
-
                 Navigator.pop(context);
                 _loadReminders();
               },
@@ -200,8 +195,9 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
   Future<void> _scheduleDailyReminder(DailyReminder reminder) async {
     if (!reminder.isActive || reminder.id == null) return;
 
+    final int numId = int.tryParse(reminder.id ?? '0') ?? reminder.id.hashCode;
     // Cancel existing notification for this reminder
-    await _notificationService.cancelNotification(reminder.id! + 100000); // Offset to avoid conflicts with tasks
+    await _notificationService.cancelNotification(numId + 100000); // Offset to avoid conflicts with tasks
 
     // Schedule new daily notification
     await _notificationService.scheduleDailyReminder(reminder);
@@ -215,14 +211,10 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
       // Re-enable: schedule notification
       await _scheduleDailyReminder(reminder.copyWith(isActive: true));
     } else {
+      final int numId = int.tryParse(reminder.id ?? '0') ?? reminder.id.hashCode;
       // Disable: cancel notification
-      await _notificationService.cancelNotification(reminder.id! + 100000);
+      await _notificationService.cancelNotification(numId + 100000);
     }
-    
-    // Trigger sync
-    try {
-      SyncService(AuthService().pb).syncDailyReminders();
-    } catch (e) { print(e); }
     
     _loadReminders();
   }
@@ -248,11 +240,9 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
     );
 
     if (confirm == true) {
-      await _notificationService.cancelNotification(reminder.id! + 100000);
+      final int numId = int.tryParse(reminder.id ?? '0') ?? reminder.id.hashCode;
+      await _notificationService.cancelNotification(numId + 100000);
       await _storageService.deleteDailyReminder(reminder.id!);
-      try {
-        SyncService(AuthService().pb).syncDeletions();
-      } catch (e) { print(e); }
       _loadReminders();
     }
   }

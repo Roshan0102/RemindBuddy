@@ -410,7 +410,9 @@ class NotificationService {
   // Schedule Daily Reminder (repeats every day at the same time)
   Future<void> scheduleDailyReminder(dynamic reminder) async {
     // Support both DailyReminder and Task objects
-    final int id = (reminder.id ?? 0) + 100000; // Offset to avoid conflicts with tasks
+    if (reminder.id == null) return;
+    final int numId = int.tryParse(reminder.id ?? '0') ?? reminder.id.hashCode;
+    final int id = numId + 100000; // Offset to avoid conflicts with tasks
     final String title = reminder.title;
     final String description = reminder.description;
     final String timeStr = reminder.time;
