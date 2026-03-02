@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/task.dart';
 import '../models/note.dart';
@@ -335,117 +337,137 @@ class StorageService {
       final db = await database;
       await db.delete('deleted_records', where: 'id = ?', whereArgs: [id]);
   }
-  // Task Methods
-  Future<int> insertTask(Task task) async {
-    final db = await database;
-    final map = task.toMap();
-    map['isSynced'] = 0; // Force dirty
-    map['updatedAt'] = DateTime.now().toIso8601String();
+  // Task Methods (Migrated to Firebase)
+  Future<String> insertTask(Task task) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return '';
     
-    return await db.insert(
-      'tasks',
-      map,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final docRef = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('tasks')
+        .add(task.toMap());
+    
+    return docRef.id;
   }
 
   Future<List<Task>> getTasks() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('tasks');
-    return List.generate(maps.length, (i) {
-      return Task(
-        id: maps[i]['id'],
-        title: maps[i]['title'],
-        description: maps[i]['description'],
-        date: maps[i]['date'],
-        time: maps[i]['time'],
-        repeat: maps[i]['repeat'],
-        isAnnoying: maps[i]['isAnnoying'] == 1,
-      );
-    });
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+    
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('tasks')
+        .get();
+        
+    return snap.docs.map((doc) => Task.fromJson(doc.data(), doc.id)).toList();
   }
 
   Future<List<Task>> getTasksForDate(String date) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'tasks',
-      where: 'date = ?',
-      whereArgs: [date],
-    );
-    return List.generate(maps.length, (i) => Task.fromJson(maps[i]));
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+    
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('tasks')
+        .where('date', isEqualTo: date)
+        .get();
+        
+    return snap.docs.map((doc) => Task.fromJson(doc.data(), doc.id)).toList();
   }
 
   Future<void> updateTask(Task task) async {
-    final db = await database;
-    final map = task.toMap();
-    map['isSynced'] = 0;
-    map['updatedAt'] = DateTime.now().toIso8601String();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || task.id == null) return;
     
-    await db.update(
-      'tasks',
-      map,
-      where: 'id = ?',
-      whereArgs: [task.id],
-    );
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('tasks')
+        .doc(task.id)
+        .update(task.toMap());
   }
 
-  Future<void> deleteTask(int id) async {
-    final db = await database;
-    await _recordDeletion(db, 'tasks', 'tasks', id);
-    await db.delete(
-      'tasks',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+  Future<void> deleteTask(String id) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('tasks')
+        .doc(id)
+        .delete();
   }
 
   Future<void> clearOldTasks(String today) async {
-    final db = await database;
-    await db.delete('tasks', where: 'date < ?', whereArgs: [today]);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('tasks')
+        .where('date', isLessThan: today)
+        .get();
+        
+    for (var doc in snap.docs) {
+      await doc.reference.delete();
+    }
   }
 
-  // Note Methods
+  // Note Methods (Migrated to Firebase Firestore)
   Future<void> insertNote(Note note) async {
-    final db = await database;
-    final map = note.toMap();
-    map['isSynced'] = 0;
-    map['updatedAt'] = DateTime.now().toIso8601String();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
     
-    await db.insert(
-      'notes',
-      map,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('notes')
+        .add(note.toMap());
   }
 
   Future<List<Note>> getNotes() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('notes', orderBy: "date DESC");
-    return List.generate(maps.length, (i) => Note.fromMap(maps[i]));
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+    
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('notes')
+        .orderBy('date', descending: true)
+        .get();
+        
+    return querySnapshot.docs
+        .map((doc) => Note.fromMap(doc.data(), doc.id))
+        .toList();
   }
 
   Future<void> updateNote(Note note) async {
-    final db = await database;
-    final map = note.toMap();
-    map['isSynced'] = 0;
-    map['updatedAt'] = DateTime.now().toIso8601String();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || note.id == null) return;
     
-    await db.update(
-      'notes',
-      map,
-      where: 'id = ?',
-      whereArgs: [note.id],
-    );
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('notes')
+        .doc(note.id)
+        .update(note.toMap());
   }
 
-  Future<void> deleteNote(int id) async {
-    final db = await database;
-    await _recordDeletion(db, 'notes', 'notes', id);
-    await db.delete(
-      'notes',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+  Future<void> deleteNote(String id) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('notes')
+        .doc(id)
+        .delete();
   }
 
   // Daily Reminder Methods
@@ -518,79 +540,149 @@ class StorageService {
   }
 
 
-  // Checklist Methods
-  Future<int> createChecklist(String title, int iconCode, int color) async {
-    final db = await database;
-    return await db.insert('checklists', {
+  // Checklist Methods (Migrated to Firebase)
+  Future<String> createChecklist(String title, int iconCode, int color) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return '';
+    
+    final docRef = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .add({
       'title': title,
       'iconCode': iconCode,
       'color': color,
-      'isSynced': 0,
-      'updatedAt': DateTime.now().toIso8601String(),
+      'createdAt': DateTime.now().toIso8601String(),
     });
+    return docRef.id;
   }
 
   Future<List<Map<String, dynamic>>> getChecklists() async {
-    final db = await database;
-    return await db.query('checklists');
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+    
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .orderBy('createdAt', descending: false)
+        .get();
+        
+    return snap.docs.map((d) {
+      final data = d.data();
+      data['id'] = d.id;
+      return data;
+    }).toList();
   }
 
-  Future<void> deleteChecklist(int id) async {
-    final db = await database;
-    await _recordDeletion(db, 'checklists', 'checklists', id);
-    await _recordDeletionByField(db, 'checklist_items', 'checklist_items', 'checklistId = ?', [id]);
-    await db.delete('checklists', where: 'id = ?', whereArgs: [id]);
-    await db.delete('checklist_items', where: 'checklistId = ?', whereArgs: [id]);
+  Future<void> deleteChecklist(String id) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .doc(id)
+        .delete();
+        
+    // Delete all items under it
+    final items = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .doc(id)
+        .collection('items')
+        .get();
+    for (var doc in items.docs) {
+      await doc.reference.delete();
+    }
   }
 
-  Future<int> addChecklistItem(int checklistId, String text) async {
-    final db = await database;
-    return await db.insert('checklist_items', {
-      'checklistId': checklistId,
+  Future<String> addChecklistItem(String checklistId, String text) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return '';
+    
+    final docRef = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .doc(checklistId)
+        .collection('items')
+        .add({
       'text': text,
       'isChecked': 0,
-      'isSynced': 0,
-      'updatedAt': DateTime.now().toIso8601String(),
+      'createdAt': DateTime.now().toIso8601String(),
+    });
+    return docRef.id;
+  }
+
+  Future<List<Map<String, dynamic>>> getChecklistItems(String checklistId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+    
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .doc(checklistId)
+        .collection('items')
+        .orderBy('createdAt', descending: false)
+        .get();
+        
+    return snap.docs.map((d) {
+      final data = d.data();
+      data['id'] = d.id;
+      return data;
+    }).toList();
+  }
+
+  Future<void> toggleChecklistItem(String checklistId, String id, bool isChecked) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .doc(checklistId)
+        .collection('items')
+        .doc(id)
+        .update({
+      'isChecked': isChecked ? 1 : 0,
     });
   }
 
-  Future<List<Map<String, dynamic>>> getChecklistItems(int checklistId) async {
-    final db = await database;
-    return await db.query('checklist_items', where: 'checklistId = ?', whereArgs: [checklistId]);
+  Future<void> deleteChecklistItem(String checklistId, String id) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .doc(checklistId)
+        .collection('items')
+        .doc(id)
+        .delete();
   }
 
-  Future<void> toggleChecklistItem(int id, bool isChecked) async {
-    final db = await database;
-    await db.update(
-      'checklist_items',
-      {
-        'isChecked': isChecked ? 1 : 0,
-        'isSynced': 0,
-        'updatedAt': DateTime.now().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
-
-  Future<void> deleteChecklistItem(int id) async {
-    final db = await database;
-    await _recordDeletion(db, 'checklist_items', 'checklist_items', id);
-    await db.delete('checklist_items', where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<void> resetChecklistItems(int checklistId) async {
-    final db = await database;
-    await db.update(
-      'checklist_items',
-      {
-        'isChecked': 0,
-        'isSynced': 0,
-        'updatedAt': DateTime.now().toIso8601String(),
-      },
-      where: 'checklistId = ?',
-      whereArgs: [checklistId],
-    );
+  Future<void> resetChecklistItems(String checklistId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    final items = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .doc(checklistId)
+        .collection('items')
+        .get();
+        
+    for (var doc in items.docs) {
+      await doc.reference.update({'isChecked': 0});
+    }
   }
 
   // Gold Price Methods

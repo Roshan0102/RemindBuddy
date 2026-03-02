@@ -45,10 +45,9 @@ void callbackDispatcher() {
            
            try {
              await AuthService().init();
-             await SyncService(AuthService().pb).syncGoldPrices();
-             LogService.staticLog('✅ Background Price synced to PocketBase');
+             LogService.staticLog('✅ Background Authentication Initiated');
            } catch(e) {
-             LogService.staticLog('❌ Failed to sync background price to PocketBase: $e');
+             LogService.staticLog('❌ Failed Authentication: $e');
            }
 
            // 4. Notify

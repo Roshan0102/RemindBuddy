@@ -1,15 +1,11 @@
 class Task {
-  int? id;
+  final String? id; // Migrated to String for Firestore IDs
   final String title;
   final String description;
   final String date; // YYYY-MM-DD
   final String time; // HH:MM
   final String repeat; // none, daily, weekly, monthly
   final bool isAnnoying;
-
-  final String? remoteId;
-  final bool isSynced;
-  final String? updatedAt;
 
   Task({
     this.id,
@@ -19,54 +15,31 @@ class Task {
     required this.time,
     this.repeat = 'none',
     this.isAnnoying = false,
-    this.remoteId,
-    this.isSynced = false,
-    this.updatedAt,
   });
 
-  factory Task.fromJson(Map<String, dynamic> json) {
+  factory Task.fromJson(Map<String, dynamic> json, [String? docId]) {
     return Task(
-      id: json['id'],
-      title: json['title'],
-      description: json['description'],
-      date: json['date'],
-      time: json['time'],
+      id: docId ?? json['id']?.toString(),
+      title: json['title'] ?? '',
+      description: json['description'] ?? '',
+      date: json['date'] ?? '',
+      time: json['time'] ?? '',
       repeat: json['repeat'] ?? 'none',
       isAnnoying: json['isAnnoying'] == 1 || json['isAnnoying'] == true,
-      remoteId: json['remoteId'],
-      isSynced: json['isSynced'] == 1 || json['isSynced'] == true,
-      updatedAt: json['updatedAt'],
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
       'title': title,
       'description': description,
       'date': date,
       'time': time,
       'repeat': repeat,
       'isAnnoying': isAnnoying,
-      'remoteId': remoteId,
-      'isSynced': isSynced,
-      'updatedAt': updatedAt,
     };
   }
   
-  // For SQLite
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'title': title,
-      'description': description,
-      'date': date,
-      'time': time,
-      'repeat': repeat,
-      'isAnnoying': isAnnoying ? 1 : 0,
-      'remoteId': remoteId,
-      'isSynced': isSynced ? 1 : 0,
-      'updatedAt': updatedAt ?? DateTime.now().toIso8601String(),
-    };
-  }
+  // For SQLite fallback (while migrating UI bindings, these map smoothly to JSON)
+  Map<String, dynamic> toMap() => toJson();
 }

@@ -249,17 +249,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             _selectedTasks.removeAt(index);
                           });
 
-                          // 2. Delete from Local Storage & Cancel Notification
-                          await _storageService.deleteTask(deletedTask.id!);
-                          await _notificationService.cancelNotification(deletedTask.id!);
-
-                          // 3. Delete from Server
-                          try {
-                            final auth = AuthService();
-                            SyncService(auth.pb).syncDeletions();
-                          } catch (e) {
-                            LogService().error('Failed to trigger deletion sync', e);
-                          }
+                          // 2. Delete from Server
+                          await _storageService.deleteTask(deletedTask.id.toString());
+                          
+                          // Convert string ID back to int for local cancelation
+                          final numId = int.tryParse(deletedTask.id ?? '0') ?? deletedTask.hashCode;
+                          await _notificationService.cancelNotification(numId);
                           
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(

@@ -63,7 +63,6 @@ class _NotesScreenState extends State<NotesScreen> {
                   if (titleController.text.isNotEmpty || contentController.text.isNotEmpty) {
                     final newNote = Note(
                       id: note?.id,
-                      remoteId: note?.remoteId,
                       title: titleController.text,
                       content: contentController.text,
                       date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
@@ -74,11 +73,6 @@ class _NotesScreenState extends State<NotesScreen> {
                     } else {
                       await _storageService.updateNote(newNote);
                     }
-                    
-                    // Trigger sync
-                    try {
-                      SyncService(AuthService().pb).syncNotes();
-                    } catch (e) { print(e); }
 
                     _loadNotes();
                     if (mounted) Navigator.pop(context);
@@ -158,7 +152,6 @@ class _NotesScreenState extends State<NotesScreen> {
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
-          await SyncService(AuthService().pb).syncNotes();
           await _loadNotes();
         },
         child: _notes.isEmpty
@@ -239,9 +232,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                   if (confirm != true) return;
 
                                   await _storageService.deleteNote(note.id!);
-                                  try {
-                                    SyncService(AuthService().pb).syncDeletions();
-                                  } catch (e) { print(e); }
+                                  _loadNotes();
                                   _loadNotes();
                                 },
                               ),

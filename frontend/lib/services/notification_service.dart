@@ -192,6 +192,7 @@ class NotificationService {
 
   Future<void> scheduleTaskNotification(Task task) async {
     if (task.id == null) return;
+    final int numId = int.tryParse(task.id ?? '0') ?? task.id.hashCode;
 
     // Parse date and time
 
@@ -261,7 +262,7 @@ class NotificationService {
 
     try {
       await flutterLocalNotificationsPlugin.zonedSchedule(
-        task.id!,
+        numId,
         task.title,
         task.description,
         finalScheduledDate,
@@ -308,7 +309,7 @@ class NotificationService {
           for (int i = 1; i <= 5; i++) {
             final nextDate = finalScheduledDate.add(Duration(days: days * i));
             await flutterLocalNotificationsPlugin.zonedSchedule(
-              task.id! + (i * 100000), // Unique ID for future instances
+              numId + (i * 100000), // Unique ID for future instances
               task.title,
               task.description,
               nextDate,

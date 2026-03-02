@@ -34,13 +34,11 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
   Future<void> _createChecklist(String title, int iconCode, int color) async {
     await _storage.createChecklist(title, iconCode, color);
     _loadChecklists();
-    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
   }
 
-  Future<void> _deleteChecklist(int id) async {
+  Future<void> _deleteChecklist(String id) async {
     await _storage.deleteChecklist(id);
     _loadChecklists();
-    try { SyncService(AuthService().pb).syncDeletions(); } catch (e) {}
   }
 
   void _showAddDialog() {
@@ -183,7 +181,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
 }
 
 class ChecklistDetailScreen extends StatefulWidget {
-  final int checklistId;
+  final String checklistId;
   final String title;
 
   const ChecklistDetailScreen({
@@ -218,25 +216,21 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
   Future<void> _addItem(String text) async {
     await _storage.addChecklistItem(widget.checklistId, text);
     _loadItems();
-    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
   }
 
-  Future<void> _toggleItem(int id, bool isChecked) async {
-    await _storage.toggleChecklistItem(id, isChecked);
+  Future<void> _toggleItem(String id, bool isChecked) async {
+    await _storage.toggleChecklistItem(widget.checklistId, id, isChecked);
     _loadItems();
-    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
   }
 
-  Future<void> _deleteItem(int id) async {
-    await _storage.deleteChecklistItem(id);
+  Future<void> _deleteItem(String id) async {
+    await _storage.deleteChecklistItem(widget.checklistId, id);
     _loadItems();
-    try { SyncService(AuthService().pb).syncDeletions(); } catch (e) {}
   }
 
   Future<void> _resetList() async {
     await _storage.resetChecklistItems(widget.checklistId);
     _loadItems();
-    try { SyncService(AuthService().pb).syncChecklists(); } catch (e) {}
   }
 
   void _showAddItemDialog() {

@@ -112,22 +112,25 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         time: timeStr,
         repeat: _repeat,
         isAnnoying: _isAnnoying,
-        // Sync fields default to unsynced
       );
 
-      // 1. Save Locally (Offline First)
+      // 1. Save Natively to Firebase Firestore
       try {
         final storage = StorageService(); // Singleton
         final taskId = await storage.insertTask(newTask);
-        newTask.id = taskId;
         
-        await NotificationService().scheduleTaskNotification(newTask);
+        // Use the generated String ID to recreate the Task for Local Notifications
+        final savedTask = Task(
+          id: taskId,
+          title: newTask.title,
+          description: newTask.description,
+          date: newTask.date,
+          time: newTask.time,
+          repeat: newTask.repeat,
+          isAnnoying: newTask.isAnnoying,
+        );
         
-        // 2. Trigger Sync (Best Effort)
-        // Access PB via AuthService
-        final auth = AuthService();
-        final syncService = SyncService(auth.pb);
-        syncService.syncTasks(); // Fire and forget
+        await NotificationService().scheduleTaskNotification(savedTask);
         
         if (mounted) {
           Navigator.pop(context, true);

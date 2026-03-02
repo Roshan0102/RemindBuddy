@@ -109,10 +109,9 @@ class GoldSchedulerService {
         
         try {
           await AuthService().init();
-          await SyncService(AuthService().pb).syncGoldPrices();
-          LogService.staticLog('✅ 11 AM Price synced to PocketBase');
+          LogService.staticLog('✅ 11 AM Authentication Initiated');
         } catch(e) {
-          LogService.staticLog('❌ Failed to sync 11 AM price to PocketBase: $e');
+          LogService.staticLog('❌ Failed Authentication: $e');
         }
         
         // Re-fetch to get calculated diff
@@ -181,10 +180,9 @@ class GoldSchedulerService {
         
         try {
           await AuthService().init();
-          await SyncService(AuthService().pb).syncGoldPrices();
-          LogService.staticLog('✅ 7 PM Price synced to PocketBase');
+          LogService.staticLog('✅ 7 PM Authentication Initiated');
         } catch(e) {
-          LogService.staticLog('❌ Failed to sync 7 PM price to PocketBase: $e');
+          LogService.staticLog('❌ Failed Authentication: $e');
         }
         
         // Re-fetch to get calculated diff
