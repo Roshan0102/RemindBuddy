@@ -1,27 +1,26 @@
-4m 54s
 Run shorebird release android --artifact apk --flutter-version=3.41.0
 ⠋ Downloading patch......
 ✓ Downloading patch... (91ms)
 ⠋ Extracting patch......
 ✓ Extracting patch... (0.1s)
 ⠋ Downloading bundletool.jar......
-✓ Downloading bundletool.jar... (0.2s)
+✓ Downloading bundletool.jar... (0.1s)
 ⠋ Extracting bundletool.jar......
 ✓ Extracting bundletool.jar... (1.2s)
 ⠋ Downloading aot-tools.dill......
-✓ Downloading aot-tools.dill... (0.1s)
+✓ Downloading aot-tools.dill... (46ms)
 ⠋ Extracting aot-tools.dill......
 ✓ Extracting aot-tools.dill... (0.6s)
 ⠋ Fetching apps...
-✓ Fetching apps (0.5s)
+✓ Fetching apps (0.3s)
 ⠋ Installing Flutter 3.41.0 (54cd69360a)...
-✓ Installing Flutter 3.41.0 (54cd69360a) (13.0s)
+✓ Installing Flutter 3.41.0 (54cd69360a) (12.1s)
 ⠋ Running flutter precache...
-✓ Running flutter precache (35.0s)
+✓ Running flutter precache (32.9s)
 ⠋ Downloading aot-tools.dill......
-✓ Downloading aot-tools.dill... (0.1s)
+✓ Downloading aot-tools.dill... (89ms)
 ⠋ Extracting aot-tools.dill......
-✓ Extracting aot-tools.dill... (0.7s)
+✓ Extracting aot-tools.dill... (0.6s)
 Building Android app bundle with Flutter 3.41.0 (54cd69360a)
 Downloading Linux x64 Dart SDK from Flutter engine c10186c6dcacd5a481b0a0cb6587830cf974e5bd...
   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
@@ -30,8 +29,8 @@ Downloading Linux x64 Dart SDK from Flutter engine c10186c6dcacd5a481b0a0cb65878
   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
 
-  5  134M    5 7068k    0     0  19.4M      0  0:00:06 --:--:--  0:00:06 19.4M
-100  134M  100  134M    0     0   100M      0  0:00:01  0:00:01 --:--:--  130M
+ 31  134M   31 42.4M    0     0  58.6M      0  0:00:02 --:--:--  0:00:02 58.6M
+100  134M  100  134M    0     0   113M      0  0:00:01  0:00:01 --:--:--  201M
 Building flutter tool...
 Resolving dependencies...
 Downloading packages...
@@ -140,29 +139,22 @@ Changed 101 dependencies!
 2 packages are discontinued.
 24 packages have newer versions incompatible with dependency constraints.
 Try `dart pub outdated` for more information.
-Downloading Material fonts...                                      282ms
-Downloading Gradle Wrapper...                                       70ms
-Downloading package sky_engine...                                  137ms
-Downloading package flutter_gpu...                                  76ms
-Downloading flutter_patched_sdk tools...                           226ms
-Downloading flutter_patched_sdk_product tools...                   207ms
-Downloading linux-x64 tools...                                   1,245ms
-Downloading linux-x64/font-subset tools...                         139ms
-Downloading android-arm-profile/linux-x64 tools...                 155ms
-Downloading android-arm-release/linux-x64 tools...                 138ms
-Downloading android-arm64-profile/linux-x64 tools...               161ms
-Downloading android-arm64-release/linux-x64 tools...               148ms
-Downloading android-x64-profile/linux-x64 tools...                 163ms
-Downloading android-x64-release/linux-x64 tools...                 143ms
+Downloading Material fonts...                                      256ms
+Downloading Gradle Wrapper...                                       46ms
+Downloading package sky_engine...                                  131ms
+Downloading package flutter_gpu...                                  65ms
+Downloading flutter_patched_sdk tools...                           311ms
+Downloading flutter_patched_sdk_product tools...                   196ms
+Downloading linux-x64 tools...                                   1,159ms
+Downloading linux-x64/font-subset tools...                         123ms
+Downloading android-arm-profile/linux-x64 tools...                 135ms
+Downloading android-arm-release/linux-x64 tools...                 137ms
+Downloading android-arm64-profile/linux-x64 tools...               146ms
+Downloading android-arm64-release/linux-x64 tools...               134ms
+Downloading android-x64-profile/linux-x64 tools...                 145ms
+Downloading android-x64-release/linux-x64 tools...                 133ms
 Upgrading build.gradle
 Running Gradle task 'bundleRelease'...                          
-Checking the license for package Android SDK Platform 33 in /usr/local/lib/android/sdk/licenses
-License for package Android SDK Platform 33 accepted.
-Preparing "Install Android SDK Platform 33 (revision 3)".
-"Install Android SDK Platform 33 (revision 3)" ready.
-Installing Android SDK Platform 33 in /usr/local/lib/android/sdk/platforms/android-33
-"Install Android SDK Platform 33 (revision 3)" complete.
-"Install Android SDK Platform 33 (revision 3)" finished.
 Note: /home/runner/.pub-cache/hosted/pub.dev/android_alarm_manager_plus-4.0.8/android/src/main/java/dev/fluttercommunity/plus/androidalarmmanager/AlarmService.java uses or overrides a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
 Note: Some input files use or override a deprecated API.
@@ -171,49 +163,94 @@ Note: Some input files use or override a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
 Note: Some input files use unchecked or unsafe operations.
 Note: Recompile with -Xlint:unchecked for details.
-lib/models/task.dart:1:12: Error: Can't find '}' to match '{'.
-class Task {
-           ^
-e: file:///home/runner/.pub-cache/hosted/pub.dev/workmanager-0.5.2/android/src/main/kotlin/dev/fluttercommunity/workmanager/BackgroundWorker.kt:14:44 Unresolved reference 'shim'.
-e: file:///home/runner/.pub-cache/hosted/pub.dev/workmanager-0.5.2/android/src/main/kotlin/dev/fluttercommunity/workmanager/BackgroundWorker.kt:98:55 Unresolved reference 'registerWith'.
-e: file:///home/runner/.pub-cache/hosted/pub.dev/workmanager-0.5.2/android/src/main/kotlin/dev/fluttercommunity/workmanager/BackgroundWorker.kt:98:68 Unresolved reference 'ShimPluginRegistry'.
-e: file:///home/runner/.pub-cache/hosted/pub.dev/workmanager-0.5.2/android/src/main/kotlin/dev/fluttercommunity/workmanager/WorkmanagerPlugin.kt:35:52 Unresolved reference 'PluginRegistrantCallback'.
-e: file:///home/runner/.pub-cache/hosted/pub.dev/workmanager-0.5.2/android/src/main/kotlin/dev/fluttercommunity/workmanager/WorkmanagerPlugin.kt:38:52 Unresolved reference 'Registrar'.
-e: file:///home/runner/.pub-cache/hosted/pub.dev/workmanager-0.5.2/android/src/main/kotlin/dev/fluttercommunity/workmanager/WorkmanagerPlugin.kt:40:49 Unresolved reference 'context'.
-e: file:///home/runner/.pub-cache/hosted/pub.dev/workmanager-0.5.2/android/src/main/kotlin/dev/fluttercommunity/workmanager/WorkmanagerPlugin.kt:40:70 Unresolved reference 'messenger'.
-e: file:///home/runner/.pub-cache/hosted/pub.dev/workmanager-0.5.2/android/src/main/kotlin/dev/fluttercommunity/workmanager/WorkmanagerPlugin.kt:41:23 Unresolved reference 'addViewDestroyListener'.
-e: file:///home/runner/.pub-cache/hosted/pub.dev/workmanager-0.5.2/android/src/main/kotlin/dev/fluttercommunity/workmanager/WorkmanagerPlugin.kt:49:80 Unresolved reference 'PluginRegistrantCallback'.
-lib/services/storage_service.dart:31:19: Error: The method 'toMap' isn't defined for the type 'Task'.
- - 'Task' is from 'package:remindbuddy/models/task.dart' ('lib/models/task.dart').
-Try correcting the name to the name of an existing method, or defining a method named 'toMap'.
-        .add(task.toMap());
-                  ^^^^^
-lib/services/storage_service.dart:72:22: Error: The method 'toMap' isn't defined for the type 'Task'.
- - 'Task' is from 'package:remindbuddy/models/task.dart' ('lib/models/task.dart').
-Try correcting the name to the name of an existing method, or defining a method named 'toMap'.
-        .update(task.toMap());
-                     ^^^^^
+lib/services/gold_scheduler_service.dart:42:13: Error: 'tz.TZDateTime' can't be used as a type because 'tz' doesn't refer to an import prefix.
+      final tz.TZDateTime morningDate = tz.TZDateTime(
+            ^^^^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:47:13: Error: 'tz.TZDateTime' can't be used as a type because 'tz' doesn't refer to an import prefix.
+      final tz.TZDateTime eveningDate = tz.TZDateTime(
+            ^^^^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:51:13: Error: 'tz.TZDateTime' can't be used as a type because 'tz' doesn't refer to an import prefix.
+      final tz.TZDateTime tzNow = tz.TZDateTime.now(tz.local);
+            ^^^^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:65:27: Error: Not a constant expression.
+              importance: Importance.high,
+                          ^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:66:25: Error: Not a constant expression.
+              priority: Priority.high,
+                        ^^^^^^^^
+lib/services/gold_scheduler_service.dart:61:22: Error: Not a constant expression.
+            android: AndroidNotificationDetails(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:60:17: Error: Not a constant expression.
+          const NotificationDetails(
+                ^^^^^^^^^^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:90:27: Error: Not a constant expression.
+              importance: Importance.high,
+                          ^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:91:25: Error: Not a constant expression.
+              priority: Priority.high,
+                        ^^^^^^^^
+lib/services/gold_scheduler_service.dart:86:22: Error: Not a constant expression.
+            android: AndroidNotificationDetails(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:85:17: Error: Not a constant expression.
+          const NotificationDetails(
+                ^^^^^^^^^^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:42:41: Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
+ - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'tz'.
+      final tz.TZDateTime morningDate = tz.TZDateTime(
+                                        ^^
+lib/services/gold_scheduler_service.dart:43:9: Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
+ - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'tz'.
+        tz.local, targetDate.year, targetDate.month, targetDate.day, 11, 0,
+        ^^
+lib/services/gold_scheduler_service.dart:47:41: Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
+ - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'tz'.
+      final tz.TZDateTime eveningDate = tz.TZDateTime(
+                                        ^^
+lib/services/gold_scheduler_service.dart:48:9: Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
+ - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'tz'.
+        tz.local, targetDate.year, targetDate.month, targetDate.day, 19, 0,
+        ^^
+lib/services/gold_scheduler_service.dart:51:35: Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
+ - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'tz'.
+      final tz.TZDateTime tzNow = tz.TZDateTime.now(tz.local);
+                                  ^^
+lib/services/gold_scheduler_service.dart:51:53: Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
+ - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'tz'.
+      final tz.TZDateTime tzNow = tz.TZDateTime.now(tz.local);
+                                                    ^^
+lib/services/gold_scheduler_service.dart:71:32: Error: The getter 'AndroidScheduleMode' isn't defined for the type 'GoldSchedulerService'.
+ - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'AndroidScheduleMode'.
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+                               ^^^^^^^^^^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:73:15: Error: The getter 'UILocalNotificationDateInterpretation' isn't defined for the type 'GoldSchedulerService'.
+ - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'UILocalNotificationDateInterpretation'.
+              UILocalNotificationDateInterpretation.absoluteTime,
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:96:32: Error: The getter 'AndroidScheduleMode' isn't defined for the type 'GoldSchedulerService'.
+ - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'AndroidScheduleMode'.
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+                               ^^^^^^^^^^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:98:15: Error: The getter 'UILocalNotificationDateInterpretation' isn't defined for the type 'GoldSchedulerService'.
+ - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'UILocalNotificationDateInterpretation'.
+              UILocalNotificationDateInterpretation.absoluteTime,
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Target kernel_snapshot_program failed: Exception
 
 
-FAILURE: Build completed with 2 failures.
+FAILURE: Build failed with an exception.
 
-1: Task failed with an exception.
------------
-* What went wrong:
-Execution failed for task ':workmanager:compileReleaseKotlin'.
-> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
-   > Compilation error. See log for more details
-
-* Try:
-> Run with --stacktrace option to get the stack trace.
-> Run with --info or --debug option to get more log output.
-> Run with --scan to get full insights.
-> Get more help at https://help.gradle.org.
-==============================================================================
-
-2: Task failed with an exception.
------------
 * What went wrong:
 Execution failed for task ':app:compileFlutterBuildRelease'.
 > Process 'command '/home/runner/.config/shorebird/bin/cache/flutter/54cd69360a203f7cb2301130d7ca330b8be7bbbe/bin/flutter'' finished with non-zero exit value 1
@@ -223,10 +260,9 @@ Execution failed for task ':app:compileFlutterBuildRelease'.
 > Run with --info or --debug option to get more log output.
 > Run with --scan to get full insights.
 > Get more help at https://help.gradle.org.
-==============================================================================
 
-BUILD FAILED in 3m 31s
-Running Gradle task 'bundleRelease'...                            212.2s
+BUILD FAILED in 9m 11s
+Running Gradle task 'bundleRelease'...                            552.2s
 Gradle task bundleRelease failed with exit code 1
 Failed to build AAB.
 Command: flutter build appbundle --release --target-platform=android-arm,android-arm64,android-x64
@@ -259,6 +295,6 @@ https://github.com/shorebirdtech/shorebird/issues/new
 If you aren't sure why this command failed, re-run with the --verbose flag to see more information.
 
 You can also [file an issue](https://github.com/shorebirdtech/shorebird/issues/new/choose) if you think this is a bug. Please include the following log file in your report:
-/home/runner/.config/shorebird/logs/1772434883580_shorebird.log
+/home/runner/.config/shorebird/logs/1772557540193_shorebird.log
 
 Error: Process completed with exit code 70.

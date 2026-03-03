@@ -1,6 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'gold_price_service.dart';
 import 'storage_service.dart';
 import 'notification_service.dart';
@@ -57,7 +59,7 @@ class GoldSchedulerService {
           '💰 Gold Price Update (11 AM)',
           'Tap to check the latest gold rate for today.',
           morningDate,
-          const NotificationDetails(
+          NotificationDetails(
             android: AndroidNotificationDetails(
               'gold_price_channel',
               'Gold Price Alerts',
@@ -82,7 +84,7 @@ class GoldSchedulerService {
           '💰 Gold Price Update (7 PM)',
           'Tap to check the latest gold rate for today.',
           eveningDate,
-          const NotificationDetails(
+          NotificationDetails(
             android: AndroidNotificationDetails(
               'gold_price_channel',
               'Gold Price Alerts',
