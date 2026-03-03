@@ -29,22 +29,7 @@ class _GoldScreenState extends State<GoldScreen> {
   @override
   void initState() {
     super.initState();
-    _loadScheduleTimes();
     _loadData();
-  }
-  
-  Future<void> _loadScheduleTimes() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _morningTime = TimeOfDay(
-        hour: prefs.getInt('gold_morning_hour') ?? 11,
-        minute: prefs.getInt('gold_morning_minute') ?? 0,
-      );
-      _eveningTime = TimeOfDay(
-        hour: prefs.getInt('gold_evening_hour') ?? 19,
-        minute: prefs.getInt('gold_evening_minute') ?? 0,
-      );
-    });
   }
 
   bool _isFetching = false;
@@ -307,43 +292,6 @@ class _GoldScreenState extends State<GoldScreen> {
     }
   }
 
-  Future<void> _showScheduleSettings() async {
-    TimeOfDay? newMorning = await showTimePicker(
-      context: context,
-      initialTime: _morningTime,
-      helpText: 'Select Morning Fetch Time',
-    );
-    
-    if (newMorning == null || !mounted) return;
-    
-    TimeOfDay? newEvening = await showTimePicker(
-      context: context,
-      initialTime: _eveningTime,
-      helpText: 'Select Evening Fetch Time',
-    );
-    
-    if (newEvening == null || !mounted) return;
-    
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('gold_morning_hour', newMorning.hour);
-    await prefs.setInt('gold_morning_minute', newMorning.minute);
-    await prefs.setInt('gold_evening_hour', newEvening.hour);
-    await prefs.setInt('gold_evening_minute', newEvening.minute);
-    
-    setState(() {
-      _morningTime = newMorning;
-      _eveningTime = newEvening;
-    });
-    
-    await GoldSchedulerService().scheduleGoldPriceFetching();
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ Schedule updated!')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -365,16 +313,11 @@ class _GoldScreenState extends State<GoldScreen> {
             onPressed: _showDebugLog,
             tooltip: 'Show Debug Log',
           ),
-            IconButton(
-              icon: const Icon(Icons.settings),
-              onPressed: _showScheduleSettings,
-              tooltip: 'Schedule Settings',
-            ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _fetchPrice,
-              tooltip: 'Refresh Price',
-            ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _fetchPrice,
+            tooltip: 'Refresh Price',
+          ),
         ],
       ),
       body: _isLoading && _currentPrice == null
