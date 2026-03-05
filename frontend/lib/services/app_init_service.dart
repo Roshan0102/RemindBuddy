@@ -3,6 +3,7 @@ import '../services/storage_service.dart';
 import '../services/shift_service.dart';
 import '../services/notification_service.dart';
 import '../services/log_service.dart';
+import '../services/gold_scheduler_service.dart';
 
 /// Service to reinitialize app state on startup
 /// Ensures notifications are rescheduled and data is loaded
@@ -28,6 +29,9 @@ class AppInitService {
       
       // Reschedule shift notifications if shifts exist
       await _rescheduleShiftNotifications();
+      
+      // Reschedule gold price notifications
+      await GoldSchedulerService().scheduleGoldPriceFetching();
       
       // Reschedule daily reminders if any exist
       await _rescheduleDailyReminders();

@@ -12,6 +12,7 @@ import 'auth_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../services/notification_service.dart';
+import '../services/log_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -257,16 +258,18 @@ class _MainScreenState extends State<MainScreen> {
 
               const Divider(),
               ListTile(
-                leading: const Icon(Icons.settings),
-                title: const Text('Settings'),
-                subtitle: const Text('Coming Soon'),
+                leading: const Icon(Icons.bug_report, color: Colors.orange),
+                title: const Text('System Logs & Debug'),
+                subtitle: const Text('Check notification status'),
                 onTap: () {
-                   Navigator.pop(context);
-                   ScaffoldMessenger.of(context).showSnackBar(
-                     const SnackBar(content: Text('Settings feature is under development.')),
-                   );
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LogScreen()),
+                  );
                 },
               ),
+              const Divider(),
               ListTile(
                 leading: const Icon(Icons.info_outline),
                 title: const Text('About'),
@@ -275,7 +278,7 @@ class _MainScreenState extends State<MainScreen> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'RemindBuddy',
-                    applicationVersion: '1.0.83',
+                    applicationVersion: '1.0.84',
                     applicationIcon: const Icon(Icons.alarm_add, size: 48),
                     children: [
                       const Text('Your friendly daily reminder companion!'),

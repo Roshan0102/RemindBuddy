@@ -152,16 +152,42 @@ class NotificationService {
       await androidImplementation.requestNotificationsPermission();
       await androidImplementation.requestExactAlarmsPermission();
       
-      // Create the channel immediately so it shows in settings
-      const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        'remindbuddy_channel', // id
-        'RemindBuddy Notifications', // title
-        description: 'Channel for task reminders', // description
+      // Create channels immediately so they show in settings
+      
+      // 1. Task Channel (Default)
+      const AndroidNotificationChannel taskChannel = AndroidNotificationChannel(
+        'remindbuddy_channel', 
+        'RemindBuddy Notifications',
+        description: 'Channel for task reminders',
         importance: Importance.max,
         playSound: true,
         enableVibration: true,
       );
-      await androidImplementation.createNotificationChannel(channel);
+      await androidImplementation.createNotificationChannel(taskChannel);
+
+      // 2. Gold Price Channel
+      const AndroidNotificationChannel goldChannel = AndroidNotificationChannel(
+        'gold_price_channel',
+        'Gold Price Alerts',
+        description: 'Scheduled notifications for gold price updates',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      );
+      await androidImplementation.createNotificationChannel(goldChannel);
+
+      // 3. Shift Channel
+      const AndroidNotificationChannel shiftChannel = AndroidNotificationChannel(
+        'shift_reminder_channel',
+        'Shift Reminders',
+        description: 'Daily notifications about upcoming shifts',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      );
+      await androidImplementation.createNotificationChannel(shiftChannel);
+      
+      LogService().log('✅ All notification channels initialized');
     }
   }
 
