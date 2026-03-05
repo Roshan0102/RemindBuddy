@@ -3,6 +3,7 @@ import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:intl/intl.dart';
 import 'gold_price_service.dart';
 import 'storage_service.dart';
 import 'notification_service.dart';
@@ -10,115 +11,198 @@ import 'log_service.dart';
 import 'auth_service.dart';
 
 /// Scheduled Gold Price Fetcher
-/// Fetches gold prices at 11 AM and 7 PM IST daily
+/// Actually fetches the price in the background at 11 AM and 7 PM
 class GoldSchedulerService {
   static final GoldSchedulerService _instance = GoldSchedulerService._internal();
   factory GoldSchedulerService() => _instance;
   GoldSchedulerService._internal();
 
   // Alarm IDs
-  static const int morningNotifyId = 11000;
-  static const int eveningNotifyId = 12000;
+  static const int morningAlarmId = 11000;
+  static const int eveningAlarmId = 12000;
 
   /// Initialize
   Future<void> init() async {
-    // We still initialize AlarmManager just in case we use it for actual background work,
-    // but the notifications will follow the ShiftService method.
     await AndroidAlarmManager.initialize();
-    print('✅ Gold Scheduler Initialized');
+    LogService().log('✅ Gold Scheduler (Background Feed) Initialized');
   }
 
-  /// Schedule both morning and evening notifications (Shift Method)
+  /// Schedule the background fetching alarms
   Future<void> scheduleGoldPriceFetching() async {
-    // Cancel any existing alarms/notifications first
     await cancelAllAlarms();
 
-    final notificationService = NotificationService();
     final now = DateTime.now();
     
-    // Schedule for the next 45 days (Shift Method: zonedSchedule for 45 days)
-    for (int i = 0; i < 45; i++) {
-      final targetDate = now.add(Duration(days: i));
-      
-      // 11 AM Morning Notification
-      final tz.TZDateTime morningDate = tz.TZDateTime(
-        tz.local, targetDate.year, targetDate.month, targetDate.day, 11, 0,
-      );
-      
-      // 7 PM Evening Notification
-      final tz.TZDateTime eveningDate = tz.TZDateTime(
-        tz.local, targetDate.year, targetDate.month, targetDate.day, 19, 0,
-      );
-
-      final tz.TZDateTime tzNow = tz.TZDateTime.now(tz.local);
-
-      // Schedule Morning
-      if (morningDate.isAfter(tzNow.add(const Duration(seconds: 5)))) {
-        await notificationService.flutterLocalNotificationsPlugin.zonedSchedule(
-          morningNotifyId + i,
-          '💰 Gold Price Update (11 AM)',
-          'Tap to check the latest gold rate for today.',
-          morningDate,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              'gold_price_channel',
-              'Gold Price Alerts',
-              channelDescription: 'Scheduled notifications for gold price updates',
-              importance: Importance.high,
-              priority: Priority.high,
-              playSound: true,
-              enableVibration: true,
-            ),
-          ),
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          payload: 'gold_tab',
-        );
-      }
-
-      // Schedule Evening
-      if (eveningDate.isAfter(tzNow.add(const Duration(seconds: 5)))) {
-        await notificationService.flutterLocalNotificationsPlugin.zonedSchedule(
-          eveningNotifyId + i,
-          '💰 Gold Price Update (7 PM)',
-          'Tap to check the latest gold rate for today.',
-          eveningDate,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              'gold_price_channel',
-              'Gold Price Alerts',
-              channelDescription: 'Scheduled notifications for gold price updates',
-              importance: Importance.high,
-              priority: Priority.high,
-              playSound: true,
-              enableVibration: true,
-            ),
-          ),
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          payload: 'gold_tab',
-        );
-      }
+    // 1. Morning Alarm (11:00 AM)
+    DateTime morningTime = DateTime(now.year, now.month, now.day, 11, 0);
+    if (morningTime.isBefore(now)) {
+      morningTime = morningTime.add(const Duration(days: 1));
     }
+    
+    await AndroidAlarmManager.oneShotAt(
+      morningTime,
+      morningAlarmId,
+      goldMorningCallback,
+      exact: true,
+      wakeup: true,
+      rescheduleOnReboot: true,
+    );
+    print('✅ Scheduled morning fetch for: $morningTime');
 
-    LogService().log('✅ Scheduled 45 days of gold price notifications at 11 AM & 7 PM');
+    // 2. Evening Alarm (7:00 PM)
+    DateTime eveningTime = DateTime(now.year, now.month, now.day, 19, 0);
+    if (eveningTime.isBefore(now)) {
+      eveningTime = eveningTime.add(const Duration(days: 1));
+    }
+    
+    await AndroidAlarmManager.oneShotAt(
+      eveningTime,
+      eveningAlarmId,
+      goldEveningCallback,
+      exact: true,
+      wakeup: true,
+      rescheduleOnReboot: true,
+    );
+    print('✅ Scheduled evening fetch for: $eveningTime');
   }
 
-  /// Cancel all scheduled notifications
+  /// Cancel both alarms
   Future<void> cancelAllAlarms() async {
-    final notificationService = NotificationService();
-    for (int i = 0; i < 45; i++) {
-      await notificationService.flutterLocalNotificationsPlugin.cancel(morningNotifyId + i);
-      await notificationService.flutterLocalNotificationsPlugin.cancel(eveningNotifyId + i);
-    }
-    print('🗑️ Cancelled all gold price scheduled notifications');
+    await AndroidAlarmManager.cancel(morningAlarmId);
+    await AndroidAlarmManager.cancel(eveningAlarmId);
+    print('🗑️ Gold Alarms Cancelled');
   }
 
-  /// Manual fetch for testing
+  /// Test fetch (forces immediate background execution)
   Future<void> manualFetch() async {
-    LogService.staticLog('🔄 Manual gold price fetch triggered');
-    // Implement manual fetch logic if needed, or just let the screen handle it
+    LogService().log('🔄 Testing background gold fetch...');
+    await AndroidAlarmManager.oneShot(
+      const Duration(seconds: 1),
+      morningAlarmId + 999,
+      goldMorningCallback,
+      exact: true,
+      wakeup: true,
+    );
+  }
+}
+
+/// Static entry points for Android Alarm Manager
+@pragma('vm:entry-point')
+void goldMorningCallback() async {
+  await _performGoldFetch('11 AM');
+  
+  // Reschedule for tomorrow
+  final now = DateTime.now();
+  final next = DateTime(now.year, now.month, now.day, 11, 0).add(const Duration(days: 1));
+  await AndroidAlarmManager.oneShotAt(
+    next,
+    GoldSchedulerService.morningAlarmId,
+    goldMorningCallback,
+    exact: true,
+    wakeup: true,
+    rescheduleOnReboot: true,
+  );
+}
+
+@pragma('vm:entry-point')
+void goldEveningCallback() async {
+  await _performGoldFetch('7 PM');
+
+  // Reschedule for tomorrow
+  final now = DateTime.now();
+  final next = DateTime(now.year, now.month, now.day, 19, 0).add(const Duration(days: 1));
+  await AndroidAlarmManager.oneShotAt(
+    next,
+    GoldSchedulerService.eveningAlarmId,
+    goldEveningCallback,
+    exact: true,
+    wakeup: true,
+    rescheduleOnReboot: true,
+  );
+}
+
+/// Core fetch logic shared by both callbacks
+Future<void> _performGoldFetch(String timeLabel) async {
+  LogService.staticLog('🌕 Starting Background Gold Fetch ($timeLabel)');
+  
+  try {
+    // 1. Initialize Firebase (CRITICAL for background isolates)
+    await Firebase.initializeApp();
+    
+    // 2. Init Services
+    final notificationService = NotificationService();
+    await notificationService.init();
+    
+    final goldService = GoldPriceService();
+    final storage = StorageService();
+
+    // 3. Fetch Price
+    final result = await goldService.fetchCurrentGoldPrice();
+    final newPrice = result['price'] as GoldPrice?;
+    
+    if (newPrice != null) {
+      LogService.staticLog('💰 Gold Price Fetched: ₹${newPrice.price}');
+      
+      // 4. Get Previous Price for Change Calculation
+      final prevPrice = await storage.getLatestGoldPrice();
+      double change = 0.0;
+      if (prevPrice != null) {
+        change = newPrice.price - prevPrice.price;
+      }
+      
+      // Update price change in the model
+      final updatedPrice = GoldPrice(
+        date: newPrice.date,
+        timestamp: newPrice.timestamp,
+        price: newPrice.price,
+        priceChange: change,
+      );
+
+      // 5. Save to DB
+      await storage.saveGoldPrice(updatedPrice);
+      
+      // 6. Show Notification with Price
+      String changeText = "";
+      if (change != 0.0) {
+        changeText = change > 0 ? " (📈 +₹${change.abs().toStringAsFixed(0)})" : " (📉 -₹${change.abs().toStringAsFixed(0)})";
+      }
+
+      await notificationService.flutterLocalNotificationsPlugin.show(
+        8000,
+        '💰 Gold Price Update ($timeLabel)',
+        'Latest price: ₹${newPrice.price.toStringAsFixed(0)}$changeText',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'gold_price_channel',
+            'Gold Price Alerts',
+            channelDescription: 'Daily gold price updates',
+            importance: Importance.high,
+            priority: Priority.high,
+            playSound: true,
+          ),
+        ),
+        payload: 'gold_tab',
+      );
+      
+      LogService.staticLog('✅ Gold background task finished successfully');
+    } else {
+      LogService.staticLog('⚠️ Gold fetch failed: ${result['debug']}');
+      // Optional: notify even on failure?
+      await notificationService.flutterLocalNotificationsPlugin.show(
+        8000,
+        '⚠️ Gold Fetch Issue ($timeLabel)',
+        'Check internet connection to update gold prices.',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'gold_price_channel',
+            'Gold Price Alerts',
+            importance: Importance.low,
+          ),
+        ),
+        payload: 'gold_tab',
+      );
+    }
+  } catch (e) {
+    LogService.staticLog('❌ Fatal error in gold fetch task: $e');
   }
 }
