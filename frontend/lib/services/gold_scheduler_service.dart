@@ -9,6 +9,7 @@ import 'storage_service.dart';
 import 'notification_service.dart';
 import 'log_service.dart';
 import 'auth_service.dart';
+import '../models/gold_price.dart';
 
 /// Scheduled Gold Price Fetcher
 /// Actually fetches the price in the background at 11 AM and 7 PM

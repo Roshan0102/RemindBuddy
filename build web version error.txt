@@ -1,5 +1,5 @@
-11s
-52s
+8s
+51s
 Run flutter build web --release
 Compiling lib/main.dart for the Web...                          
 Warning: In index.html:37: Flutter's service worker is deprecated and will be removed in a future Flutter release. See https://github.com/flutter/flutter/issues/156910 for more details.
@@ -13,100 +13,14 @@ Consider addressing these issues to enable wasm builds. See docs for more info: 
 
 Use --no-wasm-dry-run to disable these warnings.
 Target dart2js failed: ProcessException: Process exited abnormally with exit code 1:
-lib/services/gold_scheduler_service.dart:42:13:
-Error: 'tz.TZDateTime' can't be used as a type because 'tz' doesn't refer to an import prefix.
-      final tz.TZDateTime morningDate = tz.TZDateTime(
-            ^^^^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:47:13:
-Error: 'tz.TZDateTime' can't be used as a type because 'tz' doesn't refer to an import prefix.
-      final tz.TZDateTime eveningDate = tz.TZDateTime(
-            ^^^^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:51:13:
-Error: 'tz.TZDateTime' can't be used as a type because 'tz' doesn't refer to an import prefix.
-      final tz.TZDateTime tzNow = tz.TZDateTime.now(tz.local);
-            ^^^^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:65:27:
-Error: Not a constant expression.
-              importance: Importance.high,
-                          ^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:66:25:
-Error: Not a constant expression.
-              priority: Priority.high,
-                        ^^^^^^^^
-lib/services/gold_scheduler_service.dart:61:22:
-Error: Not a constant expression.
-            android: AndroidNotificationDetails(
-                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:60:17:
-Error: Not a constant expression.
-          const NotificationDetails(
-                ^^^^^^^^^^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:90:27:
-Error: Not a constant expression.
-              importance: Importance.high,
-                          ^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:91:25:
-Error: Not a constant expression.
-              priority: Priority.high,
-                        ^^^^^^^^
-lib/services/gold_scheduler_service.dart:86:22:
-Error: Not a constant expression.
-            android: AndroidNotificationDetails(
-                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:85:17:
-Error: Not a constant expression.
-          const NotificationDetails(
-                ^^^^^^^^^^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:42:41:
-Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
- - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
-      final tz.TZDateTime morningDate = tz.TZDateTime(
-                                        ^^
-lib/services/gold_scheduler_service.dart:43:9:
-Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
- - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
-        tz.local, targetDate.year, targetDate.month, targetDate.day, 11, 0,
-        ^^
-lib/services/gold_scheduler_service.dart:47:41:
-Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
- - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
-      final tz.TZDateTime eveningDate = tz.TZDateTime(
-                                        ^^
-lib/services/gold_scheduler_service.dart:48:9:
-Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
- - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
-        tz.local, targetDate.year, targetDate.month, targetDate.day, 19, 0,
-        ^^
-lib/services/gold_scheduler_service.dart:51:35:
-Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
- - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
-      final tz.TZDateTime tzNow = tz.TZDateTime.now(tz.local);
-                                  ^^
-lib/services/gold_scheduler_service.dart:51:53:
-Error: The getter 'tz' isn't defined for the type 'GoldSchedulerService'.
- - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
-      final tz.TZDateTime tzNow = tz.TZDateTime.now(tz.local);
-                                                    ^^
-lib/services/gold_scheduler_service.dart:71:32:
-Error: The getter 'AndroidScheduleMode' isn't defined for the type 'GoldSchedulerService'.
- - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-                               ^^^^^^^^^^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:73:15:
-Error: The getter 'UILocalNotificationDateInterpretation' isn't defined for the type 'GoldSchedulerService'.
- - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
-              UILocalNotificationDateInterpretation.absoluteTime,
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:96:32:
-Error: The getter 'AndroidScheduleMode' isn't defined for the type 'GoldSchedulerService'.
- - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-                               ^^^^^^^^^^^^^^^^^^^
-lib/services/gold_scheduler_service.dart:98:15:
-Error: The getter 'UILocalNotificationDateInterpretation' isn't defined for the type 'GoldSchedulerService'.
- - 'GoldSchedulerService' is from 'package:remindbuddy/services/gold_scheduler_service.dart' ('lib/services/gold_scheduler_service.dart').
-              UILocalNotificationDateInterpretation.absoluteTime,
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/services/gold_scheduler_service.dart:141:41:
+Error: 'GoldPrice' isn't a type.
+    final newPrice = result['price'] as GoldPrice?;
+                                        ^^^^^^^^^
+lib/services/gold_scheduler_service.dart:154:28:
+Error: Method not found: 'GoldPrice'.
+      final updatedPrice = GoldPrice(
+                           ^^^^^^^^^
 Error: Compilation failed.
   Command: /opt/hostedtoolcache/flutter/stable-3.41.0-x64/bin/cache/dart-sdk/bin/dart compile js --platform-binaries=/opt/hostedtoolcache/flutter/stable-3.41.0-x64/bin/cache/flutter_web_sdk/kernel --invoker=flutter_tool -Ddart.vm.product=true -DFLUTTER_VERSION=3.41.0 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=44a626f4f0 -DFLUTTER_ENGINE_REVISION=3452d735bd -DFLUTTER_DART_VERSION=3.11.0 -DFLUTTER_WEB_USE_SKIA=true -DFLUTTER_WEB_USE_SKWASM=false -DFLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/3452d735bd38224ef2db85ca763d862d6326b17f/ --native-null-assertions --no-source-maps -O4 --minify -o /home/runner/work/RemindBuddy/RemindBuddy/frontend/.dart_tool/flutter_build/6ae7963641baf89316d01371f1434179/app.dill --packages=/home/runner/work/RemindBuddy/RemindBuddy/frontend/.dart_tool/package_config.json --cfe-only /home/runner/work/RemindBuddy/RemindBuddy/frontend/.dart_tool/flutter_build/6ae7963641baf89316d01371f1434179/main.dart
 #0      RunResult.throwException (package:flutter_tools/src/base/process.dart:153:5)
@@ -151,6 +65,6 @@ Error: Compilation failed.
 #20     main (package:flutter_tools/executable.dart:103:3)
 <asynchronous suspension>
 
-Compiling lib/main.dart for the Web...                             51.3s
+Compiling lib/main.dart for the Web...                             50.0s
 Error: Failed to compile application for the Web.
 Error: Process completed with exit code 1.
