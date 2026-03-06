@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'notification_service.dart';
+import 'battery_optimization_service.dart';
 
 class LogService {
   static final LogService _instance = LogService._internal();
@@ -111,16 +112,12 @@ class LogScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         ElevatedButton(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Go to Settings > Apps > RemindBuddy > Battery > Unrestricted'),
-                                duration: Duration(seconds: 5),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                          child: const Text('🔋 Fix Battery Settings', style: TextStyle(color: Colors.white)),
+                          onPressed: () => BatteryOptimizationService.showOptimizationPanel(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('⚙️ Fix Background Issues'),
                         ),
                       ],
                     );
