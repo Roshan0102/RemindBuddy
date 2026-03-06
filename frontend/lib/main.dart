@@ -10,6 +10,10 @@ import 'services/app_init_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  
+  // Set the background messaging handler early on, as a top-level function.
+  FirebaseMessaging.onBackgroundMessage(NotificationService.firebaseMessagingBackgroundHandler);
+
   await initializeDateFormatting();
   try {
     await NotificationService().init();

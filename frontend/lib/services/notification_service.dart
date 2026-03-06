@@ -2,6 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../models/task.dart';
 import 'log_service.dart';
 import 'dart:async';
@@ -24,16 +25,12 @@ class NotificationService {
 
   NotificationService._internal();
 
-  // Background Handler
+  // Background Handler for notification taps
   @pragma('vm:entry-point')
   static void notificationTapBackground(NotificationResponse notificationResponse) {
     print('Notification tapped: ${notificationResponse.actionId}');
     
-    // Only handle action button taps, not regular notification taps
-    // This prevents duplicate notifications when user clicks the notification itself
     if (notificationResponse.actionId == null) {
-      // User tapped the notification body (not an action button)
-      // Just open the app, don't reschedule
       print('Notification body tapped - opening app only');
       selectNotificationStream.add(notificationResponse.payload);
       return;
@@ -41,13 +38,19 @@ class NotificationService {
     
     // Handle action buttons
     if (notificationResponse.actionId == 'NO_ACTION') {
-      // Schedule for 3 hours later
       print('NO button tapped - scheduling snooze');
       _scheduleSnooze(notificationResponse.id!, notificationResponse.payload);
-    } else if (notificationResponse.actionId == 'YES_ACTION') {
-      // Task completed - cancel any future snoozes
-      print('YES button tapped - task completed');
-      // The notification is already set to cancelNotification: true, so it will dismiss
+    } 
+  }
+
+  // FCM Background Message Handler
+  @pragma('vm:entry-point')
+  static Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+    LogService.staticLog("Handling background message: ${message.messageId}");
+    // If the message contains data to trigger a fetch:
+    if (message.data['action'] == 'fetch_gold') {
+      // We can trigger the gold fetch logic here if needed
+      // But usually FCM shows its own notification if 'notification' block is present
     }
   }
 
@@ -62,7 +65,6 @@ class NotificationService {
 
     // Quiet Hours Logic: 11 PM (23:00) to 6 AM (06:00)
     if (nextReminder.hour >= 23 || nextReminder.hour < 6) {
-      // If it falls in quiet hours, push to 6 AM next day
       if (nextReminder.hour >= 23) {
          nextReminder = tz.TZDateTime(tz.local, now.year, now.month, now.day + 1, 6, 0);
       } else {
@@ -71,7 +73,7 @@ class NotificationService {
     }
 
     await flutterLocalNotificationsPlugin.zonedSchedule(
-      id + 999, // Use a temporary ID for snooze
+      id + 999, 
       'Reminder: ${payload ?? "Task"}',
       'You snoozed this task. Do it now!',
       nextReminder,
@@ -88,13 +90,13 @@ class NotificationService {
             summaryText: 'Nag Mode Active',
           ),
           actions: [
-            AndroidNotificationAction(
+            const AndroidNotificationAction(
               'YES_ACTION', 
               'YES (Done)', 
               showsUserInterface: false,
               cancelNotification: true,
             ),
-            AndroidNotificationAction(
+            const AndroidNotificationAction(
               'NO_ACTION', 
               'NO (Remind in 3h)', 
               showsUserInterface: false,
@@ -114,8 +116,6 @@ class NotificationService {
     
     try {
       String timeZoneName = await FlutterTimezone.getLocalTimezone();
-      
-      // FIX: Handle deprecated timezone names
       if (timeZoneName == 'Asia/Calcutta') {
         timeZoneName = 'Asia/Kolkata';
       }
@@ -126,7 +126,6 @@ class NotificationService {
     } catch (e) {
       print('Error getting local timezone: $e');
       debugError = e.toString();
-      // Fallback to UTC if timezone detection fails
       tz.setLocalLocation(tz.getLocation('UTC'));
       debugTimeZone = 'UTC (Fallback)';
     }
@@ -143,6 +142,31 @@ class NotificationService {
       onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
 
+    // Initialize Firebase Messaging
+    FirebaseMessaging messaging = FirebaseMessaging.instance;
+    await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    // Get FCM Token for debugging
+    messaging.getToken().then((token) {
+      print("FCM Token: $token");
+      // LogService().log("FCM Token: $token"); // Optional: log it for the user to copy
+    });
+
+    // Listen for foreground FCM messages
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      print("Received foreground FCM: ${message.notification?.title}");
+      if (message.notification != null) {
+        showImmediateNotification(
+          title: message.notification!.title,
+          body: message.notification!.body,
+        );
+      }
+    });
+
     // Request Permissions (Android 13+)
     final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
         flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
@@ -152,9 +176,8 @@ class NotificationService {
       await androidImplementation.requestNotificationsPermission();
       await androidImplementation.requestExactAlarmsPermission();
       
-      // Create channels immediately so they show in settings
+      // Create channels immediately
       
-      // 1. Task Channel (Default)
       const AndroidNotificationChannel taskChannel = AndroidNotificationChannel(
         'remindbuddy_channel', 
         'RemindBuddy Notifications',
@@ -165,31 +188,32 @@ class NotificationService {
       );
       await androidImplementation.createNotificationChannel(taskChannel);
 
-      // 2. Gold Price Channel
       const AndroidNotificationChannel goldChannel = AndroidNotificationChannel(
         'gold_price_channel',
         'Gold Price Alerts',
         description: 'Scheduled notifications for gold price updates',
-        importance: Importance.high,
+        importance: Importance.max, // UPPED to max
+        priority: Priority.high,
         playSound: true,
         enableVibration: true,
       );
       await androidImplementation.createNotificationChannel(goldChannel);
 
-      // 3. Shift Channel
       const AndroidNotificationChannel shiftChannel = AndroidNotificationChannel(
         'shift_reminder_channel',
         'Shift Reminders',
         description: 'Daily notifications about upcoming shifts',
-        importance: Importance.high,
+        importance: Importance.max, // UPPED to max
+        priority: Priority.high,
         playSound: true,
         enableVibration: true,
       );
       await androidImplementation.createNotificationChannel(shiftChannel);
       
-      LogService().log('✅ All notification channels initialized');
+      LogService().log('✅ All notification channels initialized (High Importance)');
     }
   }
+
 
   Future<void> showTestNotification() async {
     final String timeZoneName = tz.local.name;

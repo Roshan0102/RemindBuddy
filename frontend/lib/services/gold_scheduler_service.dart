@@ -4,14 +4,16 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
+import 'package:workmanager/workmanager.dart';
 import 'gold_price_service.dart';
 import 'storage_service.dart';
 import 'notification_service.dart';
 import 'log_service.dart';
 import 'auth_service.dart';
+import 'shift_service.dart';
 import '../models/gold_price.dart';
 
-/// Scheduled Gold Price Fetcher
+/// Scheduled Gold Price Fetcher & Shift Reminder
 /// Actually fetches the price in the background at 11 AM and 7 PM
 class GoldSchedulerService {
   static final GoldSchedulerService _instance = GoldSchedulerService._internal();
@@ -21,11 +23,12 @@ class GoldSchedulerService {
   // Alarm IDs
   static const int morningAlarmId = 11000;
   static const int eveningAlarmId = 12000;
+  static const int shiftAlarmId = 13000;
 
   /// Initialize
   Future<void> init() async {
     await AndroidAlarmManager.initialize();
-    LogService().log('✅ Gold Scheduler (Background Feed) Initialized');
+    LogService().log('✅ Gold & Shift Scheduler Initialized');
   }
 
   /// Schedule the background fetching alarms
@@ -48,7 +51,7 @@ class GoldSchedulerService {
       wakeup: true,
       rescheduleOnReboot: true,
     );
-    print('✅ Scheduled morning fetch for: $morningTime');
+    LogService().log('✅ Scheduled Gold Morning fetch for: $morningTime');
 
     // 2. Evening Alarm (7:00 PM)
     DateTime eveningTime = DateTime(now.year, now.month, now.day, 19, 0);
@@ -64,14 +67,31 @@ class GoldSchedulerService {
       wakeup: true,
       rescheduleOnReboot: true,
     );
-    print('✅ Scheduled evening fetch for: $eveningTime');
+    LogService().log('✅ Scheduled Gold Evening fetch for: $eveningTime');
+
+    // 3. Shift Alarm (10:00 PM)
+    DateTime shiftTime = DateTime(now.year, now.month, now.day, 22, 0);
+    if (shiftTime.isBefore(now)) {
+      shiftTime = shiftTime.add(const Duration(days: 1));
+    }
+
+    await AndroidAlarmManager.oneShotAt(
+      shiftTime,
+      shiftAlarmId,
+      shiftDailyCallback,
+      exact: true,
+      wakeup: true,
+      rescheduleOnReboot: true,
+    );
+    LogService().log('✅ Scheduled Shift Daily trigger for: $shiftTime');
   }
 
-  /// Cancel both alarms
+  /// Cancel all alarms
   Future<void> cancelAllAlarms() async {
     await AndroidAlarmManager.cancel(morningAlarmId);
     await AndroidAlarmManager.cancel(eveningAlarmId);
-    print('🗑️ Gold Alarms Cancelled');
+    await AndroidAlarmManager.cancel(shiftAlarmId);
+    print('🗑️ Background Alarms Cancelled');
   }
 
   /// Test fetch (forces immediate background execution)
@@ -122,6 +142,30 @@ void goldEveningCallback() async {
   );
 }
 
+@pragma('vm:entry-point')
+void shiftDailyCallback() async {
+  LogService.staticLog('📅 Triggering Dynamic Shift Update (10 PM Task)');
+  try {
+     await Firebase.initializeApp();
+     final shiftService = ShiftService();
+     await shiftService.showShiftNotification(); // Fetches latest data and notifies
+  } catch (e) {
+     LogService.staticLog('❌ Error in shift callback: $e');
+  }
+
+  // Reschedule for tomorrow
+  final now = DateTime.now();
+  final next = DateTime(now.year, now.month, now.day, 22, 0).add(const Duration(days: 1));
+  await AndroidAlarmManager.oneShotAt(
+    next,
+    GoldSchedulerService.shiftAlarmId,
+    shiftDailyCallback,
+    exact: true,
+    wakeup: true,
+    rescheduleOnReboot: true,
+  );
+}
+
 /// Core fetch logic shared by both callbacks
 Future<void> _performGoldFetch(String timeLabel) async {
   LogService.staticLog('🌕 Starting Background Gold Fetch ($timeLabel)');
@@ -144,11 +188,13 @@ Future<void> _performGoldFetch(String timeLabel) async {
     if (newPrice != null) {
       LogService.staticLog('💰 Gold Price Fetched: ₹${newPrice.price}');
       
-      // 4. Get Previous Price for Change Calculation
+      // 4. Get Latest Price for Change Calculation
+      // We use getLatestGoldPrice to find what's already in DB BEFORE we save the new one
       final prevPrice = await storage.getLatestGoldPrice();
       double change = 0.0;
       if (prevPrice != null) {
         change = newPrice.price - prevPrice.price;
+        LogService.staticLog('🔍 Price comparison: ${newPrice.price} vs ${prevPrice.price}');
       }
       
       // Update price change in the model
@@ -165,21 +211,25 @@ Future<void> _performGoldFetch(String timeLabel) async {
       // 6. Show Notification with Price
       String changeText = "";
       if (change != 0.0) {
-        changeText = change > 0 ? " (📈 +₹${change.abs().toStringAsFixed(0)})" : " (📉 -₹${change.abs().toStringAsFixed(0)})";
+        String sign = change > 0 ? "+" : "-";
+        String emoji = change > 0 ? "📈" : "📉";
+        changeText = " ($emoji $sign₹${change.abs().toStringAsFixed(0)})";
       }
 
       await notificationService.flutterLocalNotificationsPlugin.show(
         8000,
         '💰 Gold Price Update ($timeLabel)',
-        'Latest price: ₹${newPrice.price.toStringAsFixed(0)}$changeText',
+        'Today: ₹${newPrice.price.toStringAsFixed(0)}$changeText',
         const NotificationDetails(
           android: AndroidNotificationDetails(
             'gold_price_channel',
             'Gold Price Alerts',
             channelDescription: 'Daily gold price updates',
-            importance: Importance.high,
+            importance: Importance.max,
             priority: Priority.high,
             playSound: true,
+            enableVibration: true,
+            icon: '@mipmap/ic_launcher',
           ),
         ),
         payload: 'gold_tab',
@@ -187,17 +237,20 @@ Future<void> _performGoldFetch(String timeLabel) async {
       
       LogService.staticLog('✅ Gold background task finished successfully');
     } else {
-      LogService.staticLog('⚠️ Gold fetch failed: ${result['debug']}');
-      // Optional: notify even on failure?
+      LogService.staticLog('⚠️ Gold fetch failed: ${result['method']} - ${result['debug']}');
+      
+      // Fetch failed, show a "delayed" notification? 
+      // Actually, user wants it at fixed time. If it fails, we notify they might be offline.
       await notificationService.flutterLocalNotificationsPlugin.show(
-        8000,
-        '⚠️ Gold Fetch Issue ($timeLabel)',
-        'Check internet connection to update gold prices.',
+        8001,
+        '⚠️ Gold Rate Sync Issue',
+        'Could not update prices automatically. Open app to retry.',
         const NotificationDetails(
           android: AndroidNotificationDetails(
             'gold_price_channel',
             'Gold Price Alerts',
-            importance: Importance.low,
+            importance: Importance.defaultImportance,
+            priority: Priority.defaultPriority,
           ),
         ),
         payload: 'gold_tab',

@@ -83,20 +83,38 @@ class ShiftService {
     }
   }
 
-  // Shows immediate notification with shift info
+  // Shows immediate or background-triggered notification with shift info
   Future<void> showShiftNotification() async {
+    LogService.staticLog('📅 Fetching shift data for notification...');
     try {
-      final tomorrow = DateTime.now().add(const Duration(days: 1));
-      final dayAfterTomorrow = DateTime.now().add(const Duration(days: 2));
+      final now = DateTime.now();
+      final tomorrow = now.add(const Duration(days: 1));
+      final dayAfterTomorrow = now.add(const Duration(days: 2));
 
       final tomorrowDate = DateFormat('yyyy-MM-dd').format(tomorrow);
       final dayAfterDate = DateFormat('yyyy-MM-dd').format(dayAfterTomorrow);
 
-      final tomorrowShift = await _storage.getShiftForDate(tomorrowDate);
-      final dayAfterShift = await _storage.getShiftForDate(dayAfterDate);
+      // Try fetching from local storage first
+      var tomorrowShift = await _storage.getShiftForDate(tomorrowDate);
+      var dayAfterShift = await _storage.getShiftForDate(dayAfterDate);
 
       if (tomorrowShift == null) {
-        LogService().log('No shift data found for tomorrow');
+        LogService.staticLog('⚠️ No shift data found for tomorrow ($tomorrowDate).');
+        // We could try a sync here if logged in, but for now we notify of missing data
+        await _notificationService.flutterLocalNotificationsPlugin.show(
+          9998,
+          '📅 Shift Roster Missing',
+          'No shift data found for tomorrow. Please upload your roster.',
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'shift_reminder_channel',
+              'Shift Reminders',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+          ),
+          payload: 'shifts_tab',
+        );
         return;
       }
 
@@ -105,30 +123,34 @@ class ShiftService {
 
       if (dayAfterShift != null) {
         final dayAfterShiftObj = Shift.fromMap(dayAfterShift);
-        message += ' | ${_formatShiftMessage(DateFormat('EEEE').format(dayAfterTomorrow), dayAfterShiftObj)}';
+        message += '\n${_formatShiftMessage(DateFormat('EEEE').format(dayAfterTomorrow), dayAfterShiftObj)}';
+      } else {
+        message += '\nDay after: (No data)';
       }
 
       await _notificationService.flutterLocalNotificationsPlugin.show(
         9999,
         '📅 Upcoming Shifts',
         message,
-        const NotificationDetails(
+        NotificationDetails(
           android: AndroidNotificationDetails(
             'shift_reminder_channel',
             'Shift Reminders',
             channelDescription: 'Daily notifications about upcoming shifts',
-            importance: Importance.high,
+            importance: Importance.max, // MAX
             priority: Priority.high,
             playSound: true,
             enableVibration: true,
+            styleInformation: BigTextStyleInformation(message),
+            icon: '@mipmap/ic_launcher',
           ),
         ),
         payload: 'shifts_tab',
       );
 
-      LogService().log('Shift notification shown: $message');
+      LogService.staticLog('✅ Shift notification sent successfully.');
     } catch (e) {
-      LogService().error('Failed to show shift notification', e);
+      LogService.staticLog('❌ Failed to show shift notification: $e');
     }
   }
 

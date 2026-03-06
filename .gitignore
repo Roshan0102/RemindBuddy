@@ -48,6 +48,8 @@ app.*.map.json
 # Build errors (temporary files)
 BUILD_ERROR.txt
 Build Error.txt
+build android apk error.txt
+Roaster json code.txt
 
 # Documentation (keep only essential ones)
 GOLD_PRICE_FEATURE_STATUS.md

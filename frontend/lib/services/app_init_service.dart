@@ -33,6 +33,9 @@ class AppInitService {
       // Reschedule gold price notifications
       await GoldSchedulerService().scheduleGoldPriceFetching();
       
+      // Register background periodic task as resilience backup
+      await BackgroundService().registerPeriodicTask();
+      
       // Reschedule daily reminders if any exist
       await _rescheduleDailyReminders();
       

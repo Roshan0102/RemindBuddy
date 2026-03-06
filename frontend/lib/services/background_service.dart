@@ -1,68 +1,73 @@
 import 'package:workmanager/workmanager.dart';
-import '../models/gold_price.dart'; // Import model
+import '../models/gold_price.dart';
 import 'gold_price_service.dart';
 import 'storage_service.dart';
 import 'notification_service.dart';
 import 'log_service.dart';
 import 'auth_service.dart';
+import 'firebase_core/firebase_core.dart'; // Just in case, try to import from service check
+import 'package:firebase_core/firebase_core.dart';
 
-// Task Name
+// Task Names
 const String fetchGoldTask = "fetchGoldPriceTask";
+const String healthCheckTask = "appHealthCheckTask";
 
 /// Top-level function for Workmanager
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
-    LogService.staticLog("Workmanager Task Started: $task");
+    LogService.staticLog("🔧 Workmanager Triggered: $task");
 
-    if (task == fetchGoldTask) {
-      try {
-        final goldService = GoldPriceService();
-        final storageService = StorageService();
-        final notificationService = NotificationService();
-
-        // 1. Fetch current price
-        final result = await goldService.checkAndNotifyGoldPriceChange();
-        
-        if (result != null) {
-          final GoldPrice newPrice = result['price'] as GoldPrice;
-           
-           LogService.staticLog("New Price Fetched: ${newPrice.price}");
-           
-           // 2. Get Previous Price for Diff
-           // We need to await DB init inside StorageService, which is handled by getter
-           final double? previousPrice = await storageService.getPreviousGoldPrice();
-           
-           double? diff;
-           if (previousPrice != null) {
-             diff = newPrice.price - previousPrice;
-             LogService.staticLog("Price Difference: $diff");
-           }
-           
-           // 3. Save New Price
-           await storageService.saveGoldPrice(newPrice);
-           
-           try {
-             await AuthService().init();
-             LogService.staticLog('✅ Background Authentication Initiated');
-           } catch(e) {
-             LogService.staticLog('❌ Failed Authentication: $e');
-           }
-
-           // 4. Notify
-           await notificationService.showGoldPriceNotification(newPrice.price, diff);
-        }
-      } catch (e) {
-        LogService.staticLog("Error in background task: $e");
-        // We return true so it doesn't retry infinitely if it's a code logical error, 
-        // but false if it's a network error? 
-        // For simplicity, return true to acknowledge execution.
-        return Future.value(true);
+    try {
+      if (task == fetchGoldTask || task == Workmanager.iOSBackgroundTask) {
+        await _handleGoldFetch();
+      } else if (task == healthCheckTask) {
+        // App health check could ensure Alarms are still scheduled
+        // But alarms are reset on reboot, so we don't need much here
+        LogService.staticLog("App Health check OK");
       }
+    } catch (e) {
+      LogService.staticLog("❌ Error in background task: $e");
     }
     
     return Future.value(true);
   });
+}
+
+Future<void> _handleGoldFetch() async {
+  try {
+    await Firebase.initializeApp();
+    final goldService = GoldPriceService();
+    final storageService = StorageService();
+    final notificationService = NotificationService();
+
+    // 1. Fetch current price
+    final result = await goldService.fetchCurrentGoldPrice();
+    final newPrice = result['price'] as GoldPrice?;
+    
+    if (newPrice != null) {
+       LogService.staticLog("💰 Workmanager fetched: ${newPrice.price}");
+       
+       final previousPrice = await storageService.getPreviousGoldPrice();
+       double? diff;
+       if (previousPrice != null) {
+         diff = newPrice.price - previousPrice;
+       }
+       
+       // Update price change in the model
+       final updatedPrice = GoldPrice(
+         date: newPrice.date,
+         timestamp: newPrice.timestamp,
+         price: newPrice.price,
+         priceChange: diff ?? 0.0,
+       );
+
+       await storageService.saveGoldPrice(updatedPrice);
+       await notificationService.showGoldPriceNotification(newPrice.price, diff, time: 'Sync');
+    }
+  } catch (e) {
+    LogService.staticLog("❌ Failed Gold Fetch in Workmanager: $e");
+  }
 }
 
 class BackgroundService {
@@ -73,27 +78,27 @@ class BackgroundService {
   Future<void> init() async {
     await Workmanager().initialize(
       callbackDispatcher,
+      isInDebugMode: false,
     );
-    // Workmanager().initialize(..., isInDebugMode: true) // Deprecated and no longer functional in newer versions often.
-    // Use system notification logging instead.
-    print("Workmanager Initialized");
+    LogService().log('✅ Workmanager Initialized');
   }
 
+  /// Register periodic task for gold price checking
+  /// This acts as a fallback for the precise AlarmManager tasks
   Future<void> registerPeriodicTask() async {
-    // Schedule periodic task
-    // Note: Android minimum interval is 15 minutes.
-    // For 11AM and 7PM specifically, we would typically use AlarmManager, 
-    // but Workmanager is safer for background execution constraints.
-    // We will run it every 4 hours to catch the updates reasonably close to the time.
+    // Android minimum interval is 15 minutes.
+    // We run it every 2 hours to ensure we don't miss updates and to stay alive.
     await Workmanager().registerPeriodicTask(
-      "gold_price_periodic",
+      "gold_price_resilience",
       fetchGoldTask,
-      frequency: const Duration(hours: 4), 
+      frequency: const Duration(hours: 2), 
       constraints: Constraints(
         networkType: NetworkType.connected,
+        requiresBatteryNotLow: false,
       ),
-      initialDelay: const Duration(minutes: 15),
+      initialDelay: const Duration(minutes: 30),
+      existingWorkPolicy: ExistingWorkPolicy.replace,
     );
-    print("Periodic Task Registered");
+    LogService().log("✅ Periodic Sync Task Registered (2h)");
   }
 }
