@@ -4,6 +4,7 @@ import '../services/shift_service.dart';
 import '../services/notification_service.dart';
 import '../services/log_service.dart';
 import '../services/gold_scheduler_service.dart';
+import 'background_service.dart';
 
 /// Service to reinitialize app state on startup
 /// Ensures notifications are rescheduled and data is loaded

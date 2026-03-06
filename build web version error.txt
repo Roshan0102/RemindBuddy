@@ -1,5 +1,3 @@
-8s
-51s
 Run flutter build web --release
 Compiling lib/main.dart for the Web...                          
 Warning: In index.html:37: Flutter's service worker is deprecated and will be removed in a future Flutter release. See https://github.com/flutter/flutter/issues/156910 for more details.
@@ -13,14 +11,45 @@ Consider addressing these issues to enable wasm builds. See docs for more info: 
 
 Use --no-wasm-dry-run to disable these warnings.
 Target dart2js failed: ProcessException: Process exited abnormally with exit code 1:
-lib/services/gold_scheduler_service.dart:141:41:
-Error: 'GoldPrice' isn't a type.
-    final newPrice = result['price'] as GoldPrice?;
-                                        ^^^^^^^^^
-lib/services/gold_scheduler_service.dart:154:28:
-Error: Method not found: 'GoldPrice'.
-      final updatedPrice = GoldPrice(
-                           ^^^^^^^^^
+lib/services/background_service.dart:8:8:
+Error: Error when reading 'lib/services/firebase_core/firebase_core.dart': Error reading 'lib/services/firebase_core/firebase_core.dart'  (No such file or directory)
+import 'firebase_core/firebase_core.dart'; // Just in case, try to import from service check
+       ^
+lib/main.dart:15:3:
+Error: Undefined name 'FirebaseMessaging'.
+  FirebaseMessaging.onBackgroundMessage(NotificationService.firebaseMessagingBackgroundHandler);
+  ^^^^^^^^^^^^^^^^^
+lib/services/notification_service.dart:196:9:
+Error: No named parameter with the name 'priority'.
+        priority: Priority.high,
+        ^^^^^^^^
+../../../../.pub-cache/hosted/pub.dev/flutter_local_notifications-17.2.4/lib/src/platform_specifics/android/notification_channel.dart:10:9:
+Info: Found this candidate, but the arguments don't match.
+  const AndroidNotificationChannel(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/services/notification_service.dart:207:9:
+Error: No named parameter with the name 'priority'.
+        priority: Priority.high,
+        ^^^^^^^^
+../../../../.pub-cache/hosted/pub.dev/flutter_local_notifications-17.2.4/lib/src/platform_specifics/android/notification_channel.dart:10:9:
+Info: Found this candidate, but the arguments don't match.
+  const AndroidNotificationChannel(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/services/notification_service.dart:164:11:
+Error: No named parameter with the name 'title'.
+          title: message.notification!.title,
+          ^^^^^
+lib/services/background_service.dart:100:46:
+Error: The argument type 'ExistingWorkPolicy' can't be assigned to the parameter type 'ExistingPeriodicWorkPolicy?'.
+ - 'ExistingWorkPolicy' is from 'package:workmanager_platform_interface/src/pigeon/workmanager_api.g.dart' ('../../../../.pub-cache/hosted/pub.dev/workmanager_platform_interface-0.9.1+1/lib/src/pigeon/workmanager_api.g.dart').
+ - 'ExistingPeriodicWorkPolicy' is from 'package:workmanager_platform_interface/src/pigeon/workmanager_api.g.dart' ('../../../../.pub-cache/hosted/pub.dev/workmanager_platform_interface-0.9.1+1/lib/src/pigeon/workmanager_api.g.dart').
+      existingWorkPolicy: ExistingWorkPolicy.replace,
+                                             ^
+lib/services/app_init_service.dart:37:13:
+Error: The method 'BackgroundService' isn't defined for the type 'AppInitService'.
+ - 'AppInitService' is from 'package:remindbuddy/services/app_init_service.dart' ('lib/services/app_init_service.dart').
+      await BackgroundService().registerPeriodicTask();
+            ^^^^^^^^^^^^^^^^^
 Error: Compilation failed.
   Command: /opt/hostedtoolcache/flutter/stable-3.41.0-x64/bin/cache/dart-sdk/bin/dart compile js --platform-binaries=/opt/hostedtoolcache/flutter/stable-3.41.0-x64/bin/cache/flutter_web_sdk/kernel --invoker=flutter_tool -Ddart.vm.product=true -DFLUTTER_VERSION=3.41.0 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=44a626f4f0 -DFLUTTER_ENGINE_REVISION=3452d735bd -DFLUTTER_DART_VERSION=3.11.0 -DFLUTTER_WEB_USE_SKIA=true -DFLUTTER_WEB_USE_SKWASM=false -DFLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/3452d735bd38224ef2db85ca763d862d6326b17f/ --native-null-assertions --no-source-maps -O4 --minify -o /home/runner/work/RemindBuddy/RemindBuddy/frontend/.dart_tool/flutter_build/6ae7963641baf89316d01371f1434179/app.dill --packages=/home/runner/work/RemindBuddy/RemindBuddy/frontend/.dart_tool/package_config.json --cfe-only /home/runner/work/RemindBuddy/RemindBuddy/frontend/.dart_tool/flutter_build/6ae7963641baf89316d01371f1434179/main.dart
 #0      RunResult.throwException (package:flutter_tools/src/base/process.dart:153:5)
@@ -65,6 +94,6 @@ Error: Compilation failed.
 #20     main (package:flutter_tools/executable.dart:103:3)
 <asynchronous suspension>
 
-Compiling lib/main.dart for the Web...                             50.0s
+Compiling lib/main.dart for the Web...                             52.3s
 Error: Failed to compile application for the Web.
 Error: Process completed with exit code 1.

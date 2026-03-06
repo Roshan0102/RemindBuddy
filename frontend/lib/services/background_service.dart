@@ -5,7 +5,6 @@ import 'storage_service.dart';
 import 'notification_service.dart';
 import 'log_service.dart';
 import 'auth_service.dart';
-import 'firebase_core/firebase_core.dart'; // Just in case, try to import from service check
 import 'package:firebase_core/firebase_core.dart';
 
 // Task Names
@@ -97,7 +96,7 @@ class BackgroundService {
         requiresBatteryNotLow: false,
       ),
       initialDelay: const Duration(minutes: 30),
-      existingWorkPolicy: ExistingWorkPolicy.replace,
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.replace,
     );
     LogService().log("✅ Periodic Sync Task Registered (2h)");
   }

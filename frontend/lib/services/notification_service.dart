@@ -193,7 +193,6 @@ class NotificationService {
         'Gold Price Alerts',
         description: 'Scheduled notifications for gold price updates',
         importance: Importance.max, // UPPED to max
-        priority: Priority.high,
         playSound: true,
         enableVibration: true,
       );
@@ -204,7 +203,6 @@ class NotificationService {
         'Shift Reminders',
         description: 'Daily notifications about upcoming shifts',
         importance: Importance.max, // UPPED to max
-        priority: Priority.high,
         playSound: true,
         enableVibration: true,
       );
@@ -400,7 +398,7 @@ class NotificationService {
       LogService().error('  - FAILED to schedule', e);
     }
   }
-  Future<void> showImmediateNotification() async {
+  Future<void> showImmediateNotification({String? title, String? body}) async {
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
       'remindbuddy_channel',
@@ -417,8 +415,8 @@ class NotificationService {
 
     await flutterLocalNotificationsPlugin.show(
       999, // Special ID for test
-      'Immediate Test',
-      'If you see this, Notifications are working!',
+      title ?? 'Immediate Test',
+      body ?? 'If you see this, Notifications are working!',
       platformChannelSpecifics,
     );
     LogService().log('Triggered Immediate Notification');
