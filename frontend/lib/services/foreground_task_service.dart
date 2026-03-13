@@ -59,6 +59,20 @@ class ForegroundTaskService {
 
   /// Start the foreground service
   Future<ServiceRequestResult> startService() async {
+    // Android 13+ requires notification permission for foreground services
+    final NotificationPermission notificationPermission =
+        await FlutterForegroundTask.checkNotificationPermission();
+    if (notificationPermission != NotificationPermission.granted) {
+      LogService().log('⚠️ Requesting notification permission for FG service...');
+      await FlutterForegroundTask.requestNotificationPermission();
+    }
+    
+    // Check battery optimization
+    if (await FlutterForegroundTask.isIgnoringBatteryOptimizations == false) {
+       LogService().log('⚠️ Battery optimization is active. FG service may be killed.');
+       // We won't auto-popup here to avoid spamming the user, but we log it.
+    }
+
     if (await FlutterForegroundTask.isRunningService) {
       LogService().log('🔄 Foreground service already running, restarting...');
       return FlutterForegroundTask.restartService();
@@ -66,6 +80,7 @@ class ForegroundTaskService {
       LogService().log('▶️ Starting foreground service...');
       return FlutterForegroundTask.startService(
         serviceId: 888,
+        serviceTypes: [ForegroundServiceTypes.dataSync],
         notificationTitle: 'RemindBuddy Active',
         notificationText: 'Monitoring gold prices, shifts & reminders',
         callback: startForegroundCallback,
