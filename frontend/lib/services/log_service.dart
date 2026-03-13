@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'notification_service.dart';
 import 'battery_optimization_service.dart';
+import 'foreground_task_service.dart';
 
 class LogService {
   static final LogService _instance = LogService._internal();
@@ -43,8 +45,60 @@ class LogService {
   }
 }
 
-class LogScreen extends StatelessWidget {
+class LogScreen extends StatefulWidget {
   const LogScreen({super.key});
+
+  @override
+  State<LogScreen> createState() => _LogScreenState();
+}
+
+class _LogScreenState extends State<LogScreen> {
+  bool _isForegroundRunning = false;
+  int _lastTick = 0;
+  String _lastTime = 'N/A';
+
+  @override
+  void initState() {
+    super.initState();
+    _checkServiceStatus();
+    
+    // Listen for data from foreground task
+    FlutterForegroundTask.addTaskDataCallback(_onReceiveTaskData);
+  }
+
+  @override
+  void dispose() {
+    FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
+    super.dispose();
+  }
+
+  void _onReceiveTaskData(Object data) {
+    if (data is Map<String, dynamic>) {
+      setState(() {
+        _lastTick = data['tick'] ?? 0;
+        _lastTime = data['time'] ?? 'N/A';
+      });
+    }
+  }
+
+  Future<void> _checkServiceStatus() async {
+    final running = await FlutterForegroundTask.isRunningService;
+    if (mounted) {
+      setState(() {
+        _isForegroundRunning = running;
+      });
+    }
+  }
+
+  Future<void> _toggleForegroundService() async {
+    if (_isForegroundRunning) {
+      await ForegroundTaskService().stopService();
+    } else {
+      ForegroundTaskService().init();
+      await ForegroundTaskService().startService();
+    }
+    await _checkServiceStatus();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,6 +146,30 @@ class LogScreen extends StatelessWidget {
                         Text('Init Status: ${NotificationService.isInitialized ? "Success" : "Pending/Failed"}'),
                         if (NotificationService.debugError != 'None')
                           Text('Error: ${NotificationService.debugError}', style: const TextStyle(color: Colors.red)),
+                        const Divider(),
+                        // *** Foreground Service Status ***
+                        Row(
+                          children: [
+                            Icon(
+                              _isForegroundRunning ? Icons.check_circle : Icons.error,
+                              color: _isForegroundRunning ? Colors.green : Colors.red,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Foreground Service: ${_isForegroundRunning ? "RUNNING ✅" : "STOPPED ❌"}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: _isForegroundRunning ? Colors.green[800] : Colors.red,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_isForegroundRunning)
+                          Text('  Last Tick: #$_lastTick at $_lastTime', 
+                               style: const TextStyle(fontSize: 12)),
+                        const Text('  Gold fetch: every 3 min (TEST MODE)', 
+                             style: TextStyle(fontSize: 11, color: Colors.orange)),
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -111,6 +189,31 @@ class LogScreen extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            ElevatedButton(
+                              onPressed: _toggleForegroundService,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _isForegroundRunning ? Colors.red : Colors.green,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: Text(_isForegroundRunning ? '⏹️ Stop Service' : '▶️ Start Service'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () async {
+                                await _checkServiceStatus();
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Service: ${_isForegroundRunning ? "Running" : "Stopped"}')),
+                                  );
+                                }
+                              },
+                              child: const Text('🔄 Refresh'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
                         ElevatedButton(
                           onPressed: () => BatteryOptimizationService.showOptimizationPanel(context),
                           style: ElevatedButton.styleFrom(
@@ -124,21 +227,55 @@ class LogScreen extends StatelessWidget {
                   }
                 ),
               ),
+              // Filter buttons for logs
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                color: Colors.grey[300],
+                child: Row(
+                  children: [
+                    const Text('Filter: ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    _buildFilterChip(logs, 'All', null),
+                    _buildFilterChip(logs, '🌕 Gold', '[GOLD]'),
+                    _buildFilterChip(logs, '📅 Shift', '[SHIFT]'),
+                    _buildFilterChip(logs, '❌ Errors', 'ERROR'),
+                  ],
+                ),
+              ),
               Expanded(
                 child: logs.isEmpty
                   ? const Center(child: Text('No logs yet.'))
                   : ListView.builder(
                       itemCount: logs.length,
+                      reverse: true, // Most recent first
                       itemBuilder: (context, index) {
-                        final log = logs[index];
-                        final isError = log.contains('🔴');
+                        final reversedIndex = logs.length - 1 - index;
+                        final log = logs[reversedIndex];
+                        final isError = log.contains('🔴') || log.contains('❌') || log.contains('FATAL');
+                        final isGold = log.contains('[GOLD]');
+                        final isShift = log.contains('[SHIFT]');
+                        final isTick = log.contains('TICK');
+
+                        Color bgColor;
+                        if (isError) {
+                          bgColor = Colors.red[50]!;
+                        } else if (isGold) {
+                          bgColor = Colors.amber[50]!;
+                        } else if (isShift) {
+                          bgColor = Colors.blue[50]!;
+                        } else if (isTick) {
+                          bgColor = Colors.green[50]!;
+                        } else {
+                          bgColor = index % 2 == 0 ? Colors.grey[100]! : Colors.white;
+                        }
+
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          color: index % 2 == 0 ? Colors.grey[100] : Colors.white,
+                          color: bgColor,
                           child: Text(
                             log,
                             style: TextStyle(
                               fontFamily: 'monospace',
+                              fontSize: 11,
                               color: isError ? Colors.red : Colors.black87,
                             ),
                           ),
@@ -149,6 +286,28 @@ class LogScreen extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(List<String> allLogs, String label, String? filterKey) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: InkWell(
+        onTap: () {
+          if (filterKey == null) {
+            // Show all
+            LogService().logsNotifier.value = List.from(LogService()._logs);
+          } else {
+            final filtered = LogService()._logs.where((l) => l.contains(filterKey)).toList();
+            LogService().logsNotifier.value = filtered;
+          }
+        },
+        child: Chip(
+          label: Text(label, style: const TextStyle(fontSize: 10)),
+          padding: EdgeInsets.zero,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
       ),
     );
   }

@@ -1,20 +1,19 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:intl/intl.dart';
-import 'package:workmanager/workmanager.dart';
 import 'gold_price_service.dart';
 import 'storage_service.dart';
 import 'notification_service.dart';
 import 'log_service.dart';
-import 'auth_service.dart';
 import 'shift_service.dart';
 import '../models/gold_price.dart';
 
-/// Scheduled Gold Price Fetcher & Shift Reminder
-/// Actually fetches the price in the background at 11 AM and 7 PM
+/// Scheduled Gold Price Fetcher & Shift Reminder (BACKUP mechanism)
+/// 
+/// NOTE: The PRIMARY mechanism is now ForegroundTaskService.
+/// This alarm-based approach is kept as a BACKUP in case the foreground 
+/// service is stopped by the user. It uses AndroidAlarmManager which
+/// can be unreliable on some OEM ROMs (Vivo/iQOO/Xiaomi etc).
 class GoldSchedulerService {
   static final GoldSchedulerService _instance = GoldSchedulerService._internal();
   factory GoldSchedulerService() => _instance;
@@ -28,10 +27,10 @@ class GoldSchedulerService {
   /// Initialize
   Future<void> init() async {
     await AndroidAlarmManager.initialize();
-    LogService().log('✅ Gold & Shift Scheduler Initialized');
+    LogService().log('✅ Gold & Shift Scheduler Initialized (BACKUP alarms)');
   }
 
-  /// Schedule the background fetching alarms
+  /// Schedule the background fetching alarms (BACKUP)
   Future<void> scheduleGoldPriceFetching() async {
     await cancelAllAlarms();
 
@@ -51,7 +50,7 @@ class GoldSchedulerService {
       wakeup: true,
       rescheduleOnReboot: true,
     );
-    LogService().log('✅ Scheduled Gold Morning fetch for: $morningTime');
+    LogService().log('✅ [BACKUP] Scheduled Gold Morning fetch for: $morningTime');
 
     // 2. Evening Alarm (7:00 PM)
     DateTime eveningTime = DateTime(now.year, now.month, now.day, 19, 0);
@@ -67,7 +66,7 @@ class GoldSchedulerService {
       wakeup: true,
       rescheduleOnReboot: true,
     );
-    LogService().log('✅ Scheduled Gold Evening fetch for: $eveningTime');
+    LogService().log('✅ [BACKUP] Scheduled Gold Evening fetch for: $eveningTime');
 
     // 3. Shift Alarm (10:00 PM)
     DateTime shiftTime = DateTime(now.year, now.month, now.day, 22, 0);
@@ -83,7 +82,7 @@ class GoldSchedulerService {
       wakeup: true,
       rescheduleOnReboot: true,
     );
-    LogService().log('✅ Scheduled Shift Daily trigger for: $shiftTime');
+    LogService().log('✅ [BACKUP] Scheduled Shift Daily trigger for: $shiftTime');
   }
 
   /// Cancel all alarms
@@ -107,9 +106,10 @@ class GoldSchedulerService {
   }
 }
 
-/// Static entry points for Android Alarm Manager
+/// Static entry points for Android Alarm Manager (BACKUP)
 @pragma('vm:entry-point')
 void goldMorningCallback() async {
+  LogService.staticLog('[BACKUP_ALARM] Morning gold callback triggered');
   await _performGoldFetch('11 AM');
   
   // Reschedule for tomorrow
@@ -127,6 +127,7 @@ void goldMorningCallback() async {
 
 @pragma('vm:entry-point')
 void goldEveningCallback() async {
+  LogService.staticLog('[BACKUP_ALARM] Evening gold callback triggered');
   await _performGoldFetch('7 PM');
 
   // Reschedule for tomorrow
@@ -144,11 +145,12 @@ void goldEveningCallback() async {
 
 @pragma('vm:entry-point')
 void shiftDailyCallback() async {
+  LogService.staticLog('[BACKUP_ALARM] Shift daily callback triggered');
   LogService.staticLog('📅 Triggering Dynamic Shift Update (10 PM Task)');
   try {
      await Firebase.initializeApp();
      final shiftService = ShiftService();
-     await shiftService.showShiftNotification(); // Fetches latest data and notifies
+     await shiftService.showShiftNotification();
   } catch (e) {
      LogService.staticLog('❌ Error in shift callback: $e');
   }
@@ -166,9 +168,9 @@ void shiftDailyCallback() async {
   );
 }
 
-/// Core fetch logic shared by both callbacks
+/// Core fetch logic shared by both callbacks (BACKUP)
 Future<void> _performGoldFetch(String timeLabel) async {
-  LogService.staticLog('🌕 Starting Background Gold Fetch ($timeLabel)');
+  LogService.staticLog('🌕 [BACKUP] Starting Background Gold Fetch ($timeLabel)');
   
   try {
     // 1. Initialize Firebase (CRITICAL for background isolates)
@@ -186,15 +188,14 @@ Future<void> _performGoldFetch(String timeLabel) async {
     final newPrice = result['price'] as GoldPrice?;
     
     if (newPrice != null) {
-      LogService.staticLog('💰 Gold Price Fetched: ₹${newPrice.price}');
+      LogService.staticLog('💰 [BACKUP] Gold Price Fetched: ₹${newPrice.price}');
       
       // 4. Get Latest Price for Change Calculation
-      // We use getLatestGoldPrice to find what's already in DB BEFORE we save the new one
       final prevPrice = await storage.getLatestGoldPrice();
       double change = 0.0;
       if (prevPrice != null) {
         change = newPrice.price - prevPrice.price;
-        LogService.staticLog('🔍 Price comparison: ${newPrice.price} vs ${prevPrice.price}');
+        LogService.staticLog('🔍 [BACKUP] Price comparison: ${newPrice.price} vs ${prevPrice.price}');
       }
       
       // Update price change in the model
@@ -235,12 +236,10 @@ Future<void> _performGoldFetch(String timeLabel) async {
         payload: 'gold_tab',
       );
       
-      LogService.staticLog('✅ Gold background task finished successfully');
+      LogService.staticLog('✅ [BACKUP] Gold background task finished successfully');
     } else {
-      LogService.staticLog('⚠️ Gold fetch failed: ${result['method']} - ${result['debug']}');
+      LogService.staticLog('⚠️ [BACKUP] Gold fetch failed: ${result['method']} - ${result['debug']}');
       
-      // Fetch failed, show a "delayed" notification? 
-      // Actually, user wants it at fixed time. If it fails, we notify they might be offline.
       await notificationService.flutterLocalNotificationsPlugin.show(
         8001,
         '⚠️ Gold Rate Sync Issue',
@@ -257,6 +256,6 @@ Future<void> _performGoldFetch(String timeLabel) async {
       );
     }
   } catch (e) {
-    LogService.staticLog('❌ Fatal error in gold fetch task: $e');
+    LogService.staticLog('❌ [BACKUP] Fatal error in gold fetch task: $e');
   }
 }

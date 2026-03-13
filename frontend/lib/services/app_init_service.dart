@@ -1,9 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import '../services/storage_service.dart';
 import '../services/shift_service.dart';
 import '../services/notification_service.dart';
 import '../services/log_service.dart';
 import '../services/gold_scheduler_service.dart';
+import '../services/foreground_task_service.dart';
 import 'background_service.dart';
 
 /// Service to reinitialize app state on startup
@@ -31,7 +33,7 @@ class AppInitService {
       // Reschedule shift notifications if shifts exist
       await _rescheduleShiftNotifications();
       
-      // Reschedule gold price notifications
+      // Reschedule gold price alarms (BACKUP mechanism)
       await GoldSchedulerService().scheduleGoldPriceFetching();
       
       // Register background periodic task as resilience backup
@@ -39,6 +41,9 @@ class AppInitService {
       
       // Reschedule daily reminders if any exist
       await _rescheduleDailyReminders();
+      
+      // Ensure foreground service is running (PRIMARY mechanism)
+      await _ensureForegroundServiceRunning();
       
       LogService.staticLog('✅ App initialization complete');
     } catch (e) {
@@ -95,6 +100,27 @@ class AppInitService {
       }
     } catch (e) {
       LogService.staticLog('⚠️ Could not reschedule daily reminders: $e');
+    }
+  }
+
+  /// Ensure the foreground service is running
+  Future<void> _ensureForegroundServiceRunning() async {
+    try {
+      final isRunning = await ForegroundTaskService().isRunning;
+      if (!isRunning) {
+        LogService.staticLog('⚠️ Foreground service was not running, starting...');
+        ForegroundTaskService().init();
+        final result = await ForegroundTaskService().startService();
+        if (result is ServiceRequestSuccess) {
+          LogService.staticLog('✅ Foreground service started');
+        } else if (result is ServiceRequestFailure) {
+          LogService.staticLog('❌ Foreground service failed: ${result.error}');
+        }
+      } else {
+        LogService.staticLog('✅ Foreground service already running');
+      }
+    } catch (e) {
+      LogService.staticLog('⚠️ Could not start foreground service: $e');
     }
   }
 }
