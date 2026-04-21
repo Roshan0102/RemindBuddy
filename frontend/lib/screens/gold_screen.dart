@@ -7,7 +7,7 @@ import '../services/gold_price_service.dart';
 import '../services/storage_service.dart';
 import '../models/gold_price.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/gold_scheduler_service.dart';
+// import '../services/gold_scheduler_service.dart';
 
 class GoldScreen extends StatefulWidget {
   const GoldScreen({super.key});
@@ -100,6 +100,7 @@ class _GoldScreenState extends State<GoldScreen> {
           );
         }
       } else {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text('❌ Failed to fetch price from Cloud.'),
