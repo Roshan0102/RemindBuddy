@@ -33,21 +33,7 @@ class _MainScreenState extends State<MainScreen> {
     _loadTheme();
     _initialSync();
     
-    _notificationSubscription = NotificationService.selectNotificationStream.stream.listen((String? payload) {
-      if (payload != null) {
-        _handleNotificationPayload(payload);
-      }
-    });
-
-    // Also check for initial payload if the app was launched via notification
-    NotificationService().flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails().then((details) {
-      if (details != null && details.didNotificationLaunchApp && details.notificationResponse != null) {
-        final payload = details.notificationResponse!.payload;
-        if (payload != null) {
-          _handleNotificationPayload(payload);
-        }
-      }
-    });
+    // Notification interactions will be handled via Firebase Messaging hooks later
   }
 
   void _handleNotificationPayload(String payload) {

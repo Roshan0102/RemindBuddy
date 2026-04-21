@@ -77,3 +77,6 @@ yarn-error.log*
 Thumbs.db
 **/node_modules/
 Gold_Price_Checking/
+
+# Firebase Admin
+serviceAccountKey.json

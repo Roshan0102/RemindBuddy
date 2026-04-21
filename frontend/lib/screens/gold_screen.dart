@@ -100,11 +100,9 @@ class _GoldScreenState extends State<GoldScreen> {
           );
         }
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('❌ Failed to fetch price.'),
+              content: const Text('❌ Failed to fetch price from Cloud.'),
               backgroundColor: Colors.red,
               action: SnackBarAction(
                 label: 'Details',
@@ -414,7 +412,7 @@ class _GoldScreenState extends State<GoldScreen> {
                ),
             const SizedBox(height: 8),
             Text(
-              'Updated: ${_currentPrice!.date}', 
+              'Updated: ${_currentPrice!.date} ${_lastFullData?['fetchedTime'] != null ? 'at ${_lastFullData!['fetchedTime']}' : ''}', 
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],

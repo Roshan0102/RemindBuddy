@@ -208,11 +208,7 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
     if (!reminder.isActive || reminder.id == null) return;
 
     final int numId = int.tryParse(reminder.id ?? '0') ?? reminder.id.hashCode;
-    // Cancel existing notification for this reminder
-    await _notificationService.cancelNotification(numId + 100000); // Offset to avoid conflicts with tasks
-
-    // Schedule new daily notification
-    await _notificationService.scheduleDailyReminder(reminder);
+    // Scheduled via Cloud Functions now
   }
 
   Future<void> _toggleReminder(DailyReminder reminder) async {
@@ -224,8 +220,7 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
       await _scheduleDailyReminder(reminder.copyWith(isActive: true));
     } else {
       final int numId = int.tryParse(reminder.id ?? '0') ?? reminder.id.hashCode;
-      // Disable: cancel notification
-      await _notificationService.cancelNotification(numId + 100000);
+      // Scheduled via Cloud Functions now
     }
     
     _loadReminders();
@@ -253,7 +248,6 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
 
     if (confirm == true) {
       final int numId = int.tryParse(reminder.id ?? '0') ?? reminder.id.hashCode;
-      await _notificationService.cancelNotification(numId + 100000);
       await _storageService.deleteDailyReminder(reminder.id!);
       _loadReminders();
     }

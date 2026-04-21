@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'storage_service.dart';
 
 class AuthService {
@@ -40,6 +41,19 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('last_sync_time');
 
+      // Update FCM Token
+      try {
+        final token = await FirebaseMessaging.instance.getToken();
+        if (token != null) {
+          final query = await _db.collection('usernames').where('uid', isEqualTo: credential.user?.uid).limit(1).get();
+          if (query.docs.isNotEmpty) {
+            await query.docs.first.reference.update({'fcmToken': token});
+          }
+        }
+      } catch (e) {
+        print('Error saving FCM Token: $e');
+      }
+
     } catch (e) {
       print("Firebase Login failed: $e");
       throw Exception('Login failed: ${e.toString()}');
@@ -75,6 +89,18 @@ class AuthService {
       // 4. Update display name
       await credential.user?.updateDisplayName(username);
       
+      // 5. Update FCM Token
+      try {
+        final token = await FirebaseMessaging.instance.getToken();
+        if (token != null) {
+          await _db.collection('usernames').doc(username.toLowerCase()).update({
+            'fcmToken': token,
+          });
+        }
+      } catch (e) {
+        print('Error saving FCM Token on signup: $e');
+      }
+
       print("✅ Signed up via Firebase as ${credential.user?.uid}");
     } catch (e) {
       print("❌ Firebase Signup failed: $e");

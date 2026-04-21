@@ -127,7 +127,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           isAnnoying: newTask.isAnnoying,
         );
         
-        await NotificationService().scheduleTaskNotification(savedTask);
+        // await NotificationService().scheduleTaskNotification(savedTask);
         
         if (mounted) {
           Navigator.pop(context, true);

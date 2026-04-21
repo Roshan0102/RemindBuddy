@@ -1,0 +1,65 @@
+🚀 Firing Cloud Function emulator hook...
+-----------------------------------------
+⏰ Hourly Gold Fetch Triggered
+   > TOI Price: 14300
+❌ Emulator Test Failed: Error: 7 PERMISSION_DENIED: Permission denied on resource project not-a-project.
+    at callErrorFromStatus (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@grpc/grpc-js/build/src/call.js:32:19)
+    at Object.onReceiveStatus (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@grpc/grpc-js/build/src/client.js:359:73)
+    at Object.onReceiveStatus (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@grpc/grpc-js/build/src/client-interceptors.js:327:181)
+    at /home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@grpc/grpc-js/build/src/resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@grpc/grpc-js/build/src/client.js:342:32)
+    at ServiceClientImpl.<anonymous> (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@grpc/grpc-js/build/src/make-client.js:105:19)
+    at /home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@google-cloud/firestore/build/src/v1/firestore_client.js:242:33
+    at /home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/google-gax/build/src/streamingCalls/streamingApiCaller.js:38:28
+    at /home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/google-gax/build/src/normalCalls/timeout.js:44:16
+    at Object.request (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/google-gax/build/src/streamingCalls/streaming.js:234:40)
+    at makeRequest (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/retry-request/index.js:159:28)
+    at retryRequest (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/retry-request/index.js:119:5)
+    at StreamProxy.setStream (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/google-gax/build/src/streamingCalls/streaming.js:225:37)
+    at StreamingApiCaller.call (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/google-gax/build/src/streamingCalls/streamingApiCaller.js:54:16)
+Caused by: Error
+    at /home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@google-cloud/firestore/build/src/index.js:1040:27
+    at /home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@google-cloud/firestore/build/src/telemetry/enabled-trace-util.js:110:30
+    at NoopContextManager.with (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@opentelemetry/api/build/src/context/NoopContextManager.js:14:19)
+    at ContextAPI.with (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@opentelemetry/api/build/src/api/context.js:51:46)
+    at NoopTracer.startActiveSpan (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@opentelemetry/api/build/src/trace/NoopTracer.js:54:31)
+    at ProxyTracer.startActiveSpan (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@opentelemetry/api/build/src/trace/ProxyTracer.js:27:24)
+    at EnabledTraceUtil.startActiveSpan (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@google-cloud/firestore/build/src/telemetry/enabled-trace-util.js:102:28)
+    at Firestore.getAll (/home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@google-cloud/firestore/build/src/index.js:1031:32)
+    at /home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@google-cloud/firestore/build/src/reference/document-reference.js:182:36
+    at /home/roshan-axcess/Documents/RemindBuddy/functions/node_modules/@google-cloud/firestore/build/src/telemetry/enabled-trace-util.js:110:30 {
+  code: 7,
+  details: 'Permission denied on resource project not-a-project.',
+  metadata: Metadata {
+    internalRepr: Map(5) {
+      'google.rpc.errorinfo-bin' => [Array],
+      'google.rpc.help-bin' => [Array],
+      'google.rpc.localizedmessage-bin' => [Array],
+      'grpc-status-details-bin' => [Array],
+      'x-debug-tracking-id' => [Array]
+    },
+    opaqueData: Map(0) {},
+    options: {}
+  },
+  statusDetails: [
+    ErrorInfo {
+      metadata: [Object],
+      reason: 'CONSUMER_INVALID',
+      domain: 'googleapis.com'
+    },
+    LocalizedMessage {
+      locale: 'en-US',
+      message: 'Permission denied on resource project not-a-project.'
+    },
+    Help { links: [Array] }
+  ],
+  reason: 'CONSUMER_INVALID',
+  domain: 'googleapis.com',
+  errorInfoMetadata: {
+    consumer: 'projects/not-a-project',
+    service: 'firestore.googleapis.com',
+    containerInfo: 'not-a-project'
+  }
+}

@@ -221,9 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           // 2. Delete from Server
                           await _storageService.deleteTask(deletedTask.id.toString());
                           
-                          // Convert string ID back to int for local cancelation
-                          final numId = int.tryParse(deletedTask.id ?? '0') ?? deletedTask.hashCode;
-                          await _notificationService.cancelNotification(numId);
+                          // Removed local notification cancellation
                           
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
