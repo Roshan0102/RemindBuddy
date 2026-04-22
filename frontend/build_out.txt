@@ -1,0 +1,268 @@
+Resolving dependencies...
+Downloading packages...
+  _flutterfire_internals 1.3.66 (1.3.69 available)
+  async 2.13.0 (2.13.1 available)
+  cloud_firestore 6.1.2 (6.3.0 available)
+  cloud_firestore_platform_interface 7.0.6 (7.2.0 available)
+  cloud_firestore_web 5.1.2 (5.3.0 available)
+  cupertino_icons 1.0.8 (1.0.9 available)
+  firebase_auth 6.1.4 (6.4.0 available)
+  firebase_auth_platform_interface 8.1.6 (8.1.9 available)
+  firebase_auth_web 6.1.2 (6.1.5 available)
+  firebase_core 4.4.0 (4.7.0 available)
+  firebase_core_platform_interface 6.0.2 (6.0.3 available)
+  firebase_core_web 3.4.0 (3.6.0 available)
+  firebase_messaging 16.1.1 (16.2.0 available)
+  firebase_messaging_platform_interface 4.7.6 (4.7.9 available)
+  firebase_messaging_web 4.1.2 (4.1.5 available)
+  fl_chart 0.69.2 (1.2.0 available)
+  flutter_lints 3.0.2 (6.0.0 available)
+  flutter_timezone 4.1.1 (5.0.2 available)
+  home_widget 0.7.0+1 (0.9.1 available)
+  hooks 1.0.1 (1.0.3 available)
+  intl 0.19.0 (0.20.2 available)
+  lints 3.0.0 (6.1.0 available)
+  matcher 0.12.18 (0.12.19 available)
+  meta 1.17.0 (1.18.2 available)
+  native_toolchain_c 0.17.4 (0.18.0 available)
+  path_provider_android 2.2.22 (2.3.1 available)
+  shared_preferences 2.5.4 (2.5.5 available)
+  shared_preferences_android 2.4.21 (2.4.23 available)
+  shared_preferences_platform_interface 2.4.1 (2.4.2 available)
+  syncfusion_flutter_charts 28.2.12 (33.2.3 available)
+  syncfusion_flutter_core 28.2.12 (33.2.3 available)
+  table_calendar 3.1.3 (3.2.0 available)
+  test_api 0.7.8 (0.7.11 available)
+  timezone 0.9.4 (0.11.0 available)
+  vector_math 2.2.0 (2.3.0 available)
+  vm_service 15.0.2 (15.1.0 available)
+Got dependencies!
+36 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Compiling lib/main.dart for the Web...                          
+Warning: In index.html:37: Flutter's service worker is deprecated and will be removed in a future Flutter release. See https://github.com/flutter/flutter/issues/156910 for more details.
+Warning: In index.html:46: "FlutterLoader.loadEntrypoint" is deprecated. Use "FlutterLoader.load" instead. See https://docs.flutter.dev/platform-integration/web/initialization for more details.
+Wasm dry run findings:
+Found incompatibilities with WebAssembly.
+
+file:///home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_timezone-4.1.1/lib/flutter_timezone_web.dart 39:22 - invalid_runtime_check_with_js_interop_types lint violation: Cast from 'JSFunction?' to 'List<String> Function(String)?' casts a JS interop value to a Dart type, which might not be platform-consistent. (8)
+
+Consider addressing these issues to enable wasm builds. See docs for more info: https://docs.flutter.dev/platform-integration/web/wasm
+
+Use --no-wasm-dry-run to disable these warnings.
+Target dart2js failed: ProcessException: Process exited abnormally with exit code 1:
+lib/screens/gold_screen.dart:116:7:
+Error: Expected a class member, but got 'catch'.
+    } catch (e) {
+      ^^^^^
+lib/screens/gold_screen.dart:116:13:
+Error: Expected an identifier, but got '('.
+    } catch (e) {
+            ^
+lib/screens/gold_screen.dart:123:7:
+Error: Expected a class member, but got 'finally'.
+    } finally {
+      ^^^^^^^
+lib/screens/gold_screen.dart:123:15:
+Error: Expected an identifier, but got '{'.
+    } finally {
+              ^
+lib/screens/gold_screen.dart:123:15:
+Error: A method declaration needs an explicit list of parameters.
+    } finally {
+              ^
+lib/screens/gold_screen.dart:606:1:
+Error: Expected a declaration, but got '}'.
+}
+^
+lib/screens/gold_screen.dart:10:8:
+Error: Error when reading 'lib/services/gold_scheduler_service.dart': Error reading 'lib/services/gold_scheduler_service.dart'  (No such file or directory)
+import '../services/gold_scheduler_service.dart';
+       ^
+lib/screens/gold_screen.dart:19:7:
+Error: The non-abstract class '_GoldScreenState' is missing implementations for these members:
+ - State.build
+class _GoldScreenState extends State<GoldScreen> {
+      ^^^^^^^^^^^^^^^^
+../../../snap/flutter/common/flutter/packages/flutter/lib/src/widgets/framework.dart:1461:10:
+Info: 'State.build' is defined here.
+  Widget build(BuildContext context);
+         ^^^^^
+lib/screens/gold_screen.dart:68:5:
+Error: A try block must be followed by an 'on', 'catch', or 'finally' clause.
+    try {
+    ^^^
+lib/screens/gold_screen.dart:131:16:
+Error: Undefined name 'context'.
+      context: context,
+               ^^^^^^^
+lib/screens/gold_screen.dart:139:15:
+Error: Undefined name '_lastLog'.
+              _lastLog,
+              ^^^^^^^^
+lib/screens/gold_screen.dart:149:55:
+Error: Undefined name '_lastLog'.
+                Clipboard.setData(ClipboardData(text: _lastLog));
+                                                      ^^^^^^^^
+lib/screens/gold_screen.dart:166:16:
+Error: Undefined name 'context'.
+      context: context,
+               ^^^^^^^
+lib/screens/gold_screen.dart:170:28:
+Error: Undefined name '_lastFullData'.
+            final bbData = _lastFullData?['bankbazaar'];
+                           ^^^^^^^^^^^^^
+lib/screens/gold_screen.dart:171:28:
+Error: Undefined name '_lastFullData'.
+            final grData = _lastFullData?['goodreturns'];
+                           ^^^^^^^^^^^^^
+lib/screens/gold_screen.dart:187:25:
+Error: Undefined name '_isLoading'.
+                    if (_isLoading) const CircularProgressIndicator(),
+                        ^^^^^^^^^^
+lib/screens/gold_screen.dart:200:21:
+Error: Method not found: '_fetchPrice'.
+                    _fetchPrice().then((_) {
+                    ^^^^^^^^^^^
+lib/screens/gold_screen.dart:201:28:
+Error: Undefined name 'mounted'.
+                       if (mounted) _showSourceChecker();
+                           ^^^^^^^
+lib/screens/gold_screen.dart:263:16:
+Error: Undefined name 'context'.
+      context: context,
+               ^^^^^^^
+lib/screens/gold_screen.dart:284:11:
+Error: Undefined name 'mounted'.
+      if (mounted) {
+          ^^^^^^^
+lib/screens/gold_screen.dart:285:30:
+Error: Undefined name 'context'.
+        ScaffoldMessenger.of(context).showSnackBar(
+                             ^^^^^^^
+lib/screens/gold_screen.dart:288:15:
+Error: Method not found: '_loadData'.
+        await _loadData();
+              ^^^^^^^^^
+lib/screens/gold_screen.dart:316:24:
+Error: Undefined name '_fetchPrice'.
+            onPressed: _fetchPrice,
+                       ^^^^^^^^^^^
+lib/screens/gold_screen.dart:321:13:
+Error: Undefined name '_isLoading'.
+      body: _isLoading && _currentPrice == null
+            ^^^^^^^^^^
+lib/screens/gold_screen.dart:321:27:
+Error: Undefined name '_currentPrice'.
+      body: _isLoading && _currentPrice == null
+                          ^^^^^^^^^^^^^
+lib/screens/gold_screen.dart:352:9:
+Error: Undefined name '_currentPrice'.
+    if (_currentPrice == null) {
+        ^^^^^^^^^^^^^
+lib/screens/gold_screen.dart:361:19:
+Error: Undefined name '_currentPrice'.
+    final price = _currentPrice!.price;
+                  ^^^^^^^^^^^^^
+lib/screens/gold_screen.dart:362:18:
+Error: Undefined name '_priceDiff'.
+    final diff = _priceDiff ?? 0;
+                 ^^^^^^^^^^
+lib/screens/gold_screen.dart:393:33:
+Error: Undefined name 'context'.
+                color: Theme.of(context).colorScheme.onSurface,  // Dark color matching background
+                                ^^^^^^^
+lib/screens/gold_screen.dart:415:27:
+Error: Undefined name '_currentPrice'.
+              'Updated: ${_currentPrice!.date} ${_lastFullData?['fetchedTime'] != null ? 'at ${_lastFullData!['fetchedTime']}' : ''}', 
+                          ^^^^^^^^^^^^^
+lib/screens/gold_screen.dart:415:50:
+Error: Undefined name '_lastFullData'.
+              'Updated: ${_currentPrice!.date} ${_lastFullData?['fetchedTime'] != null ? 'at ${_lastFullData!['fetchedTime']}' : ''}', 
+                                                 ^^^^^^^^^^^^^
+lib/screens/gold_screen.dart:415:96:
+Error: Undefined name '_lastFullData'.
+              'Updated: ${_currentPrice!.date} ${_lastFullData?['fetchedTime'] != null ? 'at ${_lastFullData!['fetchedTime']}' : ''}', 
+                                                                                          ^^^^^^^^^^^^^
+lib/screens/gold_screen.dart:425:9:
+Error: Undefined name '_history'.
+    if (_history.isEmpty) return const Text('No history available');
+        ^^^^^^^^
+lib/screens/gold_screen.dart:437:31:
+Error: Undefined name '_history'.
+          rows: List.generate(_history.length, (index) {
+                              ^^^^^^^^
+lib/screens/gold_screen.dart:438:27:
+Error: Undefined name '_history'.
+            final price = _history[index];
+                          ^^^^^^^^
+lib/screens/gold_screen.dart:472:9:
+Error: Undefined name '_history'.
+    if (_history.length < 2) {
+        ^^^^^^^^
+lib/screens/gold_screen.dart:480:48:
+Error: Undefined name '_history'.
+    final sortedHistory = List<GoldPrice>.from(_history);
+                                               ^^^^^^^^
+lib/screens/gold_screen.dart:559:54:
+Error: Undefined name 'context'.
+            _buildScheduleRow('${_morningTime.format(context)} IST', 'Daily price update (always saved)'),
+                                                     ^^^^^^^
+lib/screens/gold_screen.dart:559:34:
+Error: Undefined name '_morningTime'.
+            _buildScheduleRow('${_morningTime.format(context)} IST', 'Daily price update (always saved)'),
+                                 ^^^^^^^^^^^^
+lib/screens/gold_screen.dart:561:54:
+Error: Undefined name 'context'.
+            _buildScheduleRow('${_eveningTime.format(context)} IST', 'Price check (saved only if changed)'),
+                                                     ^^^^^^^
+lib/screens/gold_screen.dart:561:34:
+Error: Undefined name '_eveningTime'.
+            _buildScheduleRow('${_eveningTime.format(context)} IST', 'Price check (saved only if changed)'),
+                                 ^^^^^^^^^^^^
+Error: Compilation failed.
+  Command: /home/roshan-axcess/snap/flutter/common/flutter/bin/cache/dart-sdk/bin/dart compile js --platform-binaries=/home/roshan-axcess/snap/flutter/common/flutter/bin/cache/flutter_web_sdk/kernel --invoker=flutter_tool -Ddart.vm.product=true -DFLUTTER_VERSION=3.41.0 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=44a626f4f0 -DFLUTTER_ENGINE_REVISION=3452d735bd -DFLUTTER_DART_VERSION=3.11.0 -DFLUTTER_WEB_USE_SKIA=true -DFLUTTER_WEB_USE_SKWASM=false -DFLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/3452d735bd38224ef2db85ca763d862d6326b17f/ --native-null-assertions --no-source-maps -O4 --minify -o /home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/app.dill --packages=/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/package_config.json --cfe-only /home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/main.dart
+#0      RunResult.throwException (package:flutter_tools/src/base/process.dart:153:5)
+#1      _DefaultProcessUtils.run (package:flutter_tools/src/base/process.dart:379:19)
+<asynchronous suspension>
+#2      Dart2JSTarget.build (package:flutter_tools/src/build_system/targets/web.dart:208:5)
+<asynchronous suspension>
+#3      _BuildInstance._invokeInternal (package:flutter_tools/src/build_system/build_system.dart:937:9)
+<asynchronous suspension>
+#4      Future.wait.<anonymous closure> (dart:async/future.dart:546:21)
+<asynchronous suspension>
+#5      _BuildInstance.invokeTarget (package:flutter_tools/src/build_system/build_system.dart:875:32)
+<asynchronous suspension>
+#6      Future.wait.<anonymous closure> (dart:async/future.dart:546:21)
+<asynchronous suspension>
+#7      _BuildInstance.invokeTarget (package:flutter_tools/src/build_system/build_system.dart:875:32)
+<asynchronous suspension>
+#8      FlutterBuildSystem.build (package:flutter_tools/src/build_system/build_system.dart:684:16)
+<asynchronous suspension>
+#9      WebBuilder.buildWeb (package:flutter_tools/src/web/compile.dart:101:34)
+<asynchronous suspension>
+#10     BuildWebCommand.runCommand (package:flutter_tools/src/commands/build_web.dart:299:5)
+<asynchronous suspension>
+#11     FlutterCommand.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command.dart:1590:27)
+<asynchronous suspension>
+#12     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#13     CommandRunner.runCommand (package:args/command_runner.dart:212:13)
+<asynchronous suspension>
+#14     FlutterCommandRunner.runCommand.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:496:9)
+<asynchronous suspension>
+#15     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#16     FlutterCommandRunner.runCommand (package:flutter_tools/src/runner/flutter_command_runner.dart:431:5)
+<asynchronous suspension>
+#17     FlutterCommandRunner.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:307:33)
+<asynchronous suspension>
+#18     run.<anonymous closure>.<anonymous closure> (package:flutter_tools/runner.dart:104:11)
+<asynchronous suspension>
+#19     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#20     main (package:flutter_tools/executable.dart:103:3)
+<asynchronous suspension>
+
+Compiling lib/main.dart for the Web...                             36.0s
+Error: Failed to compile application for the Web.

@@ -1,5 +1,5 @@
-import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:intl/intl.dart';
 import '../models/gold_price.dart';
 
@@ -29,12 +29,7 @@ class GoldPriceService {
       }
 
       final doc = snapshot.docs.first.data();
-      
-      final price = GoldPrice(
-        date: doc['date'] ?? DateFormat('yyyy-MM-dd').format(DateTime.now()),
-        timestamp: doc['timestamp'] ?? DateTime.now().toIso8601String(),
-        price: (doc['price'] ?? 0).toDouble(),
-      );
+      final price = GoldPrice.fromJson(doc, snapshot.docs.first.id);
 
       return {
         'price': price,
@@ -54,7 +49,58 @@ class GoldPriceService {
     }
   }
 
+  Stream<List<GoldPrice>> getGlobalGoldPricesStream({int limit = 30}) {
+    return _db
+        .collection('global_gold_prices')
+        .orderBy('timestamp', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) => GoldPrice.fromJson(doc.data(), doc.id)).toList();
+    });
+  }
+
   Future<Map<String, dynamic>?> checkAndNotifyGoldPriceChange() async {
     return await fetchCurrentGoldPrice();
+  }
+
+  // --- Diagnostic & Manual Tools ---
+
+  Future<Map<String, dynamic>> checkAllSourcesManual() async {
+    try {
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('checkGoldSources');
+      final result = await callable.call();
+      return Map<String, dynamic>.from(result.data as Map);
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> triggerForceFetch() async {
+    try {
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('forceGoldFetch');
+      final result = await callable.call();
+      return Map<String, dynamic>.from(result.data as Map);
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>?> getLatestFetchLog() async {
+    try {
+      final doc = await _db.collection('gold_fetch_logs').doc('latest').get();
+      return doc.data();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<void> clearGoldPriceHistory() async {
+    final batch = _db.batch();
+    final snap = await _db.collection('global_gold_prices').get();
+    for (var doc in snap.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
   }
 }

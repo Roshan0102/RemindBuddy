@@ -1,0 +1,56 @@
+Resolving dependencies...
+Downloading packages...
+  _flutterfire_internals 1.3.66 (1.3.69 available)
+  async 2.13.0 (2.13.1 available)
+  cloud_firestore 6.1.2 (6.3.0 available)
+  cloud_firestore_platform_interface 7.0.6 (7.2.0 available)
+  cloud_firestore_web 5.1.2 (5.3.0 available)
+  cupertino_icons 1.0.8 (1.0.9 available)
+  firebase_auth 6.1.4 (6.4.0 available)
+  firebase_auth_platform_interface 8.1.6 (8.1.9 available)
+  firebase_auth_web 6.1.2 (6.1.5 available)
+  firebase_core 4.4.0 (4.7.0 available)
+  firebase_core_platform_interface 6.0.2 (6.0.3 available)
+  firebase_core_web 3.4.0 (3.6.0 available)
+  firebase_messaging 16.1.1 (16.2.0 available)
+  firebase_messaging_platform_interface 4.7.6 (4.7.9 available)
+  firebase_messaging_web 4.1.2 (4.1.5 available)
+  fl_chart 0.69.2 (1.2.0 available)
+  flutter_lints 3.0.2 (6.0.0 available)
+  flutter_timezone 4.1.1 (5.0.2 available)
+  home_widget 0.7.0+1 (0.9.1 available)
+  hooks 1.0.1 (1.0.3 available)
+  intl 0.19.0 (0.20.2 available)
+  lints 3.0.0 (6.1.0 available)
+  matcher 0.12.18 (0.12.19 available)
+  meta 1.17.0 (1.18.2 available)
+  native_toolchain_c 0.17.4 (0.18.0 available)
+  path_provider_android 2.2.22 (2.3.1 available)
+  shared_preferences 2.5.4 (2.5.5 available)
+  shared_preferences_android 2.4.21 (2.4.23 available)
+  shared_preferences_platform_interface 2.4.1 (2.4.2 available)
+  syncfusion_flutter_charts 28.2.12 (33.2.3 available)
+  syncfusion_flutter_core 28.2.12 (33.2.3 available)
+  table_calendar 3.1.3 (3.2.0 available)
+  test_api 0.7.8 (0.7.11 available)
+  timezone 0.9.4 (0.11.0 available)
+  vector_math 2.2.0 (2.3.0 available)
+  vm_service 15.0.2 (15.1.0 available)
+Got dependencies!
+36 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Compiling lib/main.dart for the Web...                          
+Warning: In index.html:37: Flutter's service worker is deprecated and will be removed in a future Flutter release. See https://github.com/flutter/flutter/issues/156910 for more details.
+Warning: In index.html:46: "FlutterLoader.loadEntrypoint" is deprecated. Use "FlutterLoader.load" instead. See https://docs.flutter.dev/platform-integration/web/initialization for more details.
+Wasm dry run findings:
+Found incompatibilities with WebAssembly.
+
+file:///home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_timezone-4.1.1/lib/flutter_timezone_web.dart 39:22 - invalid_runtime_check_with_js_interop_types lint violation: Cast from 'JSFunction?' to 'List<String> Function(String)?' casts a JS interop value to a Dart type, which might not be platform-consistent. (8)
+
+Consider addressing these issues to enable wasm builds. See docs for more info: https://docs.flutter.dev/platform-integration/web/wasm
+
+Use --no-wasm-dry-run to disable these warnings.
+Font asset "CupertinoIcons.ttf" was tree-shaken, reducing it from 257628 to 1472 bytes (99.4% reduction). Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
+Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 15224 bytes (99.1% reduction). Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
+Compiling lib/main.dart for the Web...                             40.4s
+✓ Built build/web

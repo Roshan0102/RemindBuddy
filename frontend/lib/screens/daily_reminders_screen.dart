@@ -263,135 +263,146 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
         ),
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _reminders.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+      body: StreamBuilder<List<DailyReminder>>(
+        stream: _storageService.getDailyRemindersStream(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          
+          final reminders = snapshot.data ?? [];
+          
+          if (reminders.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.alarm_add, size: 80, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No daily reminders yet',
+                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tap + to create your first daily reminder',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(8),
+            itemCount: reminders.length,
+            itemBuilder: (context, index) {
+              final reminder = reminders[index];
+              return Card(
+                elevation: 2,
+                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: reminder.isActive
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.grey,
+                    child: Icon(
+                      reminder.isAnnoying ? Icons.alarm_on : Icons.alarm,
+                      color: Colors.white,
+                    ),
+                  ),
+                  title: Text(
+                    reminder.title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      decoration: reminder.isActive ? null : TextDecoration.lineThrough,
+                    ),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.alarm_add, size: 80, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No daily reminders yet',
-                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Tap + to create your first daily reminder',
-                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                      if (reminder.description.isNotEmpty)
+                        Text(reminder.description),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                          const SizedBox(width: 4),
+                          Text(
+                            _formatTime(reminder.time),
+                            style: TextStyle(
+                              color: Colors.grey[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (reminder.isAnnoying) ...[
+                            const SizedBox(width: 12),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.red[100],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Nag Mode',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.red[900],
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(8),
-                  itemCount: _reminders.length,
-                  itemBuilder: (context, index) {
-                    final reminder = _reminders[index];
-                    return Card(
-                      elevation: 2,
-                      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: reminder.isActive
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.grey,
-                          child: Icon(
-                            reminder.isAnnoying ? Icons.alarm_on : Icons.alarm,
-                            color: Colors.white,
-                          ),
-                        ),
-                        title: Text(
-                          reminder.title,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            decoration: reminder.isActive ? null : TextDecoration.lineThrough,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (reminder.description.isNotEmpty)
-                              Text(reminder.description),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _formatTime(reminder.time),
-                                  style: TextStyle(
-                                    color: Colors.grey[700],
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                if (reminder.isAnnoying) ...[
-                                  const SizedBox(width: 12),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.red[100],
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      'Nag Mode',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.red[900],
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Switch(
-                              value: reminder.isActive,
-                              onChanged: (_) => _toggleReminder(reminder),
-                            ),
-                            PopupMenuButton(
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'edit',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.edit),
-                                      SizedBox(width: 8),
-                                      Text('Edit'),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'delete',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.delete, color: Colors.red),
-                                      SizedBox(width: 8),
-                                      Text('Delete', style: TextStyle(color: Colors.red)),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                              onSelected: (value) {
-                                if (value == 'edit') {
-                                  _showAddReminderDialog(reminder);
-                                } else if (value == 'delete') {
-                                  _deleteReminder(reminder);
-                                }
-                              },
-                            ),
-                          ],
-                        ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Switch(
+                        value: reminder.isActive,
+                        onChanged: (_) => _toggleReminder(reminder),
                       ),
-                    );
-                  },
+                      PopupMenuButton(
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit),
+                                SizedBox(width: 8),
+                                Text('Edit'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text('Delete', style: TextStyle(color: Colors.red)),
+                              ],
+                            ),
+                          ),
+                        ],
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            _showAddReminderDialog(reminder);
+                          } else if (value == 'delete') {
+                            _deleteReminder(reminder);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
                 ),
+              );
+            },
+          );
+        },
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddReminderDialog(),
         icon: const Icon(Icons.add),

@@ -60,6 +60,19 @@ class StorageService {
     return snap.docs.map((doc) => Task.fromJson(doc.data(), doc.id)).toList();
   }
 
+  Stream<List<Task>> getTasksForDateStream(String date) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Stream.empty();
+    
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('tasks')
+        .where('date', isEqualTo: date)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => Task.fromJson(doc.data(), doc.id)).toList());
+  }
+
   Future<void> updateTask(Task task) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || task.id == null) return;
@@ -130,6 +143,19 @@ class StorageService {
         .toList();
   }
 
+  Stream<List<Note>> getNotesStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Stream.empty();
+    
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('notes')
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => Note.fromMap(doc.data(), doc.id)).toList());
+  }
+
   Future<void> updateNote(Note note) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || note.id == null) return;
@@ -180,6 +206,19 @@ class StorageService {
         .get();
         
     return snap.docs.map((d) => DailyReminder.fromJson(d.data(), d.id)).toList();
+  }
+
+  Stream<List<DailyReminder>> getDailyRemindersStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Stream.empty();
+    
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('daily_reminders')
+        .orderBy('time', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => DailyReminder.fromJson(d.data(), d.id)).toList());
   }
 
   Future<List<DailyReminder>> getActiveDailyReminders() async {
@@ -270,6 +309,23 @@ class StorageService {
     }).toList();
   }
 
+  Stream<List<Map<String, dynamic>>> getChecklistsStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Stream.empty();
+    
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) {
+          final data = d.data();
+          data['id'] = d.id;
+          return data;
+        }).toList());
+  }
+
   Future<void> deleteChecklist(String id) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -330,6 +386,25 @@ class StorageService {
       data['id'] = d.id;
       return data;
     }).toList();
+  }
+
+  Stream<List<Map<String, dynamic>>> getChecklistItemsStream(String checklistId) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Stream.empty();
+    
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .doc(checklistId)
+        .collection('items')
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) {
+          final data = d.data();
+          data['id'] = d.id;
+          return data;
+        }).toList());
   }
 
   Future<void> toggleChecklistItem(String checklistId, String id, bool isChecked) async {
@@ -484,11 +559,12 @@ class StorageService {
     
     final batch = FirebaseFirestore.instance.batch();
     
-    final metadataRef = FirebaseFirestore.instance
+    // 1. Metadata at the Month level
+    final monthRef = FirebaseFirestore.instance
         .collection('users').doc(user.uid)
-        .collection('shift_metadata').doc(effectiveRosterMonth);
+        .collection('shifts').doc(effectiveRosterMonth);
         
-    batch.set(metadataRef, {
+    batch.set(monthRef, {
       'employee_name': employeeName,
       'month': month,
       'roster_month': effectiveRosterMonth,
@@ -496,11 +572,10 @@ class StorageService {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     
+    // 2. Individual days in a sub-collection
     for (var shift in shifts) {
       final date = shift['date'] as String;
-      final shiftRef = FirebaseFirestore.instance
-        .collection('users').doc(user.uid)
-        .collection('shifts').doc(date);
+      final shiftRef = monthRef.collection('daily_shifts').doc(date);
         
       final shiftData = Map<String, dynamic>.from(shift);
       shiftData['roster_month'] = effectiveRosterMonth;
@@ -508,7 +583,7 @@ class StorageService {
     }
     
     await batch.commit();
-    print('✅ Saved ${shifts.length} shifts for roster month: $effectiveRosterMonth to Firestore');
+    print('✅ Saved ${shifts.length} shifts to nested structure: shifts/$effectiveRosterMonth/daily_shifts');
   }
 
   Future<Map<String, String>?> getShiftMetadata({String? rosterMonth}) async {
@@ -518,7 +593,7 @@ class StorageService {
     if (rosterMonth != null) {
       final doc = await FirebaseFirestore.instance
         .collection('users').doc(user.uid)
-        .collection('shift_metadata').doc(rosterMonth).get();
+        .collection('shifts').doc(rosterMonth).get();
       if (!doc.exists) return null;
       final data = doc.data()!;
       return {
@@ -529,7 +604,7 @@ class StorageService {
     } else {
       final snap = await FirebaseFirestore.instance
         .collection('users').doc(user.uid)
-        .collection('shift_metadata')
+        .collection('shifts')
         .orderBy('roster_month', descending: true)
         .limit(1).get();
       if (snap.docs.isEmpty) return null;
@@ -546,10 +621,13 @@ class StorageService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return [];
     
+    if (rosterMonth == null) return [];
+
     final snap = await FirebaseFirestore.instance
         .collection('users').doc(user.uid)
         .collection('shifts')
-        .where('roster_month', isEqualTo: rosterMonth)
+        .doc(rosterMonth)
+        .collection('daily_shifts')
         .get();
         
     final shifts = snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
@@ -564,9 +642,11 @@ class StorageService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
     
+    final month = date.substring(0, 7);
     final doc = await FirebaseFirestore.instance
         .collection('users').doc(user.uid)
-        .collection('shifts').doc(date).get();
+        .collection('shifts').doc(month)
+        .collection('daily_shifts').doc(date).get();
         
     if (!doc.exists) return null;
     return doc.data() as Map<String, dynamic>;
@@ -633,19 +713,26 @@ class StorageService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     
-    final batch = FirebaseFirestore.instance.batch();
     if (rosterMonth != null) {
-      final metaRef = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shift_metadata').doc(rosterMonth);
-      batch.delete(metaRef);
-      final shiftsSnap = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shifts').where('roster_month', isEqualTo: rosterMonth).get();
-      for (var d in shiftsSnap.docs) { batch.delete(d.reference); }
+      // Delete specific month
+      final monthRef = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shifts').doc(rosterMonth);
+      
+      // Delete sub-collection
+      final daysSnap = await monthRef.collection('daily_shifts').get();
+      final batch = FirebaseFirestore.instance.batch();
+      for (var d in daysSnap.docs) { batch.delete(d.reference); }
+      batch.delete(monthRef); // Delete the month doc itself
       await batch.commit();
     } else {
-      final metaSnap = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shift_metadata').get();
-      final shiftsSnap = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shifts').get();
-      for (var d in metaSnap.docs) { batch.delete(d.reference); }
-      for (var d in shiftsSnap.docs) { batch.delete(d.reference); }
-      await batch.commit();
+      // Clear EVERYTHING in shifts
+      final monthsSnap = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shifts').get();
+      for (var monthDoc in monthsSnap.docs) {
+        final daysSnap = await monthDoc.reference.collection('daily_shifts').get();
+        final batch = FirebaseFirestore.instance.batch();
+        for (var d in daysSnap.docs) { batch.delete(d.reference); }
+        batch.delete(monthDoc.reference);
+        await batch.commit();
+      }
     }
   }
   
@@ -656,8 +743,8 @@ class StorageService {
     
     final snap = await FirebaseFirestore.instance
       .collection('users').doc(user.uid)
-      .collection('shift_metadata')
-      .orderBy('roster_month', descending: true).get();
+      .collection('shifts')
+      .orderBy(FieldPath.documentId, descending: true).get();
       
     return snap.docs.map((d) => d.id).toList();
   }

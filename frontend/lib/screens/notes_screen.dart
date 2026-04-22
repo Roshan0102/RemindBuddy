@@ -165,102 +165,111 @@ class _NotesScreenState extends State<NotesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await _loadNotes();
-        },
-        child: _notes.isEmpty
-          ? ListView(children: const [
+      body: StreamBuilder<List<Note>>(
+        stream: _storageService.getNotesStream(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          
+          final notes = snapshot.data ?? [];
+          
+          if (notes.isEmpty) {
+            return ListView(children: const [
               SizedBox(height: 50),
-              Center(child: Text('No notes yet. Tap + to add one.\nPull down to refresh from cloud.', textAlign: TextAlign.center))
-            ])
-          : ListView.builder(
-              padding: const EdgeInsets.all(8),
-              itemCount: _notes.length,
-              itemBuilder: (context, index) {
-                final note = _notes[index];
-                return Card(
-                  elevation: 2,
-                  margin: const EdgeInsets.symmetric(vertical: 6),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  child: InkWell(
-                    onTap: () => _addOrEditNote(note: note),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              if (note.title.isNotEmpty)
-                                Text(
+              Center(child: Text('No notes yet. Tap + to add one.\nUpdates are synced in real-time.', textAlign: TextAlign.center))
+            ]);
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(8),
+            itemCount: notes.length,
+            itemBuilder: (context, index) {
+              final note = notes[index];
+              return Card(
+                elevation: 2,
+                margin: const EdgeInsets.symmetric(vertical: 6),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: InkWell(
+                  onTap: () => _addOrEditNote(note: note),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            if (note.title.isNotEmpty)
+                              Expanded(
+                                child: Text(
                                   note.title,
                                   style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
                                   ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              if (note.isLocked) const Icon(Icons.lock, size: 16, color: Colors.red),
-                            ],
-                          ),
-                          if (note.title.isNotEmpty) const SizedBox(height: 8),
-                          Text(
-                            note.isLocked ? 'Locked Content' : note.content,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: Colors.grey[700], fontStyle: note.isLocked ? FontStyle.italic : FontStyle.normal),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                note.date,
-                                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.delete, size: 20, color: Colors.grey),
-                                onPressed: () async {
-                                  if (note.isLocked) {
-                                    bool auth = await _showPinDialog();
-                                    if (!auth) return;
-                                  }
-                                  // Add confirmation dialog
-                                  final confirm = await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: const Text('Delete Note'),
-                                      content: const Text('Are you sure you want to delete this note?'),
-                                      actions: [
-                                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(ctx, true), 
-                                          style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                          child: const Text('Delete')
-                                        ),
-                                      ],
-                                    ),
-                                  );
+                            if (note.isLocked) const Icon(Icons.lock, size: 16, color: Colors.red),
+                          ],
+                        ),
+                        if (note.title.isNotEmpty) const SizedBox(height: 8),
+                        Text(
+                          note.isLocked ? 'Locked Content' : note.content,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: Colors.grey[700], fontStyle: note.isLocked ? FontStyle.italic : FontStyle.normal),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              note.date,
+                              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, size: 20, color: Colors.grey),
+                              onPressed: () async {
+                                if (note.isLocked) {
+                                  bool auth = await _showPinDialog();
+                                  if (!auth) return;
+                                }
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Delete Note'),
+                                    content: const Text('Are you sure you want to delete this note?'),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, true), 
+                                        style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                        child: const Text('Delete')
+                                      ),
+                                    ],
+                                  ),
+                                );
 
-                                  if (confirm != true) return;
-
-                                  await _storageService.deleteNote(note.id!);
-                                  _loadNotes();
-                                  _loadNotes();
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                                if (confirm != true) return;
+                                await _storageService.deleteNote(note.id!);
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
+          );
+        }
       ),
+    );
+  }
       floatingActionButton: FloatingActionButton(
         onPressed: () => _addOrEditNote(),
         child: const Icon(Icons.add),

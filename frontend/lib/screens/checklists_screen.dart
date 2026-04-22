@@ -136,55 +136,65 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
         onPressed: _showAddDialog,
         child: const Icon(Icons.add),
       ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : _checklists.isEmpty
-          ? const Center(child: Text('No lists yet. Add one!'))
-          : ListView.builder(
-              itemCount: _checklists.length,
-              itemBuilder: (context, index) {
-                final list = _checklists[index];
-                final color = Color(list['color'] ?? Colors.blue.value);
-                final icon = _getIconFromCode(list['iconCode']);
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _storage.getChecklistsStream(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          
+          final checklists = snapshot.data ?? [];
+          
+          if (checklists.isEmpty) {
+            return const Center(child: Text('No lists yet. Add one!'));
+          }
 
+          return ListView.builder(
+            itemCount: checklists.length,
+            itemBuilder: (context, index) {
+              final list = checklists[index];
+              final color = Color(list['color'] ?? Colors.blue.value);
+              final icon = _getIconFromCode(list['iconCode']);
 
-                return Dismissible(
-                  key: Key(list['id'].toString()),
-                  background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
-                  onDismissed: (_) => _deleteChecklist(list['id']),
-                  confirmDismiss: (_) async => await showDialog(
-                    context: context, 
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Delete List?'), 
-                      content: const Text('This will delete all items in the list.'),
-                      actions: [
-                        TextButton(onPressed: ()=>Navigator.pop(ctx, false), child: const Text('Cancel')),
-                        TextButton(onPressed: ()=>Navigator.pop(ctx, true), child: const Text('Delete')),
-                      ]
-                    )
+              return Dismissible(
+                key: Key(list['id'].toString()),
+                background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
+                onDismissed: (_) => _deleteChecklist(list['id']),
+                confirmDismiss: (_) async => await showDialog(
+                  context: context, 
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Delete List?'), 
+                    content: const Text('This will delete all items in the list.'),
+                    actions: [
+                      TextButton(onPressed: ()=>Navigator.pop(ctx, false), child: const Text('Cancel')),
+                      TextButton(onPressed: ()=>Navigator.pop(ctx, true), child: const Text('Delete')),
+                    ]
+                  )
+                ),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: color.withOpacity(0.1),
+                    child: Icon(icon, color: color),
                   ),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: color.withOpacity(0.1),
-                      child: Icon(icon, color: color),
-                    ),
-                    title: Text(list['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ChecklistDetailScreen(
-                            checklistId: list['id'],
-                            title: list['title'],
-                          ),
+                  title: Text(list['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ChecklistDetailScreen(
+                          checklistId: list['id'],
+                          title: list['title'],
                         ),
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        },
+      ),
     );
   }
 }
@@ -324,62 +334,84 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
         onPressed: _showAddItemDialog,
         child: const Icon(Icons.add),
       ),
-      body: Column(
-        children: [
-           if (total > 0)
-             LinearProgressIndicator(
-               value: progress, 
-               backgroundColor: Colors.grey[200],
-               valueColor: AlwaysStoppedAnimation<Color>(progress == 1.0 ? Colors.green : Colors.blue),
-               minHeight: 6,
-             ),
-             
-           Expanded(
-             child: _isLoading 
-               ? const Center(child: CircularProgressIndicator())
-               : sortedItems.isEmpty
-                 ? Center(
-                     child: Column(
-                       mainAxisAlignment: MainAxisAlignment.center,
-                       children: [
-                         Icon(Icons.checklist, size: 60, color: Colors.grey[300]),
-                         const SizedBox(height: 16),
-                         Text('Add items to your ${widget.title} list!', style: TextStyle(color: Colors.grey[500])),
-                       ],
-                     ),
-                   )
-                 : ListView.builder(
-                     itemCount: sortedItems.length,
-                     itemBuilder: (context, index) {
-                       final item = sortedItems[index];
-                       final isChecked = item['isChecked'] == 1;
-                       
-                       return Dismissible(
-                         key: Key(item['id'].toString()),
-                         background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
-                         onDismissed: (_) => _deleteItem(item['id']),
-                         child: Column(
-                           children: [
-                             CheckboxListTile(
-                               value: isChecked,
-                               onChanged: (val) => _toggleItem(item['id'], val ?? false),
-                               title: Text(
-                                 item['text'],
-                                 style: TextStyle(
-                                   decoration: isChecked ? TextDecoration.lineThrough : null,
-                                   color: isChecked ? Colors.grey : Colors.black,
-                                 ),
-                               ),
-                               activeColor: Colors.green,
-                             ),
-                             const Divider(height: 1),
-                           ],
-                         ),
-                       );
-                     },
-                   ),
-           ),
-        ],
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _storage.getChecklistItemsStream(widget.checklistId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          
+          final items = snapshot.data ?? [];
+          
+          // Sort: Unchecked first, then Checked
+          final sortedItems = List<Map<String, dynamic>>.from(items);
+          sortedItems.sort((a, b) {
+            final aChecked = a['isChecked'] == true || a['isChecked'] == 1;
+            final bChecked = b['isChecked'] == true || b['isChecked'] == 1;
+            if (aChecked == bChecked) return 0;
+            return aChecked ? 1 : -1;
+          });
+
+          final total = sortedItems.length;
+          final checkedCount = sortedItems.where((i) => i['isChecked'] == true || i['isChecked'] == 1).length;
+          final progress = total == 0 ? 0.0 : checkedCount / total;
+
+          return Column(
+            children: [
+              if (total > 0)
+                LinearProgressIndicator(
+                  value: progress, 
+                  backgroundColor: Colors.grey[200],
+                  valueColor: AlwaysStoppedAnimation<Color>(progress == 1.0 ? Colors.green : Colors.blue),
+                  minHeight: 6,
+                ),
+                
+              Expanded(
+                child: sortedItems.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.checklist, size: 60, color: Colors.grey[300]),
+                          const SizedBox(height: 16),
+                          Text('Add items to your ${widget.title} list!', style: TextStyle(color: Colors.grey[500])),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: sortedItems.length,
+                      itemBuilder: (context, index) {
+                        final item = sortedItems[index];
+                        final isChecked = item['isChecked'] == true || item['isChecked'] == 1;
+                        
+                        return Dismissible(
+                          key: Key(item['id'].toString()),
+                          background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
+                          onDismissed: (_) => _deleteItem(item['id']),
+                          child: Column(
+                            children: [
+                              CheckboxListTile(
+                                value: isChecked,
+                                onChanged: (val) => _toggleItem(item['id'], val ?? false),
+                                title: Text(
+                                  item['text'],
+                                  style: TextStyle(
+                                    decoration: isChecked ? TextDecoration.lineThrough : null,
+                                    color: isChecked ? Colors.grey : Colors.black,
+                                  ),
+                                ),
+                                activeColor: Colors.green,
+                              ),
+                              const Divider(height: 1),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

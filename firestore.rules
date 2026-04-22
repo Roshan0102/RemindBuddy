@@ -20,5 +20,11 @@ service cloud.firestore {
       // Allow updates/deletes only by the owner
       allow update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
+
+    // Global gold prices collection
+    match /global_gold_prices/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only Cloud Functions (Admin) should write
+    }
   }
 }

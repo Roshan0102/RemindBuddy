@@ -19,14 +19,13 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _selectedIndex = 0;
+  int _selectedIndex = 0; // Default to Gold (first tab)
   bool _isDarkMode = false;
 
   @override
   void initState() {
     super.initState();
     _loadTheme();
-    _initialSync();
   }
 
   @override
@@ -55,9 +54,11 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   final List<Widget> _screens = [
-    const HomeScreen(),
-    const NotesScreen(),
     const GoldScreen(),
+    const HomeScreen(), // Calendar-based Reminders
+    const NotesScreen(),
+    const MyShiftsScreen(),
+    const ChecklistsScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -245,7 +246,7 @@ class _MainScreenState extends State<MainScreen> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'RemindBuddy',
-                    applicationVersion: '1.0.86',
+                    applicationVersion: '1.0.93',
                     applicationIcon: const Icon(Icons.alarm_add, size: 48),
                     children: [
                       const Text('Your friendly daily reminder companion!'),
@@ -272,6 +273,11 @@ class _MainScreenState extends State<MainScreen> {
           onDestinationSelected: _onItemTapped,
           destinations: const [
             NavigationDestination(
+              icon: Icon(Icons.monetization_on_outlined),
+              selectedIcon: Icon(Icons.monetization_on),
+              label: 'Gold',
+            ),
+            NavigationDestination(
               icon: Icon(Icons.calendar_today_outlined),
               selectedIcon: Icon(Icons.calendar_today),
               label: 'Reminders',
@@ -281,10 +287,15 @@ class _MainScreenState extends State<MainScreen> {
               selectedIcon: Icon(Icons.note_alt),
               label: 'Notes',
             ),
-             NavigationDestination(
-              icon: Icon(Icons.monetization_on_outlined),
-              selectedIcon: Icon(Icons.monetization_on),
-              label: 'Gold',
+            NavigationDestination(
+              icon: Icon(Icons.work_history_outlined),
+              selectedIcon: Icon(Icons.work_history),
+              label: 'Shifts',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.playlist_add_check_outlined),
+              selectedIcon: Icon(Icons.playlist_add_check),
+              label: 'Checklist',
             ),
           ],
         ),

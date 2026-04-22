@@ -1,0 +1,29 @@
+
+X main Build and Deploy · 24731191633
+Triggered via push about 2 hours ago
+
+X Build Android APK in 6m46s (ID 72345776908)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run actions/setup-java@v4
+  ✓ Run subosito/flutter-action@v2
+  ✓ Get Dependencies
+  ✓ Setup Shorebird
+  X Build with Shorebird
+  - Upload APK
+  ✓ Post Setup Shorebird
+  ✓ Post Run subosito/flutter-action@v2
+  ✓ Post Run actions/setup-java@v4
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: actions/checkout@v4, actions/setup-java@v4. Actions will be forced to run with Node.js 24 by default starting June 2nd, 2026. Node.js 20 will be removed from the runner on September 16th, 2026. Please check if updated versions of these actions are available that support Node.js 24. To opt into Node.js 24 now, set the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true environment variable on the runner or in your workflow file. Once Node.js 24 becomes the default, you can temporarily opt out by setting ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Build Android APK: .github#5
+
+X Process completed with exit code 70.
+Build Android APK: .github#404
+
+
+To see the logs for the failed steps, try: gh run view --log-failed --job=72345776908
+View this run on GitHub: https://github.com/Roshan0102/RemindBuddy/actions/runs/24731191633

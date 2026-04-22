@@ -99,147 +99,150 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final String dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay ?? _focusedDay);
+
     return Scaffold(
-      body: Column(
-        children: [
-          TableCalendar(
-            firstDay: DateTime.utc(2020, 10, 16),
-            lastDay: DateTime.utc(2030, 3, 14),
-            focusedDay: _focusedDay,
-            calendarFormat: _calendarFormat,
-            availableCalendarFormats: const {
-              CalendarFormat.month: 'Month',
-            },
-            selectedDayPredicate: (day) {
-              return isSameDay(_selectedDay, day);
-            },
-            onDaySelected: (selectedDay, focusedDay) {
-              if (!isSameDay(_selectedDay, selectedDay)) {
-                setState(() {
-                  _selectedDay = selectedDay;
+      body: StreamBuilder<List<Task>>(
+        stream: _storageService.getTasksForDateStream(dateStr),
+        builder: (context, snapshot) {
+          final tasks = snapshot.data ?? [];
+          _selectedTasks = tasks; // Keep mascot logic happy
+
+          return Column(
+            children: [
+              TableCalendar(
+                firstDay: DateTime.utc(2020, 10, 16),
+                lastDay: DateTime.utc(2030, 3, 14),
+                focusedDay: _focusedDay,
+                calendarFormat: _calendarFormat,
+                availableCalendarFormats: const {
+                  CalendarFormat.month: 'Month',
+                },
+                selectedDayPredicate: (day) {
+                  return isSameDay(_selectedDay, day);
+                },
+                onDaySelected: (selectedDay, focusedDay) {
+                  if (!isSameDay(_selectedDay, selectedDay)) {
+                    setState(() {
+                      _selectedDay = selectedDay;
+                      _focusedDay = focusedDay;
+                    });
+                  }
+                },
+                onFormatChanged: (format) {
+                  if (_calendarFormat != format) {
+                    setState(() {
+                      _calendarFormat = format;
+                    });
+                  }
+                },
+                onPageChanged: (focusedDay) {
                   _focusedDay = focusedDay;
-                });
-                _loadTasksForDay(selectedDay);
-              }
-            },
-            onFormatChanged: (format) {
-              if (_calendarFormat != format) {
-                setState(() {
-                  _calendarFormat = format;
-                });
-              }
-            },
-            onPageChanged: (focusedDay) {
-              _focusedDay = focusedDay;
-            },
-            calendarStyle: CalendarStyle(
-              todayDecoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.5),
-                shape: BoxShape.circle,
+                },
+                calendarStyle: CalendarStyle(
+                  todayDecoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  selectedDecoration: const BoxDecoration(
+                    color: Colors.blue,
+                    shape: BoxShape.circle,
+                  ),
+                  markerDecoration: const BoxDecoration(
+                    color: Colors.redAccent,
+                    shape: BoxShape.circle,
+                  ),
+                  outsideDaysVisible: false,
+                ),
+                headerStyle: const HeaderStyle(
+                  formatButtonVisible: false,
+                  titleCentered: true,
+                  titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
               ),
-              selectedDecoration: const BoxDecoration(
-                color: Colors.blue,
-                shape: BoxShape.circle,
-              ),
-              markerDecoration: const BoxDecoration(
-                color: Colors.redAccent,
-                shape: BoxShape.circle,
-              ),
-              outsideDaysVisible: false,
-            ),
-            headerStyle: const HeaderStyle(
-              formatButtonVisible: false,
-              titleCentered: true,
-              titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(height: 8.0),
-          // Buddy Mascot Area
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildBuddyMascot(),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(height: 8.0),
+              // Buddy Mascot Area
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      _getBuddyMessage(),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    Text(
-                      '${_selectedTasks.length} tasks for today',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    _buildBuddyMascot(),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _getBuddyMessage(),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        Text(
+                          '${tasks.length} tasks for today',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: _selectedTasks.isEmpty
-                ? const Center(child: Text('No tasks for this day'))
-                : ListView.builder(
-                    itemCount: _selectedTasks.length,
-                    itemBuilder: (context, index) {
-                      final task = _selectedTasks[index];
-                      return Dismissible(
-                        key: Key(task.id.toString()),
-                        background: Container(
-                          color: Colors.red,
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.only(right: 20.0),
-                          child: const Icon(Icons.delete, color: Colors.white),
-                        ),
-                        direction: DismissDirection.endToStart,
-                        confirmDismiss: (direction) async {
-                          return await showDialog<bool>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('Delete Task?'),
-                              content: const Text('Are you sure you want to delete this task?'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx, true),
-                                  style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                  child: const Text('Delete'),
+              ),
+              Expanded(
+                child: snapshot.connectionState == ConnectionState.waiting
+                    ? const Center(child: CircularProgressIndicator())
+                    : tasks.isEmpty
+                        ? const Center(child: Text('No tasks for this day'))
+                        : ListView.builder(
+                            itemCount: tasks.length,
+                            itemBuilder: (context, index) {
+                              final task = tasks[index];
+                              return Dismissible(
+                                key: Key(task.id.toString()),
+                                background: Container(
+                                  color: Colors.red,
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: 20.0),
+                                  child: const Icon(Icons.delete, color: Colors.white),
                                 ),
-                              ],
-                            ),
-                          );
-                        },
-                        onDismissed: (direction) async {
-                          // 1. Remove from UI immediately
-                          final deletedTask = task;
-                          setState(() {
-                            _selectedTasks.removeAt(index);
-                          });
-
-                          // 2. Delete from Server
-                          await _storageService.deleteTask(deletedTask.id.toString());
-                          
-                          // Removed local notification cancellation
-                          
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Task deleted')),
-                            );
-                          }
-                        },
-                        child: ListTile(
-                          title: Text(task.title),
-                          subtitle: Text('${task.time} - ${task.description}'),
-                          trailing: task.repeat != 'none' ? const Icon(Icons.repeat) : null,
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
+                                direction: DismissDirection.endToStart,
+                                confirmDismiss: (direction) async {
+                                  return await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Delete Task?'),
+                                      content: const Text('Are you sure you want to delete this task?'),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx, true),
+                                          style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                          child: const Text('Delete'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                                onDismissed: (direction) async {
+                                  await _storageService.deleteTask(task.id.toString());
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Task deleted')),
+                                    );
+                                  }
+                                },
+                                child: ListTile(
+                                  title: Text(task.title),
+                                  subtitle: Text('${task.time} - ${task.description}'),
+                                  trailing: task.repeat != 'none' ? const Icon(Icons.repeat) : null,
+                                ),
+                              );
+                            },
+                          ),
+              ),
+            ],
+          );
+        }
       ),
+    );
+  }
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [

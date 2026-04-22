@@ -17,142 +17,73 @@ class GoldScreen extends StatefulWidget {
 }
 
 class _GoldScreenState extends State<GoldScreen> {
-  GoldPrice? _currentPrice;
-  List<GoldPrice> _history = [];
-  bool _isLoading = true;
-  double? _priceDiff;
-  Map<String, dynamic>? _lastFullData; // Store full results for debug UI
-  
+  final GoldPriceService _goldService = GoldPriceService();
+  bool _isFetching = false;
+  String _lastLog = "No logs yet. Click 'Refresh' to fetch price.";
+  Map<String, dynamic>? _lastFullData;
+
   TimeOfDay _morningTime = const TimeOfDay(hour: 11, minute: 0);
   TimeOfDay _eveningTime = const TimeOfDay(hour: 19, minute: 0);
 
   @override
   void initState() {
     super.initState();
-    _loadData();
   }
-
-  bool _isFetching = false;
-
-  Future<void> _loadData() async {
-    if (_isFetching) return;
-    setState(() => _isLoading = true);
-    try {
-      final storage = StorageService();
-      _currentPrice = await storage.getLatestGoldPrice();
-      _history = await storage.getGoldPriceHistory(limit: 10);
-      
-      final double? prev = await storage.getPreviousGoldPrice();
-      if (_currentPrice != null && prev != null) {
-        _priceDiff = _currentPrice!.price - prev;
-      }
-      
-      // Only fetch if no data at all OR if the current data is old
-      if (_currentPrice == null) {
-        await _fetchPrice();
-      }
-    } catch (e) {
-      print("Error loading gold data: $e");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  String _lastLog = "No logs yet. Click 'Refresh' to fetch price.";
 
   Future<void> _fetchPrice() async {
     if (_isFetching) return;
-    _isFetching = true;
-    setState(() => _isLoading = true);
-    _lastLog = "Starting fetch..."; 
+    setState(() => _isFetching = true);
+    
     try {
-      final goldService = GoldPriceService();
-      final storage = StorageService();
-      
-      final result = await goldService.fetchCurrentGoldPrice();
-      final newPrice = result['price'] as GoldPrice?;
-      final method = result['method'];
-      
-      _lastLog = result['log'] ?? "No log returned";
-      _lastFullData = result['full_data']; 
-      
-      if (newPrice != null) {
-        bool hasChanged = true;
-        if (_currentPrice != null && _currentPrice!.price == newPrice.price) {
-          hasChanged = false;
-        }
-        
-        if (hasChanged) {
-          await storage.saveGoldPrice(newPrice);
-          _currentPrice = newPrice;
-          _history = await storage.getGoldPriceHistory(limit: 10);
-        }
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(hasChanged 
-                ? '✅ Price updated: ₹${newPrice.price.toStringAsFixed(0)}' 
-                : 'ℹ️ Fetched via $method. No change.'),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('❌ Failed to fetch price from Cloud.'),
-              backgroundColor: Colors.red,
-              action: SnackBarAction(
-                label: 'Details',
-                textColor: Colors.white,
-                onPressed: _showDebugLog,
-              ),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      _lastLog += "\nCRITICAL ERROR: $e";
+      final result = await _goldService.triggerForceFetch();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Error: $e'), backgroundColor: Colors.red),
-        );
+        if (result.containsKey('error')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('❌ Fetch Error: ${result['error']}'), backgroundColor: Colors.red),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ Manual fetch completed! Update will mirror shortly.')),
+          );
+        }
       }
     } finally {
-      _isFetching = false;
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isFetching = false);
     }
   }
 
-  void _showDebugLog() {
+  void _showDebugLog() async {
+    final log = await _goldService.getLatestFetchLog();
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Fetching Logs'),
+        title: const Text('Last Fetch Diagnostics (Debug)'),
+        backgroundColor: Theme.of(context).colorScheme.surface,
         content: Container(
           width: double.maxFinite,
           constraints: const BoxConstraints(maxHeight: 400),
-          child: SingleChildScrollView(
-            child: SelectableText(
-              _lastLog,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-            ),
-          ),
+          child: log == null 
+            ? const Text('No execution logs found.')
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Status: ${log['status']}', style: TextStyle(fontWeight: FontWeight.bold, color: log['status'] == 'SUCCESS' ? Colors.green : Colors.red)),
+                  Text('Timestamp: ${log['timestamp']}'),
+                  Text('Primary Source: ${log['sourceUsed'] ?? 'N/A'}'),
+                  const Divider(),
+                  const Text('Individual Source Results:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  ...(log['logs'] as List? ?? []).map((l) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('• $l', style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+                  )),
+                ],
+              ),
         ),
         actions: [
-            TextButton.icon(
-              icon: const Icon(Icons.copy),
-              label: const Text('Copy Log'),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: _lastLog));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Log copied to clipboard')),
-                );
-              },
-            ),
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Close'),
@@ -162,58 +93,44 @@ class _GoldScreenState extends State<GoldScreen> {
     );
   }
 
-  void _showSourceChecker() {
+  void _showSourceChecker() async {
     showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
-          builder: (context, setState) {
-            final bbData = _lastFullData?['bankbazaar'];
-            final grData = _lastFullData?['goodreturns'];
-            
-            GoldPrice? bbPrice = bbData != null ? bbData['price'] as GoldPrice? : null;
-            GoldPrice? grPrice = grData != null ? grData['price'] as GoldPrice? : null;
-
+          builder: (context, setInternalState) {
             return AlertDialog(
-              title: const Text('Source Checker'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildSourceStatus('BankBazaar (Primary)', bbPrice, bbData),
-                    const SizedBox(height: 16),
-                    _buildSourceStatus('GoodReturns (Secondary)', grPrice, grData),
-                    const SizedBox(height: 16),
-                    if (_isLoading) const CircularProgressIndicator(),
-                  ],
-                ),
+              title: const Text('Live Source Checker'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Fetching current prices from all scrapers directly (No DB write)...'),
+                  const SizedBox(height: 20),
+                  FutureBuilder<Map<String, dynamic>>(
+                    future: _goldService.checkAllSourcesManual(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const CircularProgressIndicator();
+                      }
+                      final data = snapshot.data ?? {};
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _sourceRow('LiveChennai', data['live_chennai']),
+                          _sourceRow('BankBazaar', data['bank_bazaar']),
+                          _sourceRow('TOI Chennai', data['times_of_india']),
+                          const Divider(),
+                          Text('As of: ${data['timestamp'] ?? 'Now'}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                        ],
+                      );
+                    },
+                  ),
+                ],
               ),
               actions: [
-                TextButton.icon(
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Refresh Both'),
-                  onPressed: () async {
-                    Navigator.pop(context); // Close dialog first to avoid context issues or just rebuild?
-                    // Better to close, trigger fetch, and maybe user opens again? 
-                    // Or keep open and update? Keeping open is complex with async.
-                    // Let's close and trigger refresh.
-                    _fetchPrice().then((_) {
-                       if (mounted) _showSourceChecker();
-                    });
-                  },
-                ),
-                TextButton.icon(
-                  icon: const Icon(Icons.bug_report),
-                  label: const Text('Debug Console'),
-                  onPressed: () {
-                     // Open debug console
-                     _showDebugLog();
-                  },
-                ),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Close'),
+                  child: const Text('Done'),
                 ),
               ],
             );
@@ -223,48 +140,33 @@ class _GoldScreenState extends State<GoldScreen> {
     );
   }
 
-  Widget _buildSourceStatus(String name, GoldPrice? price, Map<String, dynamic>? data) {
-    final bool isSuccess = price != null;
-    final String errorMsg = data?['debug'] ?? 'No data';
-    final String method = data?['method'] ?? 'unknown';
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isSuccess ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
-        border: Border.all(color: isSuccess ? Colors.green : Colors.red),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _sourceRow(String name, dynamic result) {
+    bool isSuccess = result is num;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Icon(isSuccess ? Icons.check_circle : Icons.error, 
-                   color: isSuccess ? Colors.green : Colors.red, size: 20),
-              const SizedBox(width: 8),
-              Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.bold))),
-            ],
+          Text(name, style: const TextStyle(fontWeight: FontWeight.w500)),
+          Text(
+            isSuccess ? '₹ $result' : '❌ $result',
+            style: TextStyle(
+              color: isSuccess ? Colors.green[700] : Colors.red,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'monospace'
+            ),
           ),
-          const SizedBox(height: 4),
-          if (isSuccess)
-             Text('₹ ${price.price.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))
-          else
-             Text('Failed: $errorMsg', style: TextStyle(color: Colors.red[700], fontSize: 12)),
-          
-          Text('Method: $method', style: const TextStyle(fontSize: 10, color: Colors.grey)),
         ],
       ),
     );
   }
 
-
   Future<void> _clearAllData() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear All Gold Data?'),
-        content: const Text('This will delete all gold price history. This action cannot be undone.'),
+        title: const Text('Clear Global Price History?'),
+        content: const Text('This will delete all price history from Firestore. This affects ALL users.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -272,109 +174,110 @@ class _GoldScreenState extends State<GoldScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Clear', style: TextStyle(color: Colors.red)),
+            child: const Text('Confirm Clear', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
 
     if (confirmed == true) {
-      final storage = StorageService();
-      await storage.clearGoldPrices();
-      
+      setState(() => _isFetching = true);
+      await _goldService.clearGoldPriceHistory();
       if (mounted) {
+        setState(() => _isFetching = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ All gold price data cleared')),
+          const SnackBar(content: Text('✅ Global gold price history cleared.')),
         );
-        await _loadData();
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gold Rates (22K)'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_forever),
-            onPressed: _clearAllData,
-            tooltip: 'Clear All Data',
-          ),
-          IconButton(
-            icon: const Icon(Icons.compare_arrows),
-            onPressed: _showSourceChecker,
-            tooltip: 'Check Sources',
-          ),
-          IconButton(
-            icon: const Icon(Icons.bug_report),
-            onPressed: _showDebugLog,
-            tooltip: 'Show Debug Log',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetchPrice,
-            tooltip: 'Refresh Price',
-          ),
-        ],
-      ),
-      body: _isLoading && _currentPrice == null
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                   _buildCurrentPriceCard(),
-                   const SizedBox(height: 24),
-                   const Text(
-                     'Recent History (Last 10 Updates)',
-                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                   ),
-                   const SizedBox(height: 8),
-                   _buildHistoryTable(),
-                   const SizedBox(height: 24),
-                   const Text(
-                     'Price Trend',
-                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                   ),
-                   const SizedBox(height: 16),
-                   _buildModernChart(),
-                   const SizedBox(height: 16),
-                   _buildScheduleInfo(),
-                ],
+    return StreamBuilder<List<GoldPrice>>(
+      stream: _goldService.getGlobalGoldPricesStream(),
+      builder: (context, snapshot) {
+        final history = snapshot.data ?? [];
+        final currentPrice = history.isNotEmpty ? history.first : null;
+        final priceDiff = currentPrice != null ? currentPrice.priceChange : 0.0;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Gold Rates (22K)'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.delete_forever),
+                onPressed: _clearAllData,
+                tooltip: 'Clear History',
               ),
-            ),
+              IconButton(
+                icon: const Icon(Icons.compare_arrows),
+                onPressed: _showSourceChecker,
+                tooltip: 'Check Sources',
+              ),
+              IconButton(
+                icon: const Icon(Icons.bug_report),
+                onPressed: _showDebugLog,
+                tooltip: 'Debug Log',
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _fetchPrice,
+                tooltip: 'Refresh',
+              ),
+            ],
+          ),
+          body: snapshot.connectionState == ConnectionState.waiting && history.isEmpty
+              ? const Center(child: CircularProgressIndicator())
+              : history.isEmpty
+                  ? const Center(child: Text('No gold data in Cloud yet'))
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildCurrentPriceCard(currentPrice, priceDiff),
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Recent History (Live Mirror)',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildHistoryTable(history),
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Price Trend',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildModernChart(history),
+                          const SizedBox(height: 16),
+                          _buildScheduleInfo(),
+                        ],
+                      ),
+                    ),
+        );
+      },
     );
   }
 
-  Widget _buildCurrentPriceCard() {
-    if (_currentPrice == null) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('No Gold Price Data Available'),
-        ),
-      );
-    }
+  Widget _buildCurrentPriceCard(GoldPrice? currentPrice, double diff) {
+    if (currentPrice == null) return const SizedBox.shrink();
     
-    final price = _currentPrice!.price;
-    final diff = _priceDiff ?? 0;
+    final price = currentPrice.price;
     
-    // Green for increase, Red for decrease (Issue #4)
     Color diffColor = Colors.grey;
     IconData diffIcon = Icons.remove;
     String diffText = "";
     
     if (diff > 0) {
-      diffColor = Colors.green;  // Price increased = good
+      diffColor = Colors.green;
       diffIcon = Icons.arrow_upward;
       diffText = "+₹${diff.toStringAsFixed(0)}";
     } else if (diff < 0) {
-      diffColor = Colors.red;  // Price decreased = bad
+      diffColor = Colors.red;
       diffIcon = Icons.arrow_downward;
-      diffText = "₹${diff.toStringAsFixed(0)}";
+      diffText = "-₹${diff.abs().toStringAsFixed(0)}";
     }
     
     return Card(
@@ -391,11 +294,11 @@ class _GoldScreenState extends State<GoldScreen> {
               style: TextStyle(
                 fontSize: 48, 
                 fontWeight: FontWeight.bold, 
-                color: Theme.of(context).colorScheme.onSurface,  // Dark color matching background
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 8),
-             if (diff != 0)  // Only show if there's a change
+             if (diff != 0) 
                Row(
                  mainAxisAlignment: MainAxisAlignment.center,
                  children: [
@@ -413,7 +316,7 @@ class _GoldScreenState extends State<GoldScreen> {
                ),
             const SizedBox(height: 8),
             Text(
-              'Updated: ${_currentPrice!.date} ${_lastFullData?['fetchedTime'] != null ? 'at ${_lastFullData!['fetchedTime']}' : ''}', 
+              'Updated: ${_formatDate(currentPrice.timestamp)} via ${currentPrice.source}', 
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
@@ -422,23 +325,20 @@ class _GoldScreenState extends State<GoldScreen> {
     );
   }
 
-  Widget _buildHistoryTable() {
-    if (_history.isEmpty) return const Text('No history available');
-
+  Widget _buildHistoryTable(List<GoldPrice> history) {
     return Card(
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: DataTable(
           columnSpacing: 20,
           columns: const [
-            DataColumn(label: Text('Date')),
+            DataColumn(label: Text('Date & Time')),
             DataColumn(label: Text('Price (22K)')),
             DataColumn(label: Text('Change')),
+            DataColumn(label: Text('Source')),
           ],
-          rows: List.generate(_history.length, (index) {
-            final price = _history[index];
+          rows: history.map((price) {
             final change = price.priceChange;
-            
             return DataRow(cells: [
               DataCell(Text(_formatDate(price.timestamp))),
               DataCell(Text('₹ ${price.price.toStringAsFixed(0)}')),
@@ -448,84 +348,60 @@ class _GoldScreenState extends State<GoldScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                            Icon(
-                             change > 0 ? Icons.arrow_upward : change < 0 ? Icons.arrow_downward : Icons.remove,
+                             change > 0 ? Icons.arrow_upward : Icons.arrow_downward,
                              size: 16,
-                             color: change > 0 ? Colors.green : change < 0 ? Colors.red : Colors.grey,  // Green for increase
+                             color: change > 0 ? Colors.green : Colors.red,
                            ),
                            Text(
-                             change != 0 ? '₹${change.abs().toStringAsFixed(0)}' : '-',
+                             '₹${change.abs().toStringAsFixed(0)}',
                              style: TextStyle(
-                               color: change > 0 ? Colors.green : change < 0 ? Colors.red : Colors.grey,  // Green for increase
+                               color: change > 0 ? Colors.green : Colors.red,
                              ),
                            ),
                         ],
                       )
                     : const Text('-'),
               ),
+              DataCell(Text(price.source, style: const TextStyle(fontSize: 10))),
             ]);
-          }),
+          }).toList(),
         ),
       ),
     );
   }
 
-  Widget _buildModernChart() {
-    if (_history.length < 2) {
-      return const SizedBox(
-        height: 200,
-        child: Center(child: Text("Not enough data for chart")),
-      );
-    }
+  Widget _buildModernChart(List<GoldPrice> history) {
+    if (history.length < 2) return const SizedBox.shrink();
 
-    // Sort for chart (oldest first)
-    final sortedHistory = List<GoldPrice>.from(_history);
-    sortedHistory.sort((a, b) => a.date.compareTo(b.date));
+    // Chart needs chronological order
+    final sortedHistory = List<GoldPrice>.from(history).reversed.toList();
 
     return Card(
       elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: SizedBox(
-          height: 300,
+          height: 250,
           child: SfCartesianChart(
             primaryXAxis: CategoryAxis(
               majorGridLines: const MajorGridLines(width: 0),
               labelRotation: -45,
+              labelStyle: const TextStyle(fontSize: 8),
             ),
             primaryYAxis: NumericAxis(
               numberFormat: NumberFormat.currency(symbol: '₹', decimalDigits: 0),
               axisLine: const AxisLine(width: 0),
-              majorTickLines: const MajorTickLines(size: 0),
             ),
-            tooltipBehavior: TooltipBehavior(
-              enable: true,
-              format: 'point.x : ₹point.y',
-            ),
+            tooltipBehavior: TooltipBehavior(enable: true),
             series: <CartesianSeries>[
-              // Area series for filled chart
               AreaSeries<GoldPrice, String>(
                 dataSource: sortedHistory,
-                xValueMapper: (GoldPrice price, _) => _formatDate(price.date),
-                yValueMapper: (GoldPrice price, _) => price.price,
-                name: '22K Gold',
-                color: Colors.amber.withOpacity(0.5),
+                xValueMapper: (GoldPrice p, _) => _formatDate(p.timestamp),
+                yValueMapper: (GoldPrice p, _) => p.price,
+                color: Colors.amber.withOpacity(0.3),
                 borderColor: Colors.amber,
-                borderWidth: 3,
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.amber.withOpacity(0.7),
-                    Colors.amber.withOpacity(0.1),
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                markerSettings: const MarkerSettings(
-                  isVisible: true,
-                  shape: DataMarkerType.circle,
-                  borderColor: Colors.amber,
-                  borderWidth: 2,
-                  color: Colors.white,
-                ),
+                borderWidth: 2,
+                markerSettings: const MarkerSettings(isVisible: true),
               ),
             ],
           ),
@@ -536,72 +412,47 @@ class _GoldScreenState extends State<GoldScreen> {
 
   Widget _buildScheduleInfo() {
     return Card(
-      color: Colors.blue.shade50,
+      color: Colors.blue.withOpacity(0.1),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            const Row(
               children: [
-                Icon(Icons.schedule, color: Colors.blue.shade700),
-                const SizedBox(width: 8),
-                Text(
-                  'Auto-Update Schedule',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade700,
-                  ),
-                ),
+                Icon(Icons.schedule, color: Colors.blue),
+                SizedBox(width: 8),
+                Text('Notification Schedule (IST)', style: TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 12),
-            _buildScheduleRow('${_morningTime.format(context)} IST', 'Daily price update (always saved)'),
-            const SizedBox(height: 8),
-            _buildScheduleRow('${_eveningTime.format(context)} IST', 'Price check (saved only if changed)'),
+            _scheduleRow('11:00 AM', 'Daily rate update (Always)'),
+            _scheduleRow('07:00 PM', 'Evening check (Only if price differs)'),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildScheduleRow(String time, String description) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.blue.shade700,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            time,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            description,
-            style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
-          ),
-        ),
-      ],
+  Widget _scheduleRow(String time, String desc) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4.0),
+      child: Row(
+        children: [
+          Text(time, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 12)),
+          const SizedBox(width: 8),
+          Expanded(child: Text(desc, style: const TextStyle(fontSize: 12))),
+        ],
+      ),
     );
   }
 
   String _formatDate(String dateStr) {
     try {
-      final dt = DateTime.parse(dateStr.contains("T") ? dateStr : "$dateStr 00:00:00");
+      final dt = DateTime.parse(dateStr).toLocal();
       return DateFormat('dd/MM HH:mm').format(dt);
     } catch (e) {
-      return dateStr.substring(0, dateStr.length > 10 ? 10 : dateStr.length);
+      return dateStr;
     }
   }
 }
