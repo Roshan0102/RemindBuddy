@@ -192,7 +192,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                 ),
               );
             },
-          ),
+          );
         },
       ),
     );
