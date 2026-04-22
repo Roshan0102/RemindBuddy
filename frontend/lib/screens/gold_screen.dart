@@ -33,13 +33,23 @@ class _GoldScreenState extends State<GoldScreen> {
       if (mounted) {
         if (result.containsKey('error')) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('❌ Fetch Error: ${result['error']}'), backgroundColor: Colors.red),
+            SnackBar(content: Text('❌ Fetch failed: ${result['error']}'), backgroundColor: Colors.red),
+          );
+        } else if (result['status'] == 'skipped') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('➖ Price same as last check. Notification skipped.')),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('✅ Manual fetch completed! Update will mirror shortly.')),
+            const SnackBar(content: Text('✅ Gold price refreshed successfully!'), backgroundColor: Colors.green),
           );
         }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Exception: $e'), backgroundColor: Colors.red),
+        );
       }
     } finally {
       if (mounted) setState(() => _isFetching = false);
@@ -47,28 +57,48 @@ class _GoldScreenState extends State<GoldScreen> {
   }
 
   void _showDebugLog() async {
+    // Show a loading dialog first
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
     final log = await _goldService.getLatestFetchLog();
+    
+    if (mounted) Navigator.pop(context); // Close loading indicator
     if (!mounted) return;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Last Fetch Diagnostics (Debug)'),
+        title: const Text('Backend Logs (Latest)'),
         backgroundColor: Theme.of(context).colorScheme.surface,
         content: Container(
           width: double.maxFinite,
           constraints: const BoxConstraints(maxHeight: 400),
           child: log == null 
-            ? const Text('No execution logs found.')
+            ? const Text('No execution logs found in Firestore.')
             : Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Status: ${log['status']}', style: TextStyle(fontWeight: FontWeight.bold, color: log['status'] == 'SUCCESS' ? Colors.green : Colors.red)),
-                  Text('Timestamp: ${log['timestamp']}'),
-                  Text('Primary Source: ${log['sourceUsed'] ?? 'N/A'}'),
+                  Row(
+                    children: [
+                      const Text('Status: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        log['status'] ?? 'UNKNOWN', 
+                        style: TextStyle(
+                          color: log['status'] == 'SUCCESS' ? Colors.green : Colors.red,
+                          fontWeight: FontWeight.bold
+                        )
+                      ),
+                    ],
+                  ),
+                  Text('Timestamp: ${log['timestamp'] ?? 'N/A'}'),
+                  Text('Source Used: ${log['sourceUsed'] ?? 'N/A'}'),
                   const Divider(),
-                  const Text('Individual Source Results:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Scraper Details:', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   ...(log['logs'] as List? ?? []).map((l) => Padding(
                     padding: const EdgeInsets.only(bottom: 4),

@@ -95,11 +95,19 @@ class GoldPriceService {
   }
 
   Future<void> clearGoldPriceHistory() async {
-    final batch = _db.batch();
-    final snap = await _db.collection('global_gold_prices').get();
-    for (var doc in snap.docs) {
-      batch.delete(doc.reference);
+    try {
+      final snap = await _db.collection('global_gold_prices').get();
+      if (snap.docs.isEmpty) return;
+
+      final WriteBatch batch = _db.batch();
+      for (var doc in snap.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      // Also clear the latest log document to reset state
+      await _db.collection('gold_fetch_logs').doc('latest').delete().catchError((_) {});
+    } catch (e) {
+      print('Error clearing history: $e');
     }
-    await batch.commit();
   }
 }

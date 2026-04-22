@@ -149,13 +149,17 @@ async function notifyAllUsers(price, oldPrice) {
                 },
                 data: {
                     type: "GOLD_PRICE",
-                    click_action: "GOLD_SCREEN"
+                    click_action: "GOLD_SCREEN",
+                    price: String(price)
                 },
                 android: {
                     priority: "high",
                     notification: {
-                        channelId: "gold_prices",
-                        clickAction: "FLUTTER_NOTIFICATION_CLICK"
+                        channelId: "gold_price_channel",
+                        clickAction: "FLUTTER_NOTIFICATION_CLICK",
+                        sound: "default",
+                        ticker: "Gold Rate Update",
+                        visibility: "public"
                     }
                 }
             });
@@ -169,6 +173,23 @@ async function notifyAllUsers(price, oldPrice) {
         console.error(`❌ Failed to send notifications:`, e);
     }
 }
+// ----------------------------------------------------------------------------
+// DIAGNOSTICS & MANUAL TRIGGERS
+// ----------------------------------------------------------------------------
+exports.checkGoldSources = functions.https.onCall(async (data, context) => {
+    console.log("🔍 Manual Source Check Triggered...");
+    const results = await Promise.all([
+        fetchGoldPriceFromLiveChennai(),
+        fetchGoldPriceFromBankBazaar(),
+        fetchGoldPriceFromTOI()
+    ]);
+    return {
+        timestamp: moment().tz('Asia/Kolkata').format('hh:mm:ss A'),
+        live_chennai: results[0] || "Failed",
+        bank_bazaar: results[1] || "Failed",
+        times_of_india: results[2] || "Failed"
+    };
+});
 // ----------------------------------------------------------------------------
 // INTERNALS
 // ----------------------------------------------------------------------------
@@ -246,6 +267,7 @@ exports.scheduledGoldFetch = functions.pubsub.schedule('0 11,19 * * *')
     return await internalPerformGoldFetch();
 });
 exports.forceGoldFetch = functions.https.onCall(async (data, context) => {
+    console.log("🚀 Forced Gold Fetch via App...");
     return await internalPerformGoldFetch(true);
 });
 // ----------------------------------------------------------------------------
@@ -299,7 +321,7 @@ exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *')
                 android: {
                     priority: 'high',
                     notification: {
-                        channelId: 'shift_reminders',
+                        channelId: 'shift_reminder_channel',
                         clickAction: 'FLUTTER_NOTIFICATION_CLICK',
                     }
                 },
@@ -361,7 +383,7 @@ exports.checkDailyReminders = functions.pubsub.schedule('*/15 * * * *')
                 android: {
                     priority: 'high',
                     notification: {
-                        channelId: 'daily_reminders',
+                        channelId: 'remindbuddy_channel',
                         clickAction: 'FLUTTER_NOTIFICATION_CLICK',
                     }
                 },
