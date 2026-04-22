@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
@@ -19,11 +18,6 @@ class GoldScreen extends StatefulWidget {
 class _GoldScreenState extends State<GoldScreen> {
   final GoldPriceService _goldService = GoldPriceService();
   bool _isFetching = false;
-  String _lastLog = "No logs yet. Click 'Refresh' to fetch price.";
-  Map<String, dynamic>? _lastFullData;
-
-  TimeOfDay _morningTime = const TimeOfDay(hour: 11, minute: 0);
-  TimeOfDay _eveningTime = const TimeOfDay(hour: 19, minute: 0);
 
   @override
   void initState() {

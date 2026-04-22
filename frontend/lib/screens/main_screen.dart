@@ -33,10 +33,7 @@ class _MainScreenState extends State<MainScreen> {
     super.dispose();
   }
 
-  Future<void> _initialSync() async {
-    // Firebase Firestore handles sync natively.
-    // No manual sync needed.
-  }
+
 
   Future<void> _loadTheme() async {
     final prefs = await SharedPreferences.getInstance();

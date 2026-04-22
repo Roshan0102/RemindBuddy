@@ -12,20 +12,6 @@ class NotesScreen extends StatefulWidget {
 
 class _NotesScreenState extends State<NotesScreen> {
   final StorageService _storageService = StorageService();
-  List<Note> _notes = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadNotes();
-  }
-
-  Future<void> _loadNotes() async {
-    final notes = await _storageService.getNotes();
-    setState(() {
-      _notes = notes;
-    });
-  }
 
   Future<void> _addOrEditNote({Note? note}) async {
     final titleController = TextEditingController(text: note?.title ?? '');
@@ -80,7 +66,6 @@ class _NotesScreenState extends State<NotesScreen> {
                             } else {
                               await _storageService.updateNote(newNote);
                             }
-                            _loadNotes();
                             if (mounted) Navigator.pop(context);
                           } catch (e) {
                             setDialogState(() => _isSaving = false);
@@ -268,8 +253,6 @@ class _NotesScreenState extends State<NotesScreen> {
           );
         }
       ),
-    );
-  }
       floatingActionButton: FloatingActionButton(
         onPressed: () => _addOrEditNote(),
         child: const Icon(Icons.add),

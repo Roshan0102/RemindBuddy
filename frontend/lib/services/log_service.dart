@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'notification_service.dart';
-import 'battery_optimization_service.dart';
 
 class LogService {
   static final LogService _instance = LogService._internal();

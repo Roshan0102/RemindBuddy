@@ -18,27 +18,17 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // ... existing variables ...
-  
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   List<Task> _selectedTasks = [];
   
   final StorageService _storageService = StorageService();
-  final NotificationService _notificationService = NotificationService();
-  Timer? _syncTimer;
 
   @override
   void initState() {
     super.initState();
     _selectedDay = _focusedDay;
-    _syncTasks(); // Initial sync
-    
-    // Periodic sync every hour (while app is in foreground)
-    _syncTimer = Timer.periodic(const Duration(hours: 1), (timer) {
-      _syncTasks();
-    });
   }
 
   Widget _buildBuddyMascot() {
@@ -80,21 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _syncTasks() async {
-    // Firebase Firestore handles sync natively.
-    // Just refresh UI from Firestore.
-    if (_selectedDay != null) {
-      _loadTasksForDay(_selectedDay!);
-    }
-  }
 
-  Future<void> _loadTasksForDay(DateTime day) async {
-    final String dateStr = DateFormat('yyyy-MM-dd').format(day);
-    List<Task> tasks = await _storageService.getTasksForDate(dateStr);
-    setState(() {
-      _selectedTasks = tasks;
-    });
-  }
 
 
   @override
@@ -241,8 +217,6 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
       ),
-    );
-  }
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -269,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
               if (result == true) {
-                _syncTasks(); // Refresh after adding
+                // Refresh handled by stream
               }
             },
             child: const Icon(Icons.add),
