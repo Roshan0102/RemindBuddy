@@ -630,7 +630,7 @@ class StorageService {
         .collection('daily_shifts')
         .get();
         
-    final shifts = snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+    final shifts = snap.docs.map((d) => d.data()).toList();
     
     // Sort in memory to avoid needing a composite index for where + orderBy
     shifts.sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));

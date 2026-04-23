@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
 import '../services/gold_price_service.dart';
-import '../services/storage_service.dart';
 import '../models/gold_price.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-// import '../services/gold_scheduler_service.dart';
 
 class GoldScreen extends StatefulWidget {
   const GoldScreen({super.key});
