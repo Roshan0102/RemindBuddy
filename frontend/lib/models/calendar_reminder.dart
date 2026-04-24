@@ -20,7 +20,7 @@ class CalendarReminder {
     this.expireAt,
   });
 
-  factory CalendarReminder.fromFirestore(Map<String, dynamic> json, String docId) {
+  factory CalendarReminder.fromMap(Map<String, dynamic> json, String docId) {
     return CalendarReminder(
       id: docId,
       title: json['title'] ?? '',
@@ -32,6 +32,10 @@ class CalendarReminder {
     );
   }
 
+  // Alias for backward compatibility if any
+  factory CalendarReminder.fromFirestore(Map<String, dynamic> json, String docId) => 
+      CalendarReminder.fromMap(json, docId);
+
   Map<String, dynamic> toMap() {
     return {
       'title': title,
@@ -39,7 +43,26 @@ class CalendarReminder {
       'date': date,
       'time': time,
       'status': status,
-      // expireAt is managed by backend usually, but can be set here if needed
     };
+  }
+
+  CalendarReminder copyWith({
+    String? id,
+    String? title,
+    String? description,
+    String? date,
+    String? time,
+    String? status,
+    Timestamp? expireAt,
+  }) {
+    return CalendarReminder(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      date: date ?? this.date,
+      time: time ?? this.time,
+      status: status ?? this.status,
+      expireAt: expireAt ?? this.expireAt,
+    );
   }
 }

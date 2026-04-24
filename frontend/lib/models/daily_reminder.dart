@@ -1,3 +1,4 @@
+
 class DailyReminder {
   final String? id;
   final String title;
@@ -15,16 +16,19 @@ class DailyReminder {
     this.isAnnoying = false,
   });
 
-  factory DailyReminder.fromJson(Map<String, dynamic> json, [String? id]) {
+  factory DailyReminder.fromMap(Map<String, dynamic> json, [String? id]) {
     return DailyReminder(
       id: id ?? json['id'],
-      title: json['title'],
-      description: json['description'],
-      time: json['time'],
+      title: json['title'] ?? '',
+      description: json['description'] ?? '',
+      time: json['time'] ?? '00:00',
       isActive: json['isActive'] == 1 || json['isActive'] == true,
       isAnnoying: json['isAnnoying'] == 1 || json['isAnnoying'] == true,
     );
   }
+
+  factory DailyReminder.fromJson(Map<String, dynamic> json, [String? id]) => 
+      DailyReminder.fromMap(json, id);
 
   Map<String, dynamic> toJson() {
     return {
@@ -55,7 +59,5 @@ class DailyReminder {
   }
 
   // To map
-  Map<String, dynamic> toMap() {
-    return toJson();
-  }
+  Map<String, dynamic> toMap() => toJson();
 }

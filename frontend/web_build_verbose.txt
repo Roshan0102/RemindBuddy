@@ -1,0 +1,568 @@
+[  +19 ms] Unable to locate an Android SDK.
+[   +3 ms] executing: uname -m
+[   +3 ms] Exit code 0 from: uname -m
+[        ] x86_64
+[   +7 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[   +2 ms] executing: [/home/roshan-axcess/snap/flutter/common/flutter/] git -c log.showSignature=false log HEAD -n 1 --pretty=format:%ad --date=iso
+[   +4 ms] Exit code 0 from: git -c log.showSignature=false log HEAD -n 1 --pretty=format:%ad --date=iso
+[        ] 2026-02-10 10:16:12 -0800
+[  +15 ms] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[  +17 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[   +9 ms] executing: [/home/roshan-axcess/Documents/RemindBuddy/frontend/] /home/roshan-axcess/snap/flutter/common/flutter/bin/cache/dart-sdk/bin/dart pub --suppress-analytics --directory . get --example
+Resolving dependencies...
+Downloading packages...
+  _flutterfire_internals 1.3.66 (1.3.69 available)
+  async 2.13.0 (2.13.1 available)
+  cloud_firestore 6.1.2 (6.3.0 available)
+  cloud_firestore_platform_interface 7.0.6 (7.2.0 available)
+  cloud_firestore_web 5.1.2 (5.3.0 available)
+  cupertino_icons 1.0.8 (1.0.9 available)
+  firebase_auth 6.1.4 (6.4.0 available)
+  firebase_auth_platform_interface 8.1.6 (8.1.9 available)
+  firebase_auth_web 6.1.2 (6.1.5 available)
+  firebase_messaging 16.1.1 (16.2.0 available)
+  firebase_messaging_platform_interface 4.7.6 (4.7.9 available)
+  firebase_messaging_web 4.1.2 (4.1.5 available)
+  fl_chart 0.69.2 (1.2.0 available)
+  flutter_lints 3.0.2 (6.0.0 available)
+  flutter_local_notifications 18.0.1 (21.0.0 available)
+  flutter_local_notifications_linux 5.0.0 (8.0.0 available)
+  flutter_local_notifications_platform_interface 8.0.0 (11.0.0 available)
+  flutter_timezone 4.1.1 (5.0.2 available)
+  home_widget 0.7.0+1 (0.9.1 available)
+  hooks 1.0.1 (1.0.3 available)
+  intl 0.19.0 (0.20.2 available)
+  lints 3.0.0 (6.1.0 available)
+  matcher 0.12.18 (0.12.19 available)
+  meta 1.17.0 (1.18.2 available)
+  native_toolchain_c 0.17.4 (0.18.0 available)
+  path_provider_android 2.2.22 (2.3.1 available)
+  shared_preferences 2.5.4 (2.5.5 available)
+  shared_preferences_android 2.4.21 (2.4.23 available)
+  shared_preferences_platform_interface 2.4.1 (2.4.2 available)
+  syncfusion_flutter_charts 28.2.12 (33.2.3 available)
+  syncfusion_flutter_core 28.2.12 (33.2.3 available)
+  table_calendar 3.1.3 (3.2.0 available)
+  test_api 0.7.8 (0.7.11 available)
+  timezone 0.9.4 (0.11.0 available)
+  vector_math 2.2.0 (2.3.0 available)
+  vm_service 15.0.2 (15.1.0 available)
+Got dependencies!
+36 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+[ +445 ms] Found plugin shared_preferences at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences-2.5.4/
+[   +5 ms] Found plugin shared_preferences_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_windows-2.4.1/
+[   +4 ms] Found plugin path_provider_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_windows-2.3.0/
+[   +5 ms] Found plugin shared_preferences_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_web-2.4.3/
+[   +3 ms] Found plugin shared_preferences_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_linux-2.4.1/
+[   +1 ms] Found plugin path_provider_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_linux-2.2.1/
+[   +2 ms] Found plugin shared_preferences_foundation at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_foundation-2.5.6/
+[   +2 ms] Found plugin shared_preferences_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_android-2.4.21/
+[   +7 ms] Found plugin home_widget at /home/roshan-axcess/.pub-cache/hosted/pub.dev/home_widget-0.7.0+1/
+[   +1 ms] Found plugin path_provider_foundation at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_foundation-2.6.0/
+[   +7 ms] Found plugin path_provider at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider-2.1.5/
+[   +1 ms] Found plugin path_provider_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_android-2.2.22/
+[   +2 ms] Found plugin flutter_timezone at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_timezone-4.1.1/
+[   +1 ms] Found plugin flutter_local_notifications at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_local_notifications-18.0.1/
+[   +2 ms] Found plugin flutter_local_notifications_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_local_notifications_linux-5.0.0/
+[   +2 ms] Found plugin flutter_inappwebview at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview-6.1.5/
+[        ] Found plugin flutter_inappwebview_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_windows-0.6.0/
+[   +1 ms] Found plugin flutter_inappwebview_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_web-1.1.2/
+[        ] Found plugin flutter_inappwebview_macos at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_macos-1.1.2/
+[        ] Found plugin flutter_inappwebview_ios at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_ios-1.1.2/
+[        ] Found plugin flutter_inappwebview_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_android-1.1.3/
+[   +2 ms] Found plugin firebase_messaging at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_messaging-16.1.1/
+[        ] Found plugin firebase_messaging_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_messaging_web-4.1.2/
+[   +1 ms] Found plugin firebase_core at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_core-4.7.0/
+[        ] Found plugin firebase_core_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_core_web-3.6.0/
+[   +1 ms] Found plugin firebase_auth at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_auth-6.1.4/
+[        ] Found plugin firebase_auth_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_auth_web-6.1.2/
+[   +1 ms] Found plugin cloud_functions at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_functions-6.2.0/
+[        ] Found plugin cloud_functions_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_functions_web-5.1.5/
+[        ] Found plugin cloud_firestore at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_firestore-6.1.2/
+[        ] Found plugin cloud_firestore_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_firestore_web-5.1.2/
+[  +25 ms] Found plugin shared_preferences at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences-2.5.4/
+[        ] Found plugin shared_preferences_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_windows-2.4.1/
+[   +1 ms] Found plugin path_provider_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_windows-2.3.0/
+[   +2 ms] Found plugin shared_preferences_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_web-2.4.3/
+[   +1 ms] Found plugin shared_preferences_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_linux-2.4.1/
+[        ] Found plugin path_provider_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_linux-2.2.1/
+[   +1 ms] Found plugin shared_preferences_foundation at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_foundation-2.5.6/
+[   +1 ms] Found plugin shared_preferences_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_android-2.4.21/
+[   +3 ms] Found plugin home_widget at /home/roshan-axcess/.pub-cache/hosted/pub.dev/home_widget-0.7.0+1/
+[        ] Found plugin path_provider_foundation at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_foundation-2.6.0/
+[   +3 ms] Found plugin path_provider at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider-2.1.5/
+[        ] Found plugin path_provider_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_android-2.2.22/
+[        ] Found plugin flutter_timezone at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_timezone-4.1.1/
+[   +1 ms] Found plugin flutter_local_notifications at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_local_notifications-18.0.1/
+[        ] Found plugin flutter_local_notifications_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_local_notifications_linux-5.0.0/
+[   +1 ms] Found plugin flutter_inappwebview at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview-6.1.5/
+[        ] Found plugin flutter_inappwebview_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_windows-0.6.0/
+[        ] Found plugin flutter_inappwebview_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_web-1.1.2/
+[        ] Found plugin flutter_inappwebview_macos at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_macos-1.1.2/
+[        ] Found plugin flutter_inappwebview_ios at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_ios-1.1.2/
+[        ] Found plugin flutter_inappwebview_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_android-1.1.3/
+[   +1 ms] Found plugin firebase_messaging at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_messaging-16.1.1/
+[        ] Found plugin firebase_messaging_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_messaging_web-4.1.2/
+[        ] Found plugin firebase_core at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_core-4.7.0/
+[        ] Found plugin firebase_core_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_core_web-3.6.0/
+[        ] Found plugin firebase_auth at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_auth-6.1.4/
+[        ] Found plugin firebase_auth_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_auth_web-6.1.2/
+[        ] Found plugin cloud_functions at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_functions-6.2.0/
+[        ] Found plugin cloud_functions_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_functions_web-5.1.5/
+[        ] Found plugin cloud_firestore at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_firestore-6.1.2/
+[        ] Found plugin cloud_firestore_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_firestore_web-5.1.2/
+[   +5 ms] Skipping generating web_plugin_registrant.dart because it is up-to-date.
+[   +9 ms] Found plugin shared_preferences at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences-2.5.4/
+[        ] Found plugin shared_preferences_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_windows-2.4.1/
+[        ] Found plugin path_provider_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_windows-2.3.0/
+[   +1 ms] Found plugin shared_preferences_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_web-2.4.3/
+[        ] Found plugin shared_preferences_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_linux-2.4.1/
+[        ] Found plugin path_provider_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_linux-2.2.1/
+[        ] Found plugin shared_preferences_foundation at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_foundation-2.5.6/
+[        ] Found plugin shared_preferences_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_android-2.4.21/
+[   +1 ms] Found plugin home_widget at /home/roshan-axcess/.pub-cache/hosted/pub.dev/home_widget-0.7.0+1/
+[        ] Found plugin path_provider_foundation at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_foundation-2.6.0/
+[   +2 ms] Found plugin path_provider at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider-2.1.5/
+[        ] Found plugin path_provider_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_android-2.2.22/
+[        ] Found plugin flutter_timezone at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_timezone-4.1.1/
+[        ] Found plugin flutter_local_notifications at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_local_notifications-18.0.1/
+[        ] Found plugin flutter_local_notifications_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_local_notifications_linux-5.0.0/
+[   +1 ms] Found plugin flutter_inappwebview at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview-6.1.5/
+[        ] Found plugin flutter_inappwebview_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_windows-0.6.0/
+[        ] Found plugin flutter_inappwebview_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_web-1.1.2/
+[        ] Found plugin flutter_inappwebview_macos at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_macos-1.1.2/
+[        ] Found plugin flutter_inappwebview_ios at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_ios-1.1.2/
+[        ] Found plugin flutter_inappwebview_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_android-1.1.3/
+[   +1 ms] Found plugin firebase_messaging at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_messaging-16.1.1/
+[        ] Found plugin firebase_messaging_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_messaging_web-4.1.2/
+[        ] Found plugin firebase_core at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_core-4.7.0/
+[        ] Found plugin firebase_core_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_core_web-3.6.0/
+[        ] Found plugin firebase_auth at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_auth-6.1.4/
+[        ] Found plugin firebase_auth_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_auth_web-6.1.2/
+[        ] Found plugin cloud_functions at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_functions-6.2.0/
+[        ] Found plugin cloud_functions_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_functions_web-5.1.5/
+[        ] Found plugin cloud_firestore at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_firestore-6.1.2/
+[        ] Found plugin cloud_firestore_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_firestore_web-5.1.2/
+[   +2 ms] Generating /home/roshan-axcess/Documents/RemindBuddy/frontend/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+[        ] Skipping generating GeneratedPluginRegistrant.java because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugin_registrant.h because it is up-to-date.
+[        ] Skipping generating generated_plugin_registrant.cc because it is up-to-date.
+[        ] Skipping generating generated_plugins.cmake because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugin_registrant.h because it is up-to-date.
+[        ] Skipping generating generated_plugin_registrant.cc because it is up-to-date.
+[        ] Skipping generating generated_plugins.cmake because it is up-to-date.
+[   +1 ms] Skipping generating GeneratedPluginRegistrant.h because it is up-to-date.
+[        ] Skipping generating GeneratedPluginRegistrant.m because it is up-to-date.
+[        ] Skipping generating GeneratedPluginRegistrant.swift because it is up-to-date.
+[  +23 ms] Found plugin shared_preferences at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences-2.5.4/
+[        ] Found plugin shared_preferences_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_windows-2.4.1/
+[        ] Found plugin path_provider_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_windows-2.3.0/
+[        ] Found plugin shared_preferences_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_web-2.4.3/
+[        ] Found plugin shared_preferences_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_linux-2.4.1/
+[        ] Found plugin path_provider_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_linux-2.2.1/
+[        ] Found plugin shared_preferences_foundation at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_foundation-2.5.6/
+[        ] Found plugin shared_preferences_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/shared_preferences_android-2.4.21/
+[   +1 ms] Found plugin home_widget at /home/roshan-axcess/.pub-cache/hosted/pub.dev/home_widget-0.7.0+1/
+[        ] Found plugin path_provider_foundation at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_foundation-2.6.0/
+[   +1 ms] Found plugin path_provider at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider-2.1.5/
+[        ] Found plugin path_provider_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/path_provider_android-2.2.22/
+[        ] Found plugin flutter_timezone at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_timezone-4.1.1/
+[        ] Found plugin flutter_local_notifications at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_local_notifications-18.0.1/
+[        ] Found plugin flutter_local_notifications_linux at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_local_notifications_linux-5.0.0/
+[   +1 ms] Found plugin flutter_inappwebview at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview-6.1.5/
+[        ] Found plugin flutter_inappwebview_windows at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_windows-0.6.0/
+[        ] Found plugin flutter_inappwebview_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_web-1.1.2/
+[        ] Found plugin flutter_inappwebview_macos at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_macos-1.1.2/
+[        ] Found plugin flutter_inappwebview_ios at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_ios-1.1.2/
+[        ] Found plugin flutter_inappwebview_android at /home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_inappwebview_android-1.1.3/
+[        ] Found plugin firebase_messaging at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_messaging-16.1.1/
+[        ] Found plugin firebase_messaging_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_messaging_web-4.1.2/
+[        ] Found plugin firebase_core at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_core-4.7.0/
+[        ] Found plugin firebase_core_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_core_web-3.6.0/
+[        ] Found plugin firebase_auth at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_auth-6.1.4/
+[        ] Found plugin firebase_auth_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/firebase_auth_web-6.1.2/
+[        ] Found plugin cloud_functions at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_functions-6.2.0/
+[        ] Found plugin cloud_functions_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_functions_web-5.1.5/
+[        ] Found plugin cloud_firestore at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_firestore-6.1.2/
+[        ] Found plugin cloud_firestore_web at /home/roshan-axcess/.pub-cache/hosted/pub.dev/cloud_firestore_web-5.1.2/
+[        ] generated_plugin_registrant.dart not found. Skipping.
+[        ] Compiling lib/main.dart for the Web...
+[   +2 ms] Initializing file store
+[   +2 ms] Done initializing file store
+[  +33 ms] Skipping target: web_entrypoint
+[        ] invalidated build due to missing files: /home/roshan-axcess/Documents/RemindBuddy/frontend/web/*/index.html, /home/roshan-axcess/Documents/RemindBuddy/frontend/web/flutter_bootstrap.js
+[        ] Skipping target: dart_build
+[        ] Skipping target: gen_localizations
+[   +1 ms] web_templated_files: Starting due to {InvalidatedReasonKind.outputMissing: The following outputs were missing: /home/roshan-axcess/Documents/RemindBuddy/frontend/build/web/*/index.html, InvalidatedReasonKind.inputMissing: The following inputs were missing: /home/roshan-axcess/Documents/RemindBuddy/frontend/web/*/index.html,/home/roshan-axcess/Documents/RemindBuddy/frontend/web/flutter_bootstrap.js}
+[        ] web_static_assets: Starting due to {InvalidatedReasonKind.outputMissing: The following outputs were missing: /home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/flutter.js,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/skwasm_heavy.js.symbols,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/wimp.js,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/canvaskit.wasm,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/skwasm.wasm,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/skwasm.js.symbols,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/skwasm_heavy.wasm,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/skwasm_heavy.js,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/wimp.wasm,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/wimp.js.symbols,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/skwasm.js,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/chromium/canvaskit.wasm,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/chromium/canvaskit.js.symbols,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/chromium/canvaskit.js,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/canvaskit.js.symbols,/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/canvaskit/canvaskit.js}
+[  +36 ms] invalidated build due to missing files: /home/roshan-axcess/Documents/RemindBuddy/frontend/lib/models/task.dart
+[ +265 ms] web_static_assets: Complete
+[   +1 ms] dart2js: Starting due to {InvalidatedReasonKind.buildKeyChanged: The target build key changed., InvalidatedReasonKind.outputSetAddition: The following outputs were added to the output set: /home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/main.dart.js, InvalidatedReasonKind.inputMissing: The following inputs were missing: /home/roshan-axcess/Documents/RemindBuddy/frontend/lib/models/task.dart}
+[   +3 ms] executing: /home/roshan-axcess/snap/flutter/common/flutter/bin/cache/dart-sdk/bin/dart compile js --platform-binaries=/home/roshan-axcess/snap/flutter/common/flutter/bin/cache/flutter_web_sdk/kernel --invoker=flutter_tool -Ddart.vm.product=true -DFLUTTER_VERSION=3.41.0 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=44a626f4f0 -DFLUTTER_ENGINE_REVISION=3452d735bd -DFLUTTER_DART_VERSION=3.11.0 -DFLUTTER_WEB_USE_SKIA=true -DFLUTTER_WEB_USE_SKWASM=false -DFLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/3452d735bd38224ef2db85ca763d862d6326b17f/ --native-null-assertions --no-source-maps -O4 --minify -o /home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/app.dill --packages=/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/package_config.json --cfe-only /home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/main.dart
+[        ] dart2wasm: Starting due to {}
+[        ] executing: /home/roshan-axcess/snap/flutter/common/flutter/bin/cache/dart-sdk/bin/dart compile wasm --packages=/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/package_config.json --extra-compiler-option=--platform=/home/roshan-axcess/snap/flutter/common/flutter/bin/cache/flutter_web_sdk/kernel/dart2wasm_platform.dill -Ddart.vm.profile=false -Ddart.vm.product=true --extra-compiler-option=--delete-tostring-package-uri=dart:ui --extra-compiler-option=--delete-tostring-package-uri=package:flutter --extra-compiler-option=--import-shared-memory --extra-compiler-option=--shared-memory-max-pages=32768 -DFLUTTER_VERSION=3.41.0 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=44a626f4f0 -DFLUTTER_ENGINE_REVISION=3452d735bd -DFLUTTER_DART_VERSION=3.11.0 -DFLUTTER_WEB_USE_SKIA=false -DFLUTTER_WEB_USE_SKWASM=true -DFLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/3452d735bd38224ef2db85ca763d862d6326b17f/ --extra-compiler-option=--depfile=/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/dart2wasm.d -O2 --strip-wasm --no-source-maps --minify --extra-compiler-option=--dry-run -o /home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/main.dart.wasm /home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/main.dart
+[  +15 ms] Warning: In index.html:37: Flutter's service worker is deprecated and will be removed in a future Flutter release. See https://github.com/flutter/flutter/issues/156910 for more details.
+[        ] Warning: In index.html:46: "FlutterLoader.loadEntrypoint" is deprecated. Use "FlutterLoader.load" instead. See https://docs.flutter.dev/platform-integration/web/initialization for more details.
+[   +1 ms] web_templated_files: Complete
+[+10508 ms] lib/screens/checklists_screen.dart:25:34:
+            Error: The method 'getChecklists' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                final lists = await _storage.getChecklists();
+                                             ^^^^^^^^^^^^^
+            lib/screens/checklists_screen.dart:33:20:
+            Error: The method 'createChecklist' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                await _storage.createChecklist(title, iconCode, colorValue);
+                               ^^^^^^^^^^^^^^^
+            lib/screens/checklists_screen.dart:38:20:
+            Error: The method 'deleteChecklist' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                await _storage.deleteChecklist(id);
+                               ^^^^^^^^^^^^^^^
+            lib/screens/checklists_screen.dart:181:26:
+            Error: The method 'getChecklistsStream' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                    stream: _storage.getChecklistsStream(),
+                                     ^^^^^^^^^^^^^^^^^^^
+            lib/screens/checklists_screen.dart:350:20:
+            Error: The method 'addChecklistItem' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                await _storage.addChecklistItem(widget.checklistId, text);
+                               ^^^^^^^^^^^^^^^^
+            lib/screens/checklists_screen.dart:354:20:
+            Error: The method 'toggleChecklistItem' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                await _storage.toggleChecklistItem(widget.checklistId, id, isChecked);
+                               ^^^^^^^^^^^^^^^^^^^
+            lib/screens/checklists_screen.dart:358:20:
+            Error: The method 'deleteChecklistItem' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                await _storage.deleteChecklistItem(widget.checklistId, id);
+                               ^^^^^^^^^^^^^^^^^^^
+            lib/screens/checklists_screen.dart:362:20:
+            Error: The method 'resetChecklistItems' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                await _storage.resetChecklistItems(widget.checklistId);
+                               ^^^^^^^^^^^^^^^^^^^
+            lib/screens/checklists_screen.dart:416:26:
+            Error: The method 'getChecklistItemsStream' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                    stream: _storage.getChecklistItemsStream(widget.checklistId),
+                                     ^^^^^^^^^^^^^^^^^^^^^^^
+            lib/screens/my_shifts_screen.dart:54:39:
+            Error: The method 'getShiftMetadata' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                  final metadata = await _storage.getShiftMetadata(rosterMonth: _selectedRosterMonth);
+                                                  ^^^^^^^^^^^^^^^^
+            lib/screens/my_shifts_screen.dart:55:41:
+            Error: The method 'getAllShifts' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                  final shiftsData = await _storage.getAllShifts(rosterMonth: _selectedRosterMonth);
+                                                    ^^^^^^^^^^^^
+            lib/screens/my_shifts_screen.dart:61:38:
+            Error: The method 'getShiftStatistics' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                    final stats = await _storage.getShiftStatistics(monthForQuery, rosterMonth: _selectedRosterMonth);
+                                                 ^^^^^^^^^^^^^^^^^^
+            lib/screens/my_shifts_screen.dart:160:36:
+            Error: The method 'saveShiftRoster' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                                await _storage.saveShiftRoster(
+                                               ^^^^^^^^^^^^^^^
+            lib/screens/my_shifts_screen.dart:224:22:
+            Error: The method 'clearAllShifts' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                  await _storage.clearAllShifts(rosterMonth: _selectedRosterMonth);
+                                 ^^^^^^^^^^^^^^
+            lib/services/storage_service.dart:55:35:
+            Error: Member not found: 'CalendarReminder.fromMap'.
+                      return CalendarReminder.fromMap(doc.data(), doc.id);
+                                              ^^^^^^^
+            lib/services/storage_service.dart:56:12:
+            Error: A value of type 'List<dynamic>' can't be returned from a function with return type 'List<CalendarReminder>'.
+             - 'List' is from 'dart:core'.
+             - 'CalendarReminder' is from 'package:remindbuddy/models/calendar_reminder.dart' ('lib/models/calendar_reminder.dart').
+                    }).toList());
+                       ^
+            lib/services/storage_service.dart:162:49:
+            Error: Member not found: 'DailyReminder.fromMap'.
+                return snap.docs.map((doc) => DailyReminder.fromMap(doc.data(), doc.id)).toList();
+                                                            ^^^^^^^
+            lib/services/storage_service.dart:162:78:
+            Error: A value of type 'List<dynamic>' can't be returned from an async function with return type 'Future<List<DailyReminder>>'.
+             - 'List' is from 'dart:core'.
+             - 'Future' is from 'dart:async'.
+             - 'DailyReminder' is from 'package:remindbuddy/models/daily_reminder.dart' ('lib/models/daily_reminder.dart').
+                return snap.docs.map((doc) => DailyReminder.fromMap(doc.data(), doc.id)).toList();
+                                                                                         ^
+            lib/services/storage_service.dart:174:61:
+            Error: Member not found: 'DailyReminder.fromMap'.
+                    .map((snap) => snap.docs.map((doc) => DailyReminder.fromMap(doc.data(), doc.id)).toList());
+                                                                        ^^^^^^^
+            lib/services/storage_service.dart:174:90:
+            Error: A value of type 'List<dynamic>' can't be returned from a function with return type 'List<DailyReminder>'.
+             - 'List' is from 'dart:core'.
+             - 'DailyReminder' is from 'package:remindbuddy/models/daily_reminder.dart' ('lib/models/daily_reminder.dart').
+                    .map((snap) => snap.docs.map((doc) => DailyReminder.fromMap(doc.data(), doc.id)).toList());
+                                                                                          ^
+            lib/services/auth_service.dart:114:19:
+            Error: The method 'logoutAndClearData' isn't defined for the type 'StorageService'.
+             - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                await storage.logoutAndClearData();
+                              ^^^^^^^^^^^^^^^^^^
+            Error: Compilation failed.
+[+25865 ms] Found incompatibilities with WebAssembly.
+
+            file:///home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_timezone-4.1.1/lib/flutter_timezone_web.dart 39:22 - invalid_runtime_check_with_js_interop_types lint violation: Cast from 'JSFunction?' to 'List<String> Function(String)?' casts a JS interop value to a Dart type, which might not be platform-consistent. (8)
+[   +1 ms] Wasm dry run findings:
+[        ] Found incompatibilities with WebAssembly.
+
+           file:///home/roshan-axcess/.pub-cache/hosted/pub.dev/flutter_timezone-4.1.1/lib/flutter_timezone_web.dart 39:22 - invalid_runtime_check_with_js_interop_types lint violation: Cast from 'JSFunction?' to 'List<String> Function(String)?' casts a JS interop value to a Dart type, which might not be platform-consistent. (8)
+
+[        ] Consider addressing these issues to enable wasm builds. See docs for more info: https://docs.flutter.dev/platform-integration/web/wasm
+
+[   +8 ms] Use --no-wasm-dry-run to disable these warnings.
+[        ] dart2wasm: Complete
+[   +4 ms] Persisting file store
+[  +12 ms] Done persisting file store
+[   +2 ms] Target dart2js failed: ProcessException: Process exited abnormally with exit code 1:
+           lib/screens/checklists_screen.dart:25:34:
+           Error: The method 'getChecklists' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+               final lists = await _storage.getChecklists();
+                                            ^^^^^^^^^^^^^
+           lib/screens/checklists_screen.dart:33:20:
+           Error: The method 'createChecklist' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+               await _storage.createChecklist(title, iconCode, colorValue);
+                              ^^^^^^^^^^^^^^^
+           lib/screens/checklists_screen.dart:38:20:
+           Error: The method 'deleteChecklist' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+               await _storage.deleteChecklist(id);
+                              ^^^^^^^^^^^^^^^
+           lib/screens/checklists_screen.dart:181:26:
+           Error: The method 'getChecklistsStream' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                   stream: _storage.getChecklistsStream(),
+                                    ^^^^^^^^^^^^^^^^^^^
+           lib/screens/checklists_screen.dart:350:20:
+           Error: The method 'addChecklistItem' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+               await _storage.addChecklistItem(widget.checklistId, text);
+                              ^^^^^^^^^^^^^^^^
+           lib/screens/checklists_screen.dart:354:20:
+           Error: The method 'toggleChecklistItem' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+               await _storage.toggleChecklistItem(widget.checklistId, id, isChecked);
+                              ^^^^^^^^^^^^^^^^^^^
+           lib/screens/checklists_screen.dart:358:20:
+           Error: The method 'deleteChecklistItem' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+               await _storage.deleteChecklistItem(widget.checklistId, id);
+                              ^^^^^^^^^^^^^^^^^^^
+           lib/screens/checklists_screen.dart:362:20:
+           Error: The method 'resetChecklistItems' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+               await _storage.resetChecklistItems(widget.checklistId);
+                              ^^^^^^^^^^^^^^^^^^^
+           lib/screens/checklists_screen.dart:416:26:
+           Error: The method 'getChecklistItemsStream' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                   stream: _storage.getChecklistItemsStream(widget.checklistId),
+                                    ^^^^^^^^^^^^^^^^^^^^^^^
+           lib/screens/my_shifts_screen.dart:54:39:
+           Error: The method 'getShiftMetadata' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                 final metadata = await _storage.getShiftMetadata(rosterMonth: _selectedRosterMonth);
+                                                 ^^^^^^^^^^^^^^^^
+           lib/screens/my_shifts_screen.dart:55:41:
+           Error: The method 'getAllShifts' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                 final shiftsData = await _storage.getAllShifts(rosterMonth: _selectedRosterMonth);
+                                                   ^^^^^^^^^^^^
+           lib/screens/my_shifts_screen.dart:61:38:
+           Error: The method 'getShiftStatistics' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                   final stats = await _storage.getShiftStatistics(monthForQuery, rosterMonth: _selectedRosterMonth);
+                                                ^^^^^^^^^^^^^^^^^^
+           lib/screens/my_shifts_screen.dart:160:36:
+           Error: The method 'saveShiftRoster' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                               await _storage.saveShiftRoster(
+                                              ^^^^^^^^^^^^^^^
+           lib/screens/my_shifts_screen.dart:224:22:
+           Error: The method 'clearAllShifts' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+                 await _storage.clearAllShifts(rosterMonth: _selectedRosterMonth);
+                                ^^^^^^^^^^^^^^
+           lib/services/storage_service.dart:55:35:
+           Error: Member not found: 'CalendarReminder.fromMap'.
+                     return CalendarReminder.fromMap(doc.data(), doc.id);
+                                             ^^^^^^^
+           lib/services/storage_service.dart:56:12:
+           Error: A value of type 'List<dynamic>' can't be returned from a function with return type 'List<CalendarReminder>'.
+            - 'List' is from 'dart:core'.
+            - 'CalendarReminder' is from 'package:remindbuddy/models/calendar_reminder.dart' ('lib/models/calendar_reminder.dart').
+                   }).toList());
+                      ^
+           lib/services/storage_service.dart:162:49:
+           Error: Member not found: 'DailyReminder.fromMap'.
+               return snap.docs.map((doc) => DailyReminder.fromMap(doc.data(), doc.id)).toList();
+                                                           ^^^^^^^
+           lib/services/storage_service.dart:162:78:
+           Error: A value of type 'List<dynamic>' can't be returned from an async function with return type 'Future<List<DailyReminder>>'.
+            - 'List' is from 'dart:core'.
+            - 'Future' is from 'dart:async'.
+            - 'DailyReminder' is from 'package:remindbuddy/models/daily_reminder.dart' ('lib/models/daily_reminder.dart').
+               return snap.docs.map((doc) => DailyReminder.fromMap(doc.data(), doc.id)).toList();
+                                                                                        ^
+           lib/services/storage_service.dart:174:61:
+           Error: Member not found: 'DailyReminder.fromMap'.
+                   .map((snap) => snap.docs.map((doc) => DailyReminder.fromMap(doc.data(), doc.id)).toList());
+                                                                       ^^^^^^^
+           lib/services/storage_service.dart:174:90:
+           Error: A value of type 'List<dynamic>' can't be returned from a function with return type 'List<DailyReminder>'.
+            - 'List' is from 'dart:core'.
+            - 'DailyReminder' is from 'package:remindbuddy/models/daily_reminder.dart' ('lib/models/daily_reminder.dart').
+                   .map((snap) => snap.docs.map((doc) => DailyReminder.fromMap(doc.data(), doc.id)).toList());
+                                                                                          ^
+           lib/services/auth_service.dart:114:19:
+           Error: The method 'logoutAndClearData' isn't defined for the type 'StorageService'.
+            - 'StorageService' is from 'package:remindbuddy/services/storage_service.dart' ('lib/services/storage_service.dart').
+               await storage.logoutAndClearData();
+                             ^^^^^^^^^^^^^^^^^^
+           Error: Compilation failed.
+             Command: /home/roshan-axcess/snap/flutter/common/flutter/bin/cache/dart-sdk/bin/dart compile js --platform-binaries=/home/roshan-axcess/snap/flutter/common/flutter/bin/cache/flutter_web_sdk/kernel --invoker=flutter_tool -Ddart.vm.product=true -DFLUTTER_VERSION=3.41.0 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=44a626f4f0 -DFLUTTER_ENGINE_REVISION=3452d735bd -DFLUTTER_DART_VERSION=3.11.0 -DFLUTTER_WEB_USE_SKIA=true -DFLUTTER_WEB_USE_SKWASM=false -DFLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/3452d735bd38224ef2db85ca763d862d6326b17f/ --native-null-assertions --no-source-maps -O4 --minify -o /home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/app.dill --packages=/home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/package_config.json --cfe-only /home/roshan-axcess/Documents/RemindBuddy/frontend/.dart_tool/flutter_build/90c74699012649351c753354c603df6a/main.dart
+           #0      RunResult.throwException (package:flutter_tools/src/base/process.dart:153:5)
+           #1      _DefaultProcessUtils.run (package:flutter_tools/src/base/process.dart:379:19)
+           <asynchronous suspension>
+           #2      Dart2JSTarget.build (package:flutter_tools/src/build_system/targets/web.dart:208:5)
+           <asynchronous suspension>
+           #3      _BuildInstance._invokeInternal (package:flutter_tools/src/build_system/build_system.dart:937:9)
+           <asynchronous suspension>
+           #4      Future.wait.<anonymous closure> (dart:async/future.dart:546:21)
+           <asynchronous suspension>
+           #5      _BuildInstance.invokeTarget (package:flutter_tools/src/build_system/build_system.dart:875:32)
+           <asynchronous suspension>
+           #6      Future.wait.<anonymous closure> (dart:async/future.dart:546:21)
+           <asynchronous suspension>
+           #7      _BuildInstance.invokeTarget (package:flutter_tools/src/build_system/build_system.dart:875:32)
+           <asynchronous suspension>
+           #8      FlutterBuildSystem.build (package:flutter_tools/src/build_system/build_system.dart:684:16)
+           <asynchronous suspension>
+           #9      WebBuilder.buildWeb (package:flutter_tools/src/web/compile.dart:101:34)
+           <asynchronous suspension>
+           #10     BuildWebCommand.runCommand (package:flutter_tools/src/commands/build_web.dart:299:5)
+           <asynchronous suspension>
+           #11     FlutterCommand.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command.dart:1590:27)
+           <asynchronous suspension>
+           #12     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #13     CommandRunner.runCommand (package:args/command_runner.dart:212:13)
+           <asynchronous suspension>
+           #14     FlutterCommandRunner.runCommand.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:496:9)
+           <asynchronous suspension>
+           #15     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #16     FlutterCommandRunner.runCommand (package:flutter_tools/src/runner/flutter_command_runner.dart:431:5)
+           <asynchronous suspension>
+           #17     FlutterCommandRunner.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:307:33)
+           <asynchronous suspension>
+           #18     run.<anonymous closure>.<anonymous closure> (package:flutter_tools/runner.dart:104:11)
+           <asynchronous suspension>
+           #19     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #20     main (package:flutter_tools/executable.dart:103:3)
+           <asynchronous suspension>
+
+[   +1 ms] Compiling lib/main.dart for the Web... (completed in 36.8s)
+[        ] "flutter web" took 37,464ms.
+[   +9 ms] Error: Failed to compile application for the Web.
+[        ] 
+           #0      throwToolExit (package:flutter_tools/src/base/common.dart:34:3)
+           #1      WebBuilder.buildWeb (package:flutter_tools/src/web/compile.dart:145:7)
+           <asynchronous suspension>
+           #2      BuildWebCommand.runCommand (package:flutter_tools/src/commands/build_web.dart:299:5)
+           <asynchronous suspension>
+           #3      FlutterCommand.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command.dart:1590:27)
+           <asynchronous suspension>
+           #4      AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #5      CommandRunner.runCommand (package:args/command_runner.dart:212:13)
+           <asynchronous suspension>
+           #6      FlutterCommandRunner.runCommand.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:496:9)
+           <asynchronous suspension>
+           #7      AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #8      FlutterCommandRunner.runCommand (package:flutter_tools/src/runner/flutter_command_runner.dart:431:5)
+           <asynchronous suspension>
+           #9      FlutterCommandRunner.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:307:33)
+           <asynchronous suspension>
+           #10     run.<anonymous closure>.<anonymous closure> (package:flutter_tools/runner.dart:104:11)
+           <asynchronous suspension>
+           #11     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #12     main (package:flutter_tools/executable.dart:103:3)
+           <asynchronous suspension>
+
+
+[        ] Running 1 shutdown hook
+[        ] Shutdown hooks complete
+[   +2 ms] exiting with code 1
