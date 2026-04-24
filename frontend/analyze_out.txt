@@ -1,0 +1,130 @@
+Resolving dependencies...
+Downloading packages...
+  _flutterfire_internals 1.3.66 (1.3.69 available)
+  async 2.13.0 (2.13.1 available)
+  cloud_firestore 6.1.2 (6.3.0 available)
+  cloud_firestore_platform_interface 7.0.6 (7.2.0 available)
+  cloud_firestore_web 5.1.2 (5.3.0 available)
+  cupertino_icons 1.0.8 (1.0.9 available)
+  firebase_auth 6.1.4 (6.4.0 available)
+  firebase_auth_platform_interface 8.1.6 (8.1.9 available)
+  firebase_auth_web 6.1.2 (6.1.5 available)
+  firebase_messaging 16.1.1 (16.2.0 available)
+  firebase_messaging_platform_interface 4.7.6 (4.7.9 available)
+  firebase_messaging_web 4.1.2 (4.1.5 available)
+  fl_chart 0.69.2 (1.2.0 available)
+  flutter_lints 3.0.2 (6.0.0 available)
+  flutter_local_notifications 18.0.1 (21.0.0 available)
+  flutter_local_notifications_linux 5.0.0 (8.0.0 available)
+  flutter_local_notifications_platform_interface 8.0.0 (11.0.0 available)
+  flutter_timezone 4.1.1 (5.0.2 available)
+  home_widget 0.7.0+1 (0.9.1 available)
+  hooks 1.0.1 (1.0.3 available)
+  intl 0.19.0 (0.20.2 available)
+  lints 3.0.0 (6.1.0 available)
+  matcher 0.12.18 (0.12.19 available)
+  meta 1.17.0 (1.18.2 available)
+  native_toolchain_c 0.17.4 (0.18.0 available)
+  path_provider_android 2.2.22 (2.3.1 available)
+  shared_preferences 2.5.4 (2.5.5 available)
+  shared_preferences_android 2.4.21 (2.4.23 available)
+  shared_preferences_platform_interface 2.4.1 (2.4.2 available)
+  syncfusion_flutter_charts 28.2.12 (33.2.3 available)
+  syncfusion_flutter_core 28.2.12 (33.2.3 available)
+  table_calendar 3.1.3 (3.2.0 available)
+  test_api 0.7.8 (0.7.11 available)
+  timezone 0.9.4 (0.11.0 available)
+  vector_math 2.2.0 (2.3.0 available)
+  vm_service 15.0.2 (15.1.0 available)
+Got dependencies!
+36 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Analyzing frontend...                                           
+
+warning • Unused import: 'package:firebase_messaging/firebase_messaging.dart' • lib/main.dart:4:8 • unused_import
+   info • Don't invoke 'print' in production code • lib/main.dart:18:5 • avoid_print
+warning • Unused import: '../services/storage_service.dart' • lib/screens/auth_screen.dart:5:8 • unused_import
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/auth_screen.dart:203:52 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/auth_screen.dart:221:43 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/auth_screen.dart:225:47 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/auth_screen.dart:260:41 • deprecated_member_use
+warning • The value of the field '_isLoading' isn't used • lib/screens/checklists_screen.dart:15:8 • unused_field
+   info • The local variable '_controller' starts with an underscore • lib/screens/checklists_screen.dart:43:33 • no_leading_underscores_for_local_identifiers
+   info • The local variable '_selectedIcon' starts with an underscore • lib/screens/checklists_screen.dart:44:9 • no_leading_underscores_for_local_identifiers
+   info • The local variable '_selectedColorValue' starts with an underscore • lib/screens/checklists_screen.dart:45:9 • no_leading_underscores_for_local_identifiers
+   info • 'value' is deprecated and shouldn't be used. Use component accessors like .r or .g, or toARGB32 for an explicit conversion • lib/screens/checklists_screen.dart:45:43 • deprecated_member_use
+   info • The local variable '_isSaving' starts with an underscore • lib/screens/checklists_screen.dart:46:10 • no_leading_underscores_for_local_identifiers
+   info • The local variable '_options' starts with an underscore • lib/screens/checklists_screen.dart:48:38 • no_leading_underscores_for_local_identifiers
+   info • 'value' is deprecated and shouldn't be used. Use component accessors like .r or .g, or toARGB32 for an explicit conversion • lib/screens/checklists_screen.dart:102:82 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/checklists_screen.dart:107:67 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/checklists_screen.dart:110:96 • deprecated_member_use
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/checklists_screen.dart:145:56 • use_build_context_synchronously
+   info • 'value' is deprecated and shouldn't be used. Use component accessors like .r or .g, or toARGB32 for an explicit conversion • lib/screens/checklists_screen.dart:221:63 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/checklists_screen.dart:267:35 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/checklists_screen.dart:280:51 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/checklists_screen.dart:292:57 • deprecated_member_use
+   info • The private field _isLoading could be 'final' • lib/screens/checklists_screen.dart:342:8 • prefer_final_fields
+warning • The value of the field '_isLoading' isn't used • lib/screens/checklists_screen.dart:342:8 • unused_field
+   info • The local variable '_controller' starts with an underscore • lib/screens/checklists_screen.dart:366:33 • no_leading_underscores_for_local_identifiers
+   info • The local variable '_isSaving' starts with an underscore • lib/screens/checklists_screen.dart:367:10 • no_leading_underscores_for_local_identifiers
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/checklists_screen.dart:397:52 • use_build_context_synchronously
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/checklists_screen.dart:447:49 • deprecated_member_use
+   info • Use 'const' with the constructor to improve performance • lib/screens/checklists_screen.dart:450:30 • prefer_const_constructors
+   info • Use 'const' with the constructor to improve performance • lib/screens/checklists_screen.dart:451:32 • prefer_const_constructors
+   info • Use 'const' with the constructor to improve performance • lib/screens/checklists_screen.dart:453:34 • prefer_const_constructors
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/checklists_screen.dart:552:55 • deprecated_member_use
+warning • The value of the field '_notificationService' isn't used • lib/screens/daily_reminders_screen.dart:17:29 • unused_field
+warning • The value of the field '_reminders' isn't used • lib/screens/daily_reminders_screen.dart:18:23 • unused_field
+warning • The value of the field '_isLoading' isn't used • lib/screens/daily_reminders_screen.dart:19:8 • unused_field
+   info • The local variable '_isSaving' starts with an underscore • lib/screens/daily_reminders_screen.dart:46:10 • no_leading_underscores_for_local_identifiers
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/daily_reminders_screen.dart:188:50 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/daily_reminders_screen.dart:193:46 • use_build_context_synchronously
+warning • The value of the local variable 'numId' isn't used • lib/screens/daily_reminders_screen.dart:210:15 • unused_local_variable
+warning • The value of the local variable 'numId' isn't used • lib/screens/daily_reminders_screen.dart:222:17 • unused_local_variable
+warning • The value of the local variable 'numId' isn't used • lib/screens/daily_reminders_screen.dart:250:17 • unused_local_variable
+   info • Use 'const' with the constructor to improve performance • lib/screens/gold_screen.dart:406:27 • prefer_const_constructors
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/gold_screen.dart:421:37 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/gold_screen.dart:435:26 • deprecated_member_use
+warning • Unused import: 'dart:async' • lib/screens/home_screen.dart:2:8 • unused_import
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/home_screen.dart:68:27 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/home_screen.dart:125:40 • deprecated_member_use
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/home_screen.dart:192:58 • use_build_context_synchronously
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/main_screen.dart:169:45 • deprecated_member_use
+   info • The local variable '_isSaving' starts with an underscore • lib/screens/my_shifts_screen.dart:86:10 • no_leading_underscores_for_local_identifiers
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/my_shifts_screen.dart:171:48 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/my_shifts_screen.dart:175:44 • use_build_context_synchronously
+   info • Don't invoke 'print' in production code • lib/screens/my_shifts_screen.dart:183:21 • avoid_print
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/my_shifts_screen.dart:186:44 • use_build_context_synchronously
+   info • Use 'const' with the constructor to improve performance • lib/screens/my_shifts_screen.dart:277:13 • prefer_const_constructors
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/my_shifts_screen.dart:308:26 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/my_shifts_screen.dart:371:66 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/screens/my_shifts_screen.dart:446:62 • deprecated_member_use
+   info • The local variable '_isSaving' starts with an underscore • lib/screens/notes_screen.dart:27:10 • no_leading_underscores_for_local_identifiers
+   info • Don't use 'BuildContext's across async gaps • lib/screens/notes_screen.dart:29:24 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/notes_screen.dart:69:56 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/screens/notes_screen.dart:73:52 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/screens/notes_screen.dart:226:35 • use_build_context_synchronously
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:39:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:54:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:58:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:66:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:73:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:83:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:101:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:104:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:106:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/auth_service.dart:115:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/battery_optimization_service.dart:13:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/battery_optimization_service.dart:24:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/battery_optimization_service.dart:34:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/battery_optimization_service.dart:43:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/battery_optimization_service.dart:52:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/battery_optimization_service.dart:61:7 • avoid_print
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/services/battery_optimization_service.dart:168:36 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/services/gold_price_service.dart:110:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/log_service.dart:18:6 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/log_service.dart:26:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/log_service.dart:34:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:541:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/services/storage_service.dart:733:5 • avoid_print
+

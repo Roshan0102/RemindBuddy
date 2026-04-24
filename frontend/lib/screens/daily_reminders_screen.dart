@@ -1,8 +1,8 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../models/daily_reminder.dart';
 import '../services/storage_service.dart';
-import '../services/notification_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class DailyRemindersScreen extends StatefulWidget {
@@ -14,24 +14,6 @@ class DailyRemindersScreen extends StatefulWidget {
 
 class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
   final StorageService _storageService = StorageService();
-  final NotificationService _notificationService = NotificationService();
-  List<DailyReminder> _reminders = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadReminders();
-  }
-
-  Future<void> _loadReminders() async {
-    setState(() => _isLoading = true);
-    final reminders = await _storageService.getDailyReminders();
-    setState(() {
-      _reminders = reminders;
-      _isLoading = false;
-    });
-  }
 
   Future<void> _showAddReminderDialog([DailyReminder? existingReminder]) async {
     final titleController = TextEditingController(text: existingReminder?.title ?? '');
@@ -43,7 +25,7 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
           )
         : TimeOfDay.now();
     bool isAnnoying = existingReminder?.isAnnoying ?? false;
-    bool _isSaving = false;
+    bool isSaving = false;
 
     await showDialog(
       context: context,
@@ -144,7 +126,7 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel'),
             ),
-            _isSaving 
+            isSaving 
               ? const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
@@ -158,7 +140,7 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                       return;
                     }
 
-                    setDialogState(() => _isSaving = true);
+                    setDialogState(() => isSaving = true);
                     try {
                       final timeStr = '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
                       
@@ -178,17 +160,19 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                             );
 
                       if (existingReminder == null) {
-                        final id = await _storageService.insertDailyReminder(reminder);
-                        await _scheduleDailyReminder(reminder.copyWith(id: id));
+                        await _storageService.insertDailyReminder(reminder);
                       } else {
                         await _storageService.updateDailyReminder(reminder);
-                        await _scheduleDailyReminder(reminder);
                       }
 
-                      if (mounted) Navigator.pop(context);
-                      _loadReminders();
+                      if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Reminder saved')),
+                        );
+                      }
                     } catch (e) {
-                      setDialogState(() => _isSaving = false);
+                      setDialogState(() => isSaving = false);
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
@@ -204,26 +188,9 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
     );
   }
 
-  Future<void> _scheduleDailyReminder(DailyReminder reminder) async {
-    if (!reminder.isActive || reminder.id == null) return;
-
-    final int numId = int.tryParse(reminder.id ?? '0') ?? reminder.id.hashCode;
-    // Scheduled via Cloud Functions now
-  }
-
   Future<void> _toggleReminder(DailyReminder reminder) async {
     final newState = !reminder.isActive;
     await _storageService.toggleDailyReminderActive(reminder.id!, newState);
-    
-    if (newState) {
-      // Re-enable: schedule notification
-      await _scheduleDailyReminder(reminder.copyWith(isActive: true));
-    } else {
-      final int numId = int.tryParse(reminder.id ?? '0') ?? reminder.id.hashCode;
-      // Scheduled via Cloud Functions now
-    }
-    
-    _loadReminders();
   }
 
   Future<void> _deleteReminder(DailyReminder reminder) async {
@@ -247,9 +214,12 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
     );
 
     if (confirm == true) {
-      final int numId = int.tryParse(reminder.id ?? '0') ?? reminder.id.hashCode;
       await _storageService.deleteDailyReminder(reminder.id!);
-      _loadReminders();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reminder deleted')),
+        );
+      }
     }
   }
 
@@ -349,76 +319,74 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                                   fontSize: 10,
                                   color: Colors.red[900],
                                   fontWeight: FontWeight.bold,
+                                  ),
                                 ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Switch(
+                          value: reminder.isActive,
+                          onChanged: (_) => _toggleReminder(reminder),
+                        ),
+                        PopupMenuButton(
+                          onSelected: (value) {
+                            if (value == 'edit') {
+                              _showAddReminderDialog(reminder);
+                            } else if (value == 'delete') {
+                              _deleteReminder(reminder);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit),
+                                  SizedBox(width: 8),
+                                  Text('Edit'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete, color: Colors.red),
+                                  SizedBox(width: 8),
+                                  Text('Delete', style: TextStyle(color: Colors.red)),
+                                ],
                               ),
                             ),
                           ],
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Switch(
-                        value: reminder.isActive,
-                        onChanged: (_) => _toggleReminder(reminder),
-                      ),
-                      PopupMenuButton(
-                        itemBuilder: (context) => [
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Row(
-                              children: [
-                                Icon(Icons.edit),
-                                SizedBox(width: 8),
-                                Text('Edit'),
-                              ],
-                            ),
-                          ),
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                Icon(Icons.delete, color: Colors.red),
-                                SizedBox(width: 8),
-                                Text('Delete', style: TextStyle(color: Colors.red)),
-                              ],
-                            ),
-                          ),
-                        ],
-                        onSelected: (value) {
-                          if (value == 'edit') {
-                            _showAddReminderDialog(reminder);
-                          } else if (value == 'delete') {
-                            _deleteReminder(reminder);
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddReminderDialog(),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Reminder'),
-      ),
-    );
-  }
+                );
+              },
+            );
+          },
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => _showAddReminderDialog(),
+          icon: const Icon(Icons.add),
+          label: const Text('Add Reminder'),
+        ),
+      );
+    }
 
-  String _formatTime(String time24) {
-    final parts = time24.split(':');
-    final hour = int.parse(parts[0]);
-    final minute = parts[1];
-    final period = hour >= 12 ? 'PM' : 'AM';
-    final hour12 = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-    return '$hour12:$minute $period';
+    String _formatTime(String time24) {
+      final parts = time24.split(':');
+      final hour = int.parse(parts[0]);
+      final minute = parts[parts.length - 1];
+      final period = hour >= 12 ? 'PM' : 'AM';
+      final hour12 = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+      return '$hour12:$minute $period';
+    }
   }
-}
-
-// Extension to create a copy with modified fields

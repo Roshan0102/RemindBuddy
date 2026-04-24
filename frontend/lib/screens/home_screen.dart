@@ -1,5 +1,4 @@
 
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
@@ -15,11 +14,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  
-  final StorageService _storageService = StorageService();
+  final StorageService _storage = StorageService();
 
   @override
   void initState() {
@@ -27,233 +24,179 @@ class _HomeScreenState extends State<HomeScreen> {
     _selectedDay = _focusedDay;
   }
 
-  Widget _getStatusIcon(String status) {
-    switch (status) {
-      case 'scheduled': return const Icon(Icons.timer_outlined, color: Colors.blue, size: 20);
-      case 'completed': return const Icon(Icons.check_circle, color: Colors.green, size: 20);
-      case 'expired': return const Icon(Icons.history, color: Colors.grey, size: 20);
-      case 'error': return const Icon(Icons.error_outline, color: Colors.red, size: 20);
-      default: return const Icon(Icons.hourglass_empty, color: Colors.orange, size: 20);
-    }
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'scheduled': return Colors.blue;
-      case 'completed': return Colors.green;
-      case 'expired': return Colors.grey;
-      case 'error': return Colors.red;
-      default: return Colors.orange;
-    }
-  }
-
-  Widget _buildBuddyMascot(int count) {
-    IconData buddyIcon;
-    Color buddyColor;
-
-    if (count == 0) {
-      buddyIcon = Icons.sentiment_satisfied_alt;
-      buddyColor = Colors.green;
-    } else if (count < 3) {
-      buddyIcon = Icons.sentiment_neutral;
-      buddyColor = Colors.orange;
-    } else {
-      buddyIcon = Icons.sentiment_very_dissatisfied;
-      buddyColor = Colors.red;
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: buddyColor.withOpacity(0.2),
-        shape: BoxShape.circle,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Calendar'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => setState(() {}),
+          ),
+        ],
       ),
-      child: Icon(buddyIcon, size: 32, color: buddyColor),
+      body: Column(
+        children: [
+          Card(
+            margin: const EdgeInsets.all(8.0),
+            elevation: 4,
+            child: TableCalendar(
+              firstDay: DateTime.utc(2020, 1, 1),
+              lastDay: DateTime.utc(2030, 12, 31),
+              focusedDay: _focusedDay,
+              selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+              onDaySelected: (selectedDay, focusedDay) {
+                setState(() {
+                  _selectedDay = selectedDay;
+                  _focusedDay = focusedDay;
+                });
+              },
+              calendarStyle: CalendarStyle(
+                todayDecoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor.withOpacity(0.5),
+                  shape: BoxShape.circle,
+                ),
+                selectedDecoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              headerStyle: const HeaderStyle(
+                formatButtonVisible: false,
+                titleCentered: true,
+              ),
+            ),
+          ),
+          const Divider(),
+          Expanded(
+            child: _buildReminderList(),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddTaskScreen(selectedDate: _selectedDay),
+            ),
+          );
+          if (result == true) {
+            setState(() {});
+          }
+        },
+        label: const Text('Add Reminder'),
+        icon: const Icon(Icons.add),
+      ),
     );
   }
 
-  String _getBuddyMessage(int count) {
-    if (count == 0) return "All clear! Relax time. 🌿";
-    if (count < 3) return "You got this! 💪";
-    return "Busy day ahead! 🔥";
-  }
+  Widget _buildReminderList() {
+    if (_selectedDay == null) return const Center(child: Text('Select a day'));
 
-  @override
-  Widget build(BuildContext context) {
-    final String dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay ?? _focusedDay);
+    final String dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
 
-    return Scaffold(
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _storageService.getCalendarRemindersStream(dateStr),
-        builder: (context, snapshot) {
-          final reminders = snapshot.data ?? [];
-          final tasksCount = reminders.length;
-
-          return Column(
-            children: [
-              TableCalendar(
-                firstDay: DateTime.utc(2020, 10, 16),
-                lastDay: DateTime.utc(2030, 3, 14),
-                focusedDay: _focusedDay,
-                calendarFormat: _calendarFormat,
-                availableCalendarFormats: const {
-                  CalendarFormat.month: 'Month',
-                },
-                selectedDayPredicate: (day) {
-                  return isSameDay(_selectedDay, day);
-                },
-                onDaySelected: (selectedDay, focusedDay) {
-                  if (!isSameDay(_selectedDay, selectedDay)) {
-                    setState(() {
-                      _selectedDay = selectedDay;
-                      _focusedDay = focusedDay;
-                    });
-                  }
-                },
-                onFormatChanged: (format) {
-                  if (_calendarFormat != format) {
-                    setState(() {
-                      _calendarFormat = format;
-                    });
-                  }
-                },
-                onPageChanged: (focusedDay) {
-                  _focusedDay = focusedDay;
-                },
-                calendarStyle: CalendarStyle(
-                  todayDecoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  selectedDecoration: const BoxDecoration(
-                    color: Colors.blue,
-                    shape: BoxShape.circle,
-                  ),
-                  markerDecoration: const BoxDecoration(
-                    color: Colors.redAccent,
-                    shape: BoxShape.circle,
-                  ),
-                  outsideDaysVisible: false,
-                ),
-                headerStyle: const HeaderStyle(
-                  formatButtonVisible: false,
-                  titleCentered: true,
-                  titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: 8.0),
-              // Buddy Mascot Area
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildBuddyMascot(tasksCount),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _getBuddyMessage(tasksCount),
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                        Text(
-                          '$tasksCount reminders for today',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: snapshot.connectionState == ConnectionState.waiting
-                    ? const Center(child: CircularProgressIndicator())
-                    : reminders.isEmpty
-                        ? const Center(child: Text('No reminders for this day'))
-                        : ListView.builder(
-                            itemCount: reminders.length,
-                            itemBuilder: (context, index) {
-                              final reminder = reminders[index];
-                              final status = reminder['status'] ?? 'pending';
-                              
-                              return Dismissible(
-                                key: Key(reminder['id'].toString()),
-                                background: Container(
-                                  color: Colors.red,
-                                  alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.only(right: 20.0),
-                                  child: const Icon(Icons.delete, color: Colors.white),
-                                ),
-                                direction: DismissDirection.endToStart,
-                                onDismissed: (direction) async {
-                                  await _storageService.deleteCalendarReminder(reminder['id'].toString());
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Reminder deleted')),
-                                    );
-                                  }
-                                },
-                                child: ListTile(
-                                  leading: _getStatusIcon(status),
-                                  title: Text(reminder['title']),
-                                  subtitle: Text('${reminder['time']} - ${reminder['description']}'),
-                                  trailing: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        status.toUpperCase(), 
-                                        style: TextStyle(
-                                          fontSize: 10, 
-                                          color: _getStatusColor(status),
-                                          fontWeight: FontWeight.bold
-                                        )
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-              ),
-            ],
+    return StreamBuilder(
+      stream: _storage.getCalendarRemindersStream(dateStr),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
+        
+        final reminders = snapshot.data ?? [];
+        if (reminders.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.event_available, size: 64, color: Colors.grey.withOpacity(0.5)),
+                const SizedBox(height: 16),
+                const Text('No reminders for this day', style: TextStyle(color: Colors.grey)),
+              ],
+            ),
           );
         }
-      ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          FloatingActionButton(
-            heroTag: 'log_btn',
-            mini: true,
-            backgroundColor: Colors.grey,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const LogScreen()),
-              );
-            },
-            child: const Icon(Icons.bug_report),
-          ),
-          const SizedBox(height: 10),
-          FloatingActionButton(
-            heroTag: 'add_btn',
-            onPressed: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => AddTaskScreen(selectedDate: _selectedDay),
+
+        return ListView.builder(
+          itemCount: reminders.length,
+          itemBuilder: (context, index) {
+            final reminder = reminders[index];
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: ListTile(
+                leading: _buildStatusIcon(reminder.status),
+                title: Text(reminder.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(reminder.description),
+                    const SizedBox(height: 4),
+                    Text('Time: ${reminder.time}', style: TextStyle(color: Colors.blue.shade700, fontSize: 12)),
+                  ],
                 ),
-              );
-              if (result == true) {
-                // Refresh handled by stream
-              }
-            },
-            child: const Icon(Icons.add),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  onPressed: () => _confirmDelete(reminder.id!),
+                ),
+                isThreeLine: true,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusIcon(String status) {
+    switch (status) {
+      case 'scheduled':
+        return const Icon(Icons.schedule, color: Colors.orange);
+      case 'completed':
+        return const Icon(Icons.check_circle, color: Colors.green);
+      case 'expired':
+        return const Icon(Icons.history, color: Colors.grey);
+      case 'error':
+        return const Icon(Icons.error_outline, color: Colors.red);
+      default:
+        return const Icon(Icons.help_outline);
+    }
+  }
+
+  Future<void> _confirmDelete(String id) async {
+    final bool? result = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Reminder?'),
+        content: const Text('This will also cancel any scheduled notifications.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text('Delete', style: TextStyle(color: Colors.red))
           ),
         ],
       ),
     );
+
+    if (result == true) {
+      try {
+        await _storage.deleteCalendarReminder(id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Reminder deleted')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete: $e')),
+          );
+        }
+      }
+    }
   }
 }
