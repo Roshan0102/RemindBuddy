@@ -72,7 +72,9 @@ async function fetchGoldPriceFromTOI() {
                         const weight = $(cells[0]).text().trim();
                         const priceText = $(cells[1]).text().trim();
                         if (weight.includes('1')) {
-                            const num = parseInt(priceText.replace(/[^0-9]/g, ''), 10);
+                            // Split by decimal point to avoid including cents/paise as extra digits
+                            const basePrice = priceText.split('.')[0];
+                            const num = parseInt(basePrice.replace(/[^0-9]/g, ''), 10);
                             if (num > 1000)
                                 finalPrice = num;
                         }

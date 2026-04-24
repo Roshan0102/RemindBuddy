@@ -259,7 +259,7 @@ class _GoldScreenState extends State<GoldScreen> {
                           _buildCurrentPriceCard(currentPrice, priceDiff),
                           const SizedBox(height: 24),
                           const Text(
-                            'Recent History (Live Mirror)',
+                            'Recent History',
                             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 8),
