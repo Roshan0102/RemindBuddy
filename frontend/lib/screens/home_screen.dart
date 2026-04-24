@@ -4,7 +4,7 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import '../services/storage_service.dart';
 import 'add_task_screen.dart';
-import '../services/log_service.dart';
+import '../models/calendar_reminder.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -97,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final String dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
 
-    return StreamBuilder(
+    return StreamBuilder<List<CalendarReminder>>(
       stream: _storage.getCalendarRemindersStream(dateStr),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
