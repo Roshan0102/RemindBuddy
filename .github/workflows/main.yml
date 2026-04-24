@@ -24,7 +24,9 @@ jobs:
           
       - name: Get Dependencies
         working-directory: ./frontend
-        run: flutter pub get
+        run: |
+          flutter pub get
+          flutter clean
         
       - name: Setup Shorebird
         uses: shorebirdtech/setup-shorebird@v1
@@ -55,7 +57,9 @@ jobs:
 
       - name: Get Dependencies
         working-directory: ./frontend
-        run: flutter pub get
+        run: |
+          flutter pub get
+          flutter clean
 
       - name: Build Web
         working-directory: ./frontend

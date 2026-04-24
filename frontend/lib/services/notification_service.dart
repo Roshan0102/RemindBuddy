@@ -39,7 +39,7 @@ class NotificationService {
     await _localNotifications.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        if (response.payload != null) {
+        if (response.payload != null && response.payload != 'null') {
           LogService.staticLog("Local Notification clicked: ${response.payload}");
           _selectNotificationStream.add(response.payload!);
         }
@@ -92,17 +92,17 @@ class NotificationService {
 
     // 5. Handle background notifications (When user taps notification while app is in background)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      final type = message.data['type']?.toString();
+      final type = message.data['type'];
       LogService.staticLog("Notification clicked (from background): $type");
-      if (type != null) _selectNotificationStream.add(type);
+      if (type != null && type != 'null') _selectNotificationStream.add(type);
     });
 
     // 6. Handle notification that launched the app from killed state
     RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMessage != null) {
-      final type = initialMessage.data['type']?.toString();
+      final type = initialMessage.data['type'];
       LogService.staticLog("Notification clicked (from killed): $type");
-      if (type != null) {
+      if (type != null && type != 'null') {
         // Delay slightly to allow MainScreen to mount and listen
         Future.delayed(const Duration(seconds: 2), () {
           _selectNotificationStream.add(type);
@@ -131,7 +131,7 @@ class NotificationService {
               icon: android.smallIcon,
             ),
           ),
-          payload: message.data['type']?.toString(),
+          payload: message.data['type'],
         );
       }
     });
