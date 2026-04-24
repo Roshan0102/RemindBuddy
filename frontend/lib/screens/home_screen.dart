@@ -1,14 +1,11 @@
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
-import '../models/task.dart';
 import '../services/storage_service.dart';
-import '../services/notification_service.dart';
-import '../services/log_service.dart';
 import 'add_task_screen.dart';
-
-
+import '../services/log_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,7 +18,6 @@ class _HomeScreenState extends State<HomeScreen> {
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  List<Task> _selectedTasks = [];
   
   final StorageService _storageService = StorageService();
 
@@ -31,19 +27,38 @@ class _HomeScreenState extends State<HomeScreen> {
     _selectedDay = _focusedDay;
   }
 
-  Widget _buildBuddyMascot() {
-    int taskCount = _selectedTasks.length;
+  Widget _getStatusIcon(String status) {
+    switch (status) {
+      case 'scheduled': return const Icon(Icons.timer_outlined, color: Colors.blue, size: 20);
+      case 'completed': return const Icon(Icons.check_circle, color: Colors.green, size: 20);
+      case 'expired': return const Icon(Icons.history, color: Colors.grey, size: 20);
+      case 'error': return const Icon(Icons.error_outline, color: Colors.red, size: 20);
+      default: return const Icon(Icons.hourglass_empty, color: Colors.orange, size: 20);
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'scheduled': return Colors.blue;
+      case 'completed': return Colors.green;
+      case 'expired': return Colors.grey;
+      case 'error': return Colors.red;
+      default: return Colors.orange;
+    }
+  }
+
+  Widget _buildBuddyMascot(int count) {
     IconData buddyIcon;
     Color buddyColor;
 
-    if (taskCount == 0) {
-      buddyIcon = Icons.sentiment_satisfied_alt; // Happy/Relaxed
+    if (count == 0) {
+      buddyIcon = Icons.sentiment_satisfied_alt;
       buddyColor = Colors.green;
-    } else if (taskCount < 3) {
-      buddyIcon = Icons.sentiment_neutral; // Neutral
+    } else if (count < 3) {
+      buddyIcon = Icons.sentiment_neutral;
       buddyColor = Colors.orange;
     } else {
-      buddyIcon = Icons.sentiment_very_dissatisfied; // Stressed/Busy
+      buddyIcon = Icons.sentiment_very_dissatisfied;
       buddyColor = Colors.red;
     }
 
@@ -57,31 +72,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _getBuddyMessage() {
-    int taskCount = _selectedTasks.length;
-    if (taskCount == 0) return "All clear! Relax time. 🌿";
-    if (taskCount < 3) return "You got this! 💪";
+  String _getBuddyMessage(int count) {
+    if (count == 0) return "All clear! Relax time. 🌿";
+    if (count < 3) return "You got this! 💪";
     return "Busy day ahead! 🔥";
   }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
-
-
 
   @override
   Widget build(BuildContext context) {
     final String dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay ?? _focusedDay);
 
     return Scaffold(
-      body: StreamBuilder<List<Task>>(
-        stream: _storageService.getTasksForDateStream(dateStr),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _storageService.getCalendarRemindersStream(dateStr),
         builder: (context, snapshot) {
-          final tasks = snapshot.data ?? [];
-          _selectedTasks = tasks; // Keep mascot logic happy
+          final reminders = snapshot.data ?? [];
+          final tasksCount = reminders.length;
 
           return Column(
             children: [
@@ -142,17 +148,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildBuddyMascot(),
+                    _buildBuddyMascot(tasksCount),
                     const SizedBox(width: 12),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _getBuddyMessage(),
+                          _getBuddyMessage(tasksCount),
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                         Text(
-                          '${tasks.length} tasks for today',
+                          '$tasksCount reminders for today',
                           style: TextStyle(color: Colors.grey[600], fontSize: 12),
                         ),
                       ],
@@ -163,14 +169,16 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: snapshot.connectionState == ConnectionState.waiting
                     ? const Center(child: CircularProgressIndicator())
-                    : tasks.isEmpty
-                        ? const Center(child: Text('No tasks for this day'))
+                    : reminders.isEmpty
+                        ? const Center(child: Text('No reminders for this day'))
                         : ListView.builder(
-                            itemCount: tasks.length,
+                            itemCount: reminders.length,
                             itemBuilder: (context, index) {
-                              final task = tasks[index];
+                              final reminder = reminders[index];
+                              final status = reminder['status'] ?? 'pending';
+                              
                               return Dismissible(
-                                key: Key(task.id.toString()),
+                                key: Key(reminder['id'].toString()),
                                 background: Container(
                                   color: Colors.red,
                                   alignment: Alignment.centerRight,
@@ -178,35 +186,32 @@ class _HomeScreenState extends State<HomeScreen> {
                                   child: const Icon(Icons.delete, color: Colors.white),
                                 ),
                                 direction: DismissDirection.endToStart,
-                                confirmDismiss: (direction) async {
-                                  return await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: const Text('Delete Task?'),
-                                      content: const Text('Are you sure you want to delete this task?'),
-                                      actions: [
-                                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(ctx, true),
-                                          style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                          child: const Text('Delete'),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
                                 onDismissed: (direction) async {
-                                  await _storageService.deleteTask(task.id.toString());
+                                  await _storageService.deleteCalendarReminder(reminder['id'].toString());
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Task deleted')),
+                                      const SnackBar(content: Text('Reminder deleted')),
                                     );
                                   }
                                 },
                                 child: ListTile(
-                                  title: Text(task.title),
-                                  subtitle: Text('${task.time} - ${task.description}'),
-                                  trailing: task.repeat != 'none' ? const Icon(Icons.repeat) : null,
+                                  leading: _getStatusIcon(status),
+                                  title: Text(reminder['title']),
+                                  subtitle: Text('${reminder['time']} - ${reminder['description']}'),
+                                  trailing: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        status.toUpperCase(), 
+                                        style: TextStyle(
+                                          fontSize: 10, 
+                                          color: _getStatusColor(status),
+                                          fontWeight: FontWeight.bold
+                                        )
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               );
                             },

@@ -1,7 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/task.dart';
 import '../models/note.dart';
 import '../models/daily_reminder.dart';
 import '../models/gold_price.dart';
@@ -19,98 +18,54 @@ class StorageService {
   StorageService._internal();
 
 
-  // Task Methods (Migrated to Firebase)
-  Future<String> insertTask(Task task) async {
+  // Calendar Reminder Methods (New Cloud Tasks backed reminders)
+  Future<String> insertCalendarReminder(String title, String description, String date, String time) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return '';
     
     final docRef = await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
-        .collection('tasks')
-        .add(task.toMap());
+        .collection('calendar_reminders')
+        .add({
+      'title': title,
+      'description': description,
+      'date': date,
+      'time': time,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
     
     return docRef.id;
   }
 
-  Future<List<Task>> getTasks() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return [];
-    
-    final snap = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('tasks')
-        .get();
-        
-    return snap.docs.map((doc) => Task.fromJson(doc.data(), doc.id)).toList();
-  }
-
-  Future<List<Task>> getTasksForDate(String date) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return [];
-    
-    final snap = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('tasks')
-        .where('date', isEqualTo: date)
-        .get();
-        
-    return snap.docs.map((doc) => Task.fromJson(doc.data(), doc.id)).toList();
-  }
-
-  Stream<List<Task>> getTasksForDateStream(String date) {
+  Stream<List<Map<String, dynamic>>> getCalendarRemindersStream(String date) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Stream.empty();
     
     return FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
-        .collection('tasks')
+        .collection('calendar_reminders')
         .where('date', isEqualTo: date)
         .snapshots()
-        .map((snap) => snap.docs.map((doc) => Task.fromJson(doc.data(), doc.id)).toList());
+        .map((snap) => snap.docs.map((doc) {
+          final data = doc.data();
+          data['id'] = doc.id;
+          return data;
+        }).toList());
   }
 
-  Future<void> updateTask(Task task) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || task.id == null) return;
-    
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('tasks')
-        .doc(task.id)
-        .update(task.toMap());
-  }
-
-  Future<void> deleteTask(String id) async {
+  Future<void> deleteCalendarReminder(String id) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     
     await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
-        .collection('tasks')
+        .collection('calendar_reminders')
         .doc(id)
         .delete();
-  }
-
-  Future<void> clearOldTasks(String today) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    
-    final snap = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('tasks')
-        .where('date', isLessThan: today)
-        .get();
-        
-    for (var doc in snap.docs) {
-      await doc.reference.delete();
-    }
   }
 
   // Note Methods (Migrated to Firebase Firestore)

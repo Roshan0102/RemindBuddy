@@ -1,15 +1,16 @@
+
+import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import '../main.dart'; // To access navigatorKey
-import '../screens/gold_screen.dart';
-import '../screens/daily_reminders_screen.dart';
-import '../screens/my_shifts_screen.dart';
 import 'log_service.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+  
+  // Hub for notification click events
+  final StreamController<String> _selectNotificationStream = StreamController<String>.broadcast();
+  Stream<String> get selectNotificationStream => _selectNotificationStream.stream;
 
   factory NotificationService() {
     return _instance;
@@ -38,15 +39,14 @@ class NotificationService {
     await _localNotifications.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        // This handles taps on local notifications (foreground ones)
         if (response.payload != null) {
           LogService.staticLog("Local Notification clicked: ${response.payload}");
-          _handleNavigationByType(response.payload!);
+          _selectNotificationStream.add(response.payload!);
         }
       },
     );
 
-    // 3. Create Android Channels (Critical for reliability)
+    // 3. Create Android Channels
     const List<AndroidNotificationChannel> channels = [
       AndroidNotificationChannel(
         'gold_price_channel',
@@ -69,6 +69,13 @@ class NotificationService {
         importance: Importance.max,
         playSound: true,
       ),
+      AndroidNotificationChannel(
+        'calendar_reminder_channel',
+        'Calendar Reminders',
+        description: 'Notifications for tasks scheduled on specific dates',
+        importance: Importance.max,
+        playSound: true,
+      ),
     ];
 
     final androidPlugin = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
@@ -85,15 +92,22 @@ class NotificationService {
 
     // 5. Handle background notifications (When user taps notification while app is in background)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      LogService.staticLog("Notification clicked (from background): ${message.data['type']}");
-      _handleNavigation(message);
+      final type = message.data['type']?.toString();
+      LogService.staticLog("Notification clicked (from background): $type");
+      if (type != null) _selectNotificationStream.add(type);
     });
 
     // 6. Handle notification that launched the app from killed state
     RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMessage != null) {
-      LogService.staticLog("Notification clicked (from killed): ${initialMessage.data['type']}");
-      _handleNavigation(initialMessage);
+      final type = initialMessage.data['type']?.toString();
+      LogService.staticLog("Notification clicked (from killed): $type");
+      if (type != null) {
+        // Delay slightly to allow MainScreen to mount and listen
+        Future.delayed(const Duration(seconds: 2), () {
+          _selectNotificationStream.add(type);
+        });
+      }
     }
 
     // 7. Listen for foreground FCM messages
@@ -117,40 +131,9 @@ class NotificationService {
               icon: android.smallIcon,
             ),
           ),
-          payload: message.data['type'],
+          payload: message.data['type']?.toString(),
         );
       }
     });
-  }
-
-  void _handleNavigation(RemoteMessage message) {
-    _handleNavigationByType(message.data['type']);
-  }
-
-  void _handleNavigationByType(String? type) {
-    final context = navigatorKey.currentContext;
-    if (context == null || type == null) return;
-
-    LogService.staticLog("Navigating to screen for type: $type");
-
-    switch (type) {
-      case 'GOLD_PRICE':
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (context) => const GoldScreen()),
-        );
-        break;
-      case 'daily_reminder':
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
-        );
-        break;
-      case 'shift_reminder':
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (context) => const MyShiftsScreen()),
-        );
-        break;
-      default:
-        LogService.staticLog("Unknown notification type for navigation: $type");
-    }
   }
 }

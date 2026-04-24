@@ -1,11 +1,14 @@
+
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import * as moment from "moment-timezone";
+import { CloudTasksClient } from "@google-cloud/tasks";
 
 admin.initializeApp();
 const db = admin.firestore();
+const tasksClient = new CloudTasksClient();
 
 // ----------------------------------------------------------------------------
 // SCRAPERS
@@ -14,49 +17,35 @@ async function fetchGoldPriceFromLiveChennai(): Promise<number | null> {
     try {
         const url = 'https://www.livechennai.com/gold_silverrate.asp';
         const response = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
             timeout: 10000
         });
-
         const $ = cheerio.load(response.data);
         let finalPrice: number | null = null;
-
-        // Using CSS selector found via browser inspection
         $('.today-gold-rate td:nth-child(2)').each((i, el) => {
             const text = $(el).text().trim();
-            // Match the first number (e.g., 14,250)
             const match = text.match(/\d{1,3}(,\d{3})+|\d{4,}/);
             if (match) {
                 const num = parseInt(match[0].replace(/[^0-9]/g, ''), 10);
-                if (num > 1000 && !finalPrice) {
-                    finalPrice = num;
-                }
+                if (num > 1000 && !finalPrice) finalPrice = num;
             }
         });
-
-        if (!finalPrice) throw new Error("Price element not found in LiveChennai");
         return finalPrice;
     } catch (e) {
         console.error("LiveChennai Error:", e);
         return null;
     }
 }
+
 async function fetchGoldPriceFromTOI(): Promise<number | null> {
     try {
         const url = 'https://timesofindia.indiatimes.com/business/gold-rates-today/gold-price-in-chennai';
         const response = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'text/html,application/xhtml+xml',
-            },
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
             timeout: 10000
         });
-
         const $ = cheerio.load(response.data);
         let finalPrice: number | null = null;
-
         $("h2").each((i, el) => {
             if ($(el).text().toLowerCase().includes("22k gold price trend")) {
                 let wrapper = $(el).parent();
@@ -67,26 +56,17 @@ async function fetchGoldPriceFromTOI(): Promise<number | null> {
                         break;
                     }
                 }
-
                 const rows = wrapper.find('.custom-table .Ge2sP .fCMra');
                 if (rows.length > 0) {
-                    const firstRow = rows.first();
-                    const cells = firstRow.find('.Gy41U');
-                    if (cells.length > 1) {
-                        const weight = $(cells[0]).text().trim();
-                        const priceText = $(cells[1]).text().trim();
-                        if (weight.includes('1')) {
-                            // Split by decimal point to avoid including cents/paise as extra digits
-                            const basePrice = priceText.split('.')[0];
-                            const num = parseInt(basePrice.replace(/[^0-9]/g, ''), 10);
-                            if (num > 1000) finalPrice = num;
-                        }
+                    const cells = rows.first().find('.Gy41U');
+                    if (cells.length > 1 && $(cells[0]).text().trim().includes('1')) {
+                        const basePrice = $(cells[1]).text().trim().split('.')[0];
+                        const num = parseInt(basePrice.replace(/[^0-9]/g, ''), 10);
+                        if (num > 1000) finalPrice = num;
                     }
                 }
             }
         });
-
-        if (!finalPrice) throw new Error("Price element not found in TOI");
         return finalPrice;
     } catch (e) {
         console.error("TOI Error:", e);
@@ -98,25 +78,18 @@ async function fetchGoldPriceFromBankBazaar(): Promise<number | null> {
     try {
         const url = 'https://www.bankbazaar.com/gold-rate-chennai.html';
         const response = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36',
-            },
+            headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36' },
             timeout: 10000
         });
-
         const $ = cheerio.load(response.data);
         let finalPrice: number | null = null;
-
         $('.white-space-nowrap').each((i, el) => {
             const text = $(el).text().trim();
             if ((text.includes('₹') || text.includes('Rs')) && text.match(/\d{1,3}(,\d{3})+|\d{4,}/)) {
                 const num = parseInt(text.replace(/[^0-9]/g, ''), 10);
-                if (num > 1000 && !finalPrice) {
-                    finalPrice = num;
-                }
+                if (num > 1000 && !finalPrice) finalPrice = num;
             }
         });
-
         return finalPrice;
     } catch (e) {
         console.error("BankBazaar Error:", e);
@@ -125,8 +98,103 @@ async function fetchGoldPriceFromBankBazaar(): Promise<number | null> {
 }
 
 // ----------------------------------------------------------------------------
-// NOTIFICATION SENDER
+// CALENDAR REMINDERS (Cloud Tasks)
 // ----------------------------------------------------------------------------
+
+/**
+ * Task Handler: Called by Cloud Task queue. 
+ */
+exports.processCalendarReminderTask = functions.tasks
+    .taskQueue({
+        retryConfig: { maxAttempts: 3 },
+        rateLimits: { maxConcurrentDispatches: 10 },
+    })
+    .onDispatch(async (data) => {
+        const { uid, reminderId, title, body } = data;
+        try {
+            const reminderRef = db.collection("users").doc(uid).collection("calendar_reminders").doc(reminderId);
+            const reminderDoc = await reminderRef.get();
+            if (!reminderDoc.exists) return;
+
+            const userDoc = await db.collection("usernames").where("uid", "==", uid).limit(1).get();
+            if (!userDoc.empty) {
+                const token = userDoc.docs[0].data().fcmToken;
+                if (token) {
+                    await admin.messaging().send({
+                        token,
+                        notification: { title, body },
+                        android: { notification: { channelId: "calendar_reminder_channel" } },
+                        data: { type: "CALENDAR_REMINDER", reminderId }
+                    });
+                }
+            }
+
+            const expireAt = new Date();
+            expireAt.setDate(expireAt.getDate() + 30);
+            await reminderRef.update({
+                status: "completed",
+                notifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+                expireAt: admin.firestore.Timestamp.fromDate(expireAt)
+            });
+        } catch (error) {
+            console.error("Task execution failed:", error);
+            throw error;
+        }
+    });
+
+exports.onCalendarReminderDeleted = functions.firestore
+    .document('users/{uid}/calendar_reminders/{reminderId}')
+    .onDelete(async (snapshot, context) => {
+        const data = snapshot.data();
+        if (data && data.taskId && data.status === "scheduled") {
+            try {
+                await tasksClient.deleteTask({ name: data.taskId });
+            } catch (error) {
+                console.error("Failed to delete scheduled task:", error);
+            }
+        }
+    });
+
+exports.onCalendarReminderCreated = functions.firestore
+    .document('users/{uid}/calendar_reminders/{reminderId}')
+    .onCreate(async (snapshot, context) => {
+        const data = snapshot.data();
+        if (!data) return;
+        const { uid, reminderId } = context.params;
+        const scheduledTime = moment.tz(`${data.date} ${data.time}`, "YYYY-MM-DD HH:mm", "Asia/Kolkata");
+        if (!scheduledTime.isValid() || scheduledTime.isBefore(moment().subtract(30, 'seconds'))) {
+            return snapshot.ref.update({ status: "expired" });
+        }
+        try {
+            const project = "remindbuddy-b68f9";
+            const location = "us-central1";
+            const queue = "processCalendarReminderTask";
+            const queuePath = tasksClient.queuePath(project, location, queue);
+            const url = `https://${location}-${project}.cloudfunctions.net/processCalendarReminderTask`;
+            const task: any = {
+                httpRequest: {
+                    httpMethod: 'POST',
+                    url,
+                    body: Buffer.from(JSON.stringify({ uid, reminderId, title: data.title, body: data.description })).toString('base64'),
+                    headers: { 'Content-Type': 'application/json' },
+                },
+                scheduleTime: { seconds: scheduledTime.unix() },
+            };
+            await tasksClient.createTask({ parent: queuePath, task });
+            return snapshot.ref.update({
+                status: "scheduled",
+                scheduledAtTimestamp: admin.firestore.Timestamp.fromMillis(scheduledTime.valueOf())
+            });
+        } catch (error) {
+            console.error("Scheduling failed:", error);
+            return snapshot.ref.update({ status: "error", error: String(error) });
+        }
+    });
+
+// ----------------------------------------------------------------------------
+// MISC (Gold, Shifts, etc.)
+// ----------------------------------------------------------------------------
+
 async function notifyAllUsers(price: number, oldPrice: number | null) {
     let diffText = 'Latest Update';
     if (oldPrice) {
@@ -135,321 +203,78 @@ async function notifyAllUsers(price: number, oldPrice: number | null) {
         else if (diff < 0) diffText = `📉 Down by ₹${Math.abs(diff)}`;
         else diffText = `➖ No change`;
     }
-
-    try {
-        // Find everyone with an fcmToken in the 'usernames' collection
-        const usernamesSnapshot = await db.collection("usernames").get();
-        const tokens: string[] = [];
-
-        usernamesSnapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.fcmToken) tokens.push(data.fcmToken);
+    const snap = await db.collection("usernames").get();
+    const tokens: string[] = [];
+    snap.forEach(d => { if (d.data().fcmToken) tokens.push(d.data().fcmToken); });
+    if (tokens.length > 0) {
+        await admin.messaging().sendEachForMulticast({
+            tokens,
+            notification: { title: `Gold Rate: ₹${price}`, body: diffText },
+            android: { notification: { channelId: "gold_price_channel" } },
+            data: { type: "GOLD_PRICE" } // Added tag for auto-tab switching
         });
-
-        if (tokens.length > 0) {
-            // Modern FCM HTTP v1 Multicast Payload
-            const response = await admin.messaging().sendEachForMulticast({
-                tokens: tokens,
-                notification: {
-                    title: `Gold Price Update (₹${price})`,
-                    body: `Current: ₹${price} | ${diffText}`,
-                },
-                data: {
-                    type: "GOLD_PRICE",
-                    click_action: "GOLD_SCREEN",
-                    price: String(price)
-                },
-                android: {
-                    priority: "high",
-                    notification: {
-                        channelId: "gold_price_channel",
-                        clickAction: "FLUTTER_NOTIFICATION_CLICK",
-                        sound: "default",
-                        ticker: "Gold Rate Update",
-                        visibility: "public"
-                    }
-                }
-            });
-
-            console.log(`✅ Sent logically to ${tokens.length} users. Success: ${response.successCount}, Failure: ${response.failureCount}`);
-        } else {
-            console.log(`⚠️ No users with FCM tokens found.`);
-        }
-    } catch (e) {
-        console.error(`❌ Failed to send notifications:`, e);
     }
 }
 
-// ----------------------------------------------------------------------------
-// DIAGNOSTICS & MANUAL TRIGGERS
-// ----------------------------------------------------------------------------
-exports.checkGoldSources = functions.https.onCall(async (data, context) => {
-    console.log("🔍 Manual Source Check Triggered...");
-    const results = await Promise.all([
-        fetchGoldPriceFromLiveChennai(),
-        fetchGoldPriceFromBankBazaar(),
-        fetchGoldPriceFromTOI()
-    ]);
-
-    return {
-        timestamp: moment().tz('Asia/Kolkata').format('hh:mm:ss A'),
-        live_chennai: results[0] || "Failed",
-        bank_bazaar: results[1] || "Failed",
-        times_of_india: results[2] || "Failed"
-    };
-});
-
-// ----------------------------------------------------------------------------
-// INTERNALS
-// ----------------------------------------------------------------------------
 async function internalPerformGoldFetch(force: boolean = false) {
-    console.log("-----------------------------------------");
-    console.log(`⏰ Gold Fetch Triggered (Force: ${force})`);
-
-    let currentPrice: number | null = null;
-    let sourceName = "";
-
-    const lcPrice = await fetchGoldPriceFromLiveChennai();
-    if (lcPrice) {
-        currentPrice = lcPrice;
-        sourceName = "LiveChennai";
-    } else {
-        const bbPrice = await fetchGoldPriceFromBankBazaar();
-        if (bbPrice) {
-            currentPrice = bbPrice;
-            sourceName = "BankBazaar";
-        } else {
-            const toiPrice = await fetchGoldPriceFromTOI();
-            if (toiPrice) {
-                currentPrice = toiPrice;
-                sourceName = "Times of India";
-            }
-        }
-    }
-
-    if (!currentPrice) {
-        await db.collection("gold_fetch_logs").doc("latest").set({
-            timestamp: new Date().toISOString(),
-            status: "FAILED",
-            logs: [`LiveChennai: ❌`, `BankBazaar: ❌`, `TOI: ❌`]
-        });
-        return { success: false, error: "Scraping failed" };
-    }
+    const results = [await fetchGoldPriceFromLiveChennai(), await fetchGoldPriceFromBankBazaar(), await fetchGoldPriceFromTOI()];
+    const currentPrice = results[0] || results[1] || results[2];
+    if (!currentPrice) return { success: false };
 
     const nowIST = moment().tz('Asia/Kolkata');
-    const hour = nowIST.hour();
-    const todayDateStr = nowIST.format('YYYY-MM-DD');
-    const timestampStr = nowIST.toISOString();
-
     const lastDocs = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(1).get();
-    let lastPrice: number | null = null;
-    if (!lastDocs.empty) lastPrice = lastDocs.docs[0].data().price;
+    const lastPrice = lastDocs.empty ? null : lastDocs.docs[0].data().price;
 
-    if (!force && hour === 19 && lastPrice !== null && lastPrice === currentPrice) {
-        return { success: true, status: "skipped" };
-    }
+    if (!force && nowIST.hour() === 19 && lastPrice === currentPrice) return { success: true };
 
-    const priceChange = lastPrice ? (currentPrice - lastPrice) : 0;
-    const docId = timestampStr.replace(/[:.]/g, '-');
-    await db.collection("global_gold_prices").doc(docId).set({
-        date: todayDateStr,
+    const timestampStr = nowIST.toISOString();
+    await db.collection("global_gold_prices").doc(timestampStr.replace(/[:.]/g, '-')).set({
+        date: nowIST.format('YYYY-MM-DD'),
         price: currentPrice,
-        priceChange: priceChange,
-        fetchedTime: nowIST.format('hh:mm A'),
+        priceChange: lastPrice ? currentPrice - lastPrice : 0,
         timestamp: timestampStr,
-        source: sourceName
+        source: results[0] ? "LiveChennai" : results[1] ? "BankBazaar" : "TOI"
     });
-
-    await db.collection("gold_fetch_logs").doc("latest").set({
-        timestamp: timestampStr,
-        status: "SUCCESS",
-        sourceUsed: sourceName,
-        price: currentPrice,
-        lastPrice: lastPrice,
-        logs: [
-            `LiveChennai: ${lcPrice ? "✅ " + lcPrice : "❌"}`,
-            `BankBazaar: ${sourceName !== "LiveChennai" ? "Attempted" : "Skipped"}`,
-            `TOI: ${sourceName === "Times of India" ? "Attempted" : "Skipped"}`
-        ]
-    });
-
     await notifyAllUsers(currentPrice, lastPrice);
-    return { success: true, price: currentPrice, source: sourceName };
+    return { success: true };
 }
 
-exports.scheduledGoldFetch = functions.pubsub.schedule('0 11,19 * * *')
-    .timeZone('Asia/Kolkata')
-    .onRun(async (context) => {
-        return await internalPerformGoldFetch();
-    });
-
-exports.forceGoldFetch = functions.https.onCall(async (data, context) => {
-    console.log("🚀 Forced Gold Fetch via App...");
-    return await internalPerformGoldFetch(true);
+exports.checkGoldSources = functions.https.onCall(async () => {
+    const r = [await fetchGoldPriceFromLiveChennai(), await fetchGoldPriceFromBankBazaar(), await fetchGoldPriceFromTOI()];
+    return { timestamp: moment().tz('Asia/Kolkata').format('hh:mm:ss A'), live_chennai: r[0], bank_bazaar: r[1], TOI: r[2] };
 });
 
-// ----------------------------------------------------------------------------
-// DAILY SHIFT REMINDER - Runs at 10:00 PM IST (22:00)
-// ----------------------------------------------------------------------------
-exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *')
-    .timeZone('Asia/Kolkata')
-    .onRun(async (context) => {
-        console.log("-----------------------------------------");
-        console.log("⏰ Daily Shift Reminder Triggered (10 PM IST)");
+exports.scheduledGoldFetch = functions.pubsub.schedule('0 11,19 * * *').timeZone('Asia/Kolkata').onRun(() => internalPerformGoldFetch());
+exports.forceGoldFetch = functions.https.onCall(() => internalPerformGoldFetch(true));
 
-        // 1. Calculate Tomorrow's Date and Month
-        const nowIST = moment().tz('Asia/Kolkata');
-        const tomorrow = nowIST.clone().add(1, 'day');
-        const tomorrowDate = tomorrow.format('YYYY-MM-DD');
-        const tomorrowMonth = tomorrow.format('YYYY-MM');
-
-        console.log(`   📅 Checking shifts for: ${tomorrowDate}`);
-
-        // 2. Fetch all users with FCM tokens
-        const usersSnap = await db.collection('usernames').get();
-        if (usersSnap.empty) {
-            console.log("   ⚠️ No users found in database.");
-            return null;
-        }
-
-        console.log(`   👥 Found ${usersSnap.size} users to check.`);
-
-        const notificationPromises = [];
-
-        for (const userDoc of usersSnap.docs) {
-            const userData = userDoc.data();
-            const uid = userData.uid;
-            const fcmToken = userData.fcmToken;
-
-            if (!uid || !fcmToken) continue;
-
-            // 3. Check for tomorrow's shift in the new nested structure
-            const shiftRef = db.collection('users').doc(uid)
-                .collection('shifts').doc(tomorrowMonth)
-                .collection('daily_shifts').doc(tomorrowDate);
-
-            const shiftDoc = await shiftRef.get();
-
-            if (shiftDoc.exists) {
-                const shift = shiftDoc.data();
-                const shiftType = shift?.shift_type || "Unknown";
-
-                // Format shift type for display (e.g., morning -> Morning Shift)
-                let shiftDisplay = shiftType.split('_').map((word: string) =>
-                    word.charAt(0).toUpperCase() + word.slice(1)
-                ).join(' ');
-
-                if (!shiftDisplay.toLowerCase().includes('shift') && !shiftDisplay.toLowerCase().includes('off')) {
-                    shiftDisplay += " Shift";
-                }
-
-                console.log(`   🔔 Notifying ${userData.lower} (UID: ${uid}) about ${shiftDisplay}`);
-
-                const message = {
-                    token: fcmToken,
-                    notification: {
-                        title: "📅 Tomorrow's Shift",
-                        body: `👋 Tomorrow's Shift: ${shiftDisplay}`
-                    },
-                    android: {
-                        priority: 'high' as const,
-                        notification: {
-                            channelId: 'shift_reminder_channel',
-                            clickAction: 'FLUTTER_NOTIFICATION_CLICK',
-                        }
-                    },
-                    data: {
-                        type: 'shift_reminder',
-                        date: tomorrowDate,
-                        shift: shiftDisplay
-                    }
-                };
-
-                notificationPromises.push(
-                    admin.messaging().send(message)
-                        .catch(err => console.error(`   ❌ Failed to notify ${uid}:`, err))
-                );
-            }
-        }
-
-        if (notificationPromises.length > 0) {
-            await Promise.all(notificationPromises);
-            console.log(`   ✅ Sent ${notificationPromises.length} notifications.`);
-        } else {
-            console.log("   ℹ️ No shifts found for tomorrow for any user.");
-        }
-
-        console.log("-----------------------------------------");
-        return null;
-    });
-
-// ----------------------------------------------------------------------------
-// DAILY REMINDERS CHECK - Runs every 15 minutes
-// ----------------------------------------------------------------------------
-exports.checkDailyReminders = functions.pubsub.schedule('*/15 * * * *')
-    .timeZone('Asia/Kolkata')
-    .onRun(async (context) => {
-        const nowIST = moment().tz('Asia/Kolkata');
-        const currentTime = nowIST.format('HH:mm'); // Matches "18:00" format in DB
-
-        console.log(`⏰ Checking daily reminders for: ${currentTime} IST`);
-
-        // 1. Fetch all users
-        const usersSnap = await db.collection('usernames').get();
-        if (usersSnap.empty) return null;
-
-        const notificationPromises: any[] = [];
-
-        for (const userDoc of usersSnap.docs) {
-            const userData = userDoc.data();
-            const uid = userData.uid;
-            const fcmToken = userData.fcmToken;
-
-            if (!uid || !fcmToken) continue;
-
-            // 2. Fetch specific reminders for this user at this exact time
-            const remindersRef = db.collection('users').doc(uid).collection('daily_reminders');
-            const matchingReminders = await remindersRef
-                .where('time', '==', currentTime)
-                .where('isActive', '==', true)
-                .get();
-
-            matchingReminders.forEach(reminderDoc => {
-                const reminder = reminderDoc.data();
-
-                console.log(`   🔔 Notifying ${userData.lower} about: ${reminder.title}`);
-
-                const message = {
-                    token: fcmToken,
-                    notification: {
-                        title: reminder.title,
-                        body: reminder.description || "You have a daily reminder!",
-                    },
-                    android: {
-                        priority: 'high' as const,
-                        notification: {
-                            channelId: 'remindbuddy_channel',
-                            clickAction: 'FLUTTER_NOTIFICATION_CLICK',
-                        }
-                    },
-                    data: {
-                        type: 'daily_reminder',
-                        reminderId: reminderDoc.id,
-                        isAnnoying: String(reminder.isAnnoying || false)
-                    }
-                };
-
-                notificationPromises.push(
-                    admin.messaging().send(message)
-                        .catch(err => console.error(`   ❌ Failed to notify uid ${uid}:`, err))
-                );
+exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+    const tom = moment().tz('Asia/Kolkata').add(1, 'day');
+    const users = await db.collection('usernames').get();
+    for (const u of users.docs) {
+        const s = await db.collection('users').doc(u.data().uid).collection('shifts').doc(tom.format('YYYY-MM')).collection('daily_shifts').doc(tom.format('YYYY-MM-DD')).get();
+        if (s.exists) {
+            await admin.messaging().send({
+                token: u.data().fcmToken,
+                notification: { title: "Tomorrow's Shift", body: s.data()?.shift_type || "Day Off" },
+                android: { notification: { channelId: 'shift_reminder_channel' } },
+                data: { type: "shift_reminder" } // Added tag for auto-tab switching
             });
         }
+    }
+});
 
-        if (notificationPromises.length > 0) {
-            await Promise.all(notificationPromises);
-            console.log(`   ✅ Sent ${notificationPromises.length} daily reminder notifications.`);
+exports.checkDailyReminders = functions.pubsub.schedule('*/15 * * * *').timeZone('Asia/Kolkata').onRun(async () => {
+    const now = moment().tz('Asia/Kolkata').format('HH:mm');
+    const users = await db.collection('usernames').get();
+    for (const u of users.docs) {
+        const rs = await db.collection('users').doc(u.data().uid).collection('daily_reminders').where('time', '==', now).where('isActive', '==', true).get();
+        for (const r of rs.docs) {
+            await admin.messaging().send({
+                token: u.data().fcmToken,
+                notification: { title: r.data().title, body: r.data().description || "Reminder" },
+                android: { notification: { channelId: 'remindbuddy_channel' } },
+                data: { type: "daily_reminder" } // Added tag for direct navigation
+            });
         }
-
-        return null;
-    });
+    }
+});

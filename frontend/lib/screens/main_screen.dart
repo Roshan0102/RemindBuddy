@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +11,7 @@ import 'my_shifts_screen.dart';
 import 'auth_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/log_service.dart';
+import '../services/notification_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -22,14 +24,46 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0; // Default to Gold (first tab)
   bool _isDarkMode = false;
 
+  StreamSubscription? _notificationSubscription;
+
   @override
   void initState() {
     super.initState();
     _loadTheme();
+    _setupNotificationListener();
+  }
+
+  void _setupNotificationListener() {
+    _notificationSubscription = NotificationService().selectNotificationStream.listen((type) {
+      LogService.staticLog("MainScreen received notification event: $type");
+      if (!mounted) return;
+
+      setState(() {
+        switch (type) {
+          case 'GOLD_PRICE':
+            _selectedIndex = 0; // Gold Tab
+            break;
+          case 'CALENDAR_REMINDER':
+            _selectedIndex = 1; // Reminders Tab
+            break;
+          case 'shift_reminder':
+            _selectedIndex = 3; // Shifts Tab
+            break;
+          case 'daily_reminder':
+            // This is a separate screen in the drawer
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
+            );
+            break;
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
+    _notificationSubscription?.cancel();
     super.dispose();
   }
 

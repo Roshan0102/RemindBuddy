@@ -1,9 +1,8 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
-import '../models/task.dart';
 import '../services/storage_service.dart';
-import '../services/notification_service.dart';
 
 class AddTaskScreen extends StatefulWidget {
   final DateTime? selectedDate;
@@ -20,8 +19,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   final _descriptionController = TextEditingController();
   late DateTime _date;
   late TimeOfDay _time;
-  String _repeat = 'none';
-  bool _isAnnoying = false;
   bool _isSaving = false;
 
 
@@ -102,32 +99,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       final String dateStr = DateFormat('yyyy-MM-dd').format(_date);
       final String timeStr = '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}';
 
-      final newTask = Task(
-        title: _titleController.text,
-        description: _descriptionController.text,
-        date: dateStr,
-        time: timeStr,
-        repeat: _repeat,
-        isAnnoying: _isAnnoying,
-      );
-
-      // 1. Save Natively to Firebase Firestore
       try {
-        final storage = StorageService(); // Singleton
-        final taskId = await storage.insertTask(newTask);
-        
-        // Use the generated String ID to recreate the Task for Local Notifications
-        final savedTask = Task(
-          id: taskId,
-          title: newTask.title,
-          description: newTask.description,
-          date: newTask.date,
-          time: newTask.time,
-          repeat: newTask.repeat,
-          isAnnoying: newTask.isAnnoying,
+        final storage = StorageService();
+        await storage.insertCalendarReminder(
+          _titleController.text, 
+          _descriptionController.text, 
+          dateStr, 
+          timeStr
         );
-        
-        // await NotificationService().scheduleTaskNotification(savedTask);
         
         if (mounted) {
           Navigator.pop(context, true);
@@ -136,7 +115,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         if (mounted) {
           setState(() { _isSaving = false; });
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to save task: $e')),
+            SnackBar(content: Text('Failed to save reminder: $e')),
           );
         }
       }
@@ -146,7 +125,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Task')),
+      appBar: AppBar(title: const Text('Add Reminder')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -155,7 +134,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             children: [
               TextFormField(
                 controller: _titleController,
-                decoration: const InputDecoration(labelText: 'Title'),
+                decoration: const InputDecoration(
+                  labelText: 'Title',
+                  hintText: 'e.g. Doctor Appointment',
+                  border: OutlineInputBorder(),
+                ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter a title';
@@ -163,87 +146,53 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   return null;
                 },
               ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _descriptionController,
-                decoration: const InputDecoration(labelText: 'Description'),
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                  hintText: 'Add some details...',
+                  border: OutlineInputBorder(),
+                ),
               ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text('Date: ${DateFormat('yyyy-MM-dd').format(_date)}'),
-                  ),
-                  TextButton(
-                    onPressed: () => _selectDate(context),
-                    child: const Text('Select Date'),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text('Time: ${_time.format(context)}'),
-                  ),
-                  TextButton(
-                    onPressed: () => _selectTime(context),
-                    child: const Text('Select Time'),
-                  ),
-                ],
-              ),
-              DropdownButtonFormField<String>(
-                value: _repeat.startsWith('custom') ? 'custom' : _repeat,
-                decoration: const InputDecoration(labelText: 'Repeat'),
-                items: ['none', 'daily', 'weekly', 'monthly', 'custom']
-                    .map((label) => DropdownMenuItem(
-                          value: label,
-                          child: Text(label == 'custom' ? 'Custom (Every X Days)' : label),
-                        ))
-                    .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    if (value == 'custom') {
-                      _repeat = 'custom:10'; // Default to 10 days
-                    } else {
-                      _repeat = value!;
-                    }
-                  });
-                },
-              ),
-              if (_repeat.startsWith('custom'))
-                Padding(
-                  padding: const EdgeInsets.only(top: 16.0),
-                  child: TextFormField(
-                    initialValue: _repeat.split(':')[1],
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Repeat every (days)',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (value) {
-                      setState(() {
-                        _repeat = 'custom:$value';
-                      });
-                    },
+              const SizedBox(height: 24),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.calendar_today),
+                        title: Text('Date: ${DateFormat('yyyy-MM-dd').format(_date)}'),
+                        trailing: const Icon(Icons.edit),
+                        onTap: () => _selectDate(context),
+                      ),
+                      const Divider(),
+                      ListTile(
+                        leading: const Icon(Icons.access_time),
+                        title: Text('Time: ${_time.format(context)}'),
+                        trailing: const Icon(Icons.edit),
+                        onTap: () => _selectTime(context),
+                      ),
+                    ],
                   ),
                 ),
-              const SizedBox(height: 16),
-              SwitchListTile(
-                title: const Text('Annoying Alarm (Nag Mode)'),
-                subtitle: const Text('Keeps reminding until you say YES'),
-                value: _isAnnoying,
-                onChanged: (bool value) {
-                  setState(() {
-                    _isAnnoying = value;
-                  });
-                },
-                secondary: const Icon(Icons.alarm_on, color: Colors.red),
               ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _isSaving ? null : _saveTask,
-                child: _isSaving 
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
-                  : const Text('Save Task'),
+              const SizedBox(height: 32),
+              SizedBox(
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _isSaving ? null : _saveTask,
+                  child: _isSaving 
+                    ? const CircularProgressIndicator(color: Colors.white) 
+                    : const Text('Schedule Reminder', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
               ),
             ],
           ),
