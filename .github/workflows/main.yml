@@ -35,7 +35,7 @@ jobs:
         working-directory: ./frontend
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
-        run: shorebird release android --artifact apk --flutter-version=3.41.0
+        run: shorebird release android --artifact apk --flutter-version=3.41.0 -- --no-tree-shake-icons
         
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -63,7 +63,7 @@ jobs:
 
       - name: Build Web
         working-directory: ./frontend
-        run: flutter build web --release
+        run: flutter build web --release --no-tree-shake-icons
 
       - name: Upload Web Build
         uses: actions/upload-artifact@v4
