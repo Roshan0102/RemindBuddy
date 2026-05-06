@@ -14,6 +14,7 @@ class GoldScreen extends StatefulWidget {
 class _GoldScreenState extends State<GoldScreen> {
   final GoldPriceService _goldService = GoldPriceService();
   bool _isFetching = false;
+  String _selectedChartRange = '7D';
 
   @override
   void initState() {
@@ -138,7 +139,6 @@ class _GoldScreenState extends State<GoldScreen> {
                         children: [
                           _sourceRow('LiveChennai', data['live_chennai']),
                           _sourceRow('BankBazaar', data['bank_bazaar']),
-                          _sourceRow('TOI Chennai', data['times_of_india']),
                           const Divider(),
                           Text('As of: ${data['timestamp'] ?? 'Now'}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
                         ],
@@ -263,12 +263,14 @@ class _GoldScreenState extends State<GoldScreen> {
                             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 8),
-                          _buildHistoryTable(history),
+                          _buildHistoryTable(history.take(10).toList()),
                           const SizedBox(height: 24),
                           const Text(
                             'Price Trend',
                             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                           ),
+                          const SizedBox(height: 16),
+                          _buildChartFilterButtons(),
                           const SizedBox(height: 16),
                           _buildModernChart(history),
                           const SizedBox(height: 16),
@@ -300,44 +302,77 @@ class _GoldScreenState extends State<GoldScreen> {
       diffText = "-₹${diff.abs().toStringAsFixed(0)}";
     }
     
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue.shade900, Colors.blue.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            const Text('Latest Gold Rate (22K)', style: TextStyle(fontSize: 16, color: Colors.grey)),
-            const SizedBox(height: 8),
+            Text(
+              'Latest Gold Rate (22K)', 
+              style: TextStyle(
+                fontSize: 16, 
+                color: Colors.white.withOpacity(0.8),
+                fontWeight: FontWeight.w500,
+              )
+            ),
+            const SizedBox(height: 12),
             Text(
               '₹ ${price.toStringAsFixed(0)}', 
-              style: TextStyle(
-                fontSize: 48, 
+              style: const TextStyle(
+                fontSize: 52, 
                 fontWeight: FontWeight.bold, 
-                color: Theme.of(context).colorScheme.onSurface,
+                color: Colors.white,
+                letterSpacing: 1.2,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
              if (diff != 0) 
-               Row(
-                 mainAxisAlignment: MainAxisAlignment.center,
-                 children: [
-                   Icon(diffIcon, color: diffColor, size: 24),
-                   const SizedBox(width: 4),
-                   Text(
-                     diffText,
-                     style: TextStyle(color: diffColor, fontWeight: FontWeight.bold, fontSize: 18),
-                   ),
-                   Text(
-                     ' (vs Previous)',
-                     style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                   ),
-                 ],
+               Container(
+                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                 decoration: BoxDecoration(
+                   color: Colors.white.withOpacity(0.15),
+                   borderRadius: BorderRadius.circular(20),
+                 ),
+                 child: Row(
+                   mainAxisSize: MainAxisSize.min,
+                   mainAxisAlignment: MainAxisAlignment.center,
+                   children: [
+                     Icon(diffIcon, color: diff > 0 ? Colors.greenAccent : Colors.redAccent, size: 20),
+                     const SizedBox(width: 6),
+                     Text(
+                       diffText,
+                       style: TextStyle(
+                         color: diff > 0 ? Colors.greenAccent : Colors.redAccent, 
+                         fontWeight: FontWeight.bold, 
+                         fontSize: 16
+                       ),
+                     ),
+                     Text(
+                       ' vs Last',
+                       style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13),
+                     ),
+                   ],
+                 ),
                ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             Text(
               'Updated: ${_formatDate(currentPrice.timestamp)} via ${currentPrice.source}', 
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.6)),
             ),
           ],
         ),
@@ -390,41 +425,120 @@ class _GoldScreenState extends State<GoldScreen> {
     );
   }
 
+  Widget _buildChartFilterButtons() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: ['7D', '1M', '3M', '6M', '1Y', 'Max'].map((range) {
+        final isSelected = _selectedChartRange == range;
+        return InkWell(
+          onTap: () => setState(() => _selectedChartRange = range),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.amber : Colors.transparent,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.amber),
+            ),
+            child: Text(
+              range,
+              style: TextStyle(
+                color: isSelected ? Colors.black : Colors.amber,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   Widget _buildModernChart(List<GoldPrice> history) {
     if (history.length < 2) return const SizedBox.shrink();
 
+    // Filter history based on range
+    DateTime now = DateTime.now();
+    List<GoldPrice> filteredHistory;
+    
+    if (_selectedChartRange == 'Max') {
+      filteredHistory = history;
+    } else {
+      Duration duration;
+      switch (_selectedChartRange) {
+        case '7D':
+          duration = const Duration(days: 7);
+          break;
+        case '1M':
+          duration = const Duration(days: 30);
+          break;
+        case '3M':
+          duration = const Duration(days: 90);
+          break;
+        case '6M':
+          duration = const Duration(days: 180);
+          break;
+        case '1Y':
+          duration = const Duration(days: 365);
+          break;
+        default:
+          duration = const Duration(days: 7);
+      }
+      
+      final cutoff = now.subtract(duration);
+      filteredHistory = history.where((p) {
+        try {
+          return DateTime.parse(p.timestamp).isAfter(cutoff);
+        } catch (_) {
+          return false;
+        }
+      }).toList();
+    }
+
+    if (filteredHistory.length < 2) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: Center(child: Text('Not enough data for this range')),
+        ),
+      );
+    }
+
     // Chart needs chronological order
-    final sortedHistory = List<GoldPrice>.from(history).reversed.toList();
+    final sortedHistory = List<GoldPrice>.from(filteredHistory).reversed.toList();
 
     return Card(
       elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: SizedBox(
-          height: 250,
-          child: SfCartesianChart(
-            primaryXAxis: CategoryAxis(
-              majorGridLines: const MajorGridLines(width: 0),
-              labelRotation: -45,
-              labelStyle: const TextStyle(fontSize: 8),
-            ),
-            primaryYAxis: NumericAxis(
-              numberFormat: NumberFormat.currency(symbol: '₹', decimalDigits: 0),
-              axisLine: const AxisLine(width: 0),
-            ),
-            tooltipBehavior: TooltipBehavior(enable: true),
-            series: <CartesianSeries>[
-              AreaSeries<GoldPrice, String>(
-                dataSource: sortedHistory,
-                xValueMapper: (GoldPrice p, _) => _formatDate(p.timestamp),
-                yValueMapper: (GoldPrice p, _) => p.price,
-                color: Colors.amber.withOpacity(0.3),
-                borderColor: Colors.amber,
-                borderWidth: 2,
-                markerSettings: const MarkerSettings(isVisible: true),
+        child: Column(
+          children: [
+            SizedBox(
+              height: 250,
+              child: SfCartesianChart(
+                primaryXAxis: CategoryAxis(
+                  majorGridLines: const MajorGridLines(width: 0),
+                  labelRotation: -45,
+                  labelStyle: const TextStyle(fontSize: 8),
+                ),
+                primaryYAxis: NumericAxis(
+                  numberFormat: NumberFormat.currency(symbol: '₹', decimalDigits: 0),
+                  axisLine: const AxisLine(width: 0),
+                ),
+                tooltipBehavior: TooltipBehavior(enable: true),
+                series: <CartesianSeries>[
+                  AreaSeries<GoldPrice, String>(
+                    dataSource: sortedHistory,
+                    xValueMapper: (GoldPrice p, _) => _formatDate(p.timestamp),
+                    yValueMapper: (GoldPrice p, _) => p.price,
+                    color: Colors.amber.withOpacity(0.3),
+                    borderColor: Colors.amber,
+                    borderWidth: 2,
+                    markerSettings: const MarkerSettings(isVisible: true),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

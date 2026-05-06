@@ -48,7 +48,7 @@ class GoldPriceService {
     }
   }
 
-  Stream<List<GoldPrice>> getGlobalGoldPricesStream({int limit = 30}) {
+  Stream<List<GoldPrice>> getGlobalGoldPricesStream({int limit = 1000}) {
     return _db
         .collection('global_gold_prices')
         .orderBy('timestamp', descending: true)

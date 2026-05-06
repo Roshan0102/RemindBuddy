@@ -4,11 +4,10 @@ import * as admin from "firebase-admin";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import * as moment from "moment-timezone";
-import { CloudTasksClient } from "@google-cloud/tasks";
+import { getFunctions } from "firebase-admin/functions";
 
 admin.initializeApp();
 const db = admin.firestore();
-const tasksClient = new CloudTasksClient();
 
 // ----------------------------------------------------------------------------
 // SCRAPERS
@@ -37,42 +36,6 @@ async function fetchGoldPriceFromLiveChennai(): Promise<number | null> {
     }
 }
 
-async function fetchGoldPriceFromTOI(): Promise<number | null> {
-    try {
-        const url = 'https://timesofindia.indiatimes.com/business/gold-rates-today/gold-price-in-chennai';
-        const response = await axios.get(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-            timeout: 10000
-        });
-        const $ = cheerio.load(response.data);
-        let finalPrice: number | null = null;
-        $("h2").each((i, el) => {
-            if ($(el).text().toLowerCase().includes("22k gold price trend")) {
-                let wrapper = $(el).parent();
-                while (wrapper.length && !wrapper.next().hasClass('custom-table')) {
-                    wrapper = wrapper.parent();
-                    if (wrapper.next().find('.custom-table').length > 0) {
-                        wrapper = wrapper.next();
-                        break;
-                    }
-                }
-                const rows = wrapper.find('.custom-table .Ge2sP .fCMra');
-                if (rows.length > 0) {
-                    const cells = rows.first().find('.Gy41U');
-                    if (cells.length > 1 && $(cells[0]).text().trim().includes('1')) {
-                        const basePrice = $(cells[1]).text().trim().split('.')[0];
-                        const num = parseInt(basePrice.replace(/[^0-9]/g, ''), 10);
-                        if (num > 1000) finalPrice = num;
-                    }
-                }
-            }
-        });
-        return finalPrice;
-    } catch (e) {
-        console.error("TOI Error:", e);
-        return null;
-    }
-}
 
 async function fetchGoldPriceFromBankBazaar(): Promise<number | null> {
     try {
@@ -166,21 +129,14 @@ exports.onCalendarReminderCreated = functions.firestore
             return snapshot.ref.update({ status: "expired" });
         }
         try {
-            const project = "remindbuddy-b68f9";
-            const location = "us-central1";
-            const queue = "processCalendarReminderTask";
-            const queuePath = tasksClient.queuePath(project, location, queue);
-            const url = `https://${location}-${project}.cloudfunctions.net/processCalendarReminderTask`;
-            const task: any = {
-                httpRequest: {
-                    httpMethod: 'POST',
-                    url,
-                    body: Buffer.from(JSON.stringify({ uid, reminderId, title: data.title, body: data.description })).toString('base64'),
-                    headers: { 'Content-Type': 'application/json' },
-                },
-                scheduleTime: { seconds: scheduledTime.unix() },
-            };
-            await tasksClient.createTask({ parent: queuePath, task });
+            const queue = getFunctions().taskQueue("processCalendarReminderTask", "us-central1");
+            await queue.enqueue(
+                { uid, reminderId, title: data.title, body: data.description },
+                {
+                    scheduleTime: scheduledTime.toDate(),
+                    dispatchDeadlineSeconds: 60 * 5 // 5 minutes
+                }
+            );
             return snapshot.ref.update({
                 status: "scheduled",
                 scheduledAtTimestamp: admin.firestore.Timestamp.fromMillis(scheduledTime.valueOf())
@@ -217,8 +173,8 @@ async function notifyAllUsers(price: number, oldPrice: number | null) {
 }
 
 async function internalPerformGoldFetch(force: boolean = false) {
-    const results = [await fetchGoldPriceFromLiveChennai(), await fetchGoldPriceFromBankBazaar(), await fetchGoldPriceFromTOI()];
-    const currentPrice = results[0] || results[1] || results[2];
+    const results = [await fetchGoldPriceFromLiveChennai(), await fetchGoldPriceFromBankBazaar()];
+    const currentPrice = results[0] || results[1];
     if (!currentPrice) return { success: false };
 
     const nowIST = moment().tz('Asia/Kolkata');
@@ -233,15 +189,15 @@ async function internalPerformGoldFetch(force: boolean = false) {
         price: currentPrice,
         priceChange: lastPrice ? currentPrice - lastPrice : 0,
         timestamp: timestampStr,
-        source: results[0] ? "LiveChennai" : results[1] ? "BankBazaar" : "TOI"
+        source: results[0] ? "LiveChennai" : "BankBazaar"
     });
     await notifyAllUsers(currentPrice, lastPrice);
     return { success: true };
 }
 
 exports.checkGoldSources = functions.https.onCall(async () => {
-    const r = [await fetchGoldPriceFromLiveChennai(), await fetchGoldPriceFromBankBazaar(), await fetchGoldPriceFromTOI()];
-    return { timestamp: moment().tz('Asia/Kolkata').format('hh:mm:ss A'), live_chennai: r[0], bank_bazaar: r[1], TOI: r[2] };
+    const r = [await fetchGoldPriceFromLiveChennai(), await fetchGoldPriceFromBankBazaar()];
+    return { timestamp: moment().tz('Asia/Kolkata').format('hh:mm:ss A'), live_chennai: r[0], bank_bazaar: r[1] };
 });
 
 exports.scheduledGoldFetch = functions.pubsub.schedule('0 11,19 * * *').timeZone('Asia/Kolkata').onRun(() => internalPerformGoldFetch());
@@ -263,7 +219,7 @@ exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('A
     }
 });
 
-exports.checkDailyReminders = functions.pubsub.schedule('*/15 * * * *').timeZone('Asia/Kolkata').onRun(async () => {
+exports.checkDailyReminders = functions.pubsub.schedule('* * * * *').timeZone('Asia/Kolkata').onRun(async () => {
     const now = moment().tz('Asia/Kolkata').format('HH:mm');
     const users = await db.collection('usernames').get();
     for (const u of users.docs) {

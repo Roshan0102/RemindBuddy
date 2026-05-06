@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'log_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -85,9 +87,23 @@ class NotificationService {
       }
     }
 
-    // 4. Get Messaging Token
-    messaging.getToken().then((token) {
+    // 4. Get Messaging Token and update Firestore
+    messaging.getToken().then((token) async {
       LogService.staticLog("FCM Token: $token");
+      if (token != null) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final query = await FirebaseFirestore.instance
+              .collection('usernames')
+              .where('uid', isEqualTo: user.uid)
+              .limit(1)
+              .get();
+          if (query.docs.isNotEmpty) {
+            await query.docs.first.reference.update({'fcmToken': token});
+            LogService.staticLog("FCM Token updated in Firestore for ${user.uid}");
+          }
+        }
+      }
     });
 
     // 5. Handle background notifications (When user taps notification while app is in background)
