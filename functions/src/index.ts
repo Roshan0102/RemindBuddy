@@ -126,25 +126,52 @@ exports.onCalendarReminderCreated = functions.firestore
         const data = snapshot.data();
         if (!data) return;
         const { uid, reminderId } = context.params;
+        
+        // Use Asia/Kolkata for all calculations
+        const nowKolkata = moment().tz('Asia/Kolkata');
         const scheduledTime = moment.tz(`${data.date} ${data.time}`, "YYYY-MM-DD HH:mm", "Asia/Kolkata");
         
-        if (!scheduledTime.isValid() || scheduledTime.isBefore(moment().subtract(30, 'seconds'))) {
+        console.log(`Scheduling reminder for ${uid}/${reminderId} at ${scheduledTime.format()} (Now: ${nowKolkata.format()})`);
+
+        if (!scheduledTime.isValid() || scheduledTime.isBefore(nowKolkata.subtract(30, 'seconds'))) {
+            console.log(`Reminder ${reminderId} is invalid or in the past. Marking as expired.`);
             return snapshot.ref.update({ status: "expired" });
         }
         
         try {
-            const queue = getFunctions().taskQueue("processCalendarReminderTask", "us-central1");
-            const response = await queue.enqueue(
-                { uid, reminderId, title: data.title, body: data.description },
-                {
-                    scheduleTime: scheduledTime.toDate(),
-                    dispatchDeadlineSeconds: 60 * 5 // 5 minutes
-                }
-            );
+            const project = process.env.GCLOUD_PROJECT || admin.instanceId().app.options.projectId;
+            const location = 'us-central1';
+            const queue = 'processCalendarReminderTask';
+            const queuePath = tasksClient.queuePath(project!, location, queue);
+            const url = `https://${location}-${project}.cloudfunctions.net/processCalendarReminderTask`;
+            const serviceAccountEmail = `${project}@appspot.gserviceaccount.com`;
+
+            const taskRequest: any = {
+                parent: queuePath,
+                task: {
+                    httpRequest: {
+                        httpMethod: 'POST',
+                        url,
+                        body: Buffer.from(JSON.stringify({ data: { uid, reminderId, title: data.title, body: data.description } })).toString('base64'),
+                        headers: { 'Content-Type': 'application/json' },
+                        oidcToken: {
+                            serviceAccountEmail,
+                        },
+                    },
+                    scheduleTime: {
+                        seconds: scheduledTime.unix(),
+                    },
+                },
+            };
+
+            const [response] = await tasksClient.createTask(taskRequest);
+            const taskId = response.name;
             
+            console.log(`Successfully enqueued task ${taskId} for reminder ${reminderId}`);
+
             return snapshot.ref.update({
                 status: "scheduled",
-                taskId: response.name, // Save the task name for deletion
+                taskId: taskId, 
                 scheduledAtTimestamp: admin.firestore.Timestamp.fromMillis(scheduledTime.valueOf())
             });
         } catch (error) {
@@ -210,15 +237,24 @@ exports.scheduledGoldFetch = functions.pubsub.schedule('0 11,19 * * *').timeZone
 exports.forceGoldFetch = functions.https.onCall(() => internalPerformGoldFetch(true));
 
 exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('Asia/Kolkata').onRun(async () => {
-    const tom = moment().tz('Asia/Kolkata').add(1, 'day');
+    const nowKolkata = moment().tz('Asia/Kolkata');
+    const tom = nowKolkata.clone().add(1, 'day');
+    console.log(`Running dailyShiftReminder at ${nowKolkata.format()}. Target date: ${tom.format('YYYY-MM-DD')}`);
+    
     const users = await db.collection('usernames').get();
+    console.log(`Found ${users.size} users for shift reminders.`);
+
     for (const u of users.docs) {
         const userData = u.data();
-        if (!userData.fcmToken || !userData.uid) continue;
+        if (!userData.fcmToken || !userData.uid) {
+            console.log(`Skipping user ${u.id}: Missing token or UID.`);
+            continue;
+        }
 
         try {
             const s = await db.collection('users').doc(userData.uid).collection('shifts').doc(tom.format('YYYY-MM')).collection('daily_shifts').doc(tom.format('YYYY-MM-DD')).get();
             if (s.exists) {
+                console.log(`Sending shift reminder to user ${userData.uid} (Token: ${userData.fcmToken.substring(0, 10)}...)`);
                 await admin.messaging().send({
                     token: userData.fcmToken,
                     notification: { title: "Tomorrow's Shift", body: s.data()?.shift_type || "Day Off" },
@@ -233,19 +269,26 @@ exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('A
 });
 
 exports.checkDailyReminders = functions.pubsub.schedule('* * * * *').timeZone('Asia/Kolkata').onRun(async () => {
-    const now = moment().tz('Asia/Kolkata').format('HH:mm');
+    const nowKolkata = moment().tz('Asia/Kolkata');
+    const timeStr = nowKolkata.format('HH:mm');
+    console.log(`Running checkDailyReminders at ${nowKolkata.format()} (Search Time: ${timeStr})`);
+    
     const users = await db.collection('usernames').get();
     for (const u of users.docs) {
         const userData = u.data();
         if (!userData.fcmToken || !userData.uid) continue;
 
         try {
-            const rs = await db.collection('users').doc(userData.uid).collection('daily_reminders').where('time', '==', now).where('isActive', '==', true).get();
+            const rs = await db.collection('users').doc(userData.uid).collection('daily_reminders').where('time', '==', timeStr).where('isActive', '==', true).get();
+            if (!rs.empty) {
+                console.log(`Found ${rs.size} daily reminders for user ${userData.uid} at ${timeStr}`);
+            }
             for (const r of rs.docs) {
+                console.log(`Sending daily reminder: ${r.data().title} to ${userData.uid}`);
                 await admin.messaging().send({
                     token: userData.fcmToken,
                     notification: { title: r.data().title, body: r.data().description || "Reminder" },
-                    android: { notification: { channelId: 'daily_reminder_channel' } }, // Fixed ID
+                    android: { notification: { channelId: 'daily_reminder_channel' } },
                     data: { type: "daily_reminder" }
                 });
             }
