@@ -5,9 +5,11 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import * as moment from "moment-timezone";
 import { getFunctions } from "firebase-admin/functions";
+import { CloudTasksClient } from "@google-cloud/tasks";
 
 admin.initializeApp();
 const db = admin.firestore();
+const tasksClient = new CloudTasksClient();
 
 // ----------------------------------------------------------------------------
 // SCRAPERS
@@ -125,20 +127,24 @@ exports.onCalendarReminderCreated = functions.firestore
         if (!data) return;
         const { uid, reminderId } = context.params;
         const scheduledTime = moment.tz(`${data.date} ${data.time}`, "YYYY-MM-DD HH:mm", "Asia/Kolkata");
+        
         if (!scheduledTime.isValid() || scheduledTime.isBefore(moment().subtract(30, 'seconds'))) {
             return snapshot.ref.update({ status: "expired" });
         }
+        
         try {
             const queue = getFunctions().taskQueue("processCalendarReminderTask", "us-central1");
-            await queue.enqueue(
+            const response = await queue.enqueue(
                 { uid, reminderId, title: data.title, body: data.description },
                 {
                     scheduleTime: scheduledTime.toDate(),
                     dispatchDeadlineSeconds: 60 * 5 // 5 minutes
                 }
             );
+            
             return snapshot.ref.update({
                 status: "scheduled",
+                taskId: response.name, // Save the task name for deletion
                 scheduledAtTimestamp: admin.firestore.Timestamp.fromMillis(scheduledTime.valueOf())
             });
         } catch (error) {
@@ -167,7 +173,7 @@ async function notifyAllUsers(price: number, oldPrice: number | null) {
             tokens,
             notification: { title: `Gold Rate: ₹${price}`, body: diffText },
             android: { notification: { channelId: "gold_price_channel" } },
-            data: { type: "GOLD_PRICE" } // Added tag for auto-tab switching
+            data: { type: "GOLD_PRICE" }
         });
     }
 }
@@ -207,14 +213,21 @@ exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('A
     const tom = moment().tz('Asia/Kolkata').add(1, 'day');
     const users = await db.collection('usernames').get();
     for (const u of users.docs) {
-        const s = await db.collection('users').doc(u.data().uid).collection('shifts').doc(tom.format('YYYY-MM')).collection('daily_shifts').doc(tom.format('YYYY-MM-DD')).get();
-        if (s.exists) {
-            await admin.messaging().send({
-                token: u.data().fcmToken,
-                notification: { title: "Tomorrow's Shift", body: s.data()?.shift_type || "Day Off" },
-                android: { notification: { channelId: 'shift_reminder_channel' } },
-                data: { type: "shift_reminder" } // Added tag for auto-tab switching
-            });
+        const userData = u.data();
+        if (!userData.fcmToken || !userData.uid) continue;
+
+        try {
+            const s = await db.collection('users').doc(userData.uid).collection('shifts').doc(tom.format('YYYY-MM')).collection('daily_shifts').doc(tom.format('YYYY-MM-DD')).get();
+            if (s.exists) {
+                await admin.messaging().send({
+                    token: userData.fcmToken,
+                    notification: { title: "Tomorrow's Shift", body: s.data()?.shift_type || "Day Off" },
+                    android: { notification: { channelId: 'shift_reminder_channel' } },
+                    data: { type: "shift_reminder" }
+                });
+            }
+        } catch (error) {
+            console.error(`Failed to send shift reminder for user ${userData.uid}:`, error);
         }
     }
 });
@@ -223,14 +236,22 @@ exports.checkDailyReminders = functions.pubsub.schedule('* * * * *').timeZone('A
     const now = moment().tz('Asia/Kolkata').format('HH:mm');
     const users = await db.collection('usernames').get();
     for (const u of users.docs) {
-        const rs = await db.collection('users').doc(u.data().uid).collection('daily_reminders').where('time', '==', now).where('isActive', '==', true).get();
-        for (const r of rs.docs) {
-            await admin.messaging().send({
-                token: u.data().fcmToken,
-                notification: { title: r.data().title, body: r.data().description || "Reminder" },
-                android: { notification: { channelId: 'remindbuddy_channel' } },
-                data: { type: "daily_reminder" } // Added tag for direct navigation
-            });
+        const userData = u.data();
+        if (!userData.fcmToken || !userData.uid) continue;
+
+        try {
+            const rs = await db.collection('users').doc(userData.uid).collection('daily_reminders').where('time', '==', now).where('isActive', '==', true).get();
+            for (const r of rs.docs) {
+                await admin.messaging().send({
+                    token: userData.fcmToken,
+                    notification: { title: r.data().title, body: r.data().description || "Reminder" },
+                    android: { notification: { channelId: 'daily_reminder_channel' } }, // Fixed ID
+                    data: { type: "daily_reminder" }
+                });
+            }
+        } catch (error) {
+            console.error(`Failed to send daily reminders for user ${userData.uid}:`, error);
         }
     }
 });
+
