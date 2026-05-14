@@ -1,10 +1,8 @@
-
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import * as moment from "moment-timezone";
-import { getFunctions } from "firebase-admin/functions";
 import { CloudTasksClient } from "@google-cloud/tasks";
 
 admin.initializeApp();
@@ -139,7 +137,7 @@ exports.onCalendarReminderCreated = functions.firestore
         }
         
         try {
-            const project = process.env.GCLOUD_PROJECT || admin.instanceId().app.options.projectId;
+            const project = process.env.GCLOUD_PROJECT || admin.app().options.projectId;
             const location = 'us-central1';
             const queue = 'processCalendarReminderTask';
             const queuePath = tasksClient.queuePath(project!, location, queue);
