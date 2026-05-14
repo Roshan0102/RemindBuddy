@@ -293,86 +293,97 @@ class _GoldScreenState extends State<GoldScreen> {
     String diffText = "";
     
     if (diff > 0) {
-      diffColor = Colors.green;
-      diffIcon = Icons.arrow_upward;
+      diffColor = Colors.greenAccent.shade400;
+      diffIcon = Icons.trending_up;
       diffText = "+₹${diff.toStringAsFixed(0)}";
     } else if (diff < 0) {
-      diffColor = Colors.red;
-      diffIcon = Icons.arrow_downward;
+      diffColor = Colors.redAccent.shade200;
+      diffIcon = Icons.trending_down;
       diffText = "-₹${diff.abs().toStringAsFixed(0)}";
     }
     
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.blue.shade900, Colors.blue.shade700],
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFFBF953F), // Dark Gold
+            Color(0xFFFCF6BA), // Light Gold
+            Color(0xFFB38728), // Golden Brown
+            Color(0xFFFBF5B7), // Pale Gold
+            Color(0xFFAA771C), // Deep Gold
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.blue.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: const Color(0xFFB38728).withOpacity(0.4),
+            blurRadius: 15,
+            spreadRadius: 2,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(28.0),
         child: Column(
           children: [
             Text(
-              'Latest Gold Rate (22K)', 
+              'LATEST GOLD RATE (22K)', 
               style: TextStyle(
-                fontSize: 16, 
-                color: Colors.white.withOpacity(0.8),
-                fontWeight: FontWeight.w500,
+                fontSize: 13, 
+                color: Colors.black.withOpacity(0.6),
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2.0,
               )
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Text(
               '₹ ${price.toStringAsFixed(0)}', 
               style: const TextStyle(
-                fontSize: 52, 
-                fontWeight: FontWeight.bold, 
-                color: Colors.white,
-                letterSpacing: 1.2,
+                fontSize: 58, 
+                fontWeight: FontWeight.w900, 
+                color: Colors.black87,
+                letterSpacing: -1.0,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
              if (diff != 0) 
                Container(
-                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                  decoration: BoxDecoration(
-                   color: Colors.white.withOpacity(0.15),
-                   borderRadius: BorderRadius.circular(20),
+                   color: Colors.black.withOpacity(0.1),
+                   borderRadius: BorderRadius.circular(30),
                  ),
                  child: Row(
                    mainAxisSize: MainAxisSize.min,
                    mainAxisAlignment: MainAxisAlignment.center,
                    children: [
-                     Icon(diffIcon, color: diff > 0 ? Colors.greenAccent : Colors.redAccent, size: 20),
-                     const SizedBox(width: 6),
+                     Icon(diffIcon, color: diffColor, size: 24),
+                     const SizedBox(width: 8),
                      Text(
                        diffText,
                        style: TextStyle(
-                         color: diff > 0 ? Colors.greenAccent : Colors.redAccent, 
-                         fontWeight: FontWeight.bold, 
-                         fontSize: 16
+                         color: diffColor, 
+                         fontWeight: FontWeight.w800, 
+                         fontSize: 20
                        ),
-                     ),
-                     Text(
-                       ' vs Last',
-                       style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13),
                      ),
                    ],
                  ),
                ),
-            const SizedBox(height: 16),
-            Text(
-              'Updated: ${_formatDate(currentPrice.timestamp)} via ${currentPrice.source}', 
-              style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.6)),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'Updated: ${_formatDate(currentPrice.timestamp)} via ${currentPrice.source}', 
+                style: const TextStyle(fontSize: 10, color: Colors.black54, fontWeight: FontWeight.w500),
+              ),
             ),
           ],
         ),

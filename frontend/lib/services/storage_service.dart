@@ -65,6 +65,19 @@ class StorageService {
         .doc(id)
         .delete();
   }
+  Stream<List<CalendarReminder>> getAllCalendarRemindersStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Stream.empty();
+    
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('calendar_reminders')
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+          return CalendarReminder.fromMap(doc.data(), doc.id);
+        }).toList());
+  }
 
   // Note Methods (Firebase Firestore)
   Future<String> insertNote(Note note) async {
@@ -362,6 +375,38 @@ class StorageService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Stream.empty();
     return FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shifts').doc(month).collection('daily_shifts').snapshots();
+  }
+
+  // User Preference Methods
+  Future<Map<String, dynamic>> getUserPreferences() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return {};
+    
+    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    if (!doc.exists) {
+      // Default preferences: ONLY Gold is enabled by default
+      return {
+        'enabledModules': ['gold']
+      };
+    }
+    
+    final data = doc.data() ?? {};
+    if (!data.containsKey('enabledModules')) {
+      return {
+        'enabledModules': ['gold']
+      };
+    }
+    
+    return data;
+  }
+
+  Future<void> updateUserPreferences(List<String> enabledModules) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      'enabledModules': enabledModules,
+    }, SetOptions(merge: true));
   }
 
   // Auth Methods

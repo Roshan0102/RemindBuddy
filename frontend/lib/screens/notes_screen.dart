@@ -147,6 +147,21 @@ class _NotesScreenState extends State<NotesScreen> {
     ) ?? false;
   }
 
+  final List<Color> _aestheticColors = [
+    const Color(0xFFFFE5E5), // Soft Pink
+    const Color(0xFFE5FFEB), // Mint
+    const Color(0xFFE5F6FF), // Soft Blue
+    const Color(0xFFFFF9E5), // Soft Yellow
+    const Color(0xFFF3E5FF), // Lavender
+    const Color(0xFFFFECE5), // Peach
+    const Color(0xFFE5FFF9), // Aqua
+  ];
+
+  Color _getNoteColor(String id, String content) {
+    int hash = id.hashCode + content.hashCode;
+    return _aestheticColors[hash.abs() % _aestheticColors.length];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -166,18 +181,26 @@ class _NotesScreenState extends State<NotesScreen> {
             ]);
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(8),
+          return GridView.builder(
+            padding: const EdgeInsets.all(12),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 0.85,
+            ),
             itemCount: notes.length,
             itemBuilder: (context, index) {
               final note = notes[index];
+              final Color noteColor = _getNoteColor(note.id ?? '', note.title + note.content);
+              
               return Card(
-                elevation: 2,
-                margin: const EdgeInsets.symmetric(vertical: 6),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+                color: noteColor,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 child: InkWell(
                   onTap: () => _addOrEditNote(note: note),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
@@ -191,33 +214,39 @@ class _NotesScreenState extends State<NotesScreen> {
                                 child: Text(
                                   note.title,
                                   style: const TextStyle(
-                                    fontSize: 18,
+                                    fontSize: 16,
                                     fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
                                   ),
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                            if (note.isLocked) const Icon(Icons.lock, size: 16, color: Colors.red),
+                            if (note.isLocked) const Icon(Icons.lock, size: 14, color: Colors.black54),
                           ],
                         ),
                         if (note.title.isNotEmpty) const SizedBox(height: 8),
-                        Text(
-                          note.isLocked ? 'Locked Content' : note.content,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: Colors.grey[700], fontStyle: note.isLocked ? FontStyle.italic : FontStyle.normal),
+                        Expanded(
+                          child: Text(
+                            note.isLocked ? 'Locked Content' : note.content,
+                            overflow: TextOverflow.fade,
+                            style: TextStyle(
+                              color: Colors.black54, 
+                              fontSize: 13,
+                              fontStyle: note.isLocked ? FontStyle.italic : FontStyle.normal
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              note.date,
-                              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                              DateFormat('MMM d').format(DateFormat('yyyy-MM-dd HH:mm').parse(note.date)),
+                              style: const TextStyle(fontSize: 10, color: Colors.black38, fontWeight: FontWeight.bold),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, size: 20, color: Colors.grey),
-                              onPressed: () async {
+                            GestureDetector(
+                              onTap: () async {
                                 if (note.isLocked) {
                                   bool auth = await _showPinDialog();
                                   if (!auth) return;
@@ -226,7 +255,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                   context: context,
                                   builder: (ctx) => AlertDialog(
                                     title: const Text('Delete Note'),
-                                    content: const Text('Are you sure you want to delete this note?'),
+                                    content: const Text('Are you sure?'),
                                     actions: [
                                       TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
                                       TextButton(
@@ -241,6 +270,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                 if (confirm != true) return;
                                 await _storageService.deleteNote(note.id!);
                               },
+                              child: const Icon(Icons.delete_outline, size: 18, color: Colors.black38),
                             ),
                           ],
                         ),

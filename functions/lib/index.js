@@ -37,44 +37,6 @@ async function fetchGoldPriceFromLiveChennai() {
         return null;
     }
 }
-async function fetchGoldPriceFromTOI() {
-    try {
-        const url = 'https://timesofindia.indiatimes.com/business/gold-rates-today/gold-price-in-chennai';
-        const response = await axios_1.default.get(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-            timeout: 10000
-        });
-        const $ = cheerio.load(response.data);
-        let finalPrice = null;
-        $("h2").each((i, el) => {
-            if ($(el).text().toLowerCase().includes("22k gold price trend")) {
-                let wrapper = $(el).parent();
-                while (wrapper.length && !wrapper.next().hasClass('custom-table')) {
-                    wrapper = wrapper.parent();
-                    if (wrapper.next().find('.custom-table').length > 0) {
-                        wrapper = wrapper.next();
-                        break;
-                    }
-                }
-                const rows = wrapper.find('.custom-table .Ge2sP .fCMra');
-                if (rows.length > 0) {
-                    const cells = rows.first().find('.Gy41U');
-                    if (cells.length > 1 && $(cells[0]).text().trim().includes('1')) {
-                        const basePrice = $(cells[1]).text().trim().split('.')[0];
-                        const num = parseInt(basePrice.replace(/[^0-9]/g, ''), 10);
-                        if (num > 1000)
-                            finalPrice = num;
-                    }
-                }
-            }
-        });
-        return finalPrice;
-    }
-    catch (e) {
-        console.error("TOI Error:", e);
-        return null;
-    }
-}
 async function fetchGoldPriceFromBankBazaar() {
     try {
         const url = 'https://www.bankbazaar.com/gold-rate-chennai.html';
@@ -162,28 +124,44 @@ exports.onCalendarReminderCreated = functions.firestore
     if (!data)
         return;
     const { uid, reminderId } = context.params;
+    // Use Asia/Kolkata for all calculations
+    const nowKolkata = moment().tz('Asia/Kolkata');
     const scheduledTime = moment.tz(`${data.date} ${data.time}`, "YYYY-MM-DD HH:mm", "Asia/Kolkata");
-    if (!scheduledTime.isValid() || scheduledTime.isBefore(moment().subtract(30, 'seconds'))) {
+    console.log(`Scheduling reminder for ${uid}/${reminderId} at ${scheduledTime.format()} (Now: ${nowKolkata.format()})`);
+    if (!scheduledTime.isValid() || scheduledTime.isBefore(nowKolkata.subtract(30, 'seconds'))) {
+        console.log(`Reminder ${reminderId} is invalid or in the past. Marking as expired.`);
         return snapshot.ref.update({ status: "expired" });
     }
     try {
-        const project = "remindbuddy-b68f9";
-        const location = "us-central1";
-        const queue = "processCalendarReminderTask";
+        const project = process.env.GCLOUD_PROJECT || admin.app().options.projectId;
+        const location = 'us-central1';
+        const queue = 'processCalendarReminderTask';
         const queuePath = tasksClient.queuePath(project, location, queue);
         const url = `https://${location}-${project}.cloudfunctions.net/processCalendarReminderTask`;
-        const task = {
-            httpRequest: {
-                httpMethod: 'POST',
-                url,
-                body: Buffer.from(JSON.stringify({ uid, reminderId, title: data.title, body: data.description })).toString('base64'),
-                headers: { 'Content-Type': 'application/json' },
+        const serviceAccountEmail = `${project}@appspot.gserviceaccount.com`;
+        const taskRequest = {
+            parent: queuePath,
+            task: {
+                httpRequest: {
+                    httpMethod: 'POST',
+                    url,
+                    body: Buffer.from(JSON.stringify({ data: { uid, reminderId, title: data.title, body: data.description } })).toString('base64'),
+                    headers: { 'Content-Type': 'application/json' },
+                    oidcToken: {
+                        serviceAccountEmail,
+                    },
+                },
+                scheduleTime: {
+                    seconds: scheduledTime.unix(),
+                },
             },
-            scheduleTime: { seconds: scheduledTime.unix() },
         };
-        await tasksClient.createTask({ parent: queuePath, task });
+        const [response] = await tasksClient.createTask(taskRequest);
+        const taskId = response.name;
+        console.log(`Successfully enqueued task ${taskId} for reminder ${reminderId}`);
         return snapshot.ref.update({
             status: "scheduled",
+            taskId: taskId,
             scheduledAtTimestamp: admin.firestore.Timestamp.fromMillis(scheduledTime.valueOf())
         });
     }
@@ -215,13 +193,13 @@ async function notifyAllUsers(price, oldPrice) {
             tokens,
             notification: { title: `Gold Rate: ₹${price}`, body: diffText },
             android: { notification: { channelId: "gold_price_channel" } },
-            data: { type: "GOLD_PRICE" } // Added tag for auto-tab switching
+            data: { type: "GOLD_PRICE" }
         });
     }
 }
 async function internalPerformGoldFetch(force = false) {
-    const results = [await fetchGoldPriceFromLiveChennai(), await fetchGoldPriceFromBankBazaar(), await fetchGoldPriceFromTOI()];
-    const currentPrice = results[0] || results[1] || results[2];
+    const results = [await fetchGoldPriceFromLiveChennai(), await fetchGoldPriceFromBankBazaar()];
+    const currentPrice = results[0] || results[1];
     if (!currentPrice)
         return { success: false };
     const nowIST = moment().tz('Asia/Kolkata');
@@ -235,45 +213,73 @@ async function internalPerformGoldFetch(force = false) {
         price: currentPrice,
         priceChange: lastPrice ? currentPrice - lastPrice : 0,
         timestamp: timestampStr,
-        source: results[0] ? "LiveChennai" : results[1] ? "BankBazaar" : "TOI"
+        source: results[0] ? "LiveChennai" : "BankBazaar"
     });
     await notifyAllUsers(currentPrice, lastPrice);
     return { success: true };
 }
 exports.checkGoldSources = functions.https.onCall(async () => {
-    const r = [await fetchGoldPriceFromLiveChennai(), await fetchGoldPriceFromBankBazaar(), await fetchGoldPriceFromTOI()];
-    return { timestamp: moment().tz('Asia/Kolkata').format('hh:mm:ss A'), live_chennai: r[0], bank_bazaar: r[1], TOI: r[2] };
+    const r = [await fetchGoldPriceFromLiveChennai(), await fetchGoldPriceFromBankBazaar()];
+    return { timestamp: moment().tz('Asia/Kolkata').format('hh:mm:ss A'), live_chennai: r[0], bank_bazaar: r[1] };
 });
 exports.scheduledGoldFetch = functions.pubsub.schedule('0 11,19 * * *').timeZone('Asia/Kolkata').onRun(() => internalPerformGoldFetch());
 exports.forceGoldFetch = functions.https.onCall(() => internalPerformGoldFetch(true));
 exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('Asia/Kolkata').onRun(async () => {
     var _a;
-    const tom = moment().tz('Asia/Kolkata').add(1, 'day');
+    const nowKolkata = moment().tz('Asia/Kolkata');
+    const tom = nowKolkata.clone().add(1, 'day');
+    console.log(`Running dailyShiftReminder at ${nowKolkata.format()}. Target date: ${tom.format('YYYY-MM-DD')}`);
     const users = await db.collection('usernames').get();
+    console.log(`Found ${users.size} users for shift reminders.`);
     for (const u of users.docs) {
-        const s = await db.collection('users').doc(u.data().uid).collection('shifts').doc(tom.format('YYYY-MM')).collection('daily_shifts').doc(tom.format('YYYY-MM-DD')).get();
-        if (s.exists) {
-            await admin.messaging().send({
-                token: u.data().fcmToken,
-                notification: { title: "Tomorrow's Shift", body: ((_a = s.data()) === null || _a === void 0 ? void 0 : _a.shift_type) || "Day Off" },
-                android: { notification: { channelId: 'shift_reminder_channel' } },
-                data: { type: "shift_reminder" } // Added tag for auto-tab switching
-            });
+        const userData = u.data();
+        if (!userData.fcmToken || !userData.uid) {
+            console.log(`Skipping user ${u.id}: Missing token or UID.`);
+            continue;
+        }
+        try {
+            const s = await db.collection('users').doc(userData.uid).collection('shifts').doc(tom.format('YYYY-MM')).collection('daily_shifts').doc(tom.format('YYYY-MM-DD')).get();
+            if (s.exists) {
+                console.log(`Sending shift reminder to user ${userData.uid} (Token: ${userData.fcmToken.substring(0, 10)}...)`);
+                await admin.messaging().send({
+                    token: userData.fcmToken,
+                    notification: { title: "Tomorrow's Shift", body: ((_a = s.data()) === null || _a === void 0 ? void 0 : _a.shift_type) || "Day Off" },
+                    android: { notification: { channelId: 'shift_reminder_channel' } },
+                    data: { type: "shift_reminder" }
+                });
+            }
+        }
+        catch (error) {
+            console.error(`Failed to send shift reminder for user ${userData.uid}:`, error);
         }
     }
 });
-exports.checkDailyReminders = functions.pubsub.schedule('*/15 * * * *').timeZone('Asia/Kolkata').onRun(async () => {
-    const now = moment().tz('Asia/Kolkata').format('HH:mm');
+exports.checkDailyReminders = functions.pubsub.schedule('* * * * *').timeZone('Asia/Kolkata').onRun(async () => {
+    const nowKolkata = moment().tz('Asia/Kolkata');
+    const timeStr = nowKolkata.format('HH:mm');
+    console.log(`Running checkDailyReminders at ${nowKolkata.format()} (Search Time: ${timeStr})`);
     const users = await db.collection('usernames').get();
     for (const u of users.docs) {
-        const rs = await db.collection('users').doc(u.data().uid).collection('daily_reminders').where('time', '==', now).where('isActive', '==', true).get();
-        for (const r of rs.docs) {
-            await admin.messaging().send({
-                token: u.data().fcmToken,
-                notification: { title: r.data().title, body: r.data().description || "Reminder" },
-                android: { notification: { channelId: 'remindbuddy_channel' } },
-                data: { type: "daily_reminder" } // Added tag for direct navigation
-            });
+        const userData = u.data();
+        if (!userData.fcmToken || !userData.uid)
+            continue;
+        try {
+            const rs = await db.collection('users').doc(userData.uid).collection('daily_reminders').where('time', '==', timeStr).where('isActive', '==', true).get();
+            if (!rs.empty) {
+                console.log(`Found ${rs.size} daily reminders for user ${userData.uid} at ${timeStr}`);
+            }
+            for (const r of rs.docs) {
+                console.log(`Sending daily reminder: ${r.data().title} to ${userData.uid}`);
+                await admin.messaging().send({
+                    token: userData.fcmToken,
+                    notification: { title: r.data().title, body: r.data().description || "Reminder" },
+                    android: { notification: { channelId: 'daily_reminder_channel' } },
+                    data: { type: "daily_reminder" }
+                });
+            }
+        }
+        catch (error) {
+            console.error(`Failed to send daily reminders for user ${userData.uid}:`, error);
         }
     }
 });

@@ -465,41 +465,63 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   }
 
   Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Column(
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      decoration: BoxDecoration(
+        color: Colors.teal.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.teal),
+                icon: const Icon(Icons.keyboard_double_arrow_left, color: Colors.teal, size: 20),
                 onPressed: () => _changeYear(-1),
+                tooltip: 'Previous Year',
+              ),
+              IconButton(
+                icon: const Icon(Icons.keyboard_arrow_left, color: Colors.teal, size: 28),
+                onPressed: () => _changeMonth(-1),
+                tooltip: 'Previous Month',
+              ),
+            ],
+          ),
+          Column(
+            children: [
+              Text(
+                DateFormat('MMMM').format(_currentDate).toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 20, 
+                  fontWeight: FontWeight.w900, 
+                  color: Colors.teal,
+                  letterSpacing: 1.2
+                ),
               ),
               Text(
                 DateFormat('yyyy').format(_currentDate),
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              IconButton(
-                icon: const Icon(Icons.arrow_forward_ios, color: Colors.teal),
-                onPressed: () => _changeYear(1),
+                style: TextStyle(
+                  fontSize: 14, 
+                  fontWeight: FontWeight.w500, 
+                  color: Colors.teal.withOpacity(0.7),
+                  letterSpacing: 4.0
+                ),
               ),
             ],
           ),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.teal),
-                onPressed: () => _changeMonth(-1),
-              ),
-              Text(
-                DateFormat('MMMM').format(_currentDate),
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                icon: const Icon(Icons.keyboard_arrow_right, color: Colors.teal, size: 28),
+                onPressed: () => _changeMonth(1),
+                tooltip: 'Next Month',
               ),
               IconButton(
-                icon: const Icon(Icons.arrow_forward_ios, color: Colors.teal),
-                onPressed: () => _changeMonth(1),
+                icon: const Icon(Icons.keyboard_double_arrow_right, color: Colors.teal, size: 20),
+                onPressed: () => _changeYear(1),
+                tooltip: 'Next Year',
               ),
             ],
           ),

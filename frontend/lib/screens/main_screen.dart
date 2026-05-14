@@ -12,6 +12,8 @@ import 'auth_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
+import '../services/storage_service.dart';
+import 'settings_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -21,16 +23,39 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _selectedIndex = 0; // Default to Gold (first tab)
+  int _selectedIndex = 0;
   bool _isDarkMode = false;
+  List<String> _enabledModules = ['gold'];
+  bool _isLoading = true;
 
   StreamSubscription? _notificationSubscription;
 
   @override
   void initState() {
     super.initState();
-    _loadTheme();
+    _loadInitialData();
     _setupNotificationListener();
+  }
+
+  Future<void> _loadInitialData() async {
+    await _loadTheme();
+    await _loadPreferences();
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadPreferences() async {
+    final prefs = await StorageService().getUserPreferences();
+    if (mounted) {
+      setState(() {
+        _enabledModules = List<String>.from(prefs['enabledModules'] ?? _enabledModules);
+        // Ensure index is valid
+        if (_selectedIndex >= _enabledModules.length) {
+          _selectedIndex = 0;
+        }
+      });
+    }
   }
 
   void _setupNotificationListener() {
@@ -84,13 +109,48 @@ class _MainScreenState extends State<MainScreen> {
     await prefs.setBool('isDarkMode', _isDarkMode);
   }
 
-  final List<Widget> _screens = [
-    const GoldScreen(),
-    const HomeScreen(), // Calendar-based Reminders
-    const NotesScreen(),
-    const MyShiftsScreen(),
-    const ChecklistsScreen(),
-  ];
+  final Map<String, Map<String, dynamic>> _moduleRegistry = {
+    'gold': {
+      'screen': const GoldScreen(),
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.monetization_on_outlined, color: Colors.amber),
+        selectedIcon: Icon(Icons.monetization_on, color: Colors.amber),
+        label: 'Gold',
+      ),
+    },
+    'reminders': {
+      'screen': const HomeScreen(),
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.calendar_today_outlined, color: Colors.indigo),
+        selectedIcon: Icon(Icons.calendar_today, color: Colors.indigo),
+        label: 'Reminders',
+      ),
+    },
+    'notes': {
+      'screen': const NotesScreen(),
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.note_alt_outlined, color: Colors.teal),
+        selectedIcon: Icon(Icons.note_alt, color: Colors.teal),
+        label: 'Notes',
+      ),
+    },
+    'shifts': {
+      'screen': const MyShiftsScreen(),
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.work_history_outlined, color: Colors.orange),
+        selectedIcon: Icon(Icons.work_history, color: Colors.orange),
+        label: 'Shifts',
+      ),
+    },
+    'checklist': {
+      'screen': const ChecklistsScreen(),
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.playlist_add_check_outlined, color: Colors.blue),
+        selectedIcon: Icon(Icons.playlist_add_check, color: Colors.blue),
+        label: 'Checklist',
+      ),
+    },
+  };
 
   void _onItemTapped(int index) {
     setState(() {
@@ -174,8 +234,8 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ),
               ListTile(
-                leading: const Icon(Icons.backpack_outlined, color: Colors.green),
-                title: const Text('My Belongings (Packing)'),
+                leading: const Icon(Icons.playlist_add_check_outlined, color: Colors.blue),
+                title: const Text('Checklist'),
                 subtitle: const Text('Checklists for travel/office'),
                 onTap: () {
                   Navigator.pop(context);
@@ -187,17 +247,8 @@ class _MainScreenState extends State<MainScreen> {
               ),
               const Divider(),
               ListTile(
-                leading: const Icon(Icons.calendar_today),
+                leading: const Icon(Icons.calendar_today, color: Colors.indigo),
                 title: const Text('Reminders'),
-                selected: _selectedIndex == 0,
-                onTap: () {
-                  Navigator.pop(context);
-                  setState(() => _selectedIndex = 0);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.note_alt),
-                title: const Text('Notes'),
                 selected: _selectedIndex == 1,
                 onTap: () {
                   Navigator.pop(context);
@@ -205,12 +256,21 @@ class _MainScreenState extends State<MainScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.monetization_on),
-                title: const Text('Gold Rates'),
+                leading: const Icon(Icons.note_alt, color: Colors.teal),
+                title: const Text('Notes'),
                 selected: _selectedIndex == 2,
                 onTap: () {
                   Navigator.pop(context);
                   setState(() => _selectedIndex = 2);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.monetization_on, color: Colors.amber),
+                title: const Text('Gold Rates'),
+                selected: _selectedIndex == 0,
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _selectedIndex = 0);
                 },
               ),
               const Divider(),
@@ -239,6 +299,19 @@ class _MainScreenState extends State<MainScreen> {
                 },
               ),
               const Divider(),
+              ListTile(
+                leading: const Icon(Icons.settings_suggest, color: Colors.blueGrey),
+                title: const Text('Customize App'),
+                subtitle: const Text('Hide/Show features'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                  ).then((_) => _loadPreferences());
+                },
+              ),
+              const Divider(),
               // Login / Profile Feature
               ListTile(
                 leading: Icon(
@@ -251,7 +324,10 @@ class _MainScreenState extends State<MainScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const AuthScreen()),
-                  ).then((_) => setState(() {})); // Refresh status on return
+                  ).then((_) {
+                    setState(() {});
+                    _loadPreferences(); // Reload prefs in case user logged in/out
+                  });
                 },
               ),
 
@@ -277,7 +353,7 @@ class _MainScreenState extends State<MainScreen> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'RemindBuddy',
-                    applicationVersion: '1.0.93',
+                    applicationVersion: '1.2.7',
                     applicationIcon: const Icon(Icons.alarm_add, size: 48),
                     children: [
                       const Text('Your friendly daily reminder companion!'),
@@ -286,7 +362,7 @@ class _MainScreenState extends State<MainScreen> {
                       const Text('• Calendar-based reminders'),
                       const Text('• Gold Price Tracker'),
                       const Text('• My Shifts - Work schedule manager'),
-                      const Text('• My Belongings Checklists'),
+                      const Text('• Checklists for everything'),
                       const Text('• Secure notes with PIN lock'),
                     ],
                   );
@@ -295,41 +371,25 @@ class _MainScreenState extends State<MainScreen> {
             ],
           ),
         ),
-        body: IndexedStack(
-          index: _selectedIndex,
-          children: _screens,
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: _onItemTapped,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.monetization_on_outlined),
-              selectedIcon: Icon(Icons.monetization_on),
-              label: 'Gold',
+        body: _isLoading 
+          ? const Center(child: CircularProgressIndicator())
+          : IndexedStack(
+              index: _selectedIndex,
+              children: _enabledModules
+                  .where((id) => _moduleRegistry.containsKey(id))
+                  .map((id) => _moduleRegistry[id]!['screen'] as Widget)
+                  .toList(),
             ),
-            NavigationDestination(
-              icon: Icon(Icons.calendar_today_outlined),
-              selectedIcon: Icon(Icons.calendar_today),
-              label: 'Reminders',
+        bottomNavigationBar: _isLoading 
+          ? null 
+          : NavigationBar(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: _onItemTapped,
+              destinations: _enabledModules
+                  .where((id) => _moduleRegistry.containsKey(id))
+                  .map((id) => _moduleRegistry[id]!['destination'] as NavigationDestination)
+                  .toList(),
             ),
-            NavigationDestination(
-              icon: Icon(Icons.note_alt_outlined),
-              selectedIcon: Icon(Icons.note_alt),
-              label: 'Notes',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.work_history_outlined),
-              selectedIcon: Icon(Icons.work_history),
-              label: 'Shifts',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.playlist_add_check_outlined),
-              selectedIcon: Icon(Icons.playlist_add_check),
-              label: 'Checklist',
-            ),
-          ],
-        ),
       ), // Close Scaffold
     ); // Close Theme
   }
