@@ -86,6 +86,10 @@ jobs:
           name: web-build
           path: frontend/build/web
 
+      - name: Install Functions Dependencies
+        working-directory: ./functions
+        run: npm install
+
       - name: Deploy to Firebase
         uses: w9jds/firebase-action@master
         with:
