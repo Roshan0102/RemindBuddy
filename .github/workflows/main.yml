@@ -86,10 +86,10 @@ jobs:
           name: web-build
           path: frontend/build/web
 
-      - name: Deploy to Firebase Hosting
+      - name: Deploy to Firebase
         uses: w9jds/firebase-action@master
         with:
-          args: deploy --only hosting
+          args: deploy
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
           PROJECT_ID: remindbuddy-b68f9
