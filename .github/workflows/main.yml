@@ -21,6 +21,10 @@ jobs:
         with:
           flutter-version: '3.41.0'
           channel: 'stable'
+
+      - name: Create placeholder .env
+        working-directory: ./frontend
+        run: echo "GEMINI_API_KEY=dummy_key" > .env
           
       - name: Get Dependencies
         working-directory: ./frontend

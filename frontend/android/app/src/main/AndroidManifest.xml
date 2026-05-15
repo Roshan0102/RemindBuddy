@@ -11,11 +11,30 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <application
         android:label="remindbuddy"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
+
+        <!-- Quick Settings Tile -->
+        <service
+            android:name="com.benjaminabel.quick_settings.QuickSettingsService"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Ask Buddy"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Floating Overlay Service -->
+        <service
+            android:name="com.flutteroverlaywindow.flutter_overlay_window.OverlayService"
+            android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

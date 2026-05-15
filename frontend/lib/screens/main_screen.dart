@@ -380,6 +380,19 @@ class _MainScreenState extends State<MainScreen> {
                   .map((id) => _moduleRegistry[id]!['screen'] as Widget)
                   .toList(),
             ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () async {
+            final status = await Permission.microphone.request();
+            if (status.isGranted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const VoiceListeningOverlay()),
+              );
+            }
+          },
+          backgroundColor: Colors.blueAccent,
+          child: const Icon(Icons.mic, color: Colors.white),
+        ),
         bottomNavigationBar: _isLoading 
           ? null 
           : NavigationBar(
