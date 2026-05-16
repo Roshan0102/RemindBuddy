@@ -11,13 +11,35 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+// Top-level function to handle clicks from the Quick Settings Tray
+@pragma("vm:entry-point")
+void onTileClicked() async {
+  bool? status = await FlutterOverlayWindow.isPermissionGranted();
+  if (!(status ?? false)) {
+    await FlutterOverlayWindow.requestPermission();
+    return;
+  }
+
+  final micStatus = await Permission.microphone.request();
+  if (micStatus.isGranted) {
+    if (!await FlutterOverlayWindow.isActive()) {
+      await FlutterOverlayWindow.showOverlay(
+        enableDrag: true,
+        overlayTitle: "Buddy is listening",
+        alignment: OverlayAlignment.bottomCenter,
+        visibility: NotificationVisibility.visibilityPublic,
+        height: 400,
+        width: WindowSize.matchParent,
+      );
+    }
+  }
+}
+
 // Special entry point for the Floating Overlay
 @pragma("vm:entry-point")
 void overlayMain() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // IMPORTANT: Re-initialize Firebase for this separate isolate
   await Firebase.initializeApp();
-  
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
     home: FloatingVoiceOverlay(),
@@ -42,29 +64,9 @@ void main() async {
     await VoiceAssistantService().init(geminiKey: geminiKey);
   }
 
-  // Set up Quick Settings Tile
+  // Set up Quick Settings Tile with the correct parameter name
   QuickSettings.setup(
-    onTap: () async {
-      bool? status = await FlutterOverlayWindow.isPermissionGranted();
-      if (!(status ?? false)) {
-        await FlutterOverlayWindow.requestPermission();
-        return;
-      }
-
-      final micStatus = await Permission.microphone.request();
-      if (micStatus.isGranted) {
-        if (!await FlutterOverlayWindow.isActive()) {
-          await FlutterOverlayWindow.showOverlay(
-            enableDrag: true,
-            overlayTitle: "Buddy is listening",
-            alignment: OverlayAlignment.bottomCenter,
-            visibility: NotificationVisibility.visibilityPublic,
-            height: 400,
-            width: WindowSize.matchParent,
-          );
-        }
-      }
-    },
+    onTileClicked: onTileClicked,
   );
 
   try {
@@ -100,7 +102,6 @@ class _FloatingVoiceOverlayState extends State<FloatingVoiceOverlay> with Single
     try {
       await dotenv.load(fileName: ".env");
       await VoiceAssistantService().init(geminiKey: dotenv.env['GEMINI_API_KEY'] ?? "");
-      
       await VoiceAssistantService().startListening(onResult: (text) {
         if (mounted) setState(() => _status = text);
       });

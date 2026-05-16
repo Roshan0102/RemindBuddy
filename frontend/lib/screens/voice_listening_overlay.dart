@@ -48,7 +48,7 @@ class _VoiceListeningOverlayState extends State<VoiceListeningOverlay> with Sing
                 padding: const EdgeInsets.all(20),
                 decoration: const BoxDecoration(
                   color: Colors.blueAccent,
-                  shape: BoxType.circle,
+                  shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.mic, color: Colors.white, size: 50),
               ),
