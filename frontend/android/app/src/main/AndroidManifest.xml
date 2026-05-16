@@ -22,7 +22,7 @@
         <service
             android:name="com.remindbuddy.remindbuddy.services.BuddyTileService"
             android:label="Ask Buddy"
-            android:icon="@drawable/ic_mic"
+            android:icon="@mipmap/ic_launcher"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:exported="true">
             <intent-filter>

@@ -266,10 +266,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_dotenv
-      sha256: d41da11fb497314fbf89811ec30af02d1d898b47980a129f0a8c0a1720460ba2
+      sha256: b7c7be5cd9f6ef7a78429cabd2774d3c4af50e79cb2b7593e3d5d763ef95c61b
       url: "https://pub.dev"
     source: hosted
-    version: "6.0.1"
+    version: "5.2.1"
   flutter_inappwebview:
     dependency: "direct main"
     description:
@@ -370,10 +370,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_overlay_window
-      sha256: "17988420249da68e421d1b44b511e6113d3de7a9e52c3fbd6d99730508af4580"
+      sha256: "87a8ed7c47104a9ac1352d081e85304934b3f06ae28507097e49dd5f892e208d"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.0"
+    version: "0.4.5"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -395,14 +395,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.2.5"
-  flutter_voice_processor:
-    dependency: transitive
-    description:
-      name: flutter_voice_processor
-      sha256: "8ae3fc196d6060a13392e4ca557f7a2f4a6b87898ae519787f6929f986538572"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.2"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
@@ -636,18 +628,18 @@ packages:
     dependency: "direct main"
     description:
       name: permission_handler
-      sha256: bc917da36261b00137bbc8896bf1482169cd76f866282368948f032c8c1caae1
+      sha256: "59adad729136f01ea9e35a48f5d1395e25cba6cea552249ddbe9cf950f5d7849"
       url: "https://pub.dev"
     source: hosted
-    version: "12.0.1"
+    version: "11.4.0"
   permission_handler_android:
     dependency: transitive
     description:
       name: permission_handler_android
-      sha256: "1e3bc410ca1bf84662104b100eb126e066cb55791b7451307f9708d4007350e6"
+      sha256: d3971dcdd76182a0c198c096b5db2f0884b0d4196723d21a866fc4cdea057ebc
       url: "https://pub.dev"
     source: hosted
-    version: "13.0.1"
+    version: "12.1.0"
   permission_handler_apple:
     dependency: transitive
     description:
@@ -704,14 +696,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.8"
-  porcupine_flutter:
-    dependency: "direct main"
-    description:
-      name: porcupine_flutter
-      sha256: a8c6350a2681052918923bc3bb39a01846999020260770dff582a94cb1ba18ec
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.0.0"
   pub_semver:
     dependency: transitive
     description:
