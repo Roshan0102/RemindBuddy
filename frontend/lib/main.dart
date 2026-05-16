@@ -13,26 +13,27 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 // Top-level function to handle clicks from the Quick Settings Tray
 @pragma("vm:entry-point")
-void onTileClicked() async {
-  bool? status = await FlutterOverlayWindow.isPermissionGranted();
-  if (!(status ?? false)) {
-    await FlutterOverlayWindow.requestPermission();
-    return;
-  }
-
-  final micStatus = await Permission.microphone.request();
-  if (micStatus.isGranted) {
-    if (!await FlutterOverlayWindow.isActive()) {
-      await FlutterOverlayWindow.showOverlay(
-        enableDrag: true,
-        overlayTitle: "Buddy is listening",
-        alignment: OverlayAlignment.bottomCenter,
-        visibility: NotificationVisibility.visibilityPublic,
-        height: 400,
-        width: WindowSize.matchParent,
-      );
+Tile? onTileClicked(Tile tile) {
+  FlutterOverlayWindow.isPermissionGranted().then((status) async {
+    if (!(status ?? false)) {
+      await FlutterOverlayWindow.requestPermission();
+      return;
     }
-  }
+    final micStatus = await Permission.microphone.request();
+    if (micStatus.isGranted) {
+      if (!await FlutterOverlayWindow.isActive()) {
+        await FlutterOverlayWindow.showOverlay(
+          enableDrag: true,
+          overlayTitle: "Buddy is listening",
+          alignment: OverlayAlignment.bottomCenter,
+          visibility: NotificationVisibility.visibilityPublic,
+          height: 400,
+          width: WindowSize.matchParent,
+        );
+      }
+    }
+  });
+  return null;
 }
 
 // Special entry point for the Floating Overlay
