@@ -76,10 +76,10 @@ void main() async {
     await VoiceAssistantService().init(geminiKey: geminiKey);
   }
 
-  // Set up Quick Settings Tile
-  QuickSettings.setup(
-    onTileClicked: onTileClicked,
-  );
+  // Set up Quick Settings Tile (Disabled for now to prevent auto-start sounds)
+  // QuickSettings.setup(
+  //   onTileClicked: onTileClicked,
+  // );
 
   try {
     await NotificationService().init();

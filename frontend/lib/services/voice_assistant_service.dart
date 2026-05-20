@@ -40,12 +40,29 @@ class VoiceAssistantService {
 
   Future<void> startListening({Function(String)? onResult}) async {
     if (_isListening) return;
-    updateStatus("Listening...");
-    _isSpeechInitialized = await _speechToText.initialize();
+    updateStatus("Initializing microphone...");
+    _isSpeechInitialized = await _speechToText.initialize(
+      onError: (errorNotification) {
+        print("🎙️ SpeechToText Error: ${errorNotification.errorMsg}");
+        updateStatus("Speech Error: ${errorNotification.errorMsg}. Try typing below!");
+        _isListening = false;
+      },
+      onStatus: (status) {
+        print("🎙️ SpeechToText Status: $status");
+        if (status == "listening") {
+          updateStatus("Listening... speak now!");
+        } else if (status == "notListening") {
+          updateStatus("Stopped listening. Processing...");
+        }
+      },
+    );
     if (_isSpeechInitialized) {
       _isListening = true;
       _speechToText.listen(
         onResult: (result) {
+          if (result.recognizedWords.isNotEmpty) {
+            updateStatus("You said: ${result.recognizedWords}");
+          }
           if (result.finalResult) {
             _isListening = false;
             if (onResult != null) onResult(result.recognizedWords);
@@ -54,7 +71,7 @@ class VoiceAssistantService {
         },
       );
     } else {
-      updateStatus("Failed to initialize microphone.");
+      updateStatus("Failed to initialize microphone. You can type your request below!");
     }
   }
 
