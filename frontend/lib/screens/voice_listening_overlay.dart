@@ -33,6 +33,9 @@ class _VoiceListeningOverlayState extends State<VoiceListeningOverlay> with Sing
       }
     });
     
+    // Initialize session logging in Firestore
+    VoiceAssistantService().startSession();
+    
     // Start listening immediately
     _startVoiceAssistant();
   }
@@ -54,6 +57,7 @@ class _VoiceListeningOverlayState extends State<VoiceListeningOverlay> with Sing
     _controller.dispose();
     _textController.dispose();
     VoiceAssistantService().stopListening();
+    VoiceAssistantService().endSession();
     super.dispose();
   }
 

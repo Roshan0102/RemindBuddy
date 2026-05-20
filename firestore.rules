@@ -26,5 +26,10 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if false; // Only Cloud Functions (Admin) should write
     }
+
+    // Global voice assistant logs
+    match /voice_assistant_logs/{logId} {
+      allow create, read: if request.auth != null;
+    }
   }
 }

@@ -70,11 +70,7 @@ void main() async {
   
   await initializeDateFormatting();
   
-  // Initialize Voice Assistant
-  final geminiKey = dotenv.env['GEMINI_API_KEY'] ?? "";
-  if (geminiKey.isNotEmpty) {
-    await VoiceAssistantService().init(geminiKey: geminiKey);
-  }
+  // Voice Assistant will be lazily initialized on click to prevent startup chimes
 
   // Set up Quick Settings Tile (Disabled for now to prevent auto-start sounds)
   // QuickSettings.setup(
