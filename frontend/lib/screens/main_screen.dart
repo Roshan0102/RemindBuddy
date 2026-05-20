@@ -392,18 +392,21 @@ class _MainScreenState extends State<MainScreen> {
                   .map((id) => _moduleRegistry[id]!['destination'] as NavigationDestination)
                   .toList(),
             ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () async {
-            final status = await Permission.microphone.request();
-            if (status.isGranted) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const VoiceListeningOverlay()),
-              );
-            }
-          },
-          backgroundColor: Colors.blueAccent,
-          child: const Icon(Icons.mic, color: Colors.white),
+        floatingActionButton: Padding(
+          padding: const EdgeInsets.only(bottom: 70.0),
+          child: FloatingActionButton(
+            onPressed: () async {
+              final status = await Permission.microphone.request();
+              if (status.isGranted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const VoiceListeningOverlay()),
+                );
+              }
+            },
+            backgroundColor: Colors.blueAccent,
+            child: const Icon(Icons.mic, color: Colors.white),
+          ),
         ),
       ), // Close Scaffold
     ); // Close Theme

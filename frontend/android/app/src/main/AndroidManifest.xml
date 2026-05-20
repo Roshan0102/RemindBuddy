@@ -20,7 +20,7 @@
         android:icon="@mipmap/ic_launcher">
         
         <service
-            android:name="com.remindbuddy.remindbuddy.services.BuddyTileService"
+            android:name="com.quicksettings.QuickSettingsService"
             android:label="Ask Buddy"
             android:icon="@mipmap/ic_launcher"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"

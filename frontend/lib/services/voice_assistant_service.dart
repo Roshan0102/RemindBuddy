@@ -3,6 +3,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:async';
 import 'gold_price_service.dart';
 import 'storage_service.dart';
@@ -21,6 +22,13 @@ class VoiceAssistantService {
   bool _isSpeechInitialized = false;
   bool _isListening = false;
 
+  final StreamController<String> _statusController = StreamController<String>.broadcast();
+  Stream<String> get statusStream => _statusController.stream;
+
+  void updateStatus(String status) {
+    _statusController.add(status);
+  }
+
   Future<void> init({required String geminiKey}) async {
     _model = GenerativeModel(
       model: 'gemini-1.5-flash',
@@ -32,6 +40,7 @@ class VoiceAssistantService {
 
   Future<void> startListening({Function(String)? onResult}) async {
     if (_isListening) return;
+    updateStatus("Listening...");
     _isSpeechInitialized = await _speechToText.initialize();
     if (_isSpeechInitialized) {
       _isListening = true;
@@ -44,6 +53,8 @@ class VoiceAssistantService {
           }
         },
       );
+    } else {
+      updateStatus("Failed to initialize microphone.");
     }
   }
 
@@ -53,7 +64,28 @@ class VoiceAssistantService {
   }
 
   Future<void> processCommand(String command) async {
-    if (_model == null) return;
+    updateStatus("Thinking...");
+    
+    // Auto-initialize model if null by reading .env
+    if (_model == null) {
+      try {
+        await dotenv.load(fileName: ".env");
+        final key = dotenv.env['GEMINI_API_KEY'] ?? "";
+        if (key.isNotEmpty) {
+          await init(geminiKey: key);
+        }
+      } catch (e) {
+        print("Error reloading dotenv: $e");
+      }
+    }
+
+    if (_model == null) {
+      final msg = "Gemini API key is not configured. Please add it to your .env file.";
+      updateStatus("Buddy: $msg");
+      await speak(msg);
+      return;
+    }
+
     print("🎙️ Processing command: $command");
 
     final context = await _getAssistantContext();
@@ -76,10 +108,13 @@ class VoiceAssistantService {
       final response = await _model!.generateContent(content);
       final reply = response.text ?? "I'm sorry, I couldn't find that in your data.";
       print("🤖 Assistant: $reply");
+      updateStatus("Buddy: $reply");
       await speak(reply);
     } catch (e) {
       print("❌ Gemini Error: $e");
-      await speak("Sorry, I'm having trouble reading your data right now.");
+      final errorMsg = "Sorry, I'm having trouble reading your data right now.";
+      updateStatus("Buddy: $errorMsg");
+      await speak(errorMsg);
     }
   }
 

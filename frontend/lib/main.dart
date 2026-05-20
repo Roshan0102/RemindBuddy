@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'dart:async';
 import 'screens/main_screen.dart';
 import 'services/notification_service.dart';
 import 'services/voice_assistant_service.dart';
@@ -14,6 +15,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 // Top-level function to handle clicks from the Quick Settings Tray
 @pragma("vm:entry-point")
 Tile? onTileClicked(Tile tile) {
+  WidgetsFlutterBinding.ensureInitialized();
   FlutterOverlayWindow.isPermissionGranted().then((status) async {
     if (!(status ?? false)) {
       await FlutterOverlayWindow.requestPermission();
@@ -51,6 +53,15 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   
+  // Close any active background overlay to prevent auto-start/mic bugs on clean boot
+  try {
+    if (await FlutterOverlayWindow.isActive()) {
+      await FlutterOverlayWindow.closeOverlay();
+    }
+  } catch (e) {
+    print("Error closing active overlay: $e");
+  }
+
   try {
     await dotenv.load(fileName: ".env");
   } catch (e) {
@@ -65,7 +76,7 @@ void main() async {
     await VoiceAssistantService().init(geminiKey: geminiKey);
   }
 
-  // Set up Quick Settings Tile with the correct parameter name
+  // Set up Quick Settings Tile
   QuickSettings.setup(
     onTileClicked: onTileClicked,
   );
@@ -88,6 +99,7 @@ class FloatingVoiceOverlay extends StatefulWidget {
 class _FloatingVoiceOverlayState extends State<FloatingVoiceOverlay> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   String _status = "Listening...";
+  StreamSubscription? _subscription;
 
   @override
   void initState() {
@@ -96,6 +108,15 @@ class _FloatingVoiceOverlayState extends State<FloatingVoiceOverlay> with Single
       vsync: this,
       duration: const Duration(seconds: 1),
     )..repeat(reverse: true);
+    
+    _subscription = VoiceAssistantService().statusStream.listen((status) {
+      if (mounted) {
+        setState(() {
+          _status = status;
+        });
+      }
+    });
+    
     _listen();
   }
 
@@ -104,7 +125,7 @@ class _FloatingVoiceOverlayState extends State<FloatingVoiceOverlay> with Single
       await dotenv.load(fileName: ".env");
       await VoiceAssistantService().init(geminiKey: dotenv.env['GEMINI_API_KEY'] ?? "");
       await VoiceAssistantService().startListening(onResult: (text) {
-        if (mounted) setState(() => _status = text);
+        VoiceAssistantService().updateStatus("You said: $text");
       });
     } catch (e) {
       if (mounted) setState(() => _status = "Error: $e");
@@ -113,7 +134,9 @@ class _FloatingVoiceOverlayState extends State<FloatingVoiceOverlay> with Single
 
   @override
   void dispose() {
+    _subscription?.cancel();
     _controller.dispose();
+    VoiceAssistantService().stopListening();
     super.dispose();
   }
 
