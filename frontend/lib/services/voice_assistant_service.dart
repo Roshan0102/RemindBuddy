@@ -101,13 +101,26 @@ class VoiceAssistantService {
         model: 'gemini-1.5-flash',
         apiKey: geminiKey,
       );
-      await _flutterTts.setLanguage("en-US");
-      await _flutterTts.setSpeechRate(0.5);
+      
+      // Initialize TTS asynchronously with short timeouts so a faulty/slow native TTS engine never hangs our voice assistant thread!
+      _initTtsAsync();
+      
       _isInitialized = true;
-      await logEvent("Service Initialized", details: "Gemini and TTS engines initialized successfully.");
+      await logEvent("Service Initialized", details: "Gemini client instantiated. TTS starting asynchronously.");
     } catch (e) {
       print("Lazy initialization error: $e");
       await logEvent("Initialization Failed", details: e.toString());
+    }
+  }
+
+  Future<void> _initTtsAsync() async {
+    try {
+      await _flutterTts.setLanguage("en-US").timeout(const Duration(seconds: 2));
+      await _flutterTts.setSpeechRate(0.5).timeout(const Duration(seconds: 2));
+      await logEvent("TTS Initialized", details: "Text-to-speech configured successfully.");
+    } catch (e) {
+      print("TTS Async Init Error: $e");
+      await logEvent("TTS Init Failed", details: e.toString());
     }
   }
 
@@ -306,6 +319,10 @@ class VoiceAssistantService {
 
   Future<void> speak(String text) async {
     await logEvent("Speech Started", details: text);
-    await _flutterTts.speak(text);
+    try {
+      await _flutterTts.speak(text).timeout(const Duration(seconds: 4));
+    } catch (e) {
+      await logEvent("Speech Failed", details: e.toString());
+    }
   }
 }
