@@ -118,8 +118,6 @@ class _FloatingVoiceOverlayState extends State<FloatingVoiceOverlay> with Single
 
   Future<void> _listen() async {
     try {
-      await dotenv.load(fileName: ".env");
-      await VoiceAssistantService().init(geminiKey: dotenv.env['GEMINI_API_KEY'] ?? "");
       await VoiceAssistantService().startListening(onResult: (text) {
         VoiceAssistantService().updateStatus("You said: $text");
       });
