@@ -1,0 +1,416 @@
+﻿2026-06-07T07:40:44.6040405Z Current runner version: '2.334.0'
+2026-06-07T07:40:44.6067718Z ##[group]Runner Image Provisioner
+2026-06-07T07:40:44.6068611Z Hosted Compute Agent
+2026-06-07T07:40:44.6069298Z Version: 20260520.533
+2026-06-07T07:40:44.6069973Z Commit: 189110e25284a9812c124fd27b339e2fb4f2f9db
+2026-06-07T07:40:44.6070726Z Build Date: 2026-05-20T17:44:04Z
+2026-06-07T07:40:44.6071590Z Worker ID: {1581fa0a-8506-4aca-88d3-29b3c2f2b2d4}
+2026-06-07T07:40:44.6072330Z Azure Region: eastus
+2026-06-07T07:40:44.6072970Z ##[endgroup]
+2026-06-07T07:40:44.6074547Z ##[group]Operating System
+2026-06-07T07:40:44.6075399Z Ubuntu
+2026-06-07T07:40:44.6076058Z 24.04.4
+2026-06-07T07:40:44.6076608Z LTS
+2026-06-07T07:40:44.6077635Z ##[endgroup]
+2026-06-07T07:40:44.6078229Z ##[group]Runner Image
+2026-06-07T07:40:44.6078887Z Image: ubuntu-24.04
+2026-06-07T07:40:44.6079562Z Version: 20260525.161.1
+2026-06-07T07:40:44.6080910Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260525.161/images/ubuntu/Ubuntu2404-Readme.md
+2026-06-07T07:40:44.6082510Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260525.161
+2026-06-07T07:40:44.6083549Z ##[endgroup]
+2026-06-07T07:40:44.6084866Z ##[group]GITHUB_TOKEN Permissions
+2026-06-07T07:40:44.6087417Z Contents: read
+2026-06-07T07:40:44.6088078Z Metadata: read
+2026-06-07T07:40:44.6088711Z Packages: read
+2026-06-07T07:40:44.6089337Z ##[endgroup]
+2026-06-07T07:40:44.6091869Z Secret source: Actions
+2026-06-07T07:40:44.6092734Z Prepare workflow directory
+2026-06-07T07:40:44.6433383Z Prepare all required actions
+2026-06-07T07:40:44.6472145Z Getting action download info
+2026-06-07T07:40:45.0500978Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+2026-06-07T07:40:45.1962380Z Download action repository 'actions/setup-java@v4' (SHA:c1e323688fd81a25caa38c78aa6df2d33d3e20d9)
+2026-06-07T07:40:45.4237156Z Download action repository 'subosito/flutter-action@v2' (SHA:1a449444c387b1966244ae4d4f8c696479add0b2)
+2026-06-07T07:40:45.5061108Z Download action repository 'shorebirdtech/setup-shorebird@v1' (SHA:4dd9d7dc2d7930bfeadb053b6e94b5110779d1e5)
+2026-06-07T07:40:45.6080931Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-06-07T07:40:45.8589084Z Getting action download info
+2026-06-07T07:40:45.9692509Z Download action repository 'actions/cache@v5' (SHA:27d5ce7f107fe9357f9df03efb73ab90386fccae)
+2026-06-07T07:40:46.1393425Z Getting action download info
+2026-06-07T07:40:46.2633622Z Download action repository 'actions/cache@v4' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+2026-06-07T07:40:46.4641543Z Complete job name: Build Android APK
+2026-06-07T07:40:46.5605761Z ##[group]Run actions/checkout@v4
+2026-06-07T07:40:46.5607176Z with:
+2026-06-07T07:40:46.5608042Z   repository: Roshan0102/RemindBuddy
+2026-06-07T07:40:46.5617832Z   token: ***
+2026-06-07T07:40:46.5618690Z   ssh-strict: true
+2026-06-07T07:40:46.5619584Z   ssh-user: git
+2026-06-07T07:40:46.5620477Z   persist-credentials: true
+2026-06-07T07:40:46.5621480Z   clean: true
+2026-06-07T07:40:46.5622366Z   sparse-checkout-cone-mode: true
+2026-06-07T07:40:46.5623401Z   fetch-depth: 1
+2026-06-07T07:40:46.5624263Z   fetch-tags: false
+2026-06-07T07:40:46.5625160Z   show-progress: true
+2026-06-07T07:40:46.5626196Z   lfs: false
+2026-06-07T07:40:46.5627019Z   submodules: false
+2026-06-07T07:40:46.5627900Z   set-safe-directory: true
+2026-06-07T07:40:46.5629071Z ##[endgroup]
+2026-06-07T07:40:46.6961721Z Syncing repository: Roshan0102/RemindBuddy
+2026-06-07T07:40:46.6966067Z ##[group]Getting Git version info
+2026-06-07T07:40:46.6968313Z Working directory is '/home/runner/work/RemindBuddy/RemindBuddy'
+2026-06-07T07:40:46.6971665Z [command]/usr/bin/git version
+2026-06-07T07:40:46.6973214Z git version 2.54.0
+2026-06-07T07:40:46.6977853Z ##[endgroup]
+2026-06-07T07:40:46.6986572Z Temporarily overriding HOME='/home/runner/work/_temp/3f979984-8bc9-4adf-b796-76941ad392b7' before making global git config changes
+2026-06-07T07:40:46.6990481Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-07T07:40:46.6994073Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/RemindBuddy/RemindBuddy
+2026-06-07T07:40:46.7039064Z Deleting the contents of '/home/runner/work/RemindBuddy/RemindBuddy'
+2026-06-07T07:40:46.7043127Z ##[group]Initializing the repository
+2026-06-07T07:40:46.7047872Z [command]/usr/bin/git init /home/runner/work/RemindBuddy/RemindBuddy
+2026-06-07T07:40:46.7152357Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-06-07T07:40:46.7154467Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-06-07T07:40:46.7156503Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-06-07T07:40:46.7157969Z hint: call:
+2026-06-07T07:40:46.7158812Z hint:
+2026-06-07T07:40:46.7159843Z hint: 	git config --global init.defaultBranch <name>
+2026-06-07T07:40:46.7161058Z hint:
+2026-06-07T07:40:46.7162202Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-06-07T07:40:46.7164004Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-06-07T07:40:46.7165718Z hint:
+2026-06-07T07:40:46.7166845Z hint: 	git branch -m <name>
+2026-06-07T07:40:46.7167812Z hint:
+2026-06-07T07:40:46.7169324Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-06-07T07:40:46.7173010Z Initialized empty Git repository in /home/runner/work/RemindBuddy/RemindBuddy/.git/
+2026-06-07T07:40:46.7186270Z [command]/usr/bin/git remote add origin https://github.com/Roshan0102/RemindBuddy
+2026-06-07T07:40:46.7231123Z ##[endgroup]
+2026-06-07T07:40:46.7232698Z ##[group]Disabling automatic garbage collection
+2026-06-07T07:40:46.7234822Z [command]/usr/bin/git config --local gc.auto 0
+2026-06-07T07:40:46.7267333Z ##[endgroup]
+2026-06-07T07:40:46.7268771Z ##[group]Setting up auth
+2026-06-07T07:40:46.7274339Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-07T07:40:46.7310031Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-07T07:40:46.7665894Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-07T07:40:46.7700032Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-07T07:40:46.7937957Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-07T07:40:46.7972298Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-07T07:40:46.8223483Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-06-07T07:40:46.8261535Z ##[endgroup]
+2026-06-07T07:40:46.8263066Z ##[group]Fetching the repository
+2026-06-07T07:40:46.8270827Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +fd3138f2fb5ce596adb1289715e3eab615f834e9:refs/remotes/origin/main
+2026-06-07T07:40:47.0514258Z From https://github.com/Roshan0102/RemindBuddy
+2026-06-07T07:40:47.0516327Z  * [new ref]         fd3138f2fb5ce596adb1289715e3eab615f834e9 -> origin/main
+2026-06-07T07:40:47.0553891Z ##[endgroup]
+2026-06-07T07:40:47.0556254Z ##[group]Determining the checkout info
+2026-06-07T07:40:47.0558621Z ##[endgroup]
+2026-06-07T07:40:47.0562103Z [command]/usr/bin/git sparse-checkout disable
+2026-06-07T07:40:47.0610630Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-06-07T07:40:47.0642287Z ##[group]Checking out the ref
+2026-06-07T07:40:47.0646815Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-06-07T07:40:47.0845452Z Switched to a new branch 'main'
+2026-06-07T07:40:47.0847655Z branch 'main' set up to track 'origin/main'.
+2026-06-07T07:40:47.0855733Z ##[endgroup]
+2026-06-07T07:40:47.0900510Z [command]/usr/bin/git log -1 --format=%H
+2026-06-07T07:40:47.0927602Z fd3138f2fb5ce596adb1289715e3eab615f834e9
+2026-06-07T07:40:47.1296973Z ##[group]Run actions/setup-java@v4
+2026-06-07T07:40:47.1298079Z with:
+2026-06-07T07:40:47.1298877Z   distribution: zulu
+2026-06-07T07:40:47.1299762Z   java-version: 17
+2026-06-07T07:40:47.1300626Z   java-package: jdk
+2026-06-07T07:40:47.1301494Z   check-latest: false
+2026-06-07T07:40:47.1302390Z   server-id: github
+2026-06-07T07:40:47.1303276Z   server-username: GITHUB_ACTOR
+2026-06-07T07:40:47.1304299Z   server-password: GITHUB_TOKEN
+2026-06-07T07:40:47.1305449Z   overwrite-settings: true
+2026-06-07T07:40:47.1306404Z   job-status: success
+2026-06-07T07:40:47.1315950Z   token: ***
+2026-06-07T07:40:47.1316781Z ##[endgroup]
+2026-06-07T07:40:47.3437545Z ##[group]Installed distributions
+2026-06-07T07:40:47.3460135Z Trying to resolve the latest version from remote
+2026-06-07T07:40:47.4380857Z Resolved latest version as 17.0.19+10
+2026-06-07T07:40:47.4383175Z Trying to download...
+2026-06-07T07:40:47.4386289Z Downloading Java 17.0.19+10 (Zulu) from https://cdn.azul.com/zulu/bin/zulu17.66.19-ca-crac-jdk17.0.19-linux_x64.tar.gz ...
+2026-06-07T07:40:50.4159127Z Extracting Java archive...
+2026-06-07T07:40:50.4266856Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/873b2f77-f34f-424a-bbcd-69920d24e4eb -f /home/runner/work/_temp/4c216561-bd3e-4486-9018-8c490d0bb058
+2026-06-07T07:40:53.2910064Z Java 17.0.19+10 was downloaded
+2026-06-07T07:40:53.2910615Z Setting Java 17.0.19+10 as the default
+2026-06-07T07:40:53.2922402Z Creating toolchains.xml for JDK version 17 from zulu
+2026-06-07T07:40:53.2997926Z Writing to /home/runner/.m2/toolchains.xml
+2026-06-07T07:40:53.2998559Z 
+2026-06-07T07:40:53.2998745Z Java configuration:
+2026-06-07T07:40:53.2999152Z   Distribution: zulu
+2026-06-07T07:40:53.2999606Z   Version: 17.0.19+10
+2026-06-07T07:40:53.3000198Z   Path: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:40:53.3000621Z 
+2026-06-07T07:40:53.3001321Z ##[endgroup]
+2026-06-07T07:40:53.3018220Z Creating settings.xml with server-id: github
+2026-06-07T07:40:53.3020257Z Writing to /home/runner/.m2/settings.xml
+2026-06-07T07:40:53.3329153Z ##[group]Run subosito/flutter-action@v2
+2026-06-07T07:40:53.3329513Z with:
+2026-06-07T07:40:53.3329745Z   flutter-version: 3.41.0
+2026-06-07T07:40:53.3330008Z   channel: stable
+2026-06-07T07:40:53.3330255Z   architecture: X64
+2026-06-07T07:40:53.3330489Z   cache: false
+2026-06-07T07:40:53.3330734Z   pub-cache-path: default
+2026-06-07T07:40:53.3330984Z   dry-run: false
+2026-06-07T07:40:53.3331293Z   git-source: https://github.com/flutter/flutter.git
+2026-06-07T07:40:53.3331632Z env:
+2026-06-07T07:40:53.3331929Z   JAVA_HOME: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:40:53.3332365Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:40:53.3332766Z ##[endgroup]
+2026-06-07T07:40:53.3445990Z ##[group]Run chmod +x "$GITHUB_ACTION_PATH/setup.sh"
+2026-06-07T07:40:53.3446525Z [36;1mchmod +x "$GITHUB_ACTION_PATH/setup.sh"[0m
+2026-06-07T07:40:53.3480124Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-07T07:40:53.3480600Z env:
+2026-06-07T07:40:53.3480956Z   JAVA_HOME: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:40:53.3481424Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:40:53.3481786Z ##[endgroup]
+2026-06-07T07:40:53.3630584Z ##[group]Run $GITHUB_ACTION_PATH/setup.sh -p \
+2026-06-07T07:40:53.3631055Z [36;1m$GITHUB_ACTION_PATH/setup.sh -p \[0m
+2026-06-07T07:40:53.3631383Z [36;1m  -n '3.41.0' \[0m
+2026-06-07T07:40:53.3631642Z [36;1m  -f '' \[0m
+2026-06-07T07:40:53.3631875Z [36;1m  -a 'X64' \[0m
+2026-06-07T07:40:53.3632106Z [36;1m  -k '' \[0m
+2026-06-07T07:40:53.3632321Z [36;1m  -c '' \[0m
+2026-06-07T07:40:53.3632542Z [36;1m  -l '' \[0m
+2026-06-07T07:40:53.3632973Z [36;1m  -d 'default' \[0m
+2026-06-07T07:40:53.3633355Z [36;1m  -g 'https://github.com/flutter/flutter.git' \[0m
+2026-06-07T07:40:53.3633715Z [36;1m  stable[0m
+2026-06-07T07:40:53.3662197Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-07T07:40:53.3662587Z env:
+2026-06-07T07:40:53.3662912Z   JAVA_HOME: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:40:53.3663360Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:40:53.3663718Z ##[endgroup]
+2026-06-07T07:40:53.6742164Z ##[group]Run $GITHUB_ACTION_PATH/setup.sh \
+2026-06-07T07:40:53.6742666Z [36;1m$GITHUB_ACTION_PATH/setup.sh \[0m
+2026-06-07T07:40:53.6743062Z [36;1m  -n '3.41.0' \[0m
+2026-06-07T07:40:53.6743404Z [36;1m  -a 'x64' \[0m
+2026-06-07T07:40:53.6743849Z [36;1m  -c '/opt/hostedtoolcache/flutter/stable-3.41.0-x64' \[0m
+2026-06-07T07:40:53.6744474Z [36;1m  -d '/home/runner/.pub-cache' \[0m
+2026-06-07T07:40:53.6744932Z [36;1m  stable[0m
+2026-06-07T07:40:53.6774680Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-07T07:40:53.6775068Z env:
+2026-06-07T07:40:53.6775578Z   JAVA_HOME: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:40:53.6776031Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:40:53.6776409Z ##[endgroup]
+2026-06-07T07:40:53.8393374Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+2026-06-07T07:40:53.8394151Z                                  Dload  Upload   Total   Spent    Left  Speed
+2026-06-07T07:40:53.8394545Z 
+2026-06-07T07:40:54.7961852Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+2026-06-07T07:40:55.7740049Z  16 1433M   16  243M    0     0   254M      0  0:00:05 --:--:--  0:00:05  254M
+2026-06-07T07:40:56.7736877Z  35 1433M   35  511M    0     0   264M      0  0:00:05  0:00:01  0:00:04  264M
+2026-06-07T07:40:57.8120435Z  54 1433M   54  775M    0     0   264M      0  0:00:05  0:00:02  0:00:03  264M
+2026-06-07T07:40:58.8476360Z  73 1433M   73 1052M    0     0   264M      0  0:00:05  0:00:03  0:00:02  264M
+2026-06-07T07:40:59.2743633Z  93 1433M   93 1335M    0     0   266M      0  0:00:05  0:00:05 --:--:--  266M
+2026-06-07T07:41:53.4789291Z 100 1433M  100 1433M    0     0   263M      0  0:00:05  0:00:05 --:--:--  265M
+2026-06-07T07:41:53.4858180Z ##[group]Run echo "GEMINI_API_KEY=dummy_key" > .env
+2026-06-07T07:41:53.4858632Z [36;1mecho "GEMINI_API_KEY=dummy_key" > .env[0m
+2026-06-07T07:41:53.4887795Z shell: /usr/bin/bash -e {0}
+2026-06-07T07:41:53.4888100Z env:
+2026-06-07T07:41:53.4888430Z   JAVA_HOME: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:41:53.4888897Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:41:53.4889364Z   FLUTTER_ROOT: /opt/hostedtoolcache/flutter/stable-3.41.0-x64/flutter
+2026-06-07T07:41:53.4889767Z   PUB_CACHE: /home/runner/.pub-cache
+2026-06-07T07:41:53.4890053Z ##[endgroup]
+2026-06-07T07:41:53.4972259Z ##[group]Run flutter pub get
+2026-06-07T07:41:53.4972614Z [36;1mflutter pub get[0m
+2026-06-07T07:41:53.4972859Z [36;1mflutter clean[0m
+2026-06-07T07:41:53.5000656Z shell: /usr/bin/bash -e {0}
+2026-06-07T07:41:53.5000932Z env:
+2026-06-07T07:41:53.5001227Z   JAVA_HOME: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:41:53.5001672Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:41:53.5002138Z   FLUTTER_ROOT: /opt/hostedtoolcache/flutter/stable-3.41.0-x64/flutter
+2026-06-07T07:41:53.5002525Z   PUB_CACHE: /home/runner/.pub-cache
+2026-06-07T07:41:53.5002809Z ##[endgroup]
+2026-06-07T07:41:56.6481201Z Resolving dependencies...
+2026-06-07T07:41:57.2490513Z Downloading packages...
+2026-06-07T07:42:04.8992491Z   _flutterfire_internals 1.3.66 (1.3.72 available)
+2026-06-07T07:42:04.8993080Z   async 2.13.0 (2.13.1 available)
+2026-06-07T07:42:04.8993520Z   cloud_firestore 6.1.2 (6.5.0 available)
+2026-06-07T07:42:04.8994143Z   cloud_firestore_platform_interface 7.0.6 (8.0.2 available)
+2026-06-07T07:42:04.8995049Z   cloud_firestore_web 5.1.2 (5.5.0 available)
+2026-06-07T07:42:04.8995799Z   cloud_functions 6.2.0 (6.3.2 available)
+2026-06-07T07:42:04.8996323Z   cloud_functions_platform_interface 5.8.12 (6.0.2 available)
+2026-06-07T07:42:04.8996884Z   cloud_functions_web 5.1.5 (5.1.8 available)
+2026-06-07T07:42:04.8997333Z   code_assets 1.0.0 (1.2.1 available)
+2026-06-07T07:42:04.8997773Z   cupertino_icons 1.0.8 (1.0.9 available)
+2026-06-07T07:42:04.8998194Z   dbus 0.7.12 (0.7.14 available)
+2026-06-07T07:42:04.8998594Z   firebase_auth 6.1.4 (6.5.2 available)
+2026-06-07T07:42:04.8999102Z   firebase_auth_platform_interface 8.1.6 (9.0.2 available)
+2026-06-07T07:42:04.8999640Z   firebase_auth_web 6.1.2 (6.2.2 available)
+2026-06-07T07:42:04.9000088Z   firebase_core 4.7.0 (4.10.0 available)
+2026-06-07T07:42:04.9000646Z   firebase_core_platform_interface 6.0.3 (7.0.1 available)
+2026-06-07T07:42:04.9001176Z   firebase_core_web 3.6.0 (3.8.0 available)
+2026-06-07T07:42:04.9001702Z   firebase_messaging 16.1.1 (16.3.0 available)
+2026-06-07T07:42:04.9002356Z   firebase_messaging_platform_interface 4.7.6 (4.8.0 available)
+2026-06-07T07:42:04.9002954Z   firebase_messaging_web 4.1.2 (4.2.0 available)
+2026-06-07T07:42:04.9003441Z   firebase_storage 13.0.6 (13.4.2 available)
+2026-06-07T07:42:04.9003985Z   firebase_storage_platform_interface 5.2.17 (6.0.2 available)
+2026-06-07T07:42:04.9004550Z   firebase_storage_web 3.11.2 (3.11.8 available)
+2026-06-07T07:42:04.9005018Z   fl_chart 0.69.2 (1.2.0 available)
+2026-06-07T07:42:04.9005625Z   flutter_lints 3.0.2 (6.0.0 available)
+2026-06-07T07:42:04.9006141Z   flutter_local_notifications 18.0.1 (22.0.0 available)
+2026-06-07T07:42:04.9006731Z   flutter_local_notifications_linux 5.0.0 (8.0.1 available)
+2026-06-07T07:42:04.9007416Z   flutter_local_notifications_platform_interface 8.0.0 (12.0.0 available)
+2026-06-07T07:42:04.9008056Z   flutter_secure_storage 9.2.4 (10.3.1 available)
+2026-06-07T07:42:04.9008610Z   flutter_secure_storage_linux 1.2.3 (3.0.1 available)
+2026-06-07T07:42:04.9009166Z   flutter_secure_storage_macos 3.1.3 (4.0.0 available)
+2026-06-07T07:42:04.9009786Z   flutter_secure_storage_platform_interface 1.1.2 (2.0.1 available)
+2026-06-07T07:42:04.9010409Z   flutter_secure_storage_web 1.2.1 (2.1.1 available)
+2026-06-07T07:42:04.9010971Z   flutter_secure_storage_windows 3.1.2 (4.2.2 available)
+2026-06-07T07:42:04.9011490Z   flutter_timezone 4.1.1 (5.1.0 available)
+2026-06-07T07:42:04.9011934Z   google_fonts 8.0.2 (8.1.0 available)
+2026-06-07T07:42:04.9012321Z   home_widget 0.7.0+1 (0.9.2 available)
+2026-06-07T07:42:04.9012609Z   hooks 1.0.1 (2.0.2 available)
+2026-06-07T07:42:04.9012902Z   image_picker_android 0.8.13+17 (0.8.13+19 available)
+2026-06-07T07:42:04.9013219Z   intl 0.19.0 (0.20.2 available)
+2026-06-07T07:42:04.9013486Z   js 0.6.7 (0.7.2 available)
+2026-06-07T07:42:04.9013733Z   lints 3.0.0 (6.1.0 available)
+2026-06-07T07:42:04.9013986Z   matcher 0.12.18 (0.12.20 available)
+2026-06-07T07:42:04.9014558Z   meta 1.17.0 (1.18.3 available)
+2026-06-07T07:42:04.9014846Z   native_toolchain_c 0.17.4 (0.19.1 available)
+2026-06-07T07:42:04.9015354Z   objective_c 9.3.0 (9.4.1 available)
+2026-06-07T07:42:04.9015722Z   path_provider_android 2.2.22 (2.3.1 available)
+2026-06-07T07:42:04.9016039Z   pointycastle 3.9.1 (4.0.0 available)
+2026-06-07T07:42:04.9016318Z   share_plus 12.0.2 (13.1.0 available)
+2026-06-07T07:42:04.9016638Z   share_plus_platform_interface 6.1.0 (7.1.0 available)
+2026-06-07T07:42:04.9016981Z   shared_preferences 2.5.4 (2.5.5 available)
+2026-06-07T07:42:04.9017312Z   shared_preferences_android 2.4.21 (2.4.25 available)
+2026-06-07T07:42:04.9017700Z   shared_preferences_platform_interface 2.4.1 (2.4.2 available)
+2026-06-07T07:42:04.9018118Z   syncfusion_flutter_charts 28.2.12 (33.2.10 available)
+2026-06-07T07:42:04.9018472Z   syncfusion_flutter_core 28.2.12 (33.2.10 available)
+2026-06-07T07:42:04.9018797Z   table_calendar 3.1.3 (3.2.0 available)
+2026-06-07T07:42:04.9019083Z   test_api 0.7.8 (0.7.12 available)
+2026-06-07T07:42:04.9019369Z   timezone 0.9.4 (0.11.0 available)
+2026-06-07T07:42:04.9019787Z   vector_math 2.2.0 (2.4.0 available)
+2026-06-07T07:42:04.9020088Z   vm_service 15.0.2 (15.2.0 available)
+2026-06-07T07:42:04.9020355Z   win32 5.15.0 (6.3.0 available)
+2026-06-07T07:42:04.9020612Z   xml 6.6.1 (7.0.1 available)
+2026-06-07T07:42:04.9020883Z Got dependencies!
+2026-06-07T07:42:04.9021247Z 62 packages have newer versions incompatible with dependency constraints.
+2026-06-07T07:42:04.9021691Z Try `flutter pub outdated` for more information.
+2026-06-07T07:42:05.6148345Z Deleting .dart_tool...                                               0ms
+2026-06-07T07:42:05.6155726Z Deleting ephemeral...                                                0ms
+2026-06-07T07:42:05.6160970Z Deleting Generated.xcconfig...                                       0ms
+2026-06-07T07:42:05.6186172Z Deleting flutter_export_environment.sh...                            0ms
+2026-06-07T07:42:05.6187043Z Deleting ephemeral...                                                0ms
+2026-06-07T07:42:05.6187776Z Deleting ephemeral...                                                0ms
+2026-06-07T07:42:05.6204049Z Deleting ephemeral...                                                0ms
+2026-06-07T07:42:05.6204865Z Deleting .flutter-plugins-dependencies...                            0ms
+2026-06-07T07:42:05.6354445Z ##[group]Run flutter build apk --release --no-tree-shake-icons
+2026-06-07T07:42:05.6354918Z [36;1mflutter build apk --release --no-tree-shake-icons[0m
+2026-06-07T07:42:05.6383940Z shell: /usr/bin/bash -e {0}
+2026-06-07T07:42:05.6384227Z env:
+2026-06-07T07:42:05.6384521Z   JAVA_HOME: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:42:05.6384959Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Zulu_jdk/17.0.19-10/x64
+2026-06-07T07:42:05.6385612Z   FLUTTER_ROOT: /opt/hostedtoolcache/flutter/stable-3.41.0-x64/flutter
+2026-06-07T07:42:05.6386005Z   PUB_CACHE: /home/runner/.pub-cache
+2026-06-07T07:42:05.6386285Z ##[endgroup]
+2026-06-07T07:42:05.8643490Z Resolving dependencies...
+2026-06-07T07:42:06.0793250Z Downloading packages...
+2026-06-07T07:42:06.1258938Z   _flutterfire_internals 1.3.66 (1.3.72 available)
+2026-06-07T07:42:06.1259648Z   async 2.13.0 (2.13.1 available)
+2026-06-07T07:42:06.1266166Z   cloud_firestore 6.1.2 (6.5.0 available)
+2026-06-07T07:42:06.1266843Z   cloud_firestore_platform_interface 7.0.6 (8.0.2 available)
+2026-06-07T07:42:06.1267413Z   cloud_firestore_web 5.1.2 (5.5.0 available)
+2026-06-07T07:42:06.1267878Z   cloud_functions 6.2.0 (6.3.2 available)
+2026-06-07T07:42:06.1268399Z   cloud_functions_platform_interface 5.8.12 (6.0.2 available)
+2026-06-07T07:42:06.1268945Z   cloud_functions_web 5.1.5 (5.1.8 available)
+2026-06-07T07:42:06.1269395Z   code_assets 1.0.0 (1.2.1 available)
+2026-06-07T07:42:06.1269828Z   cupertino_icons 1.0.8 (1.0.9 available)
+2026-06-07T07:42:06.1270259Z   dbus 0.7.12 (0.7.14 available)
+2026-06-07T07:42:06.1270648Z   firebase_auth 6.1.4 (6.5.2 available)
+2026-06-07T07:42:06.1271148Z   firebase_auth_platform_interface 8.1.6 (9.0.2 available)
+2026-06-07T07:42:06.1271691Z   firebase_auth_web 6.1.2 (6.2.2 available)
+2026-06-07T07:42:06.1272129Z   firebase_core 4.7.0 (4.10.0 available)
+2026-06-07T07:42:06.1272571Z   firebase_core_platform_interface 6.0.3 (7.0.1 available)
+2026-06-07T07:42:06.1272935Z   firebase_core_web 3.6.0 (3.8.0 available)
+2026-06-07T07:42:06.1273246Z   firebase_messaging 16.1.1 (16.3.0 available)
+2026-06-07T07:42:06.1273611Z   firebase_messaging_platform_interface 4.7.6 (4.8.0 available)
+2026-06-07T07:42:06.1274034Z   firebase_messaging_web 4.1.2 (4.2.0 available)
+2026-06-07T07:42:06.1274365Z   firebase_storage 13.0.6 (13.4.2 available)
+2026-06-07T07:42:06.1274726Z   firebase_storage_platform_interface 5.2.17 (6.0.2 available)
+2026-06-07T07:42:06.1275091Z   firebase_storage_web 3.11.2 (3.11.8 available)
+2026-06-07T07:42:06.1275688Z   fl_chart 0.69.2 (1.2.0 available)
+2026-06-07T07:42:06.1276100Z   flutter_lints 3.0.2 (6.0.0 available)
+2026-06-07T07:42:06.1276580Z   flutter_local_notifications 18.0.1 (22.0.0 available)
+2026-06-07T07:42:06.1277491Z   flutter_local_notifications_linux 5.0.0 (8.0.1 available)
+2026-06-07T07:42:06.1278167Z   flutter_local_notifications_platform_interface 8.0.0 (12.0.0 available)
+2026-06-07T07:42:06.1278807Z   flutter_secure_storage 9.2.4 (10.3.1 available)
+2026-06-07T07:42:06.1279333Z   flutter_secure_storage_linux 1.2.3 (3.0.1 available)
+2026-06-07T07:42:06.1279872Z   flutter_secure_storage_macos 3.1.3 (4.0.0 available)
+2026-06-07T07:42:06.1280327Z   flutter_secure_storage_platform_interface 1.1.2 (2.0.1 available)
+2026-06-07T07:42:06.1280716Z   flutter_secure_storage_web 1.2.1 (2.1.1 available)
+2026-06-07T07:42:06.1281063Z   flutter_secure_storage_windows 3.1.2 (4.2.2 available)
+2026-06-07T07:42:06.1281386Z   flutter_timezone 4.1.1 (5.1.0 available)
+2026-06-07T07:42:06.1281666Z   google_fonts 8.0.2 (8.1.0 available)
+2026-06-07T07:42:06.1281942Z   home_widget 0.7.0+1 (0.9.2 available)
+2026-06-07T07:42:06.1282223Z   hooks 1.0.1 (2.0.2 available)
+2026-06-07T07:42:06.1282511Z   image_picker_android 0.8.13+17 (0.8.13+19 available)
+2026-06-07T07:42:06.1282823Z   intl 0.19.0 (0.20.2 available)
+2026-06-07T07:42:06.1283076Z   js 0.6.7 (0.7.2 available)
+2026-06-07T07:42:06.1283318Z   lints 3.0.0 (6.1.0 available)
+2026-06-07T07:42:06.1283566Z   matcher 0.12.18 (0.12.20 available)
+2026-06-07T07:42:06.1284065Z   meta 1.17.0 (1.18.3 available)
+2026-06-07T07:42:06.1284342Z   native_toolchain_c 0.17.4 (0.19.1 available)
+2026-06-07T07:42:06.1284646Z   objective_c 9.3.0 (9.4.1 available)
+2026-06-07T07:42:06.1284942Z   path_provider_android 2.2.22 (2.3.1 available)
+2026-06-07T07:42:06.1285381Z   pointycastle 3.9.1 (4.0.0 available)
+2026-06-07T07:42:06.1285659Z   share_plus 12.0.2 (13.1.0 available)
+2026-06-07T07:42:06.1285963Z   share_plus_platform_interface 6.1.0 (7.1.0 available)
+2026-06-07T07:42:06.1286293Z   shared_preferences 2.5.4 (2.5.5 available)
+2026-06-07T07:42:06.1286629Z   shared_preferences_android 2.4.21 (2.4.25 available)
+2026-06-07T07:42:06.1287035Z   shared_preferences_platform_interface 2.4.1 (2.4.2 available)
+2026-06-07T07:42:06.1287430Z   syncfusion_flutter_charts 28.2.12 (33.2.10 available)
+2026-06-07T07:42:06.1287766Z   syncfusion_flutter_core 28.2.12 (33.2.10 available)
+2026-06-07T07:42:06.1288075Z   table_calendar 3.1.3 (3.2.0 available)
+2026-06-07T07:42:06.1288357Z   test_api 0.7.8 (0.7.12 available)
+2026-06-07T07:42:06.1288624Z   timezone 0.9.4 (0.11.0 available)
+2026-06-07T07:42:06.1288882Z   vector_math 2.2.0 (2.4.0 available)
+2026-06-07T07:42:06.1289145Z   vm_service 15.0.2 (15.2.0 available)
+2026-06-07T07:42:06.1289418Z   win32 5.15.0 (6.3.0 available)
+2026-06-07T07:42:06.1289667Z   xml 6.6.1 (7.0.1 available)
+2026-06-07T07:42:06.1289912Z Got dependencies!
+2026-06-07T07:42:06.1290272Z 62 packages have newer versions incompatible with dependency constraints.
+2026-06-07T07:42:06.1290700Z Try `flutter pub outdated` for more information.
+2026-06-07T07:42:06.6335438Z Upgrading build.gradle
+2026-06-07T07:44:52.4826153Z Running Gradle task 'assembleRelease'...                        
+2026-06-07T07:44:52.4843220Z lib/screens/vault_dashboard_screen.dart:75:15: Error: Member not found: 'SharePlus.share'.
+2026-06-07T07:44:52.4847361Z     SharePlus.share('$label: $value', subject: 'Document Details');
+2026-06-07T07:44:52.4848533Z               ^^^^^
+2026-06-07T07:45:01.8696193Z Target kernel_snapshot_program failed: Exception
+2026-06-07T07:45:01.8696685Z 
+2026-06-07T07:45:01.9675950Z 
+2026-06-07T07:45:01.9766336Z FAILURE: Build failed with an exception.
+2026-06-07T07:45:01.9784930Z 
+2026-06-07T07:45:01.9811084Z * What went wrong:
+2026-06-07T07:45:01.9847399Z Execution failed for task ':app:compileFlutterBuildRelease'.
+2026-06-07T07:45:01.9876557Z > Process 'command '/opt/hostedtoolcache/flutter/stable-3.41.0-x64/flutter/bin/flutter'' finished with non-zero exit value 1
+2026-06-07T07:45:01.9905442Z 
+2026-06-07T07:45:01.9926145Z * Try:
+2026-06-07T07:45:01.9926730Z > Run with --stacktrace option to get the stack trace.
+2026-06-07T07:45:01.9954130Z > Run with --info or --debug option to get more log output.
+2026-06-07T07:45:01.9976060Z > Run with --scan to get full insights.
+2026-06-07T07:45:01.9980620Z > Get more help at https://help.gradle.org.
+2026-06-07T07:45:02.0005902Z 
+2026-06-07T07:45:02.0016288Z BUILD FAILED in 2m 55s
+2026-06-07T07:45:02.3903506Z Running Gradle task 'assembleRelease'...                          175.7s
+2026-06-07T07:45:02.3992329Z Gradle task assembleRelease failed with exit code 1
+2026-06-07T07:45:02.4058213Z ##[error]Process completed with exit code 1.
+2026-06-07T07:45:02.4233223Z Post job cleanup.
+2026-06-07T07:45:02.4295390Z Post job cleanup.
+2026-06-07T07:45:02.6100114Z Post job cleanup.
+2026-06-07T07:45:02.7163987Z [command]/usr/bin/git version
+2026-06-07T07:45:02.7207524Z git version 2.54.0
+2026-06-07T07:45:02.7254807Z Temporarily overriding HOME='/home/runner/work/_temp/4ffff005-499a-4b61-9747-45435e0127ad' before making global git config changes
+2026-06-07T07:45:02.7256261Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-07T07:45:02.7270901Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/RemindBuddy/RemindBuddy
+2026-06-07T07:45:02.7317797Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-07T07:45:02.7359290Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-07T07:45:02.7610731Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-07T07:45:02.7637367Z http.https://github.com/.extraheader
+2026-06-07T07:45:02.7650195Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-06-07T07:45:02.7684432Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-07T07:45:02.7929408Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-07T07:45:02.7964733Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-07T07:45:02.8325717Z Cleaning up orphan processes
+2026-06-07T07:45:02.8665587Z Terminate orphan process: pid (3165) (java)
+2026-06-07T07:45:02.8701545Z Terminate orphan process: pid (3287) (java)
+2026-06-07T07:45:02.8719546Z ##[warning]Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: actions/checkout@v4, actions/setup-java@v4. Actions will be forced to run with Node.js 24 by default starting June 16th, 2026. Node.js 20 will be removed from the runner on September 16th, 2026. Please check if updated versions of these actions are available that support Node.js 24. To opt into Node.js 24 now, set the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true environment variable on the runner or in your workflow file. Once Node.js 24 becomes the default, you can temporarily opt out by setting ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

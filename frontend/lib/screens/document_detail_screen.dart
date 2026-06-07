@@ -60,6 +60,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   }
 
   void _shareField(String label, String value) {
+    // ignore: deprecated_member_use
     Share.share('$label: $value', subject: 'Secure Document Detail');
   }
 
@@ -412,6 +413,7 @@ class FullscreenImageViewer extends StatelessWidget {
       final file = File(tempPath);
       await file.writeAsBytes(imageBytes);
       
+      // ignore: deprecated_member_use
       await Share.shareXFiles([XFile(tempPath)], text: title);
     } catch (_) {}
   }

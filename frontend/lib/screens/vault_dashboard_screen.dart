@@ -72,7 +72,8 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   }
 
   void _shareField(String label, String value) {
-    SharePlus.share('$label: $value', subject: 'Document Details');
+    // ignore: deprecated_member_use
+    Share.share('$label: $value', subject: 'Document Details');
   }
 
   @override
