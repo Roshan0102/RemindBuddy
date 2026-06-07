@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -22,19 +21,13 @@ class VaultDashboardScreen extends StatefulWidget {
 class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   final VaultService _vaultService = VaultService();
   StreamSubscription? _familySubscription;
+  final TextEditingController _searchController = TextEditingController();
+  List<SecureDocument>? _previousRawDocs;
+  Future<List<DecryptedDocument>>? _decryptionFuture;
 
   String _searchQuery = '';
   String? _selectedMemberId; // null means "All Members"
   String _selectedCategory = 'All'; // "All" or a specific category
-
-  final List<String> _categories = [
-    'All',
-    'Identity Cards',
-    'Financial',
-    'Health & Medical',
-    'Insurance',
-    'Others'
-  ];
 
   Map<String, FamilyMember> _familyMembersMap = {};
 
@@ -42,11 +35,17 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   void initState() {
     super.initState();
     _loadFamilyMembers();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase().trim();
+      });
+    });
   }
 
   @override
   void dispose() {
     _familySubscription?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -107,8 +106,13 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
             return _buildEmptyState();
           }
 
+          if (_decryptionFuture == null || _previousRawDocs == null || !_areRawDocsEqual(_previousRawDocs!, rawDocs)) {
+            _previousRawDocs = rawDocs;
+            _decryptionFuture = _decryptAllDocuments(rawDocs);
+          }
+
           return FutureBuilder<List<DecryptedDocument>>(
-            future: _decryptAllDocuments(rawDocs),
+            future: _decryptionFuture,
             builder: (context, decryptSnapshot) {
               if (decryptSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(
@@ -170,11 +174,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                     child: Column(
                       children: [
                         TextField(
-                          onChanged: (val) {
-                            setState(() {
-                              _searchQuery = val.toLowerCase().trim();
-                            });
-                          },
+                          controller: _searchController,
                           decoration: InputDecoration(
                             hintText: 'Search documents, Aadhar, accounts...',
                             prefixIcon: const Icon(Icons.search),
@@ -182,10 +182,8 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                 ? IconButton(
                                     icon: const Icon(Icons.clear),
                                     onPressed: () {
+                                      _searchController.clear();
                                       FocusScope.of(context).unfocus();
-                                      setState(() {
-                                        _searchQuery = '';
-                                      });
                                     },
                                   )
                                 : null,
@@ -684,5 +682,15 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
     }).toList();
 
     return Future.wait(futures);
+  }
+
+  bool _areRawDocsEqual(List<SecureDocument> a, List<SecureDocument> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].lastUpdated != b[i].lastUpdated) {
+        return false;
+      }
+    }
+    return true;
   }
 }

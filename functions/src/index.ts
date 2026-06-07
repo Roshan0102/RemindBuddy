@@ -206,13 +206,15 @@ async function notifyAllUsers(price: number, oldPrice: number | null) {
 async function internalPerformGoldFetch(force: boolean = false) {
     const results = [await fetchGoldPriceFromLiveChennai(), await fetchGoldPriceFromBankBazaar()];
     const currentPrice = results[0] || results[1];
-    if (!currentPrice) return { success: false };
+    if (!currentPrice) return { success: false, error: "No price retrieved from scrapers." };
 
     const nowIST = moment().tz('Asia/Kolkata');
     const lastDocs = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(1).get();
     const lastPrice = lastDocs.empty ? null : lastDocs.docs[0].data().price;
 
-    if (!force && nowIST.hour() === 19 && lastPrice === currentPrice) return { success: true };
+    if (lastPrice === currentPrice) {
+        return { success: true, status: 'no_change', price: currentPrice };
+    }
 
     const timestampStr = nowIST.toISOString();
     await db.collection("global_gold_prices").doc(timestampStr.replace(/[:.]/g, '-')).set({
@@ -223,7 +225,7 @@ async function internalPerformGoldFetch(force: boolean = false) {
         source: results[0] ? "LiveChennai" : "BankBazaar"
     });
     await notifyAllUsers(currentPrice, lastPrice);
-    return { success: true };
+    return { success: true, status: 'changed', price: currentPrice };
 }
 
 exports.checkGoldSources = functions.https.onCall(async () => {

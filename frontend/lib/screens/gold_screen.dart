@@ -32,13 +32,33 @@ class _GoldScreenState extends State<GoldScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('❌ Fetch failed: ${result['error']}'), backgroundColor: Colors.red),
           );
-        } else if (result['status'] == 'skipped') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('➖ Price same as last check. Notification skipped.')),
+        } else if (result['status'] == 'no_change') {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Gold Price Status'),
+              content: const Text('No Change in Gold Price'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
           );
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('✅ Gold price refreshed successfully!'), backgroundColor: Colors.green),
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Gold Price Status'),
+              content: Text('Change in gold price! New Price: ₹${result['price'] ?? ''}'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
           );
         }
       }
@@ -51,67 +71,6 @@ class _GoldScreenState extends State<GoldScreen> {
     } finally {
       if (mounted) setState(() => _isFetching = false);
     }
-  }
-
-  void _showDebugLog() async {
-    // Show a loading dialog first
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-
-    final log = await _goldService.getLatestFetchLog();
-    
-    if (mounted) Navigator.pop(context); // Close loading indicator
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Backend Logs (Latest)'),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        content: Container(
-          width: double.maxFinite,
-          constraints: const BoxConstraints(maxHeight: 400),
-          child: log == null 
-            ? const Text('No execution logs found in Firestore.')
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Text('Status: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text(
-                        log['status'] ?? 'UNKNOWN', 
-                        style: TextStyle(
-                          color: log['status'] == 'SUCCESS' ? Colors.green : Colors.red,
-                          fontWeight: FontWeight.bold
-                        )
-                      ),
-                    ],
-                  ),
-                  Text('Timestamp: ${log['timestamp'] ?? 'N/A'}'),
-                  Text('Source Used: ${log['sourceUsed'] ?? 'N/A'}'),
-                  const Divider(),
-                  const Text('Scraper Details:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  ...(log['logs'] as List? ?? []).map((l) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text('• $l', style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
-                  )),
-                ],
-              ),
-        ),
-        actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-        ],
-      ),
-    );
   }
 
   void _showSourceChecker() async {
@@ -181,37 +140,6 @@ class _GoldScreenState extends State<GoldScreen> {
     );
   }
 
-  Future<void> _clearAllData() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Clear Global Price History?'),
-        content: const Text('This will delete all price history from Firestore. This affects ALL users.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Confirm Clear', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      setState(() => _isFetching = true);
-      await _goldService.clearGoldPriceHistory();
-      if (mounted) {
-        setState(() => _isFetching = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Global gold price history cleared.')),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<GoldPrice>>(
@@ -226,19 +154,9 @@ class _GoldScreenState extends State<GoldScreen> {
             title: const Text('Gold Rates (22K)'),
             actions: [
               IconButton(
-                icon: const Icon(Icons.delete_forever),
-                onPressed: _clearAllData,
-                tooltip: 'Clear History',
-              ),
-              IconButton(
                 icon: const Icon(Icons.compare_arrows),
                 onPressed: _showSourceChecker,
                 tooltip: 'Check Sources',
-              ),
-              IconButton(
-                icon: const Icon(Icons.bug_report),
-                onPressed: _showDebugLog,
-                tooltip: 'Debug Log',
               ),
               IconButton(
                 icon: const Icon(Icons.refresh),
