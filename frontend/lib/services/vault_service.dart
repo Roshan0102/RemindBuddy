@@ -149,14 +149,16 @@ class VaultService {
   }
 
   /// Save or update a document
-  /// Encrypts all fields and titles locally and uploads encrypted image bytes to Storage.
+  /// Encrypts all fields and titles locally and uploads encrypted file bytes to Storage.
   Future<void> saveDocument({
     String? id,
     required String memberId,
+    required String ownerName,
     required String category,
     required String title,
     required Map<String, String> fields,
     required List<Uint8List> rawImagesToUpload,
+    required List<String> newAttachmentsNames,
     required List<String> existingAttachmentPaths,
   }) async {
     final uid = _currentUserId;
@@ -189,8 +191,14 @@ class VaultService {
       final imageBytes = rawImagesToUpload[i];
       final encryptedBytes = await encryptionService.encryptBytes(imageBytes);
 
+      final originalName = newAttachmentsNames[i];
+      final ext = originalName.contains('.') ? originalName.split('.').last : 'bin';
+      
+      final safeOwner = ownerName.replaceAll(RegExp(r'[^\w\-_]'), '_');
+      final safeTitle = title.replaceAll(RegExp(r'[^\w\-_]'), '_');
+      
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final storagePath = 'users/$uid/vault_attachments/$docId/${timestamp}_$i.bin';
+      final storagePath = 'users/$uid/vault_attachments/$docId/${safeOwner}_-_${safeTitle}_${timestamp}_$i.$ext';
       
       final ref = _storage.ref().child(storagePath);
       // Upload as octet-stream for raw bytes

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/family_member.dart';
 import '../models/secure_document.dart';
 import '../services/vault_service.dart';
@@ -440,7 +441,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                 ),
               ],
 
-              // Inline Decrypted Image Attachments Preview
+              // Inline Decrypted Attachments Preview
               if (decDoc.original.encryptedAttachmentPaths.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 const Text(
@@ -460,6 +461,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                     itemCount: decDoc.original.encryptedAttachmentPaths.length,
                     itemBuilder: (context, imgIdx) {
                       final path = decDoc.original.encryptedAttachmentPaths[imgIdx];
+                      final isPdf = path.toLowerCase().endsWith('.pdf');
                       return FutureBuilder<Uint8List?>(
                         future: _vaultService.downloadAndDecryptAttachment(path),
                         builder: (context, imgSnap) {
@@ -486,28 +488,53 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                             return const SizedBox.shrink();
                           }
 
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => FullscreenImageViewer(
-                                    imageBytes: bytes,
-                                    title: '${decDoc.title}_Scan_${imgIdx + 1}',
+                          return Container(
+                            width: 100,
+                            margin: const EdgeInsets.only(right: 8),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                GestureDetector(
+                                  onTap: () => _showFullscreenFile(bytes, path, isPdf),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: isPdf
+                                        ? Container(
+                                            color: Colors.red.shade50,
+                                            child: const Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(Icons.picture_as_pdf, color: Colors.red, size: 24),
+                                                SizedBox(height: 2),
+                                                Text(
+                                                  'PDF',
+                                                  style: TextStyle(fontSize: 9, color: Colors.red, fontWeight: FontWeight.bold),
+                                                ),
+                                              ],
+                                            ),
+                                          )
+                                        : Image.memory(
+                                            bytes,
+                                            fit: BoxFit.cover,
+                                          ),
                                   ),
                                 ),
-                              );
-                            },
-                            child: Container(
-                              width: 100,
-                              margin: const EdgeInsets.only(right: 8),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: Image.memory(
-                                  bytes,
-                                  fit: BoxFit.cover,
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: GestureDetector(
+                                    onTap: () => _shareFileDirectly(bytes, path, isPdf),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.6),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.share, color: Colors.white, size: 12),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           );
                         },
@@ -521,6 +548,54 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
         ),
       ),
     );
+  }
+
+  void _showFullscreenFile(Uint8List fileBytes, String storagePath, bool isPdf) {
+    final name = storagePath.split('/').last;
+    var cleanName = name.replaceAll('_-_', ' - ').replaceAll('_', ' ');
+    final extIndex = cleanName.lastIndexOf('.');
+    if (extIndex != -1) {
+      final ext = cleanName.substring(extIndex);
+      var nameWithoutExt = cleanName.substring(0, extIndex);
+      nameWithoutExt = nameWithoutExt.replaceAll(RegExp(r'\s\d+\s\d+$'), '');
+      cleanName = '$nameWithoutExt$ext';
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FullscreenFileViewer(
+          fileBytes: fileBytes,
+          title: cleanName,
+          isPdf: isPdf,
+        ),
+      ),
+    );
+  }
+
+  void _shareFileDirectly(Uint8List fileBytes, String storagePath, bool isPdf) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final name = storagePath.split('/').last;
+      var cleanName = name.replaceAll('_-_', ' - ').replaceAll('_', ' ');
+      final extIndex = cleanName.lastIndexOf('.');
+      if (extIndex != -1) {
+        final ext = cleanName.substring(extIndex);
+        var nameWithoutExt = cleanName.substring(0, extIndex);
+        nameWithoutExt = nameWithoutExt.replaceAll(RegExp(r'\s\d+\s\d+$'), '');
+        cleanName = '$nameWithoutExt$ext';
+      }
+      
+      final tempPath = '${tempDir.path}/$cleanName';
+      final file = File(tempPath);
+      await file.writeAsBytes(fileBytes);
+      
+      await Share.shareXFiles([XFile(tempPath)], text: cleanName);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error sharing: $e')),
+      );
+    }
   }
 
   void _deleteDocument(SecureDocument doc) async {

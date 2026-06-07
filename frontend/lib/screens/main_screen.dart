@@ -13,10 +13,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
-import 'vault_dashboard_screen.dart';
 import 'vault_tab_wrapper.dart';
 import 'admin_screen.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});

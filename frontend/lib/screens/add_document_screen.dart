@@ -1,6 +1,9 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/family_member.dart';
 import '../models/secure_document.dart';
 import '../services/vault_service.dart';
@@ -83,7 +86,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       });
     } else {
       // Add one default custom field empty
-      _addCustomField(label: 'Document Number');
+      _addCustomField();
     }
   }
 
@@ -130,9 +133,35 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error picking image: $e')),
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking image: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickPDF() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        withData: true,
       );
+
+      if (result != null && result.files.single.bytes != null) {
+        final file = result.files.single;
+        setState(() {
+          _newAttachmentsBytes.add(file.bytes!);
+          _newAttachmentsNames.add(file.name);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking PDF: $e')),
+        );
+      }
     }
   }
 
@@ -164,6 +193,21 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     });
 
     try {
+      // Look up family member's name
+      String ownerName = 'Unknown';
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        final memberDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('family_members')
+            .doc(_selectedMemberId)
+            .get();
+        if (memberDoc.exists) {
+          ownerName = memberDoc.data()?['name'] ?? 'Unknown';
+        }
+      }
+
       // Build custom fields map
       final Map<String, String> fields = {};
       for (var controllerMap in _fieldControllers) {
@@ -187,10 +231,12 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       await _vaultService.saveDocument(
         id: widget.documentToEdit?.id,
         memberId: _selectedMemberId!,
+        ownerName: ownerName,
         category: categoryToSave,
         title: _titleController.text.trim(),
         fields: fields,
         rawImagesToUpload: _newAttachmentsBytes,
+        newAttachmentsNames: _newAttachmentsNames,
         existingAttachmentPaths: _existingAttachmentPaths,
       );
 
@@ -261,11 +307,6 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
               builder: (context, snapshot) {
                 final members = snapshot.data ?? [];
                 
-                // If memberId was preselected but no longer in list, handle it
-                if (members.isNotEmpty && _selectedMemberId == null) {
-                  _selectedMemberId = members.first.id;
-                }
-
                 return Card(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   child: Padding(
@@ -278,6 +319,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                           border: InputBorder.none,
                           icon: Icon(Icons.person),
                         ),
+                        validator: (val) => val == null ? 'Please select a member' : null,
                         items: members.map((m) {
                           return DropdownMenuItem(
                             value: m.id,
@@ -450,7 +492,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Photos / Scans (End-to-End Encrypted)',
+                      'Photos / Scans / PDF Documents (End-to-End Encrypted)',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     const SizedBox(height: 12),
@@ -461,11 +503,17 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                           icon: const Icon(Icons.camera_alt),
                           label: const Text('Camera'),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         ElevatedButton.icon(
                           onPressed: () => _pickImage(ImageSource.gallery),
                           icon: const Icon(Icons.photo_library),
                           label: const Text('Gallery'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: _pickPDF,
+                          icon: const Icon(Icons.picture_as_pdf),
+                          label: const Text('PDF'),
                         ),
                       ],
                     ),
@@ -483,9 +531,11 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: _existingAttachmentPaths.length,
                         itemBuilder: (context, index) {
+                          final path = _existingAttachmentPaths[index];
+                          final isPdf = path.toLowerCase().endsWith('.pdf');
                           return ListTile(
-                            leading: const Icon(Icons.lock, color: Colors.green),
-                            title: Text('Encrypted Photo ${index + 1}'),
+                            leading: Icon(isPdf ? Icons.picture_as_pdf : Icons.lock, color: isPdf ? Colors.red : Colors.green),
+                            title: Text(isPdf ? 'Encrypted PDF ${index + 1}' : 'Encrypted Photo ${index + 1}'),
                             subtitle: const Text('Stored securely in Cloud Storage'),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
@@ -503,7 +553,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                             child: Padding(
                               padding: EdgeInsets.symmetric(vertical: 16.0),
                               child: Text(
-                                'No new photos selected.',
+                                'No new files selected.',
                                 style: TextStyle(color: Colors.grey, fontSize: 12),
                               ),
                             ),
@@ -518,16 +568,41 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                               crossAxisSpacing: 8,
                             ),
                             itemBuilder: (context, index) {
+                              final name = _newAttachmentsNames[index];
+                              final isPdf = name.toLowerCase().endsWith('.pdf');
                               return Stack(
                                 children: [
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(10),
-                                    child: Image.memory(
-                                      _newAttachmentsBytes[index],
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                      fit: BoxFit.cover,
-                                    ),
+                                    child: isPdf
+                                        ? Container(
+                                            color: Colors.red.shade50,
+                                            width: double.infinity,
+                                            height: double.infinity,
+                                            child: Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                const Icon(Icons.picture_as_pdf, color: Colors.red, size: 36),
+                                                const SizedBox(height: 4),
+                                                Padding(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                                  child: Text(
+                                                    name,
+                                                    style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.red),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          )
+                                        : Image.memory(
+                                            _newAttachmentsBytes[index],
+                                            width: double.infinity,
+                                            height: double.infinity,
+                                            fit: BoxFit.cover,
+                                          ),
                                   ),
                                   Positioned(
                                     right: 4,

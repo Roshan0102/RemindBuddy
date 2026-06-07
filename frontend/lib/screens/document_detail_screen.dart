@@ -64,16 +64,52 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     Share.share('$label: $value', subject: 'Secure Document Detail');
   }
 
-  void _showFullscreenImage(Uint8List imageBytes, int index) {
+  void _showFullscreenFile(Uint8List fileBytes, String storagePath, bool isPdf) {
+    final name = storagePath.split('/').last;
+    var cleanName = name.replaceAll('_-_', ' - ').replaceAll('_', ' ');
+    final extIndex = cleanName.lastIndexOf('.');
+    if (extIndex != -1) {
+      final ext = cleanName.substring(extIndex);
+      var nameWithoutExt = cleanName.substring(0, extIndex);
+      nameWithoutExt = nameWithoutExt.replaceAll(RegExp(r'\s\d+\s\d+$'), '');
+      cleanName = '$nameWithoutExt$ext';
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => FullscreenImageViewer(
-          imageBytes: imageBytes,
-          title: '${_decDoc.title}_Attachment_${index + 1}',
+        builder: (context) => FullscreenFileViewer(
+          fileBytes: fileBytes,
+          title: cleanName,
+          isPdf: isPdf,
         ),
       ),
     );
+  }
+
+  void _shareFileDirectly(Uint8List fileBytes, String storagePath, bool isPdf) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final name = storagePath.split('/').last;
+      var cleanName = name.replaceAll('_-_', ' - ').replaceAll('_', ' ');
+      final extIndex = cleanName.lastIndexOf('.');
+      if (extIndex != -1) {
+        final ext = cleanName.substring(extIndex);
+        var nameWithoutExt = cleanName.substring(0, extIndex);
+        nameWithoutExt = nameWithoutExt.replaceAll(RegExp(r'\s\d+\s\d+$'), '');
+        cleanName = '$nameWithoutExt$ext';
+      }
+      
+      final tempPath = '${tempDir.path}/$cleanName';
+      final file = File(tempPath);
+      await file.writeAsBytes(fileBytes);
+      
+      await Share.shareXFiles([XFile(tempPath)], text: cleanName);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error sharing: $e')),
+      );
+    }
   }
 
   void _editDocument() async {
@@ -306,7 +342,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                           child: Padding(
                             padding: EdgeInsets.symmetric(vertical: 16.0),
                             child: Text(
-                              'No image scans attached.',
+                              'No attachments saved.',
                               style: TextStyle(color: Colors.grey, fontSize: 14),
                             ),
                           ),
@@ -323,6 +359,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                           ),
                           itemBuilder: (context, index) {
                             final storagePath = _rawDoc.encryptedAttachmentPaths[index];
+                            final isPdf = storagePath.toLowerCase().endsWith('.pdf');
                             return FutureBuilder<Uint8List?>(
                               future: _vaultService.downloadAndDecryptAttachment(storagePath),
                               builder: (context, snapshot) {
@@ -351,35 +388,70 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                                   );
                                 }
 
-                                return GestureDetector(
-                                  onTap: () => _showFullscreenImage(bytes, index),
-                                  child: Hero(
-                                    tag: storagePath,
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Stack(
-                                        fit: StackFit.expand,
-                                        children: [
-                                          Image.memory(
-                                            bytes,
-                                            fit: BoxFit.cover,
-                                          ),
-                                          Positioned(
-                                            bottom: 4,
-                                            right: 4,
-                                            child: Container(
-                                              padding: const EdgeInsets.all(4),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black.withOpacity(0.6),
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: const Icon(Icons.zoom_out_map, color: Colors.white, size: 16),
-                                            ),
-                                          )
-                                        ],
+                                return Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    GestureDetector(
+                                      onTap: () => _showFullscreenFile(bytes, storagePath, isPdf),
+                                      child: Hero(
+                                        tag: storagePath,
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(12),
+                                          child: isPdf
+                                              ? Container(
+                                                  color: Colors.red.shade50,
+                                                  child: Column(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    children: [
+                                                      const Icon(Icons.picture_as_pdf, color: Colors.red, size: 40),
+                                                      const SizedBox(height: 6),
+                                                      Padding(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                                        child: Text(
+                                                          storagePath.split('/').last.split('_-_').last,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                          style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                )
+                                              : Image.memory(
+                                                  bytes,
+                                                  fit: BoxFit.cover,
+                                                ),
+                                        ),
                                       ),
                                     ),
-                                  ),
+                                    Positioned(
+                                      top: 8,
+                                      right: 8,
+                                      child: GestureDetector(
+                                        onTap: () => _shareFileDirectly(bytes, storagePath, isPdf),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(6),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withOpacity(0.6),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Icons.share, color: Colors.white, size: 16),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      bottom: 8,
+                                      right: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withOpacity(0.6),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(Icons.zoom_out_map, color: Colors.white, size: 14),
+                                      ),
+                                    ),
+                                  ],
                                 );
                               },
                             );
@@ -396,29 +468,30 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   }
 }
 
-class FullscreenImageViewer extends StatelessWidget {
-  final Uint8List imageBytes;
+class FullscreenFileViewer extends StatelessWidget {
+  final Uint8List fileBytes;
   final String title;
+  final bool isPdf;
 
-  const FullscreenImageViewer({
+  const FullscreenFileViewer({
     super.key,
-    required this.imageBytes,
+    required this.fileBytes,
     required this.title,
+    required this.isPdf,
   });
 
-  Future<void> _shareImage() async {
+  Future<void> _shareFile() async {
     try {
       final tempDir = await getTemporaryDirectory();
-      final tempPath = '${tempDir.path}/$title.jpg';
+      final tempPath = '${tempDir.path}/$title';
       final file = File(tempPath);
-      await file.writeAsBytes(imageBytes);
+      await file.writeAsBytes(fileBytes);
       
-      // ignore: deprecated_member_use
       await Share.shareXFiles([XFile(tempPath)], text: title);
     } catch (_) {}
   }
 
-  Future<void> _downloadImage(BuildContext context) async {
+  Future<void> _downloadFile(BuildContext context) async {
     try {
       Directory? downloadsDir;
       if (Platform.isAndroid) {
@@ -431,17 +504,19 @@ class FullscreenImageViewer extends StatelessWidget {
       }
 
       if (downloadsDir == null) {
+        if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to locate download directory.')),
         );
         return;
       }
 
-      final fileName = '${title.replaceAll(RegExp(r'[^\w\-_]'), '_')}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final fileName = title.replaceAll(RegExp(r'[^\w\-_.]'), '_');
       final filePath = '${downloadsDir.path}/$fileName';
       final file = File(filePath);
-      await file.writeAsBytes(imageBytes);
+      await file.writeAsBytes(fileBytes);
 
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Saved to Downloads folder: $fileName'),
@@ -449,8 +524,9 @@ class FullscreenImageViewer extends StatelessWidget {
         ),
       );
     } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save image: $e')),
+        SnackBar(content: Text('Failed to save file: $e')),
       );
     }
   }
@@ -458,32 +534,61 @@ class FullscreenImageViewer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: isPdf ? Colors.white : Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: isPdf ? Colors.blueAccent : Colors.black,
         foregroundColor: Colors.white,
         title: Text(title, style: const TextStyle(color: Colors.white)),
         actions: [
           IconButton(
             icon: const Icon(Icons.share, color: Colors.white),
-            onPressed: _shareImage,
-            tooltip: 'Share Image',
+            onPressed: _shareFile,
+            tooltip: 'Share File',
           ),
           IconButton(
             icon: const Icon(Icons.download, color: Colors.white),
-            onPressed: () => _downloadImage(context),
+            onPressed: () => _downloadFile(context),
             tooltip: 'Save to Gallery/Downloads',
           ),
         ],
       ),
       body: Center(
-        child: InteractiveViewer(
-          panEnabled: true,
-          boundaryMargin: const EdgeInsets.all(20),
-          minScale: 0.5,
-          maxScale: 4,
-          child: Image.memory(imageBytes),
-        ),
+        child: isPdf
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.picture_as_pdf, color: Colors.red, size: 100),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Text(
+                      title,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _shareFile,
+                    icon: const Icon(Icons.share),
+                    label: const Text('Share PDF Document'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
+                  ),
+                ],
+              )
+            : Center(
+                child: InteractiveViewer(
+                  panEnabled: true,
+                  boundaryMargin: const EdgeInsets.all(20),
+                  minScale: 0.5,
+                  maxScale: 4,
+                  child: Image.memory(fileBytes),
+                ),
+              ),
       ),
     );
   }
