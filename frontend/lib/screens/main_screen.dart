@@ -14,6 +14,7 @@ import '../services/log_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import 'vault_dashboard_screen.dart';
+import 'vault_tab_wrapper.dart';
 import 'admin_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -162,7 +163,7 @@ class _MainScreenState extends State<MainScreen> {
       ),
     },
     'vault': {
-      'screen': const VaultDashboardScreen(),
+      'screen': const VaultTabWrapper(),
       'destination': const NavigationDestination(
         icon: Icon(Icons.shield_outlined, color: Colors.blueAccent),
         selectedIcon: Icon(Icons.shield, color: Colors.blueAccent),
@@ -326,7 +327,7 @@ class _MainScreenState extends State<MainScreen> {
                     Navigator.pop(context);
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const VaultDashboardScreen()),
+                      MaterialPageRoute(builder: (context) => const VaultTabWrapper()),
                     );
                   },
                 ),

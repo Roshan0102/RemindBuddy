@@ -37,6 +37,9 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     'Others'
   ];
 
+  final _customCategoryController = TextEditingController();
+  bool _isCustomCategory = false;
+
   // List of custom field controllers
   final List<Map<String, TextEditingController>> _fieldControllers = [];
 
@@ -59,8 +62,17 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       
       _titleController.text = decDoc.title;
       _selectedMemberId = doc.memberId;
-      _selectedCategory = doc.category;
       _existingAttachmentPaths = List.from(doc.encryptedAttachmentPaths);
+
+      final defaultCategories = ['Identity Cards', 'Financial', 'Health & Medical', 'Insurance'];
+      if (!defaultCategories.contains(doc.category) && doc.category.isNotEmpty) {
+        _selectedCategory = 'Others';
+        _isCustomCategory = true;
+        _customCategoryController.text = doc.category;
+      } else {
+        _selectedCategory = doc.category.isNotEmpty ? doc.category : 'Identity Cards';
+        _isCustomCategory = _selectedCategory == 'Others';
+      }
 
       // Populating custom fields
       decDoc.fields.forEach((key, val) {
@@ -78,6 +90,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   @override
   void dispose() {
     _titleController.dispose();
+    _customCategoryController.dispose();
     for (var controllerMap in _fieldControllers) {
       controllerMap['key']?.dispose();
       controllerMap['value']?.dispose();
@@ -167,10 +180,14 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
             : 'Saving document record...';
       });
 
+      final categoryToSave = _selectedCategory == 'Others'
+          ? _customCategoryController.text.trim()
+          : _selectedCategory;
+
       await _vaultService.saveDocument(
         id: widget.documentToEdit?.id,
         memberId: _selectedMemberId!,
-        category: _selectedCategory,
+        category: categoryToSave,
         title: _titleController.text.trim(),
         fields: fields,
         rawImagesToUpload: _newAttachmentsBytes,
@@ -308,10 +325,30 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                       }).toList(),
                       onChanged: (val) {
                         if (val != null) {
-                          setState(() => _selectedCategory = val);
+                          setState(() {
+                            _selectedCategory = val;
+                            _isCustomCategory = val == 'Others';
+                          });
                         }
                       },
                     ),
+                    if (_isCustomCategory) ...[
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _customCategoryController,
+                        decoration: InputDecoration(
+                          labelText: 'Custom Category Name',
+                          hintText: 'e.g. Vehicle, Work, Education',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        validator: (val) {
+                          if (_isCustomCategory && (val == null || val.trim().isEmpty)) {
+                            return 'Please enter a custom category';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
