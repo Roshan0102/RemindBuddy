@@ -13,7 +13,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
-import 'settings_screen.dart';
+import 'vault_dashboard_screen.dart';
+import 'admin_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -28,13 +30,19 @@ class _MainScreenState extends State<MainScreen> {
   List<String> _enabledModules = ['gold'];
   bool _isLoading = true;
 
+  bool get _isVaultEnabled => _enabledModules.contains('vault');
+
   StreamSubscription? _notificationSubscription;
+  StreamSubscription? _authSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadInitialData();
     _setupNotificationListener();
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      _loadPreferences();
+    });
   }
 
   Future<void> _loadInitialData() async {
@@ -43,7 +51,6 @@ class _MainScreenState extends State<MainScreen> {
     if (mounted) {
       setState(() => _isLoading = false);
     }
-
   }
 
 
@@ -53,8 +60,8 @@ class _MainScreenState extends State<MainScreen> {
     if (mounted) {
       setState(() {
         _enabledModules = List<String>.from(prefs['enabledModules'] ?? _enabledModules);
-        // Ensure index is valid
-        if (_selectedIndex >= _enabledModules.length) {
+        final visibleLength = _enabledModules.where((id) => id != 'vault' || _isVaultEnabled).length;
+        if (_selectedIndex >= visibleLength) {
           _selectedIndex = 0;
         }
       });
@@ -92,6 +99,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void dispose() {
     _notificationSubscription?.cancel();
+    _authSubscription?.cancel();
     super.dispose();
   }
 
@@ -151,6 +159,14 @@ class _MainScreenState extends State<MainScreen> {
         icon: Icon(Icons.playlist_add_check_outlined, color: Colors.blue),
         selectedIcon: Icon(Icons.playlist_add_check, color: Colors.blue),
         label: 'Checklist',
+      ),
+    },
+    'vault': {
+      'screen': const VaultDashboardScreen(),
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.shield_outlined, color: Colors.blueAccent),
+        selectedIcon: Icon(Icons.shield, color: Colors.blueAccent),
+        label: 'Vault',
       ),
     },
   };
@@ -301,20 +317,22 @@ class _MainScreenState extends State<MainScreen> {
                   );
                 },
               ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.settings_suggest, color: Colors.blueGrey),
-                title: const Text('Customize App'),
-                subtitle: const Text('Hide/Show features'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
-                  ).then((_) => _loadPreferences());
-                },
-              ),
-              const Divider(),
+              if (_isVaultEnabled) ...[
+                ListTile(
+                  leading: const Icon(Icons.shield, color: Colors.blueAccent),
+                  title: const Text('Secure Vault'),
+                  subtitle: const Text('Encrypt and save documents'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const VaultDashboardScreen()),
+                    );
+                  },
+                ),
+                const Divider(),
+              ],
+
               // Login / Profile Feature
               ListTile(
                 leading: Icon(
@@ -330,6 +348,21 @@ class _MainScreenState extends State<MainScreen> {
                   ).then((_) {
                     setState(() {});
                     _loadPreferences(); // Reload prefs in case user logged in/out
+                  });
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings, color: Colors.blueGrey),
+                title: const Text('Admin Console'),
+                subtitle: const Text('Configure features & permissions'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AdminScreen()),
+                  ).then((_) {
+                    _loadPreferences();
                   });
                 },
               ),
@@ -379,7 +412,7 @@ class _MainScreenState extends State<MainScreen> {
           : IndexedStack(
               index: _selectedIndex,
               children: _enabledModules
-                  .where((id) => _moduleRegistry.containsKey(id))
+                  .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled))
                   .map((id) => _moduleRegistry[id]!['screen'] as Widget)
                   .toList(),
             ),
@@ -389,7 +422,7 @@ class _MainScreenState extends State<MainScreen> {
               selectedIndex: _selectedIndex,
               onDestinationSelected: _onItemTapped,
               destinations: _enabledModules
-                  .where((id) => _moduleRegistry.containsKey(id))
+                  .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled))
                   .map((id) => _moduleRegistry[id]!['destination'] as NavigationDestination)
                   .toList(),
             ),
