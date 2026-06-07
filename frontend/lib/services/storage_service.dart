@@ -371,10 +371,18 @@ class StorageService {
     return doc.exists ? doc.data() : null;
   }
 
-  Stream<QuerySnapshot> getMonthlyShiftsStream(String month) {
+  Future<void> updateSingleShift(String date, Map<String, dynamic> shiftMap) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const Stream.empty();
-    return FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shifts').doc(month).collection('daily_shifts').snapshots();
+    if (user == null) return;
+    final month = date.substring(0, 7);
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('shifts')
+        .doc(month)
+        .collection('daily_shifts')
+        .doc(date)
+        .set(shiftMap, SetOptions(merge: true));
   }
 
   // User Preference Methods

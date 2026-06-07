@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/shift.dart';
 import '../services/storage_service.dart';
 import '../services/shift_service.dart';
@@ -82,70 +85,351 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
 
   Future<void> _uploadJSON() async {
-    final TextEditingController controller = TextEditingController();
-    bool _isSaving = false;
+    final TextEditingController jsonController = TextEditingController();
+    final TextEditingController nameController = TextEditingController(
+      text: FirebaseAuth.instance.currentUser?.displayName ?? 'Roshan J'
+    );
     
-    showDialog(
+    XFile? selectedImage;
+    bool isScanning = false;
+    bool isSaving = false;
+    bool isPreviewMode = false;
+    int currentTab = 0; // 0 for Image, 1 for JSON
+    String errorMessage = '';
+    
+    String employeeName = '';
+    String monthLabel = '';
+    List<Shift> parsedShifts = [];
+
+    await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Upload Shift Roster'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Paste your JSON roster data below:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+        builder: (context, setState) {
+          if (!isPreviewMode) {
+            return AlertDialog(
+              title: const Text('Upload Shift Roster'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Tab toggle
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ChoiceChip(
+                            label: const Text('Scan Image', textAlign: TextAlign.center),
+                            selected: currentTab == 0,
+                            onSelected: (selected) {
+                              if (selected) setState(() => currentTab = 0);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ChoiceChip(
+                            label: const Text('Paste JSON', textAlign: TextAlign.center),
+                            selected: currentTab == 1,
+                            onSelected: (selected) {
+                              if (selected) setState(() => currentTab = 1);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (currentTab == 0) ...[
+                      // Image upload form
+                      TextField(
+                        controller: nameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Employee Name in Roster',
+                          hintText: 'e.g. Roshan J',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final ImagePicker picker = ImagePicker();
+                          final XFile? img = await picker.pickImage(source: ImageSource.gallery);
+                          if (img != null) {
+                            setState(() {
+                              selectedImage = img;
+                              errorMessage = '';
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.photo_library),
+                        label: Text(selectedImage == null ? 'Select Roster Image' : 'Change Image'),
+                      ),
+                      if (selectedImage != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Selected: ${selectedImage!.name}',
+                          style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.green),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ] else ...[
+                      // JSON upload form
+                      const Text(
+                        'Paste your JSON roster data below:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: jsonController,
+                        maxLines: 8,
+                        decoration: const InputDecoration(
+                          hintText: '{\n  "employee_name": "...",\n  "month": "...",\n  "shifts": [...]\n}',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
+                    if (errorMessage.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        errorMessage,
+                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  maxLines: 10,
-                  decoration: const InputDecoration(
-                    hintText: '{\n  "employee_name": "...",\n  "month": "...",\n  "shifts": [...]\n}',
-                    border: OutlineInputBorder(),
-                  ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isScanning ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
                 ),
-              ],
-            ),
-          ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          _isSaving 
-            ? const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-              )
-            : ElevatedButton(
-                onPressed: () async {
-                  setState(() => _isSaving = true);
-                  try {
-                    final jsonData = json.decode(controller.text);
-                    final roster = ShiftRoster.fromJson(jsonData);
-                    
-                    // Extract roster month directly from UI selection
-                    String rosterMonth = _selectedRosterMonth;
-                    String updatedMonthLabel = DateFormat('MMMM yyyy').format(_currentDate);
-                    
-                    // Rewrite the shift dates to match the selected month/year.
-                    final shiftsToSave = roster.shifts.map((s) {
-                      final map = s.toMap();
-                      if (map['date'].length >= 10) {
-                          map['date'] = '$rosterMonth-${map['date'].substring(8, 10)}';
+                if (isScanning)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                else
+                  ElevatedButton(
+                    onPressed: () async {
+                      setState(() {
+                        errorMessage = '';
+                      });
+
+                      if (currentTab == 0) {
+                        if (nameController.text.trim().isEmpty) {
+                          setState(() => errorMessage = 'Please enter employee name.');
+                          return;
+                        }
+                        if (selectedImage == null) {
+                          setState(() => errorMessage = 'Please select a roster image.');
+                          return;
+                        }
+
+                        setState(() => isScanning = true);
+                        try {
+                          final bytes = await selectedImage!.readAsBytes();
+                          final base64Image = base64Encode(bytes);
+
+                          final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('analyzeRosterImage');
+                          final result = await callable.call(<String, dynamic>{
+                            'image': base64Image,
+                            'employeeName': nameController.text.trim(),
+                          });
+
+                          final data = result.data;
+                          if (data != null) {
+                            final roster = ShiftRoster.fromJson(Map<String, dynamic>.from(data));
+                            setState(() {
+                              parsedShifts = roster.shifts;
+                              employeeName = roster.employeeName;
+                              monthLabel = roster.month;
+                              isPreviewMode = true;
+                              isScanning = false;
+                            });
+                          } else {
+                            throw Exception('Received empty result from server.');
+                          }
+                        } catch (e) {
+                          setState(() {
+                            errorMessage = 'Scanning failed: $e';
+                            isScanning = false;
+                          });
+                        }
+                      } else {
+                        if (jsonController.text.trim().isEmpty) {
+                          setState(() => errorMessage = 'Please paste JSON roster data.');
+                          return;
+                        }
+
+                        try {
+                          final jsonData = json.decode(jsonController.text.trim());
+                          final roster = ShiftRoster.fromJson(jsonData);
+                          setState(() {
+                            parsedShifts = roster.shifts;
+                            employeeName = roster.employeeName;
+                            monthLabel = roster.month;
+                            isPreviewMode = true;
+                          });
+                        } catch (e) {
+                          setState(() {
+                            errorMessage = 'Invalid JSON: $e';
+                          });
+                        }
                       }
-                      return map;
-                    }).toList();
-                    
-                    // Rewrite the original JSON payload too so when it's pushed, it has the correct dates!
-                    final Map<String, dynamic> rewrittenJson = {
-                      'employee_name': roster.employeeName,
-                      'month': updatedMonthLabel,
-                      'shifts': roster.shifts.map((s) {
+                    },
+                    child: Text(currentTab == 0 ? 'Extract Shifts' : 'Parse JSON'),
+                  ),
+              ],
+            );
+          }
+
+          // PREVIEW AND EDIT MODE
+          return AlertDialog(
+            title: const Text('Verify & Edit Shifts'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Employee: $employeeName',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    Text(
+                      'Roster Month: $monthLabel',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    ),
+                    const Divider(height: 24),
+                    const Text(
+                      'Review/edit shifts for each day below:',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 320),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: parsedShifts.length,
+                        itemBuilder: (context, index) {
+                          final shift = parsedShifts[index];
+                          // Try formatting date nicely if possible
+                          String displayDate = shift.date;
+                          try {
+                            final dateObj = DateTime.parse(shift.date);
+                            displayDate = DateFormat('EEE, MMM d').format(dateObj);
+                          } catch (_) {}
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(displayDate, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                DropdownButton<String>(
+                                  value: shift.shiftType,
+                                  underline: const SizedBox(),
+                                  items: const [
+                                    DropdownMenuItem(value: 'morning', child: Text('Morning')),
+                                    DropdownMenuItem(value: 'afternoon', child: Text('Afternoon')),
+                                    DropdownMenuItem(value: 'night', child: Text('Night')),
+                                    DropdownMenuItem(value: 'week_off', child: Text('Week Off')),
+                                  ],
+                                  onChanged: (newVal) {
+                                    if (newVal != null) {
+                                      setState(() {
+                                        final isWeekOff = newVal == 'week_off';
+                                        String? start;
+                                        String? end;
+                                        if (newVal == 'morning') {
+                                          start = '06:00';
+                                          end = '14:00';
+                                        } else if (newVal == 'afternoon') {
+                                          start = '14:00';
+                                          end = '22:00';
+                                        } else if (newVal == 'night') {
+                                          start = '22:00';
+                                          end = '06:00';
+                                        }
+
+                                        parsedShifts[index] = Shift(
+                                          date: shift.date,
+                                          shiftType: newVal,
+                                          startTime: start,
+                                          endTime: end,
+                                          isWeekOff: isWeekOff,
+                                        );
+                                      });
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    if (errorMessage.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        errorMessage,
+                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving
+                    ? null
+                    : () {
+                        setState(() {
+                          isPreviewMode = false;
+                          errorMessage = '';
+                        });
+                      },
+                child: const Text('Back'),
+              ),
+              if (isSaving)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              else
+                ElevatedButton(
+                  onPressed: () async {
+                    setState(() {
+                      isSaving = true;
+                      errorMessage = '';
+                    });
+                    try {
+                      // Extract roster month directly from UI selection
+                      String rosterMonth = _selectedRosterMonth;
+                      String updatedMonthLabel = DateFormat('MMMM yyyy').format(_currentDate);
+
+                      // Rewrite the shift dates to match the selected month/year.
+                      final shiftsToSave = parsedShifts.map((s) {
+                        final map = s.toMap();
+                        if (map['date'].length >= 10) {
+                          map['date'] = '$rosterMonth-${map['date'].substring(8, 10)}';
+                        }
+                        return map;
+                      }).toList();
+
+                      // Rewrite the original JSON payload too so when it's pushed, it has the correct dates!
+                      final Map<String, dynamic> rewrittenJson = {
+                        'employee_name': employeeName,
+                        'month': updatedMonthLabel,
+                        'shifts': parsedShifts.map((s) {
                           return {
                             'date': s.date.length >= 10 ? '$rosterMonth-${s.date.substring(8, 10)}' : s.date,
                             'shift_type': s.shiftType,
@@ -153,52 +437,49 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             'end_time': s.endTime,
                             'is_week_off': s.isWeekOff,
                           };
-                      }).toList(),
-                    };
-                    final String newJsonString = json.encode(rewrittenJson);
-                    
-                    await _storage.saveShiftRoster(
-                      roster.employeeName,
-                      updatedMonthLabel,
-                      shiftsToSave,
-                      rosterMonth: rosterMonth,
-                      rawJson: newJsonString,
-                    );
-                    
-                    // Schedule notifications
-                    await _shiftService.scheduleDailyShiftNotification();
-                    
-                    if (mounted) Navigator.pop(context);
-                    await _loadShifts(); // Reload current view
-                    
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('✅ Loaded ${roster.shifts.length} shifts for ${roster.month} ($rosterMonth)'),
-                          backgroundColor: Colors.green,
-                        ),
+                        }).toList(),
+                      };
+                      final String newJsonString = json.encode(rewrittenJson);
+
+                      await _storage.saveShiftRoster(
+                        employeeName,
+                        updatedMonthLabel,
+                        shiftsToSave,
+                        rosterMonth: rosterMonth,
+                        rawJson: newJsonString,
                       );
+
+                      // Schedule notifications
+                      await _shiftService.scheduleDailyShiftNotification();
+
+                      if (mounted) {
+                        Navigator.pop(context);
+                      }
+                      await _loadShifts(); // Reload current view
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('✅ Loaded ${parsedShifts.length} shifts for $employeeName ($rosterMonth)'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      setState(() {
+                        errorMessage = 'Save failed: $e';
+                        isSaving = false;
+                      });
                     }
-                  } catch (e) {
-                    print('❌ Error uploading JSON roster: $e');
-                    setState(() => _isSaving = false);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('❌ Error: ${e.toString()}'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-                child: const Text('Upload'),
-              ),
-        ],
+                  },
+                  child: const Text('Save to Calendar'),
+                ),
+            ],
+          );
+        },
       ),
-    ),
-  );
-}
+    );
+  }
 
   Future<void> _clearData() async {
     final confirm = await showDialog<bool>(
@@ -367,6 +648,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
             if (isTomorrow) dayLabel = 'Tomorrow';
 
             return ListTile(
+              onTap: () => _editShiftDialog(shift),
               leading: CircleAvatar(
                 backgroundColor: _getShiftColor(shift.shiftType).withOpacity(0.2),
                 child: Icon(
@@ -426,6 +708,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 final shiftDate = DateTime.parse(shift.date);
 
                 return ListTile(
+                  onTap: () => _editShiftDialog(shift),
                   dense: true,
                   leading: Icon(
                     _getShiftIcon(shift.shiftType),
@@ -462,6 +745,102 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _editShiftDialog(Shift shift) async {
+    String selectedType = shift.shiftType;
+    
+    final newShift = await showDialog<Shift>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text('Edit Shift on ${shift.date}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    value: selectedType,
+                    decoration: const InputDecoration(
+                      labelText: 'Shift Type',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'morning', child: Text('Morning (06:00 - 14:00)')),
+                      DropdownMenuItem(value: 'afternoon', child: Text('Afternoon (14:00 - 22:00)')),
+                      DropdownMenuItem(value: 'night', child: Text('Night (22:00 - 06:00)')),
+                      DropdownMenuItem(value: 'week_off', child: Text('Week Off')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDialogState(() => selectedType = val);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final isWeekOff = selectedType == 'week_off';
+                    String? startTime;
+                    String? endTime;
+                    if (selectedType == 'morning') {
+                      startTime = '06:00';
+                      endTime = '14:00';
+                    } else if (selectedType == 'afternoon') {
+                      startTime = '14:00';
+                      endTime = '22:00';
+                    } else if (selectedType == 'night') {
+                      startTime = '22:00';
+                      endTime = '06:00';
+                    }
+                    
+                    Navigator.pop(
+                      context,
+                      Shift(
+                        date: shift.date,
+                        shiftType: selectedType,
+                        startTime: startTime,
+                        endTime: endTime,
+                        isWeekOff: isWeekOff,
+                      ),
+                    );
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (newShift != null) {
+      setState(() => _isLoading = true);
+      try {
+        await _storage.updateSingleShift(newShift.date, newShift.toMap());
+        await _shiftService.scheduleDailyShiftNotification(); // Reschedule
+        await _loadShifts(); // Reload list
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Shift updated for ${newShift.date}')),
+          );
+        }
+      } catch (e) {
+        setState(() => _isLoading = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to update shift: $e')),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildHeader() {

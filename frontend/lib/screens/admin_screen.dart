@@ -14,11 +14,13 @@ class _AdminScreenState extends State<AdminScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _vaultPinController = TextEditingController();
+  final _geminiApiKeyController = TextEditingController();
   
   bool _isAuthenticated = false;
   bool _isLoading = true;
   String _errorMessage = '';
   String _vaultPinSuccessMessage = '';
+  String _geminiApiKeySuccessMessage = '';
 
   final List<Map<String, String>> _availableModules = [
     {'id': 'gold', 'label': 'Gold Rates'},
@@ -40,13 +42,18 @@ class _AdminScreenState extends State<AdminScreen> {
     _usernameController.dispose();
     _passwordController.dispose();
     _vaultPinController.dispose();
+    _geminiApiKeyController.dispose();
     super.dispose();
   }
 
   Future<void> _checkLocalAuth() async {
     final prefs = await SharedPreferences.getInstance();
+    final isAuth = prefs.getBool('isAdminAuthenticated') ?? false;
+    if (isAuth) {
+      await _fetchGeminiApiKey();
+    }
     setState(() {
-      _isAuthenticated = prefs.getBool('isAdminAuthenticated') ?? false;
+      _isAuthenticated = isAuth;
       _isLoading = false;
     });
   }
@@ -75,6 +82,7 @@ class _AdminScreenState extends State<AdminScreen> {
         if (username == dbUsername && password == dbPassword) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isAdminAuthenticated', true);
+          await _fetchGeminiApiKey();
           setState(() {
             _isAuthenticated = true;
             _errorMessage = '';
@@ -103,7 +111,58 @@ class _AdminScreenState extends State<AdminScreen> {
       _isAuthenticated = false;
       _usernameController.clear();
       _passwordController.clear();
+      _geminiApiKeyController.clear();
     });
+  }
+
+  Future<void> _fetchGeminiApiKey() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('admin_creds')
+          .doc('gemini_config')
+          .get();
+      if (doc.exists && doc.data() != null) {
+        final key = doc.data()!['apiKey'] ?? '';
+        _geminiApiKeyController.text = key;
+      }
+    } catch (e) {
+      print('Error fetching Gemini API key: $e');
+    }
+  }
+
+  Future<void> _updateGeminiApiKey() async {
+    final key = _geminiApiKeyController.text.trim();
+    setState(() => _isLoading = true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('admin_creds')
+          .doc('gemini_config')
+          .set({
+        'apiKey': key,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      setState(() {
+        _geminiApiKeySuccessMessage = 'Gemini API Key updated successfully!';
+        _isLoading = false;
+      });
+
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _geminiApiKeySuccessMessage = '';
+          });
+        }
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update Gemini API Key: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _updateVaultMasterPin() async {
@@ -321,6 +380,56 @@ class _AdminScreenState extends State<AdminScreen> {
                       const SizedBox(height: 8),
                       Text(
                         _vaultPinSuccessMessage,
+                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            // Section 1.5: Gemini API Configuration
+            Card(
+              margin: const EdgeInsets.all(16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      '🤖 Gemini AI Configuration',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Provide your Google Gemini API Key from Google AI Studio. This is used securely in Cloud Functions to parse roster images.',
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _geminiApiKeyController,
+                            obscureText: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Gemini API Key',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton(
+                          onPressed: _updateGeminiApiKey,
+                          child: const Text('Save Key'),
+                        ),
+                      ],
+                    ),
+                    if (_geminiApiKeySuccessMessage.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _geminiApiKeySuccessMessage,
                         style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                       ),
                     ],
