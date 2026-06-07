@@ -14,9 +14,6 @@ import '../services/log_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import 'settings_screen.dart';
-import 'voice_listening_overlay.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -46,29 +43,10 @@ class _MainScreenState extends State<MainScreen> {
     if (mounted) {
       setState(() => _isLoading = false);
     }
-    _requestVoiceAssistantPermissions();
+
   }
 
-  Future<void> _requestVoiceAssistantPermissions() async {
-    // Request microphone permission
-    await Permission.microphone.request();
-    // Request display over other apps permission if not granted
-    try {
-      final overlayGranted = await FlutterOverlayWindow.isPermissionGranted();
-      if (!(overlayGranted ?? false)) {
-        await FlutterOverlayWindow.requestPermission();
-      }
-    } catch (e) {
-      print("Error requesting overlay permission: $e");
-    }
-  }
 
-  bool get _isGoldTabActive {
-    if (_selectedIndex >= 0 && _selectedIndex < _enabledModules.length) {
-      return _enabledModules[_selectedIndex] == 'gold';
-    }
-    return false;
-  }
 
   Future<void> _loadPreferences() async {
     final prefs = await StorageService().getUserPreferences();
@@ -415,21 +393,7 @@ class _MainScreenState extends State<MainScreen> {
                   .map((id) => _moduleRegistry[id]!['destination'] as NavigationDestination)
                   .toList(),
             ),
-        floatingActionButton: _isGoldTabActive
-            ? FloatingActionButton(
-                onPressed: () async {
-                  final status = await Permission.microphone.request();
-                  if (status.isGranted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const VoiceListeningOverlay()),
-                    );
-                  }
-                },
-                backgroundColor: Colors.blueAccent,
-                child: const Icon(Icons.mic, color: Colors.white),
-              )
-            : null,
+
       ), // Close Scaffold
     ); // Close Theme
   }

@@ -4,79 +4,15 @@ import 'package:firebase_core/firebase_core.dart';
 import 'dart:async';
 import 'screens/main_screen.dart';
 import 'services/notification_service.dart';
-import 'services/voice_assistant_service.dart';
-import 'package:quick_settings/quick_settings.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
-// Top-level function to handle clicks from the Quick Settings Tray
-@pragma("vm:entry-point")
-Tile? onTileClicked(Tile tile) {
-  WidgetsFlutterBinding.ensureInitialized();
-  FlutterOverlayWindow.isPermissionGranted().then((status) async {
-    if (!(status ?? false)) {
-      await FlutterOverlayWindow.requestPermission();
-      return;
-    }
-    final micStatus = await Permission.microphone.request();
-    if (micStatus.isGranted) {
-      if (!await FlutterOverlayWindow.isActive()) {
-        await FlutterOverlayWindow.showOverlay(
-          enableDrag: true,
-          overlayTitle: "Buddy is listening",
-          alignment: OverlayAlignment.bottomCenter,
-          visibility: NotificationVisibility.visibilityPublic,
-          height: 400,
-          width: WindowSize.matchParent,
-        );
-      }
-    }
-  });
-  return null;
-}
-
-// Special entry point for the Floating Overlay
-@pragma("vm:entry-point")
-void overlayMain() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: FloatingVoiceOverlay(),
-  ));
-}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   
-  // Close any active background overlay to prevent auto-start/mic bugs on clean boot
-  try {
-    if (await FlutterOverlayWindow.isActive()) {
-      await FlutterOverlayWindow.closeOverlay();
-    }
-  } catch (e) {
-    print("Error closing active overlay: $e");
-  }
-
-  try {
-    await dotenv.load(fileName: ".env");
-  } catch (e) {
-    print("Error loading .env file: $e");
-  }
-  
   await initializeDateFormatting();
   
-  // Voice Assistant will be lazily initialized on click to prevent startup chimes
-
-  // Set up Quick Settings Tile (Disabled for now to prevent auto-start sounds)
-  // QuickSettings.setup(
-  //   onTileClicked: onTileClicked,
-  // );
-
   try {
     await NotificationService().init();
   } catch (e) {
@@ -84,88 +20,6 @@ void main() async {
   }
   
   runApp(const RemindBuddyApp());
-}
-
-class FloatingVoiceOverlay extends StatefulWidget {
-  const FloatingVoiceOverlay({super.key});
-  @override
-  State<FloatingVoiceOverlay> createState() => _FloatingVoiceOverlayState();
-}
-
-class _FloatingVoiceOverlayState extends State<FloatingVoiceOverlay> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  String _status = "Listening...";
-  StreamSubscription? _subscription;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    )..repeat(reverse: true);
-    
-    _subscription = VoiceAssistantService().statusStream.listen((status) {
-      if (mounted) {
-        setState(() {
-          _status = status;
-        });
-      }
-    });
-    
-    _listen();
-  }
-
-  Future<void> _listen() async {
-    try {
-      await VoiceAssistantService().startListening(onResult: (text) {
-        VoiceAssistantService().updateStatus("You said: $text");
-      });
-    } catch (e) {
-      if (mounted) setState(() => _status = "Error: $e");
-    }
-  }
-
-  @override
-  void dispose() {
-    _subscription?.cancel();
-    _controller.dispose();
-    VoiceAssistantService().stopListening();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.9),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-          boxShadow: [BoxShadow(color: Colors.blueAccent.withOpacity(0.3), blurRadius: 10, spreadRadius: 2)],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 20),
-            ScaleTransition(
-              scale: Tween(begin: 1.0, end: 1.2).animate(_controller),
-              child: const Icon(Icons.mic, color: Colors.blueAccent, size: 45),
-            ),
-            const SizedBox(height: 15),
-            Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: () => FlutterOverlayWindow.closeOverlay(),
-              child: const Text("CLOSE BUDDY", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class RemindBuddyApp extends StatelessWidget {
