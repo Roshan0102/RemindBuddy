@@ -239,7 +239,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
                           final data = result.data;
                           if (data != null) {
-                            final roster = ShiftRoster.fromJson(Map<String, dynamic>.from(data));
+                            final roster = ShiftRoster.fromJson(data as Map);
                             setState(() {
                               parsedShifts = roster.shifts;
                               employeeName = roster.employeeName;

@@ -13,12 +13,12 @@ class Shift {
     required this.isWeekOff,
   });
 
-  factory Shift.fromJson(Map<String, dynamic> json) {
+  factory Shift.fromJson(Map<dynamic, dynamic> json) {
     return Shift(
-      date: json['date'] as String,
-      shiftType: json['shift_type'] as String,
-      startTime: json['start_time'] as String?,
-      endTime: json['end_time'] as String?,
+      date: json['date']?.toString() ?? '',
+      shiftType: json['shift_type']?.toString() ?? '',
+      startTime: json['start_time']?.toString(),
+      endTime: json['end_time']?.toString(),
       isWeekOff: json['is_week_off'] == true || json['is_week_off'] == 1,
     );
   }
@@ -77,12 +77,12 @@ class ShiftRoster {
     required this.shifts,
   });
 
-  factory ShiftRoster.fromJson(Map<String, dynamic> json) {
+  factory ShiftRoster.fromJson(Map<dynamic, dynamic> json) {
     return ShiftRoster(
-      employeeName: json['employee_name'] as String,
-      month: json['month'] as String,
+      employeeName: json['employee_name']?.toString() ?? '',
+      month: json['month']?.toString() ?? '',
       shifts: (json['shifts'] as List)
-          .map((shift) => Shift.fromJson(shift as Map<String, dynamic>))
+          .map((shift) => Shift.fromJson(shift as Map))
           .toList(),
     );
   }
