@@ -94,183 +94,188 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<List<SecureDocument>>(
-        stream: _vaultService.getSecureDocuments(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Column(
+        children: [
+          // 1. Search Bar (ALWAYS visible, never loses focus/keyboard!)
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search documents, Aadhar, accounts...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          FocusScope.of(context).unfocus();
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+              ),
+            ),
+          ),
 
-          final rawDocs = snapshot.data ?? [];
-          if (rawDocs.isEmpty) {
-            return _buildEmptyState();
-          }
-
-          if (_decryptionFuture == null || _previousRawDocs == null || !_areRawDocsEqual(_previousRawDocs!, rawDocs)) {
-            _previousRawDocs = rawDocs;
-            _decryptionFuture = _decryptAllDocuments(rawDocs);
-          }
-
-          return FutureBuilder<List<DecryptedDocument>>(
-            future: _decryptionFuture,
-            builder: (context, decryptSnapshot) {
-              if (decryptSnapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 12),
-                      Text('Decrypting vault securely in memory...'),
-                    ],
-                  ),
-                );
-              }
-
-              final decDocs = decryptSnapshot.data ?? [];
-
-              // Compute categories list dynamically based on the decrypted documents!
-              final Set<String> uniqueCategories = {'All', 'Identity Cards', 'Financial', 'Health & Medical', 'Insurance'};
-              for (var doc in decDocs) {
-                if (doc.original.category.isNotEmpty) {
-                  uniqueCategories.add(doc.original.category);
-                }
-              }
-              final dynamicCategories = uniqueCategories.toList();
-
-              // If the selected category is no longer in the list of dynamic categories, reset to 'All'
-              if (!dynamicCategories.contains(_selectedCategory)) {
-                _selectedCategory = 'All';
-              }
-
-              // Apply filters (Selected Member, Category, Search Query)
-              final filteredDocs = decDocs.where((doc) {
-                // Filter by Member
-                if (_selectedMemberId != null && doc.original.memberId != _selectedMemberId) {
-                  return false;
+          // 2. Async Filter & List Area
+          Expanded(
+            child: StreamBuilder<List<SecureDocument>>(
+              stream: _vaultService.getSecureDocuments(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
                 }
 
-                // Filter by Category
-                if (_selectedCategory != 'All' && doc.original.category != _selectedCategory) {
-                  return false;
+                final rawDocs = snapshot.data ?? [];
+                if (rawDocs.isEmpty) {
+                  return _buildEmptyState();
                 }
 
-                // Filter by Search query
-                if (_searchQuery.isNotEmpty) {
-                  final titleMatch = doc.title.toLowerCase().contains(_searchQuery);
-                  final fieldsKeyMatch = doc.fields.keys.any((k) => k.toLowerCase().contains(_searchQuery));
-                  final fieldsValueMatch = doc.fields.values.any((v) => v.toLowerCase().contains(_searchQuery));
-                  return titleMatch || fieldsKeyMatch || fieldsValueMatch;
+                if (_decryptionFuture == null || _previousRawDocs == null || !_areRawDocsEqual(_previousRawDocs!, rawDocs)) {
+                  _previousRawDocs = rawDocs;
+                  _decryptionFuture = _decryptAllDocuments(rawDocs);
                 }
 
-                return true;
-              }).toList();
+                return FutureBuilder<List<DecryptedDocument>>(
+                  future: _decryptionFuture,
+                  builder: (context, decryptSnapshot) {
+                    if (decryptSnapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 12),
+                            Text('Decrypting vault securely in memory...'),
+                          ],
+                        ),
+                      );
+                    }
 
-              return Column(
-                children: [
-                  // 1. Search Bar & Filters
-                  Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
+                    final decDocs = decryptSnapshot.data ?? [];
+
+                    // Compute categories list dynamically based on the decrypted documents!
+                    final Set<String> uniqueCategories = {'All', 'Identity Cards', 'Financial', 'Health & Medical', 'Insurance'};
+                    for (var doc in decDocs) {
+                      if (doc.original.category.isNotEmpty) {
+                        uniqueCategories.add(doc.original.category);
+                      }
+                    }
+                    final dynamicCategories = uniqueCategories.toList();
+
+                    // If the selected category is no longer in the list of dynamic categories, reset to 'All'
+                    if (!dynamicCategories.contains(_selectedCategory)) {
+                      _selectedCategory = 'All';
+                    }
+
+                    // Apply filters (Selected Member, Category, Search Query)
+                    final filteredDocs = decDocs.where((doc) {
+                      // Filter by Member
+                      if (_selectedMemberId != null && doc.original.memberId != _selectedMemberId) {
+                        return false;
+                      }
+
+                      // Filter by Category
+                      if (_selectedCategory != 'All' && doc.original.category != _selectedCategory) {
+                        return false;
+                      }
+
+                      // Filter by Search query
+                      if (_searchQuery.isNotEmpty) {
+                        final titleMatch = doc.title.toLowerCase().contains(_searchQuery);
+                        final fieldsKeyMatch = doc.fields.keys.any((k) => k.toLowerCase().contains(_searchQuery));
+                        final fieldsValueMatch = doc.fields.values.any((v) => v.toLowerCase().contains(_searchQuery));
+                        return titleMatch || fieldsKeyMatch || fieldsValueMatch;
+                      }
+
+                      return true;
+                    }).toList();
+
+                    return Column(
                       children: [
-                        TextField(
-                          controller: _searchController,
-                          decoration: InputDecoration(
-                            hintText: 'Search documents, Aadhar, accounts...',
-                            prefixIcon: const Icon(Icons.search),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      FocusScope.of(context).unfocus();
-                                    },
-                                  )
-                                : null,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                            filled: true,
-                            fillColor: Colors.grey.shade50,
+                        // Filters row
+                        Padding(
+                          padding: const EdgeInsets.only(left: 12.0, right: 12.0, bottom: 8.0),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                // Member Filter
+                                DropdownButton<String>(
+                                  value: _selectedMemberId,
+                                  hint: const Text('All Members'),
+                                  items: [
+                                    const DropdownMenuItem<String>(
+                                      value: null,
+                                      child: Text('All Family Members'),
+                                    ),
+                                    ..._familyMembersMap.values.map((m) {
+                                      return DropdownMenuItem<String>(
+                                        value: m.id,
+                                        child: Text(m.name),
+                                      );
+                                    }),
+                                  ],
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _selectedMemberId = val;
+                                    });
+                                  },
+                                ),
+                                const SizedBox(width: 16),
+                                // Category Filter (Using dynamicCategories!)
+                                DropdownButton<String>(
+                                  value: _selectedCategory,
+                                  items: dynamicCategories.map((c) {
+                                    return DropdownMenuItem<String>(
+                                      value: c,
+                                      child: Text(c),
+                                    );
+                                  }).toList(),
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _selectedCategory = val ?? 'All';
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        // Horizontal Filters
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [
-                              // Member Filter
-                              DropdownButton<String>(
-                                value: _selectedMemberId,
-                                hint: const Text('All Members'),
-                                items: [
-                                  const DropdownMenuItem<String>(
-                                    value: null,
-                                    child: Text('All Family Members'),
+                        // List of documents
+                        Expanded(
+                          child: filteredDocs.isEmpty
+                              ? const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(24.0),
+                                    child: Text(
+                                      'No documents match your search.',
+                                      style: TextStyle(color: Colors.grey, fontSize: 16),
+                                      textAlign: TextAlign.center,
+                                    ),
                                   ),
-                                  ..._familyMembersMap.values.map((m) {
-                                    return DropdownMenuItem<String>(
-                                      value: m.id,
-                                      child: Text(m.name),
-                                    );
-                                  }),
-                                ],
-                                onChanged: (val) {
-                                  setState(() {
-                                    _selectedMemberId = val;
-                                  });
-                                },
-                              ),
-                              const SizedBox(width: 16),
-                              // Category Filter (Using dynamicCategories!)
-                              DropdownButton<String>(
-                                value: _selectedCategory,
-                                items: dynamicCategories.map((c) {
-                                  return DropdownMenuItem<String>(
-                                    value: c,
-                                    child: Text(c),
-                                  );
-                                }).toList(),
-                                onChanged: (val) {
-                                  setState(() {
-                                    _selectedCategory = val ?? 'All';
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  itemCount: filteredDocs.length,
+                                  itemBuilder: (context, index) {
+                                    final decDoc = filteredDocs[index];
+                                    final owner = _familyMembersMap[decDoc.original.memberId];
+                                    return _buildDocumentCard(decDoc, owner);
+                                  },
+                                ),
                         ),
                       ],
-                    ),
-                  ),
-                  
-                  // 2. Document List
-                  Expanded(
-                    child: filteredDocs.isEmpty
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(24.0),
-                              child: Text(
-                                'No documents match your search.',
-                                style: TextStyle(color: Colors.grey, fontSize: 16),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            itemCount: filteredDocs.length,
-                            itemBuilder: (context, index) {
-                              final decDoc = filteredDocs[index];
-                              final owner = _familyMembersMap[decDoc.original.memberId];
-                              return _buildDocumentCard(decDoc, owner);
-                            },
-                          ),
-                  ),
-                ],
-              );
-            },
-          );
-        },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
