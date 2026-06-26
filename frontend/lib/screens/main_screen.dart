@@ -306,6 +306,188 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  void _showAppMenuBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        final menuItems = [
+          {
+            'id': 'reminders',
+            'name': 'Reminders',
+            'icon': Icons.calendar_today,
+            'color': Colors.indigo,
+            'action': () => _selectTabOrPush('reminders'),
+          },
+          {
+            'id': 'gold',
+            'name': 'Gold Rates',
+            'icon': Icons.monetization_on,
+            'color': Colors.amber,
+            'action': () => _selectTabOrPush('gold'),
+          },
+          {
+            'id': 'notes',
+            'name': 'Notes',
+            'icon': Icons.note_alt,
+            'color': Colors.teal,
+            'action': () => _selectTabOrPush('notes'),
+          },
+          {
+            'id': 'checklist',
+            'name': 'Checklist',
+            'icon': Icons.playlist_add_check_outlined,
+            'color': Colors.blue,
+            'action': () => _selectTabOrPush('checklist'),
+          },
+          {
+            'id': 'shifts',
+            'name': 'My Shifts',
+            'icon': Icons.work_history,
+            'color': Colors.orange,
+            'action': () => _selectTabOrPush('shifts'),
+          },
+          if (_isVaultEnabled)
+            {
+              'id': 'vault',
+              'name': 'Secure Vault',
+              'icon': Icons.shield,
+              'color': Colors.blueAccent,
+              'action': () => _selectTabOrPush('vault'),
+            },
+          {
+            'id': 'daily_reminders',
+            'name': 'Daily Reminders',
+            'icon': Icons.alarm_on,
+            'color': Colors.blue,
+            'action': () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
+              );
+            },
+          },
+          {
+            'id': 'customize',
+            'name': 'Customize Bar',
+            'icon': Icons.dashboard_customize,
+            'color': Colors.purple,
+            'action': () => _showCustomizeBottomBarDialog(),
+          },
+          {
+            'id': 'admin',
+            'name': 'Admin Console',
+            'icon': Icons.admin_panel_settings,
+            'color': Colors.blueGrey,
+            'action': () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AdminScreen()),
+              ).then((_) {
+                _loadPreferences();
+              });
+            },
+          },
+        ];
+
+        return Container(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'App Menu',
+                    style: GoogleFonts.outfit(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.95,
+                ),
+                itemCount: menuItems.length,
+                itemBuilder: (context, index) {
+                  final item = menuItems[index];
+                  return InkWell(
+                    onTap: () {
+                      Navigator.pop(context);
+                      (item['action'] as VoidCallback)();
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: (item['color'] as Color).withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: (item['color'] as Color).withOpacity(0.15),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            item['icon'] as IconData,
+                            color: item['color'] as Color,
+                            size: 28,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            item['name'] as String,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.outfit(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -348,7 +530,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ],
         ),
-      drawer: Drawer(
+        drawer: Drawer(
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
@@ -544,13 +726,37 @@ class _MainScreenState extends State<MainScreen> {
         bottomNavigationBar: _isLoading 
           ? null 
           : NavigationBar(
-              selectedIndex: _selectedIndex < _bottomBarModules.length ? _selectedIndex : 0,
-              onDestinationSelected: _onItemTapped,
-              destinations: _bottomBarModules
-                  .map((id) => _moduleRegistry[id]!['destination'] as NavigationDestination)
-                  .toList(),
+              selectedIndex: _bottomBarModules.length == 4
+                  ? (_selectedIndex < 2 ? _selectedIndex : _selectedIndex + 1)
+                  : _selectedIndex,
+              onDestinationSelected: (int index) {
+                if (_bottomBarModules.length == 4) {
+                  if (index == 2) {
+                    _showAppMenuBottomSheet();
+                  } else {
+                    int targetIndex = index < 2 ? index : index - 1;
+                    _onItemTapped(targetIndex);
+                  }
+                } else {
+                  _onItemTapped(index);
+                }
+              },
+              destinations: _bottomBarModules.length == 4
+                  ? [
+                      _moduleRegistry[_bottomBarModules[0]]!['destination'] as NavigationDestination,
+                      _moduleRegistry[_bottomBarModules[1]]!['destination'] as NavigationDestination,
+                      const NavigationDestination(
+                        icon: Icon(Icons.apps_outlined, color: Colors.blueGrey),
+                        selectedIcon: Icon(Icons.apps, color: Colors.blueGrey),
+                        label: 'Menu',
+                      ),
+                      _moduleRegistry[_bottomBarModules[2]]!['destination'] as NavigationDestination,
+                      _moduleRegistry[_bottomBarModules[3]]!['destination'] as NavigationDestination,
+                    ]
+                  : _bottomBarModules
+                      .map((id) => _moduleRegistry[id]!['destination'] as NavigationDestination)
+                      .toList(),
             ),
-
       ), // Close Scaffold
     ); // Close Theme
   }

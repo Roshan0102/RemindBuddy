@@ -533,6 +533,14 @@ async function generateGoldChitRecommendation(apiKey, priceHistory, newsItems) {
     const dayOfMonth = nowIST.date();
     const currentMonthName = nowIST.format('MMMM YYYY');
     const currentPriceStr = priceHistory.length > 0 ? `₹${priceHistory[0].price}` : 'unknown';
+    // Override advice if it is between 26th and the end of the month
+    if (dayOfMonth >= 26) {
+        return {
+            recommendation: "WAIT",
+            shortReason: "Chit payment window closed. Next month-uku 1st lendhu pay pannunga.",
+            fullAnalysis: "Monthly gold chit payment cycle (1st - 25th) ippo closed. Next month window 1st date thaan open aagum. Adhuvarai wait pannunga."
+        };
+    }
     const prompt = `You are a financial advisor helping an investor who deposits ₹10,000 monthly in a gold chit.
 The chit payment must be made between the 1st and the 25th of every month. The chit company purchases gold on the exact day the payment is received.
 Your goal is to recommend whether the investor should pay today to lock in today's gold rate, or wait for a potentially lower rate later in the month (up to the 25th).
@@ -547,12 +555,15 @@ Latest Gold News Headlines:
 ${JSON.stringify(newsItems, null, 2)}
 
 Task:
-Determine if today is a good day to buy (i.e. we are at or near a short-term low, or prices are expected to rise significantly before the 25th) or if they should wait. If today is past the 25th of the month, frame the advice for the next month's payment cycle (which starts on the 1st of next month).
+Determine if today is a good day to buy (i.e. we are at or near a short-term low, or prices are expected to rise significantly before the 25th) or if they should wait.
+Write the 'shortReason' and 'fullAnalysis' in clear, friendly Tanglish (Tamil language written using the English/Latin alphabet, mixing Tamil and English naturally. E.g., 'Iniku gold price romba low-ah iruku, pay pannalam!' or 'Price inum kuraiyuradhuku chance iruku, so waiting list la irunga.').
+Do NOT use Tamil script (characters like தமிழ்), only use English letters.
+
 Respond ONLY with a JSON object matching this schema:
 {
   "recommendation": "BUY" | "WAIT",
-  "shortReason": "string (A concise notification message, max 80 characters. e.g. 'Gold price is dipping! Good time to pay your chit today.' or 'High prices today. Better to wait for a dip next week.')",
-  "fullAnalysis": "string (A detailed 2-3 sentence analysis of why to buy now or wait, referencing recent trends or news.)"
+  "shortReason": "string (A concise notification/alert message in Tanglish, max 80 characters, summarizing the recommendation. E.g., 'Iniku rate low-ah iruku, pay pannunga!' or 'Price high-ah iruku, konjam wait pannalam.')",
+  "fullAnalysis": "string (A detailed 2-3 sentence analysis in Tanglish explaining why, referencing the trend or news.)"
 }`;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {

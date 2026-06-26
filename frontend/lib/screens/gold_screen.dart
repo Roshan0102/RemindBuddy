@@ -727,21 +727,28 @@ class _GoldScreenState extends State<GoldScreen> {
                 const SizedBox(height: 16),
               ],
               if (predictionRationale.isNotEmpty) ...[
-                const Text(
-                  'AI Analysis & Rationale',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.05),
+                Card(
+                  elevation: 0,
+                  margin: EdgeInsets.zero,
+                  color: Colors.grey.withOpacity(0.03),
+                  shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.withOpacity(0.15)),
+                    side: BorderSide(color: Colors.grey.withOpacity(0.15)),
                   ),
-                  child: Text(
-                    predictionRationale,
-                    style: const TextStyle(fontSize: 13, height: 1.5),
+                  child: ExpansionTile(
+                    title: const Text(
+                      'AI Analysis & Rationale',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    expandedAlignment: Alignment.topLeft,
+                    children: [
+                      Text(
+                        predictionRationale,
+                        style: const TextStyle(fontSize: 13, height: 1.5),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -914,21 +921,28 @@ class _GoldScreenState extends State<GoldScreen> {
                 const SizedBox(height: 16),
               ],
               if (fullAnalysis.isNotEmpty) ...[
-                const Text(
-                  'Gemini Strategy Analysis',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.05),
+                Card(
+                  elevation: 0,
+                  margin: EdgeInsets.zero,
+                  color: Colors.grey.withOpacity(0.03),
+                  shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.withOpacity(0.15)),
+                    side: BorderSide(color: Colors.grey.withOpacity(0.15)),
                   ),
-                  child: Text(
-                    fullAnalysis,
-                    style: const TextStyle(fontSize: 13, height: 1.5),
+                  child: ExpansionTile(
+                    title: const Text(
+                      'Gemini Strategy Analysis',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    expandedAlignment: Alignment.topLeft,
+                    children: [
+                      Text(
+                        fullAnalysis,
+                        style: const TextStyle(fontSize: 13, height: 1.5),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
