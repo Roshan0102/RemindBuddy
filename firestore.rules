@@ -37,6 +37,17 @@ service cloud.firestore {
       allow write: if false; // Only Cloud Functions (Admin) should write
     }
 
+    // Gold AI insights and chit advice collections
+    match /gold_ai_insights/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only Cloud Functions (Admin) should write
+    }
+
+    match /gold_chit_advice/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only Cloud Functions (Admin) should write
+    }
+
     // Global voice assistant logs
     match /voice_assistant_logs/{logId} {
       allow create, read: if request.auth != null;
