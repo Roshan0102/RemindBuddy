@@ -846,4 +846,24 @@ exports.adminDeleteUser = functions.runWith({ timeoutSeconds: 60, memory: "256MB
         throw new functions.https.HttpsError('internal', error.message || 'Failed to delete user.');
     }
 });
+exports.adminUpdateUserModules = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    }
+    const targetUid = data.userId;
+    const enabledModules = data.enabledModules;
+    if (!targetUid || !Array.isArray(enabledModules)) {
+        throw new functions.https.HttpsError('invalid-argument', 'userId and enabledModules array are required.');
+    }
+    try {
+        await db.collection('users').doc(targetUid).set({
+            enabledModules: enabledModules
+        }, { merge: true });
+        return { success: true };
+    }
+    catch (error) {
+        console.error("Error updating user modules:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Failed to update modules.');
+    }
+});
 //# sourceMappingURL=index.js.map

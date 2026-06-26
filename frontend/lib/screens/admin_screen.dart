@@ -232,13 +232,16 @@ class _AdminScreenState extends State<AdminScreen> {
     }
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(userId).set({
-        'enabledModules': newModules,
-      }, SetOptions(merge: true));
+      await FirebaseFunctions.instance
+          .httpsCallable('adminUpdateUserModules')
+          .call({
+            'userId': userId,
+            'enabledModules': newModules,
+          });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating user permissions: $e')),
+          SnackBar(content: Text('Error updating user permissions: ${e.toString().replaceAll("Exception:", "")}')),
         );
       }
     }
