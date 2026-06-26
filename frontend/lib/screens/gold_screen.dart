@@ -752,7 +752,7 @@ class _GoldScreenState extends State<GoldScreen> {
                     'Latest Analyzed News (${news.length})',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                   ),
-                  contentPadding: EdgeInsets.zero,
+                  tilePadding: EdgeInsets.zero,
                   children: news.map((item) {
                     final title = item['title'] ?? '';
                     final source = item['source'] ?? '';
@@ -763,7 +763,7 @@ class _GoldScreenState extends State<GoldScreen> {
                       color: Colors.grey.withOpacity(0.03),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
-                        side: Border.all(color: Colors.grey.withOpacity(0.1)),
+                        side: BorderSide(color: Colors.grey.withOpacity(0.1)),
                       ),
                       child: ListTile(
                         dense: true,
@@ -938,7 +938,7 @@ class _GoldScreenState extends State<GoldScreen> {
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: Border.all(color: Colors.grey.withOpacity(0.1)),
+                  side: BorderSide(color: Colors.grey.withOpacity(0.1)),
                 ),
                 child: const Padding(
                   padding: EdgeInsets.all(12.0),
