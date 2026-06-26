@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../services/encryption_service.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -15,12 +16,17 @@ class _AdminScreenState extends State<AdminScreen> {
   final _passwordController = TextEditingController();
   final _vaultPinController = TextEditingController();
   final _geminiApiKeyController = TextEditingController();
+  final _adminUserUsernameController = TextEditingController();
+  final _adminUserPasswordController = TextEditingController();
   
   bool _isAuthenticated = false;
   bool _isLoading = true;
   String _errorMessage = '';
   String _vaultPinSuccessMessage = '';
   String _geminiApiKeySuccessMessage = '';
+  bool _isAdminUserActionLoading = false;
+  String _adminUserSuccessMessage = '';
+  String _adminUserErrorMessage = '';
 
   final List<Map<String, String>> _availableModules = [
     {'id': 'gold', 'label': 'Gold Rates'},
@@ -43,6 +49,8 @@ class _AdminScreenState extends State<AdminScreen> {
     _passwordController.dispose();
     _vaultPinController.dispose();
     _geminiApiKeyController.dispose();
+    _adminUserUsernameController.dispose();
+    _adminUserPasswordController.dispose();
     super.dispose();
   }
 
@@ -233,6 +241,117 @@ class _AdminScreenState extends State<AdminScreen> {
           SnackBar(content: Text('Error updating user permissions: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _adminCreateUser() async {
+    final username = _adminUserUsernameController.text.trim();
+    final password = _adminUserPasswordController.text.trim();
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _adminUserErrorMessage = 'Username and password are required.');
+      return;
+    }
+    setState(() {
+      _isAdminUserActionLoading = true;
+      _adminUserErrorMessage = '';
+      _adminUserSuccessMessage = '';
+    });
+    try {
+      await FirebaseFunctions.instance
+          .httpsCallable('adminCreateUser')
+          .call({'username': username, 'password': password});
+      
+      _adminUserUsernameController.clear();
+      _adminUserPasswordController.clear();
+      setState(() {
+        _adminUserSuccessMessage = 'User "$username" created successfully!';
+        _isAdminUserActionLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _adminUserErrorMessage = 'Failed to create user: ${e.toString().replaceAll("Exception:", "")}';
+        _isAdminUserActionLoading = false;
+      });
+    }
+  }
+
+  Future<void> _adminChangePassword() async {
+    final username = _adminUserUsernameController.text.trim();
+    final password = _adminUserPasswordController.text.trim();
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _adminUserErrorMessage = 'Username and new password are required.');
+      return;
+    }
+    setState(() {
+      _isAdminUserActionLoading = true;
+      _adminUserErrorMessage = '';
+      _adminUserSuccessMessage = '';
+    });
+    try {
+      await FirebaseFunctions.instance
+          .httpsCallable('adminChangePassword')
+          .call({'username': username, 'password': password});
+      
+      _adminUserUsernameController.clear();
+      _adminUserPasswordController.clear();
+      setState(() {
+        _adminUserSuccessMessage = 'Password updated for user "$username"!';
+        _isAdminUserActionLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _adminUserErrorMessage = 'Failed to change password: ${e.toString().replaceAll("Exception:", "")}';
+        _isAdminUserActionLoading = false;
+      });
+    }
+  }
+
+  Future<void> _adminDeleteUser() async {
+    final username = _adminUserUsernameController.text.trim();
+    if (username.isEmpty) {
+      setState(() => _adminUserErrorMessage = 'Username is required to delete a user.');
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Deletion'),
+        content: Text('Are you sure you want to permanently delete user "$username" and all their settings? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() {
+      _isAdminUserActionLoading = true;
+      _adminUserErrorMessage = '';
+      _adminUserSuccessMessage = '';
+    });
+    try {
+      await FirebaseFunctions.instance
+          .httpsCallable('adminDeleteUser')
+          .call({'username': username});
+      
+      _adminUserUsernameController.clear();
+      _adminUserPasswordController.clear();
+      setState(() {
+        _adminUserSuccessMessage = 'User "$username" deleted successfully!';
+        _isAdminUserActionLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _adminUserErrorMessage = 'Failed to delete user: ${e.toString().replaceAll("Exception:", "")}';
+        _isAdminUserActionLoading = false;
+      });
     }
   }
 
@@ -438,7 +557,99 @@ class _AdminScreenState extends State<AdminScreen> {
               ),
             ),
 
-            // Section 2: User List Feature control
+            // Section 2: User Accounts Management
+            Card(
+              margin: const EdgeInsets.all(16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      '👥 User Accounts Manager',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Create new users, change passwords, or delete users completely.',
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _adminUserUsernameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Username',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _adminUserPasswordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Password / New Password',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.lock),
+                      ),
+                    ),
+                    if (_adminUserSuccessMessage.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _adminUserSuccessMessage,
+                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                    if (_adminUserErrorMessage.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _adminUserErrorMessage,
+                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    _isAdminUserActionLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : Wrap(
+                            spacing: 8,
+                            alignment: WrapAlignment.spaceEvenly,
+                            children: [
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue.shade800,
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: _adminCreateUser,
+                                icon: const Icon(Icons.person_add),
+                                label: const Text('Create'),
+                              ),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.orange.shade800,
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: _adminChangePassword,
+                                icon: const Icon(Icons.lock_reset),
+                                label: const Text('Reset Pass'),
+                              ),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red.shade800,
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: _adminDeleteUser,
+                                icon: const Icon(Icons.person_remove),
+                                label: const Text('Delete'),
+                              ),
+                            ],
+                          ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Section 3: User List Feature control
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Text(
@@ -448,7 +659,7 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
 
             StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('users').snapshots(),
+              stream: FirebaseFirestore.instance.collection('usernames').snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: Padding(
@@ -472,36 +683,45 @@ class _AdminScreenState extends State<AdminScreen> {
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
-                    final userDoc = docs[index];
-                    final userId = userDoc.id;
-                    final userData = userDoc.data() as Map<String, dynamic>;
+                    final usernameDoc = docs[index];
+                    final username = usernameDoc.id;
+                    final usernameData = usernameDoc.data() as Map<String, dynamic>;
+                    final userId = usernameData['uid'] ?? '';
+                    final email = usernameData['email'] ?? '';
 
-                    final email = userData['email'] ?? userData['name'] ?? 'User ID: $userId';
-                    final enabledModules = List<String>.from(userData['enabledModules'] ?? ['gold']);
+                    if (userId.isEmpty) return const SizedBox.shrink();
 
-                    return Card(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      child: ExpansionTile(
-                        leading: const Icon(Icons.account_circle, color: Colors.blueGrey),
-                        title: Text(
-                          email,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: const Text('Tap to expand module settings'),
-                        children: _availableModules.map((mod) {
-                          final modId = mod['id']!;
-                          final modLabel = mod['label']!;
-                          final isEnabled = enabledModules.contains(modId);
+                    return StreamBuilder<DocumentSnapshot>(
+                      stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+                      builder: (context, userSnap) {
+                        final userData = userSnap.data?.data() as Map<String, dynamic>?;
+                        final enabledModules = List<String>.from(userData?['enabledModules'] ?? ['gold']);
 
-                          return SwitchListTile(
-                            title: Text(modLabel),
-                            value: isEnabled,
-                            onChanged: (val) => _toggleModule(userId, modId, val, enabledModules),
-                          );
-                        }).toList(),
-                      ),
+                        return Card(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          child: ExpansionTile(
+                            leading: const Icon(Icons.account_circle, color: Colors.blueGrey),
+                            title: Text(
+                              username,
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(email.isNotEmpty ? email : 'No email associated'),
+                            children: _availableModules.map((mod) {
+                              final modId = mod['id']!;
+                              final modLabel = mod['label']!;
+                              final isEnabled = enabledModules.contains(modId);
+
+                              return SwitchListTile(
+                                title: Text(modLabel),
+                                value: isEnabled,
+                                onChanged: (val) => _toggleModule(userId, modId, val, enabledModules),
+                              );
+                            }).toList(),
+                          ),
+                        );
+                      },
                     );
                   },
                 );

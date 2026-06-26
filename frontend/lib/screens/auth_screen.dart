@@ -318,27 +318,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                     ),
                               ),
                             ),
-                            
-                            const SizedBox(height: 20),
-                            
-                            TextButton(
-                              onPressed: _toggleAuthMode,
-                              child: RichText(
-                                text: TextSpan(
-                                  style: const TextStyle(color: Colors.black54),
-                                  children: [
-                                    TextSpan(text: _isLogin ? "Don't have an account? " : "Already have an account? "),
-                                    TextSpan(
-                                      text: _isLogin ? "Sign Up" : "Login",
-                                      style: TextStyle(
-                                        color: Colors.blue.shade800,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
                           ],
                         ),
                       ),

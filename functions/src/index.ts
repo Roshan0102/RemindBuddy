@@ -250,13 +250,23 @@ async function runGoldAIPredictionInternal(): Promise<any> {
     // 4. Prepare prompt for Gemini
     const currentPriceInfo = priceHistory.length > 0 ? priceHistory[0] : null;
     const prompt = `You are a financial analyst specializing in precious metals, especially Gold rates in India.
-Analyze the following recent historical 22K gold prices (per 2 grams or current units) and the latest gold market news headlines to provide:
-1. Market Sentiment: "bullish", "bearish", or "neutral".
-2. Sentiment Score: An integer from -100 (extremely bearish) to 100 (extremely bullish).
-3. Sentiment Summary: A concise, 1-2 sentence summary of what is driving this sentiment.
+Analyze the following recent historical 22K gold prices (per 2 grams or current units) and the latest gold market news headlines.
+Specifically, make sure to consider:
+- American and global economic news (such as US Federal Reserve interest rates).
+- Geopolitical events or war news related to gold (which typically increases gold's appeal as a safe haven).
+- Tax and import/export duty changes in India as well as other countries that affect the gold price in India.
+- Any general news affecting demand/supply in the Indian gold market.
+
+Your output must be written in very simple, plain, and easy-to-understand English. 
+CRITICAL: Do NOT use difficult financial jargon (like 'bearish', 'bullish', 'consolidation', 'correction') without immediately explaining them in extremely simple terms. For example, instead of 'market is bearish', write 'prices are likely to fall (bearish)'. Keep explanations very simple.
+
+Provide:
+1. Market Sentiment: "bullish" (upward trend/prices rising), "bearish" (downward trend/prices dropping), or "neutral".
+2. Sentiment Score: An integer from -100 (extremely bearish/falling) to 100 (extremely bullish/rising).
+3. Sentiment Summary: A concise, 1-2 sentence summary of what is driving this sentiment using simple English.
 4. Predicted Trend: "upward", "downward", or "stable" for the next 1-3 days.
 5. Predicted Price Range: A realistic price range (e.g. "13,100 - 13,300") in the same format/currency unit as the input price (the current latest price is ${currentPriceInfo ? currentPriceInfo.price : 'unknown'}).
-6. Prediction Rationale: A detailed bullet-pointed explanation of why you predict this trend, referencing both the recent price trend and the news headlines.
+6. Prediction Rationale: A detailed bullet-pointed explanation of why you predict this trend, referencing recent price trends, US/global news, geopolitics/war news, or tax updates.
 
 Input Data:
 Recent Price History (latest first):
@@ -791,6 +801,128 @@ exports.scheduledGoldChitAdvice = functions.pubsub.schedule('1 11 * * *').timeZo
         await sendChitNotificationToAllUsers(advice.recommendation, advice.shortReason);
     } catch (e) {
         console.error("Error in scheduledGoldChitAdvice:", e);
+    }
+});
+
+exports.adminCreateUser = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    }
+    const username = (data.username || "").trim().toLowerCase();
+    const password = (data.password || "").trim();
+
+    if (!username || !password) {
+        throw new functions.https.HttpsError('invalid-argument', 'Username and password are required.');
+    }
+    if (password.length < 6) {
+        throw new functions.https.HttpsError('invalid-argument', 'Password must be at least 6 characters.');
+    }
+
+    try {
+        const usernameDoc = await db.collection('usernames').doc(username).get();
+        if (usernameDoc.exists) {
+            throw new functions.https.HttpsError('already-exists', 'Username is already taken.');
+        }
+
+        const email = `${username}@remindbuddy.com`;
+        
+        const userRecord = await admin.auth().createUser({
+            email: email,
+            password: password,
+            displayName: username,
+            emailVerified: true
+        });
+
+        const uid = userRecord.uid;
+
+        await db.collection('usernames').doc(username).set({
+            email: email,
+            uid: uid,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        await db.collection('users').doc(uid).set({
+            enabledModules: ['gold', 'reminders', 'notes', 'shifts', 'checklist'],
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        return { success: true, uid: uid, username: username };
+    } catch (error: any) {
+        console.error("Error creating user:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Failed to create user.');
+    }
+});
+
+exports.adminChangePassword = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    }
+    const username = (data.username || "").trim().toLowerCase();
+    const newPassword = (data.password || "").trim();
+
+    if (!username || !newPassword) {
+        throw new functions.https.HttpsError('invalid-argument', 'Username and new password are required.');
+    }
+    if (newPassword.length < 6) {
+        throw new functions.https.HttpsError('invalid-argument', 'Password must be at least 6 characters.');
+    }
+
+    try {
+        const usernameDoc = await db.collection('usernames').doc(username).get();
+        if (!usernameDoc.exists) {
+            throw new functions.https.HttpsError('not-found', 'Username not found.');
+        }
+
+        const uid = usernameDoc.data()?.uid;
+        if (!uid) {
+            throw new functions.https.HttpsError('not-found', 'UID not found for username.');
+        }
+
+        await admin.auth().updateUser(uid, {
+            password: newPassword
+        });
+
+        return { success: true, username: username };
+    } catch (error: any) {
+        console.error("Error updating password:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Failed to change password.');
+    }
+});
+
+exports.adminDeleteUser = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    }
+    const username = (data.username || "").trim().toLowerCase();
+
+    if (!username) {
+        throw new functions.https.HttpsError('invalid-argument', 'Username is required.');
+    }
+
+    try {
+        const usernameDoc = await db.collection('usernames').doc(username).get();
+        if (!usernameDoc.exists) {
+            throw new functions.https.HttpsError('not-found', 'Username not found.');
+        }
+
+        const uid = usernameDoc.data()?.uid;
+        if (!uid) {
+            throw new functions.https.HttpsError('not-found', 'UID not found for username.');
+        }
+
+        try {
+            await admin.auth().deleteUser(uid);
+        } catch (authErr: any) {
+            console.warn("Auth user deletion warning:", authErr.message);
+        }
+
+        await db.collection('usernames').doc(username).delete();
+        await db.collection('users').doc(uid).delete();
+
+        return { success: true, username: username };
+    } catch (error: any) {
+        console.error("Error deleting user:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Failed to delete user.');
     }
 });
 
