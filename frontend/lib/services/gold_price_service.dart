@@ -94,6 +94,46 @@ class GoldPriceService {
     }
   }
 
+  Future<Map<String, dynamic>?> getLatestAIInsights() async {
+    try {
+      final doc = await _db.collection('gold_ai_insights').doc('latest').get();
+      return doc.data();
+    } catch (e) {
+      print('Error fetching AI insights: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> generateAIInsights() async {
+    try {
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('generateGoldAIInsights');
+      final result = await callable.call();
+      return Map<String, dynamic>.from(result.data as Map);
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>?> getLatestChitAdvice() async {
+    try {
+      final doc = await _db.collection('gold_chit_advice').doc('latest').get();
+      return doc.data();
+    } catch (e) {
+      print('Error fetching gold chit advice: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> generateChitAdvice() async {
+    try {
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('generateGoldChitAdvice');
+      final result = await callable.call();
+      return Map<String, dynamic>.from(result.data as Map);
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
   Future<void> clearGoldPriceHistory() async {
     try {
       final snap = await _db.collection('global_gold_prices').get();

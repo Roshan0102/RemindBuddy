@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/gold_price_service.dart';
 import '../models/gold_price.dart';
 
@@ -14,6 +15,9 @@ class GoldScreen extends StatefulWidget {
 class _GoldScreenState extends State<GoldScreen> {
   final GoldPriceService _goldService = GoldPriceService();
   bool _isFetching = false;
+  bool _isGeneratingAI = false;
+  bool _isGeneratingChit = false;
+  int _aiActiveTab = 0; // 0 for Forecast, 1 for Chit Assistant
   String _selectedChartRange = '7D';
 
   @override
@@ -24,7 +28,6 @@ class _GoldScreenState extends State<GoldScreen> {
   Future<void> _fetchPrice() async {
     if (_isFetching) return;
     setState(() => _isFetching = true);
-    
     try {
       final result = await _goldService.triggerForceFetch();
       if (mounted) {
@@ -175,6 +178,8 @@ class _GoldScreenState extends State<GoldScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _buildCurrentPriceCard(currentPrice, priceDiff),
+                          const SizedBox(height: 24),
+                          _buildAIInsightsSection(),
                           const SizedBox(height: 24),
                           const Text(
                             'Recent History',
@@ -516,6 +521,617 @@ class _GoldScreenState extends State<GoldScreen> {
       return DateFormat('dd/MM HH:mm').format(dt);
     } catch (e) {
       return dateStr;
+    }
+  }
+
+  Widget _buildAIInsightsSection() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.blue.shade900, Colors.indigo.shade800],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.psychology, color: Colors.cyanAccent),
+                SizedBox(width: 8),
+                Text(
+                  'Gemini AI Assistant',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () => setState(() => _aiActiveTab = 0),
+                    child: Container(
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: _aiActiveTab == 0 ? Colors.indigo.shade800 : Colors.transparent,
+                            width: 2.5,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        'Market Forecast',
+                        style: TextStyle(
+                          fontWeight: _aiActiveTab == 0 ? FontWeight.bold : FontWeight.normal,
+                          color: _aiActiveTab == 0 ? Colors.indigo.shade800 : Colors.grey,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => setState(() => _aiActiveTab = 1),
+                    child: Container(
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: _aiActiveTab == 1 ? Colors.indigo.shade800 : Colors.transparent,
+                            width: 2.5,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        'Gold Chit Assistant',
+                        style: TextStyle(
+                          fontWeight: _aiActiveTab == 1 ? FontWeight.bold : FontWeight.normal,
+                          color: _aiActiveTab == 1 ? Colors.indigo.shade800 : Colors.grey,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _aiActiveTab == 0 ? _buildMarketForecastContent() : _buildGoldChitAdviceContent(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMarketForecastContent() {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('gold_ai_insights').doc('latest').snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        final data = snapshot.data?.data() as Map<String, dynamic>?;
+
+        if (data == null) {
+          return Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              children: [
+                const Icon(Icons.psychology_outlined, size: 48, color: Colors.amber),
+                const SizedBox(height: 12),
+                const Text(
+                  'No AI predictions generated yet',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Get Gemini AI to analyze recent prices and gold market news to predict the future rate.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                const SizedBox(height: 16),
+                _buildGenerateAIButton(),
+              ],
+            ),
+          );
+        }
+
+        final sentiment = data['sentiment'] ?? 'neutral';
+        final sentimentScore = data['sentimentScore'] ?? 0;
+        final sentimentSummary = data['sentimentSummary'] ?? '';
+        final predictedTrend = data['predictedTrend'] ?? 'stable';
+        final predictedPriceRange = data['predictedPriceRange'] ?? 'N/A';
+        final predictionRationale = data['predictionRationale'] ?? '';
+        final List<dynamic> news = data['news'] ?? [];
+
+        Color sentimentColor;
+        IconData sentimentIcon;
+        if (sentiment == 'bullish') {
+          sentimentColor = Colors.green;
+          sentimentIcon = Icons.trending_up;
+        } else if (sentiment == 'bearish') {
+          sentimentColor = Colors.red;
+          sentimentIcon = Icons.trending_down;
+        } else {
+          sentimentColor = Colors.orange;
+          sentimentIcon = Icons.trending_flat;
+        }
+
+        return Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildInsightMetricCard(
+                      title: 'Market Sentiment',
+                      value: sentiment.toString().toUpperCase(),
+                      subtitle: 'Score: $sentimentScore',
+                      icon: sentimentIcon,
+                      color: sentimentColor,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildInsightMetricCard(
+                      title: 'Predicted Trend',
+                      value: predictedTrend.toString().toUpperCase(),
+                      subtitle: 'Range: ₹ $predictedPriceRange',
+                      icon: predictedTrend == 'upward'
+                          ? Icons.arrow_circle_up
+                          : (predictedTrend == 'downward'
+                              ? Icons.arrow_circle_down
+                              : Icons.arrow_circle_right_outlined),
+                      color: predictedTrend == 'upward'
+                          ? Colors.green
+                          : (predictedTrend == 'downward' ? Colors.red : Colors.orange),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (sentimentSummary.isNotEmpty) ...[
+                const Text(
+                  'Market Summary',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  sentimentSummary,
+                  style: const TextStyle(fontSize: 13, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (predictionRationale.isNotEmpty) ...[
+                const Text(
+                  'AI Analysis & Rationale',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.withOpacity(0.15)),
+                  ),
+                  child: Text(
+                    predictionRationale,
+                    style: const TextStyle(fontSize: 13, height: 1.5),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (news.isNotEmpty) ...[
+                ExpansionTile(
+                  title: Text(
+                    'Latest Analyzed News (${news.length})',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                  children: news.map((item) {
+                    final title = item['title'] ?? '';
+                    final source = item['source'] ?? '';
+                    final pubDate = item['pubDate'] ?? '';
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      elevation: 0,
+                      color: Colors.grey.withOpacity(0.03),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: Border.all(color: Colors.grey.withOpacity(0.1)),
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        title: Text(
+                          title,
+                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
+                        ),
+                        subtitle: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              source,
+                              style: const TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              pubDate,
+                              style: const TextStyle(color: Colors.grey, fontSize: 9),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+              ],
+              _buildGenerateAIButton(),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildGoldChitAdviceContent() {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('gold_chit_advice').doc('latest').snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        final data = snapshot.data?.data() as Map<String, dynamic>?;
+
+        if (data == null) {
+          return Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              children: [
+                const Icon(Icons.monetization_on_outlined, size: 48, color: Colors.amber),
+                const SizedBox(height: 12),
+                const Text(
+                  'No Chit Advice Generated Yet',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Get Gemini to analyze price trends for your ₹10,000 monthly chit payment (1st - 25th) and predict the lowest rate day.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                const SizedBox(height: 16),
+                _buildGenerateChitButton(),
+              ],
+            ),
+          );
+        }
+
+        final recommendation = data['recommendation'] ?? 'WAIT';
+        final shortReason = data['shortReason'] ?? '';
+        final fullAnalysis = data['fullAnalysis'] ?? '';
+
+        Color recColor = recommendation == 'BUY' ? Colors.green : Colors.orange;
+        IconData recIcon = recommendation == 'BUY' ? Icons.check_circle : Icons.pause_circle_filled;
+
+        return Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.withOpacity(0.15)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Monthly Strategy (1st - 25th):\nGoal is to pay your ₹10k monthly chit on the day with the lowest gold price.',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: recColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: recColor.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(recIcon, color: recColor, size: 32),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "TODAY'S CHIT RECOMMENDATION",
+                            style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            recommendation == 'BUY' ? 'PAY TODAY' : 'WAIT & WATCH',
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: recColor),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (shortReason.isNotEmpty) ...[
+                const Text(
+                  'Daily Alert Preview',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '"$shortReason"',
+                  style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (fullAnalysis.isNotEmpty) ...[
+                const Text(
+                  'Gemini Strategy Analysis',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.withOpacity(0.15)),
+                  ),
+                  child: Text(
+                    fullAnalysis,
+                    style: const TextStyle(fontSize: 13, height: 1.5),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Card(
+                color: Colors.grey.withOpacity(0.02),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: Border.all(color: Colors.grey.withOpacity(0.1)),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.all(12.0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.notifications_active_outlined, color: Colors.amber, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Daily Reminder Scheduled: You will receive an alert at 11:01 AM IST every day with these insights.',
+                          style: TextStyle(fontSize: 11, color: Colors.grey, height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              _buildGenerateChitButton(),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildInsightMetricCard({
+    required String title,
+    required String value,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold),
+              ),
+              Icon(icon, color: color, size: 16),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: color),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGenerateAIButton() {
+    return _isGeneratingAI
+        ? const Center(
+            child: Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Column(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 8),
+                  Text('Gemini is analyzing market news & prices...', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                ],
+              ),
+            ),
+          )
+        : ElevatedButton.icon(
+            onPressed: _generateAIInsights,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigo.shade800,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.auto_awesome),
+            label: const Text('Ask Gemini to Forecast Prices'),
+          );
+  }
+
+  Widget _buildGenerateChitButton() {
+    return _isGeneratingChit
+        ? const Center(
+            child: Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Column(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 8),
+                  Text('Gemini is calculating optimal buy days...', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                ],
+              ),
+            ),
+          )
+        : ElevatedButton.icon(
+            onPressed: _generateChitAdvice,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber.shade800,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.insights),
+            label: const Text('Recalculate Buy Strategy'),
+          );
+  }
+
+  Future<void> _generateAIInsights() async {
+    setState(() => _isGeneratingAI = true);
+    try {
+      final res = await _goldService.generateAIInsights();
+      if (mounted) {
+        if (res.containsKey('error')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ AI Forecast Failed: ${res['error']}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ AI Predictions generated successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error calling AI service: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGeneratingAI = false);
+      }
+    }
+  }
+
+  Future<void> _generateChitAdvice() async {
+    setState(() => _isGeneratingChit = true);
+    try {
+      final res = await _goldService.generateChitAdvice();
+      if (mounted) {
+        if (res.containsKey('error')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Failed to calculate strategy: ${res['error']}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Gold Chit strategy updated!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error calling advice service: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGeneratingChit = false);
+      }
     }
   }
 }
