@@ -10,6 +10,7 @@ import 'checklists_screen.dart';
 import 'my_shifts_screen.dart';
 import 'auth_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
