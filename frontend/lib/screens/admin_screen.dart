@@ -35,6 +35,7 @@ class _AdminScreenState extends State<AdminScreen> {
     {'id': 'shifts', 'label': 'My Shifts'},
     {'id': 'checklist', 'label': 'Checklist'},
     {'id': 'vault', 'label': 'Secure Vault'},
+    {'id': 'events', 'label': 'Tech Events'},
   ];
 
   @override

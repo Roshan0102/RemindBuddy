@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/shift.dart';
 import '../services/storage_service.dart';
 import '../services/shift_service.dart';
@@ -30,10 +32,148 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   DateTime _currentDate = DateTime.now();
   String get _selectedRosterMonth => DateFormat('yyyy-MM').format(_currentDate);
 
+  int _selectedTab = 0; // 0 for Schedule, 1 for Events
+  bool _isEventsEnabled = false;
+  bool _isFetchingEvents = false;
+  List<String> _eventInterests = ['Cloud', 'Devops', 'AI', 'Agentic AI'];
+
   @override
   void initState() {
     super.initState();
     _loadShifts();
+    _loadEventsPermissionAndInterests();
+  }
+
+  Future<void> _loadEventsPermissionAndInterests() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        final enabledModules = List<String>.from(data['enabledModules'] ?? ['gold']);
+        final interests = List<String>.from(data['eventInterests'] ?? ['Cloud', 'Devops', 'AI', 'Agentic AI']);
+        setState(() {
+          _isEventsEnabled = enabledModules.contains('events');
+          _eventInterests = interests;
+        });
+      }
+    } catch (e) {
+      LogService().error("Error loading events permission/interests", e);
+    }
+  }
+
+  Future<void> _triggerFetchEvents() async {
+    setState(() => _isFetchingEvents = true);
+    try {
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('fetchUserTechEvents');
+      final result = await callable.call();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Successfully loaded ${result.data['count'] ?? 0} tech events'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Failed to fetch events: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isFetchingEvents = false);
+      }
+    }
+  }
+
+  Future<void> _editInterestsDialog() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final controller = TextEditingController(text: _eventInterests.join(', '));
+    bool isSavingInterests = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Tech Interests'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Enter tags you are interested in (comma separated):',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  labelText: 'Interests',
+                  hintText: 'e.g. Cloud, Devops, AI, Agentic AI, testing',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSavingInterests ? null : () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isSavingInterests
+                  ? null
+                  : () async {
+                      setDialogState(() => isSavingInterests = true);
+                      try {
+                        final list = controller.text
+                            .split(',')
+                            .map((s) => s.trim())
+                            .where((s) => s.isNotEmpty)
+                            .toList();
+                        
+                        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+                          'eventInterests': list,
+                        }, SetOptions(merge: true));
+
+                        setState(() {
+                          _eventInterests = list;
+                        });
+
+                        Navigator.pop(context);
+
+                        // Prompt user to refresh
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Interests saved! Fetching new events...'),
+                          ),
+                        );
+                        _triggerFetchEvents();
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed to save interests: $e'), backgroundColor: Colors.red),
+                        );
+                      } finally {
+                        setDialogState(() => isSavingInterests = false);
+                      }
+                    },
+              child: isSavingInterests
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
   
   void _changeMonth(int delta) {
@@ -909,66 +1049,377 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     );
   }
 
+  Widget _buildTabButton(String label, int index) {
+    final isSelected = _selectedTab == index;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedTab = index;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.teal : Colors.teal.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: isSelected ? Colors.teal : Colors.teal.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? Colors.white : Colors.teal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEventsView() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Center(child: Text('Please log in first.'));
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('events')
+          .orderBy('date', descending: false)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(child: Text('Error loading events: ${snapshot.error}'));
+        }
+
+        final allDocs = snapshot.data?.docs ?? [];
+        
+        // Filter events that match the currently selected month and year (_selectedRosterMonth format: yyyy-MM)
+        final monthEvents = allDocs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final dateStr = data['date'] as String? ?? '';
+          return dateStr.startsWith(_selectedRosterMonth);
+        }).toList();
+
+        if (monthEvents.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.event_busy, size: 80, color: Colors.grey[300]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No events found for ${DateFormat('MMMM yyyy').format(_currentDate)}',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600], fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Interests: ${_eventInterests.join(", ")}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: _triggerFetchEvents,
+                    icon: const Icon(Icons.sync),
+                    label: const Text('Fetch Events via AI'),
+                    style: ElevatedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor: Colors.teal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.only(bottom: 24),
+          itemCount: monthEvents.length,
+          itemBuilder: (context, index) {
+            final data = monthEvents[index].data() as Map<String, dynamic>;
+            final title = data['title'] ?? 'No Title';
+            final dateStr = data['date'] ?? '';
+            final timings = data['timings'] ?? 'No timings';
+            final location = data['location'] ?? 'No location';
+            final regLink = data['registrationLink'] ?? '';
+
+            // Format date nicely: YYYY-MM-DD to "EEE, MMM d"
+            String formattedDate = dateStr;
+            try {
+              final parsed = DateTime.parse(dateStr);
+              formattedDate = DateFormat('EEEE, MMMM d').format(parsed);
+            } catch (_) {}
+
+            // Determine user shift for this day
+            String shiftLabel = 'no data';
+            Color shiftBadgeColor = Colors.grey;
+
+            if (_hasData && _shifts.isNotEmpty) {
+              final shiftOnDay = _shifts.firstWhere(
+                (s) => s.date == dateStr,
+                orElse: () => Shift(date: dateStr, shiftType: 'none', isWeekOff: false),
+              );
+
+              if (shiftOnDay.shiftType != 'none') {
+                shiftLabel = shiftOnDay.getDisplayName();
+                shiftBadgeColor = _getShiftColor(shiftOnDay.shiftType);
+              } else {
+                shiftLabel = 'No Shift';
+                shiftBadgeColor = Colors.grey.shade400;
+              }
+            }
+
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.grey.withOpacity(0.15)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.teal,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: shiftLabel == 'no data'
+                                ? Colors.grey.shade100
+                                : shiftBadgeColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: shiftLabel == 'no data'
+                                  ? Colors.grey.shade300
+                                  : shiftBadgeColor.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Text(
+                            shiftLabel == 'no data' ? 'Shift: No Data' : 'Shift: $shiftLabel',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: shiftLabel == 'no data' ? Colors.grey : shiftBadgeColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.calendar_month, size: 16, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Text(
+                          formattedDate,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Text(
+                          timings,
+                          style: const TextStyle(fontSize: 13, color: Colors.black87),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.location_on, size: 16, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            location,
+                            style: const TextStyle(fontSize: 13, color: Colors.black87),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (regLink.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () => _launchURL(regLink),
+                          icon: const Icon(Icons.open_in_new, size: 16),
+                          label: const Text('Register Here'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.teal,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _launchURL(String urlString) async {
+    final Uri url = Uri.parse(urlString);
+    try {
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not open link: $urlString')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error launching link: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Shifts'),
+        title: Row(
+          children: [
+            const Text('My Shifts'),
+            if (_isEventsEnabled) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildTabButton('Schedule', 0),
+                      const SizedBox(width: 6),
+                      _buildTabButton('Events', 1),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
         actions: [
-          if (_hasData)
+          if (_selectedTab == 0 && _hasData) ...[
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: _loadShifts,
-              tooltip: 'Refresh',
+              tooltip: 'Refresh Roster',
             ),
-          if (_hasData)
             IconButton(
               icon: const Icon(Icons.delete_outline),
               onPressed: _clearData,
-              tooltip: 'Clear All Data',
+              tooltip: 'Clear All Roster Data',
             ),
+          ] else if (_selectedTab == 1) ...[
+            if (_isFetchingEvents)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.teal),
+                ),
+              )
+            else ...[
+              IconButton(
+                icon: const Icon(Icons.interests_outlined),
+                onPressed: _editInterestsDialog,
+                tooltip: 'Edit Interests',
+              ),
+              IconButton(
+                icon: const Icon(Icons.sync),
+                onPressed: _triggerFetchEvents,
+                tooltip: 'Sync Events Now',
+              ),
+            ]
+          ],
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _uploadJSON,
-        icon: const Icon(Icons.upload_file),
-        label: Text(_hasData ? 'Update Roster' : 'Upload Roster'),
-      ),
+      floatingActionButton: _selectedTab == 0
+          ? FloatingActionButton.extended(
+              onPressed: _uploadJSON,
+              icon: const Icon(Icons.upload_file),
+              label: Text(_hasData ? 'Update Roster' : 'Upload Roster'),
+            )
+          : null,
       body: Column(
         children: [
           _buildHeader(),
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : !_hasData
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.calendar_month, size: 80, color: Colors.grey[300]),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No shift data yet',
-                              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+            child: _selectedTab == 0
+                ? (_isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : !_hasData
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.calendar_month, size: 80, color: Colors.grey[300]),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No shift data yet',
+                                  style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Upload your roster JSON for this month',
+                                  style: TextStyle(color: Colors.grey[500]),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Upload your roster JSON for this month',
-                              style: TextStyle(color: Colors.grey[500]),
+                          )
+                        : SingleChildScrollView(
+                            child: Column(
+                              children: [
+                                _buildStatisticsCard(),
+                                _buildUpcomingShifts(),
+                                _buildAllShiftsCalendar(),
+                                const SizedBox(height: 80), // Space for FAB
+                              ],
                             ),
-                          ],
-                        ),
-                      )
-                    : SingleChildScrollView(
-                        child: Column(
-                          children: [
-                            _buildStatisticsCard(),
-                            _buildUpcomingShifts(),
-                            _buildAllShiftsCalendar(),
-                            const SizedBox(height: 80), // Space for FAB
-                          ],
-                        ),
-                      ),
+                          ))
+                : _buildEventsView(),
           ),
         ],
       ),

@@ -619,6 +619,16 @@ class _GoldScreenState extends State<GoldScreen> {
     );
   }
 
+  String _formatAITimestamp(String? tsStr) {
+    if (tsStr == null || tsStr.isEmpty) return 'N/A';
+    try {
+      final dt = DateTime.parse(tsStr).toLocal();
+      return DateFormat('MMMM d, yyyy h:mm a').format(dt);
+    } catch (e) {
+      return tsStr;
+    }
+  }
+
   Widget _buildMarketForecastContent() {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('gold_ai_insights').doc('latest').snapshots(),
@@ -665,6 +675,7 @@ class _GoldScreenState extends State<GoldScreen> {
         final predictedPriceRange = data['predictedPriceRange'] ?? 'N/A';
         final predictionRationale = data['predictionRationale'] ?? '';
         final List<dynamic> news = data['news'] ?? [];
+        final timestampStr = data['timestamp'] as String?;
 
         Color sentimentColor;
         IconData sentimentIcon;
@@ -684,6 +695,20 @@ class _GoldScreenState extends State<GoldScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (timestampStr != null) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    'Last Updated: ${_formatAITimestamp(timestampStr)}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               Row(
                 children: [
                   Expanded(
@@ -847,6 +872,7 @@ class _GoldScreenState extends State<GoldScreen> {
         final recommendation = data['recommendation'] ?? 'WAIT';
         final shortReason = data['shortReason'] ?? '';
         final fullAnalysis = data['fullAnalysis'] ?? '';
+        final timestampStr = data['timestamp'] as String?;
 
         Color recColor = recommendation == 'BUY' ? Colors.green : Colors.orange;
         IconData recIcon = recommendation == 'BUY' ? Icons.check_circle : Icons.pause_circle_filled;
@@ -856,6 +882,20 @@ class _GoldScreenState extends State<GoldScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (timestampStr != null) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    'Last Updated: ${_formatAITimestamp(timestampStr)}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(

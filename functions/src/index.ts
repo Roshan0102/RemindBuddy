@@ -949,3 +949,145 @@ exports.adminUpdateUserModules = functions.runWith({ timeoutSeconds: 60, memory:
     }
 });
 
+async function fetchAndStoreEventsForUserInternal(uid: string): Promise<any> {
+    const userDoc = await db.collection("users").doc(uid).get();
+    let interests = ["Cloud", "Devops", "AI", "Agentic AI"];
+    if (userDoc.exists) {
+        const data = userDoc.data();
+        if (data && data.eventInterests && Array.isArray(data.eventInterests) && data.eventInterests.length > 0) {
+            interests = data.eventInterests;
+        }
+    }
+
+    const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
+    let apiKey = "";
+    if (configDoc.exists) {
+        apiKey = configDoc.data()?.apiKey || "";
+    }
+    if (!apiKey) {
+        throw new Error('Gemini API key is not configured in admin console.');
+    }
+
+    const today = moment().tz('Asia/Kolkata');
+    const startDateStr = today.format('YYYY-MM-DD');
+    const endDateStr = today.clone().add(2, 'months').endOf('month').format('YYYY-MM-DD');
+
+    const prompt = `Find upcoming Tech events, meetups, conferences, workshops happening in Bengaluru, India related to the following interests: ${interests.join(', ')}.
+The events must happen between ${startDateStr} and ${endDateStr}.
+Use Google Search grounding to find real, current upcoming events.
+Provide a clean JSON list of events. For registration links, find actual URL links to their signup/info pages (e.g. meetup.com, luma, eventbrite, etc.). Do not invent links. If no registration link is available, use a general search/event page or homepage URL for the host.
+
+Respond ONLY with a JSON array matching this schema:
+[
+  {
+    "title": "string",
+    "date": "YYYY-MM-DD",
+    "timings": "string",
+    "location": "string",
+    "registrationLink": "string"
+  }
+]`;
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const payload = {
+        contents: [
+            {
+                parts: [
+                    { text: prompt }
+                ]
+            }
+        ],
+        tools: [
+            {
+                googleSearch: {}
+            }
+        ],
+        generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "ARRAY",
+                items: {
+                    type: "OBJECT",
+                    properties: {
+                        title: { type: "STRING" },
+                        date: { type: "STRING", description: "YYYY-MM-DD format only" },
+                        timings: { type: "STRING" },
+                        location: { type: "STRING" },
+                        registrationLink: { type: "STRING" }
+                    },
+                    required: ["title", "date", "timings", "location", "registrationLink"]
+                }
+            }
+        }
+    };
+
+    const response = await axios.post(url, payload, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 60000
+    });
+
+    const candidates = response.data?.candidates;
+    if (!candidates || candidates.length === 0) {
+        throw new Error('No response candidates returned from Gemini API.');
+    }
+
+    const textResponse = candidates[0].content?.parts[0]?.text;
+    if (!textResponse) {
+        throw new Error('Empty content returned from Gemini API.');
+    }
+
+    const parsedEvents = JSON.parse(textResponse) as any[];
+
+    const eventsCol = db.collection("users").doc(uid).collection("events");
+    const oldEvents = await eventsCol.get();
+    const batch = db.batch();
+    oldEvents.forEach(doc => {
+        batch.delete(doc.ref);
+    });
+    await batch.commit();
+
+    const writeBatch = db.batch();
+    for (const event of parsedEvents) {
+        const cleanTitle = event.title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        const docId = `${event.date}_${cleanTitle.substring(0, 30)}`;
+        const docRef = eventsCol.doc(docId);
+        writeBatch.set(docRef, {
+            ...event,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+    }
+    await writeBatch.commit();
+
+    return { success: true, count: parsedEvents.length };
+}
+
+exports.fetchUserTechEvents = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    }
+    const uid = context.auth.uid;
+    try {
+        return await fetchAndStoreEventsForUserInternal(uid);
+    } catch (error: any) {
+        console.error("Error in fetchUserTechEvents:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Failed to fetch tech events.');
+    }
+});
+
+exports.dailyTechEventsFetcher = functions.pubsub.schedule('0 0 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+    console.log("Starting dailyTechEventsFetcher at 12 AM IST");
+    const usersSnap = await db.collection("users").get();
+    for (const userDoc of usersSnap.docs) {
+        const data = userDoc.data();
+        const enabledModules = data.enabledModules || [];
+        if (enabledModules.includes("events")) {
+            try {
+                console.log(`Fetching tech events for user: ${userDoc.id}`);
+                await fetchAndStoreEventsForUserInternal(userDoc.id);
+            } catch (err: any) {
+                console.error(`Error fetching events for user ${userDoc.id}:`, err.message);
+            }
+        }
+    }
+});
+
