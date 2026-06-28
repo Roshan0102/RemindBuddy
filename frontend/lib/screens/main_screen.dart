@@ -34,6 +34,7 @@ class _MainScreenState extends State<MainScreen> {
 
   StreamSubscription? _notificationSubscription;
   StreamSubscription? _authSubscription;
+  StreamSubscription? _userPrefsSubscription;
 
   @override
   void initState() {
@@ -42,11 +43,41 @@ class _MainScreenState extends State<MainScreen> {
     _setupNotificationListener();
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
       _loadPreferences();
+      _listenToUserPreferences();
     });
   }
 
   Future<void> _loadInitialData() async {
     await _loadPreferences();
+    _listenToUserPreferences();
+  }
+
+  void _listenToUserPreferences() {
+    _userPrefsSubscription?.cancel();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _userPrefsSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen((snapshot) async {
+      if (snapshot.exists && snapshot.data() != null) {
+        final data = snapshot.data()!;
+        final firestoreModules = List<String>.from(data['enabledModules'] ?? ['gold']);
+        
+        final localPrefs = await SharedPreferences.getInstance();
+        await localPrefs.setStringList('cached_enabled_modules', firestoreModules);
+        
+        if (mounted) {
+          setState(() {
+            _enabledModules = firestoreModules;
+          });
+        }
+      }
+    }, onError: (err) {
+      print("Error listening to user preferences: $err");
+    });
   }
 
   Future<void> _loadPreferences() async {
@@ -109,6 +140,7 @@ class _MainScreenState extends State<MainScreen> {
   void dispose() {
     _notificationSubscription?.cancel();
     _authSubscription?.cancel();
+    _userPrefsSubscription?.cancel();
     super.dispose();
   }
 
@@ -177,7 +209,7 @@ class _MainScreenState extends State<MainScreen> {
     },
   };
 
-  List<String> get _bottomBarModules {
+  List<String> get _activeFeatures {
     final adminEnabled = _enabledModules
         .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled))
         .toList();
@@ -186,11 +218,7 @@ class _MainScreenState extends State<MainScreen> {
         .where((id) => adminEnabled.contains(id))
         .toList();
 
-    if (activeUserSelected.length == 4) {
-      return activeUserSelected;
-    }
-
-    final result = <String>[];
+    final List<String> result = [];
     result.addAll(activeUserSelected);
 
     for (var id in adminEnabled) {
@@ -203,15 +231,66 @@ class _MainScreenState extends State<MainScreen> {
     return result;
   }
 
+  int get _menuIndex {
+    final active = _activeFeatures;
+    if (active.length >= 4) return 2;
+    if (active.length == 3) return 2;
+    if (active.length == 2) return 1;
+    if (active.length == 1) return 1;
+    return 0;
+  }
+
+  int get _navBarSelectedIndex {
+    final active = _activeFeatures;
+    if (active.isEmpty) return 0;
+    final mIdx = _menuIndex;
+    
+    int tempIdx = _selectedIndex;
+    if (tempIdx >= active.length) {
+      tempIdx = 0;
+    }
+    
+    if (tempIdx < mIdx) {
+      return tempIdx;
+    } else {
+      return tempIdx + 1;
+    }
+  }
+
+  List<NavigationDestination> get _navBarDestinations {
+    final active = _activeFeatures;
+    final List<NavigationDestination> dests = [];
+    final mIdx = _menuIndex;
+
+    const menuDest = NavigationDestination(
+      icon: Icon(Icons.apps_outlined, color: Colors.blueGrey),
+      selectedIcon: Icon(Icons.apps, color: Colors.blueGrey),
+      label: 'Menu',
+    );
+
+    for (int i = 0; i < active.length; i++) {
+      if (i == mIdx) {
+        dests.add(menuDest);
+      }
+      dests.add(_moduleRegistry[active[i]]!['destination'] as NavigationDestination);
+    }
+    if (dests.length <= mIdx) {
+      dests.add(menuDest);
+    }
+    return dests;
+  }
+
   bool _isModuleSelected(String id) {
-    if (_selectedIndex < _bottomBarModules.length) {
-      return _bottomBarModules[_selectedIndex] == id;
+    final active = _activeFeatures;
+    if (_selectedIndex < active.length) {
+      return active[_selectedIndex] == id;
     }
     return false;
   }
 
   void _selectTabOrPush(String id) {
-    final idx = _bottomBarModules.indexOf(id);
+    final active = _activeFeatures;
+    final idx = active.indexOf(id);
     if (idx != -1) {
       setState(() => _selectedIndex = idx);
     } else {
@@ -227,7 +306,7 @@ class _MainScreenState extends State<MainScreen> {
 
   void _showCustomizeBottomBarDialog() async {
     final adminEnabled = _enabledModules.where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled)).toList();
-    List<String> tempSelected = List<String>.from(_bottomBarModules);
+    List<String> tempSelected = List<String>.from(_activeFeatures);
 
     showDialog(
       context: context,
@@ -240,7 +319,7 @@ class _MainScreenState extends State<MainScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Select exactly 4 features to show in the bottom navigation bar:'),
+                  const Text('Select features (up to 4) to show in the bottom navigation bar:'),
                   const SizedBox(height: 12),
                   ...adminEnabled.map((id) {
                     final isChecked = tempSelected.contains(id);
@@ -315,41 +394,46 @@ class _MainScreenState extends State<MainScreen> {
       ),
       builder: (context) {
         final menuItems = [
-          {
-            'id': 'reminders',
-            'name': 'Reminders',
-            'icon': Icons.calendar_today,
-            'color': Colors.indigo,
-            'action': () => _selectTabOrPush('reminders'),
-          },
-          {
-            'id': 'gold',
-            'name': 'Gold Rates',
-            'icon': Icons.monetization_on,
-            'color': Colors.amber,
-            'action': () => _selectTabOrPush('gold'),
-          },
-          {
-            'id': 'notes',
-            'name': 'Notes',
-            'icon': Icons.note_alt,
-            'color': Colors.teal,
-            'action': () => _selectTabOrPush('notes'),
-          },
-          {
-            'id': 'checklist',
-            'name': 'Checklist',
-            'icon': Icons.playlist_add_check_outlined,
-            'color': Colors.blue,
-            'action': () => _selectTabOrPush('checklist'),
-          },
-          {
-            'id': 'shifts',
-            'name': 'My Shifts',
-            'icon': Icons.work_history,
-            'color': Colors.orange,
-            'action': () => _selectTabOrPush('shifts'),
-          },
+          if (_enabledModules.contains('reminders'))
+            {
+              'id': 'reminders',
+              'name': 'Reminders',
+              'icon': Icons.calendar_today,
+              'color': Colors.indigo,
+              'action': () => _selectTabOrPush('reminders'),
+            },
+          if (_enabledModules.contains('gold'))
+            {
+              'id': 'gold',
+              'name': 'Gold Rates',
+              'icon': Icons.monetization_on,
+              'color': Colors.amber,
+              'action': () => _selectTabOrPush('gold'),
+            },
+          if (_enabledModules.contains('notes'))
+            {
+              'id': 'notes',
+              'name': 'Notes',
+              'icon': Icons.note_alt,
+              'color': Colors.teal,
+              'action': () => _selectTabOrPush('notes'),
+            },
+          if (_enabledModules.contains('checklist'))
+            {
+              'id': 'checklist',
+              'name': 'Checklist',
+              'icon': Icons.playlist_add_check_outlined,
+              'color': Colors.blue,
+              'action': () => _selectTabOrPush('checklist'),
+            },
+          if (_enabledModules.contains('shifts'))
+            {
+              'id': 'shifts',
+              'name': 'My Shifts',
+              'icon': Icons.work_history,
+              'color': Colors.orange,
+              'action': () => _selectTabOrPush('shifts'),
+            },
           if (_isVaultEnabled)
             {
               'id': 'vault',
@@ -569,44 +653,49 @@ class _MainScreenState extends State<MainScreen> {
                   ],
                 ),
               ),
-              ListTile(
-                leading: const Icon(Icons.playlist_add_check_outlined, color: Colors.blue),
-                title: const Text('Checklist'),
-                subtitle: const Text('Checklists for travel/office'),
-                selected: _isModuleSelected('checklist'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('checklist');
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.calendar_today, color: Colors.indigo),
-                title: const Text('Reminders'),
-                selected: _isModuleSelected('reminders'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('reminders');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.note_alt, color: Colors.teal),
-                title: const Text('Notes'),
-                selected: _isModuleSelected('notes'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('notes');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.monetization_on, color: Colors.amber),
-                title: const Text('Gold Rates'),
-                selected: _isModuleSelected('gold'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('gold');
-                },
-              ),
+              if (_enabledModules.contains('checklist')) ...[
+                ListTile(
+                  leading: const Icon(Icons.playlist_add_check_outlined, color: Colors.blue),
+                  title: const Text('Checklist'),
+                  subtitle: const Text('Checklists for travel/office'),
+                  selected: _isModuleSelected('checklist'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _selectTabOrPush('checklist');
+                  },
+                ),
+                const Divider(),
+              ],
+              if (_enabledModules.contains('reminders'))
+                ListTile(
+                  leading: const Icon(Icons.calendar_today, color: Colors.indigo),
+                  title: const Text('Reminders'),
+                  selected: _isModuleSelected('reminders'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _selectTabOrPush('reminders');
+                  },
+                ),
+              if (_enabledModules.contains('notes'))
+                ListTile(
+                  leading: const Icon(Icons.note_alt, color: Colors.teal),
+                  title: const Text('Notes'),
+                  selected: _isModuleSelected('notes'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _selectTabOrPush('notes');
+                  },
+                ),
+              if (_enabledModules.contains('gold'))
+                ListTile(
+                  leading: const Icon(Icons.monetization_on, color: Colors.amber),
+                  title: const Text('Gold Rates'),
+                  selected: _isModuleSelected('gold'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _selectTabOrPush('gold');
+                  },
+                ),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.alarm_on, color: Colors.blue),
@@ -620,16 +709,17 @@ class _MainScreenState extends State<MainScreen> {
                   );
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.work_history, color: Colors.purple),
-                title: const Text('My Shifts'),
-                subtitle: const Text('Work schedule & reminders'),
-                selected: _isModuleSelected('shifts'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('shifts');
-                },
-              ),
+              if (_enabledModules.contains('shifts'))
+                ListTile(
+                  leading: const Icon(Icons.work_history, color: Colors.purple),
+                  title: const Text('My Shifts'),
+                  subtitle: const Text('Work schedule & reminders'),
+                  selected: _isModuleSelected('shifts'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _selectTabOrPush('shifts');
+                  },
+                ),
               if (_isVaultEnabled) ...[
                 ListTile(
                   leading: const Icon(Icons.shield, color: Colors.blueAccent),
@@ -682,7 +772,7 @@ class _MainScreenState extends State<MainScreen> {
               ListTile(
                 leading: const Icon(Icons.dashboard_customize, color: Colors.teal),
                 title: const Text('Customize Bottom Bar'),
-                subtitle: const Text('Select your 4 primary features'),
+                subtitle: const Text('Select your primary features'),
                 onTap: () {
                   Navigator.pop(context);
                   _showCustomizeBottomBarDialog();
@@ -697,7 +787,7 @@ class _MainScreenState extends State<MainScreen> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'RemindBuddy',
-                    applicationVersion: '1.2.8',
+                    applicationVersion: '1.5.1',
                     applicationIcon: const Icon(Icons.alarm_add, size: 48),
                     children: [
                       const Text('Your friendly daily reminder companion!'),
@@ -718,44 +808,28 @@ class _MainScreenState extends State<MainScreen> {
         body: _isLoading 
           ? const Center(child: CircularProgressIndicator())
           : IndexedStack(
-              index: _selectedIndex < _bottomBarModules.length ? _selectedIndex : 0,
-              children: _bottomBarModules
+              index: _selectedIndex < _activeFeatures.length ? _selectedIndex : 0,
+              children: _activeFeatures
                   .map((id) => _moduleRegistry[id]!['screen'] as Widget)
                   .toList(),
             ),
         bottomNavigationBar: _isLoading 
           ? null 
           : NavigationBar(
-              selectedIndex: _bottomBarModules.length == 4
-                  ? (_selectedIndex < 2 ? _selectedIndex : _selectedIndex + 1)
-                  : _selectedIndex,
+              selectedIndex: _navBarSelectedIndex,
               onDestinationSelected: (int index) {
-                if (_bottomBarModules.length == 4) {
-                  if (index == 2) {
-                    _showAppMenuBottomSheet();
-                  } else {
-                    int targetIndex = index < 2 ? index : index - 1;
+                final active = _activeFeatures;
+                final mIdx = _menuIndex;
+                if (index == mIdx) {
+                  _showAppMenuBottomSheet();
+                } else {
+                  int targetIndex = index < mIdx ? index : index - 1;
+                  if (targetIndex >= 0 && targetIndex < active.length) {
                     _onItemTapped(targetIndex);
                   }
-                } else {
-                  _onItemTapped(index);
                 }
               },
-              destinations: _bottomBarModules.length == 4
-                  ? [
-                      _moduleRegistry[_bottomBarModules[0]]!['destination'] as NavigationDestination,
-                      _moduleRegistry[_bottomBarModules[1]]!['destination'] as NavigationDestination,
-                      const NavigationDestination(
-                        icon: Icon(Icons.apps_outlined, color: Colors.blueGrey),
-                        selectedIcon: Icon(Icons.apps, color: Colors.blueGrey),
-                        label: 'Menu',
-                      ),
-                      _moduleRegistry[_bottomBarModules[2]]!['destination'] as NavigationDestination,
-                      _moduleRegistry[_bottomBarModules[3]]!['destination'] as NavigationDestination,
-                    ]
-                  : _bottomBarModules
-                      .map((id) => _moduleRegistry[id]!['destination'] as NavigationDestination)
-                      .toList(),
+              destinations: _navBarDestinations,
             ),
       ), // Close Scaffold
     ); // Close Theme
