@@ -79,17 +79,32 @@ exports.processCalendarReminderTask = functions.tasks
         const reminderDoc = await reminderRef.get();
         if (!reminderDoc.exists)
             return;
-        const userDoc = await db.collection("usernames").where("uid", "==", uid).limit(1).get();
-        if (!userDoc.empty) {
-            const token = userDoc.docs[0].data().fcmToken;
-            if (token) {
-                await admin.messaging().send({
-                    token,
-                    notification: { title, body },
-                    android: { notification: { channelId: "calendar_reminder_channel" } },
-                    data: { type: "CALENDAR_REMINDER", reminderId }
-                });
+        const userProfileDoc = await db.collection("users").doc(uid).get();
+        let isEnabled = true;
+        if (userProfileDoc.exists) {
+            const uData = userProfileDoc.data();
+            const enabledModules = (uData === null || uData === void 0 ? void 0 : uData.enabledModules) || [];
+            const notifPrefs = (uData === null || uData === void 0 ? void 0 : uData.notificationPreferences) || {};
+            if (!enabledModules.includes("reminders") || notifPrefs.reminders === false) {
+                isEnabled = false;
             }
+        }
+        if (isEnabled) {
+            const userDoc = await db.collection("usernames").where("uid", "==", uid).limit(1).get();
+            if (!userDoc.empty) {
+                const token = userDoc.docs[0].data().fcmToken;
+                if (token) {
+                    await admin.messaging().send({
+                        token,
+                        notification: { title, body },
+                        android: { notification: { channelId: "calendar_reminder_channel" } },
+                        data: { type: "CALENDAR_REMINDER", reminderId }
+                    });
+                }
+            }
+        }
+        else {
+            console.log(`Skipping notification for calendar reminder ${reminderId} (user ${uid}): disabled.`);
         }
         const expireAt = new Date();
         expireAt.setDate(expireAt.getDate() + 30);
@@ -186,8 +201,25 @@ async function notifyAllUsers(price, oldPrice) {
     }
     const snap = await db.collection("usernames").get();
     const tokens = [];
-    snap.forEach(d => { if (d.data().fcmToken)
-        tokens.push(d.data().fcmToken); });
+    for (const d of snap.docs) {
+        const udata = d.data();
+        if (udata.fcmToken && udata.uid) {
+            try {
+                const userDoc = await db.collection("users").doc(udata.uid).get();
+                if (userDoc.exists) {
+                    const uData = userDoc.data();
+                    const enabledModules = (uData === null || uData === void 0 ? void 0 : uData.enabledModules) || [];
+                    const notifPrefs = (uData === null || uData === void 0 ? void 0 : uData.notificationPreferences) || {};
+                    if (enabledModules.includes("gold") && notifPrefs.gold !== false) {
+                        tokens.push(udata.fcmToken);
+                    }
+                }
+            }
+            catch (err) {
+                console.error(`Error checking notification preferences for ${udata.uid}:`, err);
+            }
+        }
+    }
     if (tokens.length > 0) {
         await admin.messaging().sendEachForMulticast({
             tokens,
@@ -386,6 +418,21 @@ exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('A
             continue;
         }
         try {
+            // Check if user has shift module enabled and not turned off shift notifications
+            const userDoc = await db.collection('users').doc(userData.uid).get();
+            if (userDoc.exists) {
+                const uData = userDoc.data();
+                const enabledModules = (uData === null || uData === void 0 ? void 0 : uData.enabledModules) || [];
+                const notifPrefs = (uData === null || uData === void 0 ? void 0 : uData.notificationPreferences) || {};
+                if (!enabledModules.includes("shifts") || notifPrefs.shifts === false) {
+                    console.log(`Skipping shift reminder for user ${userData.uid}: disabled in modules or preferences.`);
+                    continue;
+                }
+            }
+            else {
+                console.log(`Skipping user ${userData.uid}: No user doc found.`);
+                continue;
+            }
             const s = await db.collection('users').doc(userData.uid).collection('shifts').doc(tom.format('YYYY-MM')).collection('daily_shifts').doc(tom.format('YYYY-MM-DD')).get();
             if (s.exists) {
                 console.log(`Sending shift reminder to user ${userData.uid} (Token: ${userData.fcmToken.substring(0, 10)}...)`);
@@ -412,6 +459,20 @@ exports.checkDailyReminders = functions.pubsub.schedule('* * * * *').timeZone('A
         if (!userData.fcmToken || !userData.uid)
             continue;
         try {
+            // Check if user has daily_reminders module enabled and not turned off reminders notifications
+            const userProfileDoc = await db.collection("users").doc(userData.uid).get();
+            if (userProfileDoc.exists) {
+                const uData = userProfileDoc.data();
+                const enabledModules = (uData === null || uData === void 0 ? void 0 : uData.enabledModules) || [];
+                const notifPrefs = (uData === null || uData === void 0 ? void 0 : uData.notificationPreferences) || {};
+                if (!enabledModules.includes("daily_reminders") || notifPrefs.reminders === false) {
+                    console.log(`Skipping daily reminders for user ${userData.uid}: disabled in modules or preferences.`);
+                    continue;
+                }
+            }
+            else {
+                continue;
+            }
             const rs = await db.collection('users').doc(userData.uid).collection('daily_reminders').where('time', '==', timeStr).where('isActive', '==', true).get();
             if (!rs.empty) {
                 console.log(`Found ${rs.size} daily reminders for user ${userData.uid} at ${timeStr}`);
@@ -614,8 +675,25 @@ Respond ONLY with a JSON object matching this schema:
 async function sendChitNotificationToAllUsers(recommendation, message) {
     const snap = await db.collection("usernames").get();
     const tokens = [];
-    snap.forEach(d => { if (d.data().fcmToken)
-        tokens.push(d.data().fcmToken); });
+    for (const d of snap.docs) {
+        const udata = d.data();
+        if (udata.fcmToken && udata.uid) {
+            try {
+                const userDoc = await db.collection("users").doc(udata.uid).get();
+                if (userDoc.exists) {
+                    const uData = userDoc.data();
+                    const enabledModules = (uData === null || uData === void 0 ? void 0 : uData.enabledModules) || [];
+                    const notifPrefs = (uData === null || uData === void 0 ? void 0 : uData.notificationPreferences) || {};
+                    if (enabledModules.includes("gold") && notifPrefs.gold !== false) {
+                        tokens.push(udata.fcmToken);
+                    }
+                }
+            }
+            catch (err) {
+                console.error(`Error checking notification preferences for ${udata.uid}:`, err);
+            }
+        }
+    }
     if (tokens.length > 0) {
         const title = recommendation === 'BUY' ? '💰 Gold Chit: Perfect Day to Pay!' : '⏳ Gold Chit: Hold Payments';
         await admin.messaging().sendEachForMulticast({

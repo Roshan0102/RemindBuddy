@@ -15,6 +15,8 @@ import '../services/log_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import 'vault_tab_wrapper.dart';
+import 'settings_screen.dart';
+import 'notification_control_screen.dart';
 import 'admin_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -443,18 +445,19 @@ class _MainScreenState extends State<MainScreen> {
               'color': Colors.blueAccent,
               'action': () => _selectTabOrPush('vault'),
             },
-          {
-            'id': 'daily_reminders',
-            'name': 'Daily Reminders',
-            'icon': Icons.alarm_on,
-            'color': Colors.blue,
-            'action': () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
-              );
+          if (_enabledModules.contains('daily_reminders'))
+            {
+              'id': 'daily_reminders',
+              'name': 'Daily Reminders',
+              'icon': Icons.alarm_on,
+              'color': Colors.blue,
+              'action': () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
+                );
+              },
             },
-          },
           {
             'id': 'customize',
             'name': 'Customize Bar',
@@ -698,18 +701,19 @@ class _MainScreenState extends State<MainScreen> {
                   },
                 ),
               const Divider(),
-              ListTile(
-                leading: const Icon(Icons.alarm_on, color: Colors.blue),
-                title: const Text('Daily Reminders'),
-                subtitle: const Text('Recurring reminders'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
-                  );
-                },
-              ),
+              if (_enabledModules.contains('daily_reminders'))
+                ListTile(
+                  leading: const Icon(Icons.alarm_on, color: Colors.blue),
+                  title: const Text('Daily Reminders'),
+                  subtitle: const Text('Recurring reminders'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
+                    );
+                  },
+                ),
               if (_enabledModules.contains('shifts'))
                 ListTile(
                   leading: const Icon(Icons.work_history, color: Colors.purple),
@@ -732,25 +736,36 @@ class _MainScreenState extends State<MainScreen> {
                     _selectTabOrPush('vault');
                   },
                 ),
-                const Divider(),
               ],
-
-              // Login / Profile Feature
+              const Divider(),
               ListTile(
-                leading: Icon(
-                  FirebaseAuth.instance.currentUser != null ? Icons.account_circle : Icons.login, 
-                  color: Colors.teal
-                ),
-                title: Text(FirebaseAuth.instance.currentUser != null ? 'My Profile' : 'Login'),
+                leading: const Icon(Icons.settings, color: Colors.blueGrey),
+                title: const Text('Settings'),
+                subtitle: const Text('Profile, Bottom Bar & Notifications'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const AuthScreen()),
-                  ).then((_) {
+                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                  ).then((result) {
+                    if (result == 'customize_bottom_bar') {
+                      _showCustomizeBottomBarDialog();
+                    }
                     setState(() {});
-                    _loadPreferences(); // Reload prefs in case user logged in/out
+                    _loadPreferences();
                   });
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.notifications_active, color: Colors.amber),
+                title: const Text('Notification Control'),
+                subtitle: const Text('Configure push notifications'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const NotificationControlScreen()),
+                  );
                 },
               ),
               const Divider(),
@@ -766,17 +781,6 @@ class _MainScreenState extends State<MainScreen> {
                   ).then((_) {
                     _loadPreferences();
                   });
-                },
-              ),
-
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.dashboard_customize, color: Colors.teal),
-                title: const Text('Customize Bottom Bar'),
-                subtitle: const Text('Select your primary features'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showCustomizeBottomBarDialog();
                 },
               ),
               const Divider(),

@@ -142,6 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         return ListView.builder(
+          padding: const EdgeInsets.only(bottom: 80),
           itemCount: reminders.length,
           itemBuilder: (context, index) {
             final reminder = reminders[index];
@@ -179,7 +180,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       Text('Time: ${reminder.time}', style: TextStyle(color: Colors.blue.shade700, fontSize: 12)),
                     ],
                   ),
-                  trailing: const Icon(Icons.chevron_left, color: Colors.grey),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                        tooltip: 'Delete Reminder',
+                        onPressed: () => _confirmDelete(reminder.id!, silent: false),
+                      ),
+                      const Icon(Icons.chevron_left, color: Colors.grey),
+                    ],
+                  ),
                   isThreeLine: true,
                 ),
               ),
