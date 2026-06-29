@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
@@ -36,31 +37,43 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   bool _isEventsEnabled = false;
   bool _isFetchingEvents = false;
   List<String> _eventInterests = ['Cloud', 'Devops', 'AI', 'Agentic AI'];
+  StreamSubscription<DocumentSnapshot>? _userSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadShifts();
-    _loadEventsPermissionAndInterests();
+    _listenToEventsPermission();
   }
 
-  Future<void> _loadEventsPermissionAndInterests() async {
+  @override
+  void dispose() {
+    _userSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _listenToEventsPermission() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    _userSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen((doc) {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         final enabledModules = List<String>.from(data['enabledModules'] ?? ['gold']);
         final interests = List<String>.from(data['eventInterests'] ?? ['Cloud', 'Devops', 'AI', 'Agentic AI']);
-        setState(() {
-          _isEventsEnabled = enabledModules.contains('events');
-          _eventInterests = interests;
-        });
+        if (mounted) {
+          setState(() {
+            _isEventsEnabled = enabledModules.contains('events');
+            _eventInterests = interests;
+          });
+        }
       }
-    } catch (e) {
-      LogService().error("Error loading events permission/interests", e);
-    }
+    }, onError: (e) {
+      LogService().error("Error listening to events permission/interests", e);
+    });
   }
 
   Future<void> _triggerFetchEvents() async {
@@ -1334,20 +1347,10 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
           children: [
             const Text('My Shifts'),
             if (_isEventsEnabled) ...[
-              const SizedBox(width: 8),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildTabButton('Schedule', 0),
-                      const SizedBox(width: 6),
-                      _buildTabButton('Events', 1),
-                    ],
-                  ),
-                ),
-              ),
+              const SizedBox(width: 12),
+              _buildTabButton('Schedule', 0),
+              const SizedBox(width: 6),
+              _buildTabButton('Events', 1),
             ],
           ],
         ),

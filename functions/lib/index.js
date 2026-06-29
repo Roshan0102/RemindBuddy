@@ -412,6 +412,15 @@ exports.checkGoldSources = functions.https.onCall(async () => {
 });
 exports.scheduledGoldFetch = functions.pubsub.schedule('0 11,19 * * *').timeZone('Asia/Kolkata').onRun(() => internalPerformGoldFetch());
 exports.forceGoldFetch = functions.https.onCall(() => internalPerformGoldFetch(true));
+exports.scheduledGoldAIInsights = functions.pubsub.schedule('1 11 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+    try {
+        console.log("Running scheduledGoldAIInsights at 11:01 AM IST");
+        await runGoldAIPredictionInternal();
+    }
+    catch (error) {
+        console.error("Error in scheduledGoldAIInsights:", error);
+    }
+});
 exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('Asia/Kolkata').onRun(async () => {
     var _a;
     const nowKolkata = moment().tz('Asia/Kolkata');
