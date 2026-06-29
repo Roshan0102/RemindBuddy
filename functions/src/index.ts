@@ -318,7 +318,7 @@ Respond ONLY with a JSON object matching this schema:
 }`;
 
     // 5. Call Gemini API
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
             {
@@ -568,7 +568,7 @@ exports.analyzeRosterImage = functions.runWith({ timeoutSeconds: 120, memory: "1
     }
 
     // 2. Prepare payload for Gemini API
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
     const prompt = `Analyze the work roster image. Extract the shift schedule for employee "${employeeName}".
 The output MUST be a JSON object matching this schema. If a shift date is unclear or missing, mark it as "week_off".
@@ -700,7 +700,7 @@ Respond ONLY with a JSON object matching this schema:
   "fullAnalysis": "string (A detailed 2-3 sentence analysis in Tanglish explaining why, referencing the trend or news.)"
 }`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
             {
@@ -1086,7 +1086,7 @@ Respond ONLY with a JSON array matching this schema:
   }
 ]`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
             {
