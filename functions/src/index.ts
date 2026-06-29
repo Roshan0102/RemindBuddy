@@ -386,16 +386,25 @@ async function internalPerformGoldFetch(force: boolean = false) {
     if (!currentPrice) return { success: false, error: "No price retrieved from scrapers." };
 
     const nowIST = moment().tz('Asia/Kolkata');
+    const todayStr = nowIST.format('YYYY-MM-DD');
+
+    // Fetch existing records for today to handle duplicate checks
+    const todayDocs = await db.collection("global_gold_prices").where("date", "==", todayStr).get();
+    if (!todayDocs.empty) {
+        // If we already have a record for today, skip if the current price matches today's existing price(s)
+        const matchesTodayPrice = todayDocs.docs.some(doc => doc.data().price === currentPrice);
+        if (matchesTodayPrice) {
+            return { success: true, status: 'no_change', price: currentPrice };
+        }
+    }
+
+    // Get the most recent price overall to compute priceChange
     const lastDocs = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(1).get();
     const lastPrice = lastDocs.empty ? null : lastDocs.docs[0].data().price;
 
-    if (lastPrice === currentPrice) {
-        return { success: true, status: 'no_change', price: currentPrice };
-    }
-
     const timestampStr = nowIST.toISOString();
     await db.collection("global_gold_prices").doc(timestampStr.replace(/[:.]/g, '-')).set({
-        date: nowIST.format('YYYY-MM-DD'),
+        date: todayStr,
         price: currentPrice,
         priceChange: lastPrice ? currentPrice - lastPrice : 0,
         timestamp: timestampStr,
