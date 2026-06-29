@@ -1099,24 +1099,7 @@ Respond ONLY with a JSON array matching this schema:
             {
                 google_search: {}
             }
-        ],
-        generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: "ARRAY",
-                items: {
-                    type: "OBJECT",
-                    properties: {
-                        title: { type: "STRING" },
-                        date: { type: "STRING", description: "YYYY-MM-DD format only" },
-                        timings: { type: "STRING" },
-                        location: { type: "STRING" },
-                        registrationLink: { type: "STRING" }
-                    },
-                    required: ["title", "date", "timings", "location", "registrationLink"]
-                }
-            }
-        }
+        ]
     };
 
     const response = await axios.post(url, payload, {
@@ -1134,7 +1117,11 @@ Respond ONLY with a JSON array matching this schema:
         throw new Error('Empty content returned from Gemini API.');
     }
 
-    const parsedEvents = JSON.parse(textResponse) as any[];
+    let cleanedText = textResponse.trim();
+    if (cleanedText.startsWith("```")) {
+        cleanedText = cleanedText.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+    }
+    const parsedEvents = JSON.parse(cleanedText) as any[];
 
     const eventsCol = db.collection("users").doc(uid).collection("events");
     const oldEvents = await eventsCol.get();
