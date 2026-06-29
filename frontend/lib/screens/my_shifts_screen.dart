@@ -1168,18 +1168,30 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
             String shiftLabel = 'no data';
             Color shiftBadgeColor = Colors.grey;
 
-            if (_hasData && _shifts.isNotEmpty) {
+            if (_hasData) {
               final shiftOnDay = _shifts.firstWhere(
                 (s) => s.date == dateStr,
-                orElse: () => Shift(date: dateStr, shiftType: 'none', isWeekOff: false),
+                orElse: () => Shift(date: dateStr, shiftType: 'week_off', isWeekOff: true),
               );
 
-              if (shiftOnDay.shiftType != 'none') {
+              if (shiftOnDay.shiftType == 'morning') {
+                shiftLabel = 'Morning';
+                shiftBadgeColor = Colors.orange;
+              } else if (shiftOnDay.shiftType == 'afternoon') {
+                shiftLabel = 'Afternoon';
+                shiftBadgeColor = Colors.blue;
+              } else if (shiftOnDay.shiftType == 'night') {
+                shiftLabel = 'Night';
+                shiftBadgeColor = Colors.indigo;
+              } else if (shiftOnDay.shiftType == 'week_off' || shiftOnDay.isWeekOff) {
+                shiftLabel = 'Week Off';
+                shiftBadgeColor = Colors.green;
+              } else if (shiftOnDay.shiftType == 'none') {
+                shiftLabel = 'Week Off';
+                shiftBadgeColor = Colors.green;
+              } else {
                 shiftLabel = shiftOnDay.getDisplayName();
                 shiftBadgeColor = _getShiftColor(shiftOnDay.shiftType);
-              } else {
-                shiftLabel = 'No Shift';
-                shiftBadgeColor = Colors.grey.shade400;
               }
             }
 
