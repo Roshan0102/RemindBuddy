@@ -437,6 +437,32 @@ class _MainScreenState extends State<MainScreen> {
               'color': Colors.orange,
               'action': () => _selectTabOrPush('shifts'),
             },
+          if (_enabledModules.contains('events'))
+            {
+              'id': 'events',
+              'name': 'Tech Events',
+              'icon': Icons.event,
+              'color': Colors.green,
+              'action': () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)),
+                );
+              },
+            },
+          if (_enabledModules.contains('walkin'))
+            {
+              'id': 'walkin',
+              'name': 'Walk-In Drives',
+              'icon': Icons.directions_walk,
+              'color': Colors.lightBlue,
+              'action': () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)),
+                );
+              },
+            },
           if (_isVaultEnabled)
             {
               'id': 'vault',
@@ -725,18 +751,32 @@ class _MainScreenState extends State<MainScreen> {
                     _selectTabOrPush('shifts');
                   },
                 ),
-              if (_isVaultEnabled) ...[
+              if (_enabledModules.contains('events'))
                 ListTile(
-                  leading: const Icon(Icons.shield, color: Colors.blueAccent),
-                  title: const Text('Secure Vault'),
-                  subtitle: const Text('Encrypt and save documents'),
-                  selected: _isModuleSelected('vault'),
+                  leading: const Icon(Icons.event, color: Colors.green),
+                  title: const Text('Tech Events'),
+                  subtitle: const Text('Local tech events & meetups'),
                   onTap: () {
                     Navigator.pop(context);
-                    _selectTabOrPush('vault');
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)),
+                    );
                   },
                 ),
-              ],
+              if (_enabledModules.contains('walkin'))
+                ListTile(
+                  leading: const Icon(Icons.directions_walk, color: Colors.lightBlue),
+                  title: const Text('Walk-In Drives'),
+                  subtitle: const Text('DevOps/Cloud/SRE interviews'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)),
+                    );
+                  },
+                ),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.settings, color: Colors.blueGrey),
@@ -755,19 +795,6 @@ class _MainScreenState extends State<MainScreen> {
                     _loadPreferences();
                   });
                 },
-              ),
-              ListTile(
-                leading: const Icon(Icons.notifications_active, color: Colors.amber),
-                title: const Text('Notification Control'),
-                subtitle: const Text('Configure push notifications'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const NotificationControlScreen()),
-                  );
-                },
-              ),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings, color: Colors.blueGrey),

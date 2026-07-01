@@ -14,9 +14,13 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
   bool _isLoading = true;
   List<String> _enabledModules = [];
   Map<String, bool> _notifPrefs = {
-    'gold': true,
+    'gold_rates': true,
+    'gold_advice': true,
     'shifts': true,
-    'reminders': true,
+    'calendar_reminders': true,
+    'daily_reminders': true,
+    'walkin': true,
+    'events': true,
   };
 
   @override
@@ -41,9 +45,13 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
         setState(() {
           _enabledModules = enabled;
           _notifPrefs = {
-            'gold': prefs['gold'] ?? true,
+            'gold_rates': prefs['gold_rates'] ?? prefs['gold'] ?? true,
+            'gold_advice': prefs['gold_advice'] ?? prefs['gold'] ?? true,
             'shifts': prefs['shifts'] ?? true,
-            'reminders': prefs['reminders'] ?? true,
+            'calendar_reminders': prefs['calendar_reminders'] ?? prefs['reminders'] ?? true,
+            'daily_reminders': prefs['daily_reminders'] ?? prefs['reminders'] ?? true,
+            'walkin': prefs['walkin'] ?? true,
+            'events': prefs['events'] ?? true,
           };
           _isLoading = false;
         });
@@ -106,15 +114,23 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                   ),
                   const SizedBox(height: 20),
                   
-                  // Gold rates
-                  if (_enabledModules.contains('gold'))
+                  // Gold Rates
+                  if (_enabledModules.contains('gold')) ...[
                     _buildPreferenceTile(
-                      key: 'gold',
-                      title: 'Gold Rates & Advice',
-                      subtitle: 'Daily Gold Rate updates & Chit buy recommendations (11:00 AM & 11:01 AM)',
-                      icon: Icons.monetization_on,
+                      key: 'gold_rates',
+                      title: 'Gold Rate Updates',
+                      subtitle: 'Daily Gold Rate updates (11:00 AM)',
+                      icon: Icons.trending_up,
                       iconColor: Colors.amber,
                     ),
+                    _buildPreferenceTile(
+                      key: 'gold_advice',
+                      title: 'Gold Chit Recommendations',
+                      subtitle: 'Daily recommendations & chit advice (11:01 AM)',
+                      icon: Icons.assistant,
+                      iconColor: Colors.amber,
+                    ),
+                  ],
 
                   // Shifts
                   if (_enabledModules.contains('shifts'))
@@ -126,20 +142,52 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                       iconColor: Colors.purple,
                     ),
 
-                  // Calendar & Daily Reminders
-                  if (_enabledModules.contains('reminders') || _enabledModules.contains('daily_reminders'))
+                  // Calendar Events
+                  if (_enabledModules.contains('reminders'))
                     _buildPreferenceTile(
-                      key: 'reminders',
-                      title: 'Calendar & Daily Reminders',
-                      subtitle: 'Push notifications for custom calendar events and recurring tasks',
+                      key: 'calendar_reminders',
+                      title: 'Calendar Event Alerts',
+                      subtitle: 'Push notifications for custom calendar events',
+                      icon: Icons.calendar_today,
+                      iconColor: Colors.indigo,
+                    ),
+
+                  // Daily Reminders
+                  if (_enabledModules.contains('daily_reminders'))
+                    _buildPreferenceTile(
+                      key: 'daily_reminders',
+                      title: 'Daily Reminders Alerts',
+                      subtitle: 'Push notifications for recurring tasks',
                       icon: Icons.alarm_on,
                       iconColor: Colors.blue,
+                    ),
+
+                  // Walk-In Drives
+                  if (_enabledModules.contains('walkin'))
+                    _buildPreferenceTile(
+                      key: 'walkin',
+                      title: 'Walk-In Drive Alerts',
+                      subtitle: 'Alerts when new DevOps/Cloud/SRE Walk-In drives are found (8:00 PM)',
+                      icon: Icons.directions_walk,
+                      iconColor: Colors.lightBlue,
+                    ),
+
+                  // Tech Events
+                  if (_enabledModules.contains('events'))
+                    _buildPreferenceTile(
+                      key: 'events',
+                      title: 'Tech Event Alerts',
+                      subtitle: 'Alerts when new Tech events or meetups are found (7:00 PM)',
+                      icon: Icons.event,
+                      iconColor: Colors.green,
                     ),
 
                   if (!_enabledModules.contains('gold') &&
                       !_enabledModules.contains('shifts') &&
                       !_enabledModules.contains('reminders') &&
-                      !_enabledModules.contains('daily_reminders'))
+                      !_enabledModules.contains('daily_reminders') &&
+                      !_enabledModules.contains('walkin') &&
+                      !_enabledModules.contains('events'))
                     const Center(
                       child: Padding(
                         padding: EdgeInsets.all(32.0),
@@ -175,7 +223,7 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
         value: _notifPrefs[key] ?? true,
         onChanged: (val) => _saveNotificationPreference(key, val),
-        activeColor: Colors.teal,
+        activeColor: iconColor,
       ),
     );
   }

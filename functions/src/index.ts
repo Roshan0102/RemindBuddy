@@ -85,7 +85,7 @@ exports.processCalendarReminderTask = functions.tasks
                 const uData = userProfileDoc.data();
                 const enabledModules = uData?.enabledModules || [];
                 const notifPrefs = uData?.notificationPreferences || {};
-                if (!enabledModules.includes("reminders") || notifPrefs.reminders === false) {
+                if (!enabledModules.includes("reminders") || notifPrefs.calendar_reminders === false) {
                     isEnabled = false;
                 }
             }
@@ -216,7 +216,7 @@ async function notifyAllUsers(price: number, oldPrice: number | null) {
                     const uData = userDoc.data();
                     const enabledModules = uData?.enabledModules || [];
                     const notifPrefs = uData?.notificationPreferences || {};
-                    if (enabledModules.includes("gold") && notifPrefs.gold !== false) {
+                    if (enabledModules.includes("gold") && notifPrefs.gold_rates !== false) {
                         tokens.push(udata.fcmToken);
                     }
                 }
@@ -518,7 +518,7 @@ exports.checkDailyReminders = functions.pubsub.schedule('* * * * *').timeZone('A
                 const enabledModules = uData?.enabledModules || [];
                 const notifPrefs = uData?.notificationPreferences || {};
                 
-                if (!enabledModules.includes("daily_reminders") || notifPrefs.reminders === false) {
+                if (!enabledModules.includes("daily_reminders") || notifPrefs.daily_reminders === false) {
                     console.log(`Skipping daily reminders for user ${userData.uid}: disabled in modules or preferences.`);
                     continue;
                 }
@@ -753,7 +753,7 @@ async function sendChitNotificationToAllUsers(recommendation: string, message: s
                     const uData = userDoc.data();
                     const enabledModules = uData?.enabledModules || [];
                     const notifPrefs = uData?.notificationPreferences || {};
-                    if (enabledModules.includes("gold") && notifPrefs.gold !== false) {
+                    if (enabledModules.includes("gold") && notifPrefs.gold_advice !== false) {
                         tokens.push(udata.fcmToken);
                     }
                 }
@@ -1047,7 +1047,7 @@ exports.adminUpdateUserModules = functions.runWith({ timeoutSeconds: 60, memory:
     }
 });
 
-async function fetchAndStoreEventsForUserInternal(uid: string): Promise<any> {
+async function fetchAndStoreEventsForUserInternal(uid: string, triggerNotification: boolean): Promise<any> {
     const userDoc = await db.collection("users").doc(uid).get();
     let interests = ["Cloud", "Devops", "AI", "Agentic AI"];
     if (userDoc.exists) {
@@ -1072,8 +1072,8 @@ async function fetchAndStoreEventsForUserInternal(uid: string): Promise<any> {
 
     const prompt = `Find upcoming Tech events, meetups, conferences, workshops happening in Bengaluru, India related to the following interests: ${interests.join(', ')}.
 The events must happen between ${startDateStr} and ${endDateStr}.
-Use Google Search grounding to find real, current upcoming events.
-Provide a clean JSON list of events. For registration links, find actual URL links to their signup/info pages (e.g. meetup.com, luma, eventbrite, etc.). Do not invent links. If no registration link is available, use a general search/event page or homepage URL for the host.
+Use Google Search grounding to find real, current upcoming events. In addition to general Google searches, you MUST search for and check tech events on these platforms: luma.com, eventbrite.com, meetup.com, hackerearth.com, 10times.com, and linkedin.com.
+Provide a clean JSON list of events. The "registrationLink" property in the JSON should point directly to the specific event source page URL from where you found the event (e.g. the specific meetup, luma event page, eventbrite event page, etc.).
 
 Respond ONLY with a JSON array matching this schema:
 [
@@ -1082,7 +1082,8 @@ Respond ONLY with a JSON array matching this schema:
     "date": "YYYY-MM-DD",
     "timings": "string",
     "location": "string",
-    "registrationLink": "string"
+    "registrationLink": "string (direct link to the event source page)",
+    "sourcePlatform": "string (Identify the platform from where you fetched this event, e.g. Luma, Eventbrite, Meetup, HackerEarth, 10times, LinkedIn, or Google Search)"
   }
 ]`;
 
@@ -1123,44 +1124,105 @@ Respond ONLY with a JSON array matching this schema:
     }
     const parsedEvents = JSON.parse(cleanedText) as any[];
 
+    // Deduplicate events by date and normalized title
+    const seen = new Set<string>();
+    const uniqueEvents: any[] = [];
+    for (const event of parsedEvents) {
+        if (!event.title || !event.date) continue;
+        const normTitle = event.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+        const key = `${event.date}_${normTitle}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniqueEvents.push(event);
+        }
+    }
+
     const eventsCol = db.collection("users").doc(uid).collection("events");
-    const oldEvents = await eventsCol.get();
+    const existingSnap = await eventsCol.get();
+
+    const existingKeys = new Set<string>();
+    existingSnap.forEach(doc => {
+        const d = doc.data();
+        const t = d.title || "";
+        const normTitle = t.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+        existingKeys.add(`${d.date}_${normTitle}`);
+    });
+
+    // Mark all existing events as not new (isNew: false)
     const batch = db.batch();
-    oldEvents.forEach(doc => {
-        batch.delete(doc.ref);
+    existingSnap.forEach(doc => {
+        batch.update(doc.ref, { isNew: false });
     });
     await batch.commit();
 
+    let newCount = 0;
     const writeBatch = db.batch();
-    for (const event of parsedEvents) {
-        const cleanTitle = event.title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-        const docId = `${event.date}_${cleanTitle.substring(0, 30)}`;
-        const docRef = eventsCol.doc(docId);
-        writeBatch.set(docRef, {
-            ...event,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+    for (const event of uniqueEvents) {
+        const normTitle = event.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+        const key = `${event.date}_${normTitle}`;
+
+        if (!existingKeys.has(key)) {
+            const cleanTitle = event.title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+            const docId = `${event.date}_${cleanTitle.substring(0, 30)}`;
+            const docRef = eventsCol.doc(docId);
+            writeBatch.set(docRef, {
+                ...event,
+                isNew: true,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            newCount++;
+        }
     }
     await writeBatch.commit();
 
-    return { success: true, count: parsedEvents.length };
+    // Update last updated timestamp on user doc
+    await db.collection("users").doc(uid).update({
+        eventsLastUpdated: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Send push notification if automatic scheduling triggered it and new items were added
+    if (triggerNotification && newCount > 0 && userDoc.exists) {
+        const uData = userDoc.data();
+        const enabledModules = uData?.enabledModules || [];
+        const notifPrefs = uData?.notificationPreferences || {};
+
+        if (enabledModules.includes("events") && notifPrefs.events !== false) {
+            const usernameDoc = await db.collection("usernames").where("uid", "==", uid).limit(1).get();
+            if (!usernameDoc.empty) {
+                const token = usernameDoc.docs[0].data().fcmToken;
+                if (token) {
+                    await admin.messaging().send({
+                        token,
+                        notification: {
+                            title: "New Tech Events Found",
+                            body: `Found ${newCount} new tech event(s) and meetup(s) in Bengaluru.`
+                        },
+                        android: { notification: { channelId: "events_reminder_channel" } },
+                        data: { type: "events_reminder" }
+                    });
+                }
+            }
+        }
+    }
+
+    return { success: true, count: newCount };
 }
 
-exports.fetchUserTechEvents = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
+exports.fetchUserTechEvents = functions.runWith({ timeoutSeconds: 120, memory: "256MB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
     }
     const uid = context.auth.uid;
     try {
-        return await fetchAndStoreEventsForUserInternal(uid);
+        return await fetchAndStoreEventsForUserInternal(uid, false);
     } catch (error: any) {
         console.error("Error in fetchUserTechEvents:", error);
         throw new functions.https.HttpsError('internal', error.message || 'Failed to fetch tech events.');
     }
 });
 
-exports.dailyTechEventsFetcher = functions.pubsub.schedule('0 0 * * *').timeZone('Asia/Kolkata').onRun(async () => {
-    console.log("Starting dailyTechEventsFetcher at 12 AM IST");
+exports.dailyTechEventsFetcher = functions.pubsub.schedule('0 19 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+    console.log("Starting dailyTechEventsFetcher at 7 PM IST");
     const usersSnap = await db.collection("users").get();
     for (const userDoc of usersSnap.docs) {
         const data = userDoc.data();
@@ -1168,9 +1230,195 @@ exports.dailyTechEventsFetcher = functions.pubsub.schedule('0 0 * * *').timeZone
         if (enabledModules.includes("events")) {
             try {
                 console.log(`Fetching tech events for user: ${userDoc.id}`);
-                await fetchAndStoreEventsForUserInternal(userDoc.id);
+                await fetchAndStoreEventsForUserInternal(userDoc.id, true);
             } catch (err: any) {
                 console.error(`Error fetching events for user ${userDoc.id}:`, err.message);
+            }
+        }
+    }
+});
+
+async function fetchAndStoreWalkInsForUserInternal(uid: string, triggerNotification: boolean): Promise<any> {
+    const userDoc = await db.collection("users").doc(uid).get();
+    
+    const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
+    let apiKey = "";
+    if (configDoc.exists) {
+        apiKey = configDoc.data()?.apiKey || "";
+    }
+    if (!apiKey) {
+        throw new Error('Gemini API key is not configured in admin console.');
+    }
+
+    const today = moment().tz('Asia/Kolkata');
+    const startDateStr = today.format('YYYY-MM-DD');
+    const endDateStr = today.clone().add(7, 'days').format('YYYY-MM-DD');
+
+    const prompt = `Find DevOps Engineer, Cloud Engineer, or Site Reliability Engineer (SRE) Walk-in drives/interviews happening in Bengaluru, India.
+The drives/interviews must happen between ${startDateStr} and ${endDateStr}.
+Use Google Search grounding to find real, current upcoming walk-in interviews.
+Provide a clean JSON list of walk-in drives. The "registrationLink" property in the JSON should point directly to the specific page/post/posting URL from where you found the drive (e.g. LinkedIn post, company career post, event page, etc.).
+Extract the company name for each walk-in drive and output it in the "company" field.
+
+Respond ONLY with a JSON array matching this schema:
+[
+  {
+    "title": "string (e.g. DevOps Engineer Walk-in Drive)",
+    "company": "string (e.g. Google)",
+    "date": "YYYY-MM-DD",
+    "timings": "string (e.g. 9:00 AM - 1:00 PM)",
+    "location": "string (specific address or location in Bengaluru)",
+    "registrationLink": "string (direct link to where this walk-in info was found)"
+  }
+]`;
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const payload = {
+        contents: [
+            {
+                parts: [
+                    { text: prompt }
+                ]
+            }
+        ],
+        tools: [
+            {
+                google_search: {}
+            }
+        ]
+    };
+
+    const response = await axios.post(url, payload, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 60000
+    });
+
+    const candidates = response.data?.candidates;
+    if (!candidates || candidates.length === 0) {
+        throw new Error('No response candidates returned from Gemini API.');
+    }
+
+    const textResponse = candidates[0].content?.parts[0]?.text;
+    if (!textResponse) {
+        throw new Error('Empty content returned from Gemini API.');
+    }
+
+    let cleanedText = textResponse.trim();
+    if (cleanedText.startsWith("```")) {
+        cleanedText = cleanedText.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+    }
+    const parsedWalkIns = JSON.parse(cleanedText) as any[];
+
+    // Deduplicate walk-ins by date and normalized title
+    const seen = new Set<string>();
+    const uniqueWalkIns: any[] = [];
+    for (const walkin of parsedWalkIns) {
+        if (!walkin.title || !walkin.date) continue;
+        const normTitle = walkin.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+        const key = `${walkin.date}_${normTitle}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniqueWalkIns.push(walkin);
+        }
+    }
+
+    const walkinsCol = db.collection("users").doc(uid).collection("walkins");
+    const existingSnap = await walkinsCol.get();
+    
+    // Store existing walkin keys to prevent adding duplicate walkin drives
+    const existingKeys = new Set<string>();
+    existingSnap.forEach(doc => {
+        const d = doc.data();
+        const t = d.title || "";
+        const normTitle = t.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+        existingKeys.add(`${d.date}_${normTitle}`);
+    });
+
+    // Mark all existing walk-ins as NOT new (isNew: false)
+    const batch = db.batch();
+    existingSnap.forEach(doc => {
+        batch.update(doc.ref, { isNew: false });
+    });
+    await batch.commit();
+
+    let newCount = 0;
+    const writeBatch = db.batch();
+    for (const walkin of uniqueWalkIns) {
+        const normTitle = walkin.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+        const key = `${walkin.date}_${normTitle}`;
+        
+        if (!existingKeys.has(key)) {
+            const cleanTitle = walkin.title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+            const docId = `${walkin.date}_${cleanTitle.substring(0, 30)}`;
+            const docRef = walkinsCol.doc(docId);
+            writeBatch.set(docRef, {
+                ...walkin,
+                isNew: true,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            newCount++;
+        }
+    }
+    await writeBatch.commit();
+
+    // Update last updated timestamp on user doc
+    await db.collection("users").doc(uid).update({
+        walkinsLastUpdated: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Send push notification if automatic scheduling triggered it and new items were added
+    if (triggerNotification && newCount > 0 && userDoc.exists) {
+        const uData = userDoc.data();
+        const enabledModules = uData?.enabledModules || [];
+        const notifPrefs = uData?.notificationPreferences || {};
+        
+        if (enabledModules.includes("walkin") && notifPrefs.walkin !== false) {
+            const usernameDoc = await db.collection("usernames").where("uid", "==", uid).limit(1).get();
+            if (!usernameDoc.empty) {
+                const token = usernameDoc.docs[0].data().fcmToken;
+                if (token) {
+                    await admin.messaging().send({
+                        token,
+                        notification: {
+                            title: "New Walk-In Drives Found",
+                            body: `Found ${newCount} new walk-in drive(s) for DevOps/Cloud/SRE roles in Bengaluru.`
+                        },
+                        android: { notification: { channelId: "walkin_reminder_channel" } },
+                        data: { type: "walkin_reminder" }
+                    });
+                }
+            }
+        }
+    }
+
+    return { success: true, count: newCount };
+}
+
+exports.fetchUserWalkIns = functions.runWith({ timeoutSeconds: 120, memory: "256MB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    }
+    const uid = context.auth.uid;
+    try {
+        return await fetchAndStoreWalkInsForUserInternal(uid, false);
+    } catch (error: any) {
+        console.error("Error in fetchUserWalkIns:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Failed to fetch walk-ins.');
+    }
+});
+
+exports.dailyWalkInsFetcher = functions.pubsub.schedule('0 20 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+    console.log("Starting dailyWalkInsFetcher at 8 PM IST");
+    const usersSnap = await db.collection("users").get();
+    for (const userDoc of usersSnap.docs) {
+        const data = userDoc.data();
+        const enabledModules = data.enabledModules || [];
+        if (enabledModules.includes("walkin")) {
+            try {
+                console.log(`Fetching walk-in drives for user: ${userDoc.id}`);
+                await fetchAndStoreWalkInsForUserInternal(userDoc.id, true);
+            } catch (err: any) {
+                console.error(`Error fetching walk-ins for user ${userDoc.id}:`, err.message);
             }
         }
     }

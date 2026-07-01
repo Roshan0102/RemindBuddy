@@ -11,6 +11,42 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  String? _username;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsername();
+  }
+
+  Future<void> _loadUsername() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    if (user.displayName != null && user.displayName!.isNotEmpty) {
+      setState(() {
+        _username = user.displayName;
+      });
+    }
+
+    try {
+      final query = await FirebaseFirestore.instance
+          .collection('usernames')
+          .where('uid', isEqualTo: user.uid)
+          .limit(1)
+          .get();
+      if (query.docs.isNotEmpty) {
+        final doc = query.docs.first;
+        final name = doc.id; // Document ID is the lowercased username
+        setState(() {
+          _username = name;
+        });
+      }
+    } catch (e) {
+      print('Error loading username: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -37,7 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               subtitle: Text(
-                user != null ? (user.email ?? 'Authenticated') : 'Log in to sync your data',
+                user != null ? (_username ?? user.email ?? 'Authenticated') : 'Log in to sync your data',
                 style: const TextStyle(color: Colors.grey),
               ),
               trailing: const Icon(Icons.chevron_right),
@@ -45,7 +81,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const AuthScreen()),
-                ).then((_) => setState(() {}));
+                ).then((_) {
+                  setState(() {});
+                  _loadUsername();
+                });
               },
             ),
           ),

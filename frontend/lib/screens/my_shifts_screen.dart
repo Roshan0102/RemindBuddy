@@ -13,7 +13,8 @@ import '../services/shift_service.dart';
 import '../services/log_service.dart';
 
 class MyShiftsScreen extends StatefulWidget {
-  const MyShiftsScreen({super.key});
+  final int initialTab;
+  const MyShiftsScreen({super.key, this.initialTab = 0});
 
   @override
   State<MyShiftsScreen> createState() => _MyShiftsScreenState();
@@ -33,15 +34,24 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   DateTime _currentDate = DateTime.now();
   String get _selectedRosterMonth => DateFormat('yyyy-MM').format(_currentDate);
 
-  int _selectedTab = 0; // 0 for Schedule, 1 for Events
+  late int _selectedTab; // 0 for Schedule, 1 for Events, 2 for Walk-In
   bool _isEventsEnabled = false;
+  bool _isWalkInEnabled = false;
   bool _isFetchingEvents = false;
+  bool _isFetchingWalkIns = false;
   List<String> _eventInterests = ['Cloud', 'Devops', 'AI', 'Agentic AI'];
+  DateTime? _eventsLastUpdated;
+  DateTime? _walkinsLastUpdated;
   StreamSubscription<DocumentSnapshot>? _userSubscription;
+  Map<String, int> _eventCounts = {};
+  Map<String, int> _walkinCounts = {};
+  StreamSubscription<QuerySnapshot>? _eventsSubscription;
+  StreamSubscription<QuerySnapshot>? _walkinsSubscription;
 
   @override
   void initState() {
     super.initState();
+    _selectedTab = widget.initialTab;
     _loadShifts();
     _listenToEventsPermission();
   }
@@ -49,6 +59,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   @override
   void dispose() {
     _userSubscription?.cancel();
+    _eventsSubscription?.cancel();
+    _walkinsSubscription?.cancel();
     super.dispose();
   }
 
@@ -64,15 +76,87 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         final data = doc.data()!;
         final enabledModules = List<String>.from(data['enabledModules'] ?? ['gold']);
         final interests = List<String>.from(data['eventInterests'] ?? ['Cloud', 'Devops', 'AI', 'Agentic AI']);
+        
+        final lastUpdatedVal = data['eventsLastUpdated'];
+        DateTime? lastUpdated;
+        if (lastUpdatedVal is Timestamp) {
+          lastUpdated = lastUpdatedVal.toDate();
+        } else if (lastUpdatedVal is String) {
+          lastUpdated = DateTime.tryParse(lastUpdatedVal);
+        }
+
+        final walkinsLastUpdatedVal = data['walkinsLastUpdated'];
+        DateTime? walkinsLastUpdated;
+        if (walkinsLastUpdatedVal is Timestamp) {
+          walkinsLastUpdated = walkinsLastUpdatedVal.toDate();
+        } else if (walkinsLastUpdatedVal is String) {
+          walkinsLastUpdated = DateTime.tryParse(walkinsLastUpdatedVal);
+        }
+
         if (mounted) {
           setState(() {
             _isEventsEnabled = enabledModules.contains('events');
+            _isWalkInEnabled = enabledModules.contains('walkin');
             _eventInterests = interests;
+            _eventsLastUpdated = lastUpdated;
+            _walkinsLastUpdated = walkinsLastUpdated;
           });
         }
       }
     }, onError: (e) {
       LogService().error("Error listening to events permission/interests", e);
+    });
+
+    _eventsSubscription?.cancel();
+    _eventsSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('events')
+        .snapshots()
+        .listen((snapshot) {
+      final counts = <String, int>{};
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final notInterested = data['notInterested'] as bool? ?? false;
+        if (notInterested) continue;
+        final date = data['date'] as String? ?? '';
+        if (date.isNotEmpty) {
+          counts[date] = (counts[date] ?? 0) + 1;
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _eventCounts = counts;
+        });
+      }
+    }, onError: (e) {
+      LogService().error("Error listening to events count", e);
+    });
+
+    _walkinsSubscription?.cancel();
+    _walkinsSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('walkins')
+        .snapshots()
+        .listen((snapshot) {
+      final counts = <String, int>{};
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final notInterested = data['notInterested'] as bool? ?? false;
+        if (notInterested) continue;
+        final date = data['date'] as String? ?? '';
+        if (date.isNotEmpty) {
+          counts[date] = (counts[date] ?? 0) + 1;
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _walkinCounts = counts;
+        });
+      }
+    }, onError: (e) {
+      LogService().error("Error listening to walkins count", e);
     });
   }
 
@@ -98,6 +182,218 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     } finally {
       if (mounted) {
         setState(() => _isFetchingEvents = false);
+      }
+    }
+  }
+
+  Future<void> _markNotInterested(String eventDocId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('events')
+          .doc(eventDocId)
+          .update({'notInterested': true});
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Marked as not interested')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update event: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearAllEventsDialog() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete All Events'),
+        content: const Text('Are you sure you want to completely delete all events? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _clearAllEvents();
+    }
+  }
+
+  Future<void> _clearAllEvents() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => _isFetchingEvents = true);
+    try {
+      final col = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('events');
+      final snapshots = await col.get();
+      final batch = FirebaseFirestore.instance.batch();
+      for (var doc in snapshots.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      // Clear last updated time as well
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({
+        'eventsLastUpdated': FieldValue.delete()
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('All events deleted successfully.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete events: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isFetchingEvents = false);
+      }
+    }
+  }
+
+  Future<void> _triggerFetchWalkIns() async {
+    setState(() => _isFetchingWalkIns = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final callable = FirebaseFunctions.instance.httpsCallable('fetchUserWalkIns');
+      final result = await callable.call();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Successfully loaded ${result.data['count'] ?? 0} walk-in interviews'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Failed to fetch walk-ins: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isFetchingWalkIns = false);
+      }
+    }
+  }
+
+  Future<void> _markWalkInNotInterested(String walkinDocId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('walkins')
+          .doc(walkinDocId)
+          .update({'notInterested': true});
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Marked as not interested')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update walk-in: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearAllWalkInsDialog() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete All Walk-Ins'),
+        content: const Text('Are you sure you want to completely delete all walk-in drives? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _clearAllWalkIns();
+    }
+  }
+
+  Future<void> _clearAllWalkIns() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => _isFetchingWalkIns = true);
+    try {
+      final col = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('walkins');
+      final snapshots = await col.get();
+      final batch = FirebaseFirestore.instance.batch();
+      for (var doc in snapshots.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      // Clear last updated time as well
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({
+        'walkinsLastUpdated': FieldValue.delete()
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('All walk-ins deleted successfully.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete walk-ins: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isFetchingWalkIns = false);
       }
     }
   }
@@ -760,6 +1056,60 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     );
   }
 
+  Widget _buildCountsBadges(String date) {
+    final eventCount = _eventCounts[date] ?? 0;
+    final walkinCount = _walkinCounts[date] ?? 0;
+
+    if (eventCount == 0 && walkinCount == 0) {
+      return const SizedBox.shrink();
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (eventCount > 0) ...[
+          Container(
+            width: 20,
+            height: 20,
+            decoration: const BoxDecoration(
+              color: Colors.green,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              eventCount.toString(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
+        if (walkinCount > 0) ...[
+          Container(
+            width: 20,
+            height: 20,
+            decoration: const BoxDecoration(
+              color: Colors.blue,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              walkinCount.toString(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildUpcomingShifts() {
     final today = DateTime.now();
     final upcomingShifts = _shifts.where((shift) {
@@ -809,11 +1159,18 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                   color: _getShiftColor(shift.shiftType),
                 ),
               ),
-              title: Text(
-                dayLabel,
-                style: TextStyle(
-                  fontWeight: isToday || isTomorrow ? FontWeight.bold : FontWeight.normal,
-                ),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      dayLabel,
+                      style: TextStyle(
+                        fontWeight: isToday || isTomorrow ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                  _buildCountsBadges(shift.date),
+                ],
               ),
               subtitle: Text(shift.getTimeRange()),
               trailing: Text(
@@ -868,9 +1225,16 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     color: _getShiftColor(shift.shiftType),
                     size: 20,
                   ),
-                  title: Text(
-                    DateFormat('EEE, MMM d').format(shiftDate),
-                    style: const TextStyle(fontSize: 14),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          DateFormat('EEE, MMM d').format(shiftDate),
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ),
+                      _buildCountsBadges(shift.date),
+                    ],
                   ),
                   subtitle: Text(
                     shift.getTimeRange(),
@@ -1064,28 +1428,32 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
   Widget _buildTabButton(String label, int index) {
     final isSelected = _selectedTab == index;
+    final themeColor = index == 0 
+        ? Colors.teal 
+        : (index == 1 ? Colors.green : Colors.lightBlue);
     return InkWell(
       onTap: () {
         setState(() {
           _selectedTab = index;
         });
       },
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.teal : Colors.teal.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(15),
+          color: isSelected ? themeColor : themeColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? Colors.teal : Colors.teal.withOpacity(0.3),
-            width: 1,
+            color: isSelected ? themeColor : themeColor.withOpacity(0.3),
+            width: 1.5,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 15,
             fontWeight: FontWeight.bold,
-            color: isSelected ? Colors.white : Colors.teal,
+            color: isSelected ? Colors.white : themeColor,
           ),
         ),
       ),
@@ -1117,14 +1485,18 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         final allDocs = snapshot.data?.docs ?? [];
         
         // Filter events that match the currently selected month and year (_selectedRosterMonth format: yyyy-MM)
+        // and filter out those marked as not interested
         final monthEvents = allDocs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final dateStr = data['date'] as String? ?? '';
-          return dateStr.startsWith(_selectedRosterMonth);
+          final notInterested = data['notInterested'] as bool? ?? false;
+          return dateStr.startsWith(_selectedRosterMonth) && !notInterested;
         }).toList();
 
+        Widget mainContent;
+
         if (monthEvents.isEmpty) {
-          return Center(
+          mainContent = Center(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
               child: Column(
@@ -1150,171 +1522,592 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     label: const Text('Fetch Events via AI'),
                     style: ElevatedButton.styleFrom(
                       foregroundColor: Colors.white,
-                      backgroundColor: Colors.teal,
+                      backgroundColor: Colors.green,
                     ),
                   ),
                 ],
               ),
             ),
           );
-        }
+        } else {
+          mainContent = ListView.builder(
+            padding: const EdgeInsets.only(bottom: 24),
+            itemCount: monthEvents.length,
+            itemBuilder: (context, index) {
+              final docId = monthEvents[index].id;
+              final data = monthEvents[index].data() as Map<String, dynamic>;
+              final title = data['title'] ?? 'No Title';
+              final dateStr = data['date'] ?? '';
+              final timings = data['timings'] ?? 'No timings';
+              final location = data['location'] ?? 'No location';
+              final regLink = data['registrationLink'] ?? '';
+              final sourcePlatform = data['sourcePlatform'] ?? '';
+              final isNewEvent = data['isNew'] as bool? ?? false;
 
-        return ListView.builder(
-          padding: const EdgeInsets.only(bottom: 24),
-          itemCount: monthEvents.length,
-          itemBuilder: (context, index) {
-            final data = monthEvents[index].data() as Map<String, dynamic>;
-            final title = data['title'] ?? 'No Title';
-            final dateStr = data['date'] ?? '';
-            final timings = data['timings'] ?? 'No timings';
-            final location = data['location'] ?? 'No location';
-            final regLink = data['registrationLink'] ?? '';
+              // Format date nicely: YYYY-MM-DD to "EEE, MMM d"
+              String formattedDate = dateStr;
+              try {
+                final parsed = DateTime.parse(dateStr);
+                formattedDate = DateFormat('EEEE, MMMM d').format(parsed);
+              } catch (_) {}
 
-            // Format date nicely: YYYY-MM-DD to "EEE, MMM d"
-            String formattedDate = dateStr;
-            try {
-              final parsed = DateTime.parse(dateStr);
-              formattedDate = DateFormat('EEEE, MMMM d').format(parsed);
-            } catch (_) {}
+              // Determine user shift for this day
+              String shiftLabel = 'no data';
+              Color shiftBadgeColor = Colors.grey;
 
-            // Determine user shift for this day
-            String shiftLabel = 'no data';
-            Color shiftBadgeColor = Colors.grey;
+              if (_hasData) {
+                final shiftOnDay = _shifts.firstWhere(
+                  (s) => s.date == dateStr,
+                  orElse: () => Shift(date: dateStr, shiftType: 'week_off', isWeekOff: true),
+                );
 
-            if (_hasData) {
-              final shiftOnDay = _shifts.firstWhere(
-                (s) => s.date == dateStr,
-                orElse: () => Shift(date: dateStr, shiftType: 'week_off', isWeekOff: true),
-              );
-
-              if (shiftOnDay.shiftType == 'morning') {
-                shiftLabel = 'Morning';
-                shiftBadgeColor = Colors.orange;
-              } else if (shiftOnDay.shiftType == 'afternoon') {
-                shiftLabel = 'Afternoon';
-                shiftBadgeColor = Colors.blue;
-              } else if (shiftOnDay.shiftType == 'night') {
-                shiftLabel = 'Night';
-                shiftBadgeColor = Colors.indigo;
-              } else if (shiftOnDay.shiftType == 'week_off' || shiftOnDay.isWeekOff) {
-                shiftLabel = 'Week Off';
-                shiftBadgeColor = Colors.green;
-              } else if (shiftOnDay.shiftType == 'none') {
-                shiftLabel = 'Week Off';
-                shiftBadgeColor = Colors.green;
-              } else {
-                shiftLabel = shiftOnDay.getDisplayName();
-                shiftBadgeColor = _getShiftColor(shiftOnDay.shiftType);
+                if (shiftOnDay.shiftType == 'morning') {
+                  shiftLabel = 'Morning';
+                  shiftBadgeColor = Colors.orange;
+                } else if (shiftOnDay.shiftType == 'afternoon') {
+                  shiftLabel = 'Afternoon';
+                  shiftBadgeColor = Colors.blue;
+                } else if (shiftOnDay.shiftType == 'night') {
+                  shiftLabel = 'Night';
+                  shiftBadgeColor = Colors.indigo;
+                } else if (shiftOnDay.shiftType == 'week_off' || shiftOnDay.isWeekOff) {
+                  shiftLabel = 'Week Off';
+                  shiftBadgeColor = Colors.green;
+                } else if (shiftOnDay.shiftType == 'none') {
+                  shiftLabel = 'Week Off';
+                  shiftBadgeColor = Colors.green;
+                } else {
+                  shiftLabel = shiftOnDay.getDisplayName();
+                  shiftBadgeColor = _getShiftColor(shiftOnDay.shiftType);
+                }
               }
-            }
 
-            return Card(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: Colors.grey.withOpacity(0.15)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey.withOpacity(0.15)),
+                ),
+                child: Stack(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.teal,
-                            ),
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: EdgeInsets.only(right: isNewEvent ? 45.0 : 0.0),
+                                      child: Text(
+                                        title,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green,
+                                        ),
+                                      ),
+                                    ),
+                                    if (sourcePlatform.toString().isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.withOpacity(0.08),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          'Source: $sourcePlatform',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.green.shade700,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: shiftLabel == 'no data'
+                                      ? Colors.grey.shade100
+                                      : shiftBadgeColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: shiftLabel == 'no data'
+                                        ? Colors.grey.shade300
+                                        : shiftBadgeColor.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Text(
+                                  shiftLabel == 'no data' ? 'Shift: No Data' : 'Shift: $shiftLabel',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: shiftLabel == 'no data' ? Colors.grey : shiftBadgeColor,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              const Icon(Icons.calendar_month, size: 16, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Text(
+                                formattedDate,
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Text(
+                                timings,
+                                style: const TextStyle(fontSize: 13, color: Colors.black87),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.location_on, size: 16, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  location,
+                                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton.icon(
+                                onPressed: () => _markNotInterested(docId),
+                                icon: const Icon(Icons.block, size: 16, color: Colors.red),
+                                label: const Text('Not Interested'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                ),
+                              ),
+                              if (regLink.isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                TextButton.icon(
+                                  onPressed: () => _launchURL(regLink),
+                                  icon: const Icon(Icons.open_in_new, size: 16),
+                                  label: const Text('View Event Page'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.green,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isNewEvent)
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: shiftLabel == 'no data'
-                                ? Colors.grey.shade100
-                                : shiftBadgeColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: shiftLabel == 'no data'
-                                  ? Colors.grey.shade300
-                                  : shiftBadgeColor.withOpacity(0.3),
-                            ),
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.red.withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              )
+                            ],
                           ),
-                          child: Text(
-                            shiftLabel == 'no data' ? 'Shift: No Data' : 'Shift: $shiftLabel',
+                          child: const Text(
+                            'NEW',
                             style: TextStyle(
-                              fontSize: 11,
+                              color: Colors.white,
+                              fontSize: 9,
                               fontWeight: FontWeight.bold,
-                              color: shiftLabel == 'no data' ? Colors.grey : shiftBadgeColor,
+                              letterSpacing: 0.5,
                             ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Icon(Icons.calendar_month, size: 16, color: Colors.grey),
-                        const SizedBox(width: 8),
-                        Text(
-                          formattedDate,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Icon(Icons.access_time, size: 16, color: Colors.grey),
-                        const SizedBox(width: 8),
-                        Text(
-                          timings,
-                          style: const TextStyle(fontSize: 13, color: Colors.black87),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            location,
-                            style: const TextStyle(fontSize: 13, color: Colors.black87),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (regLink.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: () => _launchURL(regLink),
-                          icon: const Icon(Icons.open_in_new, size: 16),
-                          label: const Text('Register Here'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.teal,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           ),
                         ),
                       ),
-                    ],
+                  ],
+                ),
+              );
+            },
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_eventsLastUpdated != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.history, size: 14, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_eventsLastUpdated!)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ],
                 ),
               ),
-            );
-          },
+            Expanded(child: mainContent),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildWalkInView() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Center(child: Text('Please log in first.'));
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('walkins')
+          .orderBy('date', descending: false)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(child: Text('Error loading walk-ins: ${snapshot.error}'));
+        }
+
+        final allDocs = snapshot.data?.docs ?? [];
+        
+        // Filter walk-ins that match the currently selected month and year (_selectedRosterMonth format: yyyy-MM)
+        // and filter out those marked as not interested
+        final monthWalkIns = allDocs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final dateStr = data['date'] as String? ?? '';
+          final notInterested = data['notInterested'] as bool? ?? false;
+          return dateStr.startsWith(_selectedRosterMonth) && !notInterested;
+        }).toList();
+
+        Widget mainContent;
+
+        if (monthWalkIns.isEmpty) {
+          mainContent = Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.directions_walk, size: 80, color: Colors.grey[300]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No walk-in drives found for ${DateFormat('MMMM yyyy').format(_currentDate)}',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600], fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Roles: DevOps, Cloud, Site Reliability Engineer',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: _triggerFetchWalkIns,
+                    icon: const Icon(Icons.sync),
+                    label: const Text('Fetch Walk-Ins via AI'),
+                    style: ElevatedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor: Colors.lightBlue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        } else {
+          mainContent = ListView.builder(
+            padding: const EdgeInsets.only(bottom: 24),
+            itemCount: monthWalkIns.length,
+            itemBuilder: (context, index) {
+              final docId = monthWalkIns[index].id;
+              final data = monthWalkIns[index].data() as Map<String, dynamic>;
+              final title = data['title'] ?? 'No Title';
+              final dateStr = data['date'] ?? '';
+              final timings = data['timings'] ?? 'No timings';
+              final location = data['location'] ?? 'No location';
+              final regLink = data['registrationLink'] ?? '';
+              final company = data['company'] ?? '';
+              final isNewWalkIn = data['isNew'] as bool? ?? false;
+
+              // Format date nicely: YYYY-MM-DD to "EEE, MMM d"
+              String formattedDate = dateStr;
+              try {
+                final parsed = DateTime.parse(dateStr);
+                formattedDate = DateFormat('EEEE, MMMM d').format(parsed);
+              } catch (_) {}
+
+              // Determine user shift for this day
+              String shiftLabel = 'no data';
+              Color shiftBadgeColor = Colors.grey;
+
+              if (_hasData) {
+                final shiftOnDay = _shifts.firstWhere(
+                  (s) => s.date == dateStr,
+                  orElse: () => Shift(date: dateStr, shiftType: 'week_off', isWeekOff: true),
+                );
+
+                if (shiftOnDay.shiftType == 'morning') {
+                  shiftLabel = 'Morning';
+                  shiftBadgeColor = Colors.orange;
+                } else if (shiftOnDay.shiftType == 'afternoon') {
+                  shiftLabel = 'Afternoon';
+                  shiftBadgeColor = Colors.blue;
+                } else if (shiftOnDay.shiftType == 'night') {
+                  shiftLabel = 'Night';
+                  shiftBadgeColor = Colors.indigo;
+                } else if (shiftOnDay.shiftType == 'week_off' || shiftOnDay.isWeekOff) {
+                  shiftLabel = 'Week Off';
+                  shiftBadgeColor = Colors.green;
+                } else if (shiftOnDay.shiftType == 'none') {
+                  shiftLabel = 'Week Off';
+                  shiftBadgeColor = Colors.green;
+                } else {
+                  shiftLabel = shiftOnDay.getDisplayName();
+                  shiftBadgeColor = _getShiftColor(shiftOnDay.shiftType);
+                }
+              }
+
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey.withOpacity(0.15)),
+                ),
+                child: Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: EdgeInsets.only(right: isNewWalkIn ? 45.0 : 0.0),
+                                      child: Text(
+                                        title,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.lightBlue,
+                                        ),
+                                      ),
+                                    ),
+                                    if (company.toString().isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Company: $company',
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: shiftLabel == 'no data'
+                                      ? Colors.grey.shade100
+                                      : shiftBadgeColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: shiftLabel == 'no data'
+                                        ? Colors.grey.shade300
+                                        : shiftBadgeColor.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Text(
+                                  shiftLabel == 'no data' ? 'Shift: No Data' : 'Shift: $shiftLabel',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: shiftLabel == 'no data' ? Colors.grey : shiftBadgeColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              const Icon(Icons.calendar_month, size: 16, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Text(
+                                formattedDate,
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Text(
+                                timings,
+                                style: const TextStyle(fontSize: 13, color: Colors.black87),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.location_on, size: 16, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  location,
+                                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton.icon(
+                                onPressed: () => _markWalkInNotInterested(docId),
+                                icon: const Icon(Icons.block, size: 16, color: Colors.red),
+                                label: const Text('Not Interested'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                ),
+                              ),
+                              if (regLink.isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                TextButton.icon(
+                                  onPressed: () => _launchURL(regLink),
+                                  icon: const Icon(Icons.open_in_new, size: 16),
+                                  label: const Text('View Interview Page'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.teal,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isNewWalkIn)
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.red.withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              )
+                            ],
+                          ),
+                          child: const Text(
+                            'NEW',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_walkinsLastUpdated != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.history, size: 14, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_walkinsLastUpdated!)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(child: mainContent),
+          ],
         );
       },
     );
@@ -1345,12 +2138,18 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Text('My Shifts'),
-            if (_isEventsEnabled) ...[
-              const SizedBox(width: 12),
+            if (_isEventsEnabled || _isWalkInEnabled) ...[
               _buildTabButton('Schedule', 0),
-              const SizedBox(width: 6),
-              _buildTabButton('Events', 1),
+              if (_isEventsEnabled) ...[
+                const SizedBox(width: 8),
+                _buildTabButton('Events', 1),
+              ],
+              if (_isWalkInEnabled) ...[
+                const SizedBox(width: 8),
+                _buildTabButton('Walk-In', 2),
+              ],
+            ] else ...[
+              const Text('Schedule', style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ],
         ),
@@ -1373,7 +2172,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 child: SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.teal),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green),
                 ),
               )
             else ...[
@@ -1386,6 +2185,33 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 icon: const Icon(Icons.sync),
                 onPressed: _triggerFetchEvents,
                 tooltip: 'Sync Events Now',
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
+                onPressed: _clearAllEventsDialog,
+                tooltip: 'Delete All Events',
+              ),
+            ]
+          ] else if (_selectedTab == 2) ...[
+            if (_isFetchingWalkIns)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.lightBlue),
+                ),
+              )
+            else ...[
+              IconButton(
+                icon: const Icon(Icons.sync),
+                onPressed: _triggerFetchWalkIns,
+                tooltip: 'Sync Walk-Ins Now',
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
+                onPressed: _clearAllWalkInsDialog,
+                tooltip: 'Delete All Walk-Ins',
               ),
             ]
           ],
@@ -1434,7 +2260,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                               ],
                             ),
                           ))
-                : _buildEventsView(),
+                : (_selectedTab == 1 ? _buildEventsView() : _buildWalkInView()),
           ),
         ],
       ),
