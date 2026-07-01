@@ -795,6 +795,7 @@ class _MainScreenState extends State<MainScreen> {
                     _loadPreferences();
                   });
                 },
+              ),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings, color: Colors.blueGrey),
