@@ -1259,6 +1259,13 @@ exports.dailyTechEventsFetcher = functions.pubsub.schedule('0 19 * * *').timeZon
 
 async function fetchAndStoreWalkInsForUserInternal(uid: string, triggerNotification: boolean): Promise<any> {
     const userDoc = await db.collection("users").doc(uid).get();
+    let roles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"];
+    if (userDoc.exists) {
+        const data = userDoc.data();
+        if (data && data.walkinRoles && Array.isArray(data.walkinRoles) && data.walkinRoles.length > 0) {
+            roles = data.walkinRoles;
+        }
+    }
     
     const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
     let apiKey = "";
@@ -1273,7 +1280,7 @@ async function fetchAndStoreWalkInsForUserInternal(uid: string, triggerNotificat
     const startDateStr = today.format('YYYY-MM-DD');
     const endDateStr = today.clone().add(2, 'months').endOf('month').format('YYYY-MM-DD');
 
-    const prompt = `Find DevOps Engineer, Cloud Engineer, or Site Reliability Engineer (SRE) Walk-in drives/interviews happening in Bengaluru, India.
+    const prompt = `Find Walk-in drives/interviews happening in Bengaluru, India for the following job roles: ${roles.join(', ')}.
 The drives/interviews must happen between ${startDateStr} and ${endDateStr}.
 Use Google Search grounding to find real, current upcoming walk-in interviews.
 Provide a clean JSON list of walk-in drives. The "registrationLink" property in the JSON should point directly to the specific page/post/posting URL from where you found the drive (e.g. LinkedIn post, company career post, event page, etc.).

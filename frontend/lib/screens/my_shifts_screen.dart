@@ -40,6 +40,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   bool _isFetchingEvents = false;
   bool _isFetchingWalkIns = false;
   List<String> _eventInterests = ['Cloud', 'Devops', 'AI', 'Agentic AI'];
+  List<String> _walkinRoles = ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer'];
   DateTime? _eventsLastUpdated;
   DateTime? _walkinsLastUpdated;
   StreamSubscription<DocumentSnapshot>? _userSubscription;
@@ -47,6 +48,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   Map<String, int> _walkinCounts = {};
   StreamSubscription<QuerySnapshot>? _eventsSubscription;
   StreamSubscription<QuerySnapshot>? _walkinsSubscription;
+  Stream<QuerySnapshot>? _eventsStream;
+  Stream<QuerySnapshot>? _walkinsStream;
 
   @override
   void initState() {
@@ -67,6 +70,21 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   void _listenToEventsPermission() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
+    _eventsStream = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('events')
+        .orderBy('date', descending: false)
+        .snapshots();
+
+    _walkinsStream = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('walkins')
+        .orderBy('date', descending: false)
+        .snapshots();
+
     _userSubscription = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
@@ -76,6 +94,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         final data = doc.data()!;
         final enabledModules = List<String>.from(data['enabledModules'] ?? ['gold']);
         final interests = List<String>.from(data['eventInterests'] ?? ['Cloud', 'Devops', 'AI', 'Agentic AI']);
+        final walkinRoles = List<String>.from(data['walkinRoles'] ?? ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer']);
         
         final lastUpdatedVal = data['eventsLastUpdated'];
         DateTime? lastUpdated;
@@ -98,6 +117,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
             _isEventsEnabled = enabledModules.contains('events');
             _isWalkInEnabled = enabledModules.contains('walkin');
             _eventInterests = interests;
+            _walkinRoles = walkinRoles;
             _eventsLastUpdated = lastUpdated;
             _walkinsLastUpdated = walkinsLastUpdated;
           });
@@ -472,6 +492,92 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                       }
                     },
               child: isSavingInterests
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editWalkInRolesDialog() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final controller = TextEditingController(text: _walkinRoles.join(', '));
+    bool isSavingRoles = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Walk-In Roles'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Enter job roles you want walk-in drives for (comma separated):',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  labelText: 'Roles',
+                  hintText: 'e.g. DevOps Engineer, Cloud Engineer, SRE',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSavingRoles ? null : () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isSavingRoles
+                  ? null
+                  : () async {
+                      setDialogState(() => isSavingRoles = true);
+                      try {
+                        final list = controller.text
+                            .split(',')
+                            .map((s) => s.trim())
+                            .where((s) => s.isNotEmpty)
+                            .toList();
+                        
+                        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+                          'walkinRoles': list,
+                        }, SetOptions(merge: true));
+
+                        setState(() {
+                          _walkinRoles = list;
+                        });
+
+                        Navigator.pop(context);
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Roles saved! Fetching new walk-ins...'),
+                          ),
+                        );
+                        _triggerFetchWalkIns();
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed to save roles: $e'), backgroundColor: Colors.red),
+                        );
+                      } finally {
+                        setDialogState(() => isSavingRoles = false);
+                      }
+                    },
+              child: isSavingRoles
                   ? const SizedBox(
                       width: 20,
                       height: 20,
@@ -1439,7 +1545,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       },
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected ? themeColor : themeColor.withOpacity(0.1),
           borderRadius: BorderRadius.circular(20),
@@ -1451,7 +1557,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 15,
+            fontSize: 13,
             fontWeight: FontWeight.bold,
             color: isSelected ? Colors.white : themeColor,
           ),
@@ -1466,13 +1572,15 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       return const Center(child: Text('Please log in first.'));
     }
 
+    _eventsStream ??= FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('events')
+        .orderBy('date', descending: false)
+        .snapshots();
+
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('events')
-          .orderBy('date', descending: false)
-          .snapshots(),
+      stream: _eventsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -1796,13 +1904,15 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       return const Center(child: Text('Please log in first.'));
     }
 
+    _walkinsStream ??= FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('walkins')
+        .orderBy('date', descending: false)
+        .snapshots();
+
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('walkins')
-          .orderBy('date', descending: false)
-          .snapshots(),
+      stream: _walkinsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -1841,7 +1951,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Roles: DevOps, Cloud, Site Reliability Engineer',
+                    'Roles: ${_walkinRoles.join(", ")}',
                     style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                     textAlign: TextAlign.center,
                   ),
@@ -2136,16 +2246,17 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        titleSpacing: 4.0,
         title: Row(
           children: [
             if (_isEventsEnabled || _isWalkInEnabled) ...[
               _buildTabButton('Schedule', 0),
               if (_isEventsEnabled) ...[
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 _buildTabButton('Events', 1),
               ],
               if (_isWalkInEnabled) ...[
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 _buildTabButton('Walk-In', 2),
               ],
             ] else ...[
@@ -2179,7 +2290,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               IconButton(
                 icon: const Icon(Icons.interests_outlined),
                 onPressed: _editInterestsDialog,
-                tooltip: 'Edit Interests',
+                tooltip: 'Edit Tech Interests',
               ),
               IconButton(
                 icon: const Icon(Icons.sync),
@@ -2203,6 +2314,11 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 ),
               )
             else ...[
+              IconButton(
+                icon: const Icon(Icons.interests_outlined),
+                onPressed: _editWalkInRolesDialog,
+                tooltip: 'Edit Walk-In Roles',
+              ),
               IconButton(
                 icon: const Icon(Icons.sync),
                 onPressed: _triggerFetchWalkIns,
