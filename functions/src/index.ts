@@ -1271,7 +1271,7 @@ async function fetchAndStoreWalkInsForUserInternal(uid: string, triggerNotificat
 
     const today = moment().tz('Asia/Kolkata');
     const startDateStr = today.format('YYYY-MM-DD');
-    const endDateStr = today.clone().add(7, 'days').format('YYYY-MM-DD');
+    const endDateStr = today.clone().add(2, 'months').endOf('month').format('YYYY-MM-DD');
 
     const prompt = `Find DevOps Engineer, Cloud Engineer, or Site Reliability Engineer (SRE) Walk-in drives/interviews happening in Bengaluru, India.
 The drives/interviews must happen between ${startDateStr} and ${endDateStr}.
