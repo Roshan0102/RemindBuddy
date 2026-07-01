@@ -987,6 +987,7 @@ The events must happen between ${startDateStr} and ${endDateStr}.
 Use Google Search grounding to find real, current upcoming events. In addition to general Google searches, you MUST search for and check tech events on these platforms: luma.com, eventbrite.com, meetup.com, hackerearth.com, 10times.com, and linkedin.com.
 Provide a clean JSON list of events. The "registrationLink" property in the JSON should point directly to the specific event source page URL from where you found the event (e.g. the specific meetup, luma event page, eventbrite event page, etc.).
 
+If no events match the criteria, respond ONLY with an empty JSON array: []. Do not include any conversational explanation, preamble, or notes.
 Respond ONLY with a JSON array matching this schema:
 [
   {
@@ -1029,7 +1030,27 @@ Respond ONLY with a JSON array matching this schema:
     if (cleanedText.startsWith("```")) {
         cleanedText = cleanedText.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
     }
-    const parsedEvents = JSON.parse(cleanedText);
+    let parsedEvents = [];
+    try {
+        parsedEvents = JSON.parse(cleanedText);
+    }
+    catch (e) {
+        console.warn("Failed to parse JSON response directly for events. Attempting regex extraction.", e);
+        const match = cleanedText.match(/\[[\s\S]*\]/);
+        if (match) {
+            try {
+                parsedEvents = JSON.parse(match[0]);
+            }
+            catch (e2) {
+                console.error("Regex extraction failed for events JSON.", e2);
+                parsedEvents = [];
+            }
+        }
+        else {
+            console.error("No JSON array found in response text for events:", cleanedText);
+            parsedEvents = [];
+        }
+    }
     // Deduplicate events by date and normalized title
     const seen = new Set();
     const uniqueEvents = [];
@@ -1151,6 +1172,7 @@ Use Google Search grounding to find real, current upcoming walk-in interviews.
 Provide a clean JSON list of walk-in drives. The "registrationLink" property in the JSON should point directly to the specific page/post/posting URL from where you found the drive (e.g. LinkedIn post, company career post, event page, etc.).
 Extract the company name for each walk-in drive and output it in the "company" field.
 
+If no walk-in drives or interviews match the criteria, respond ONLY with an empty JSON array: []. Do not include any conversational explanation, preamble, or notes.
 Respond ONLY with a JSON array matching this schema:
 [
   {
@@ -1193,7 +1215,27 @@ Respond ONLY with a JSON array matching this schema:
     if (cleanedText.startsWith("```")) {
         cleanedText = cleanedText.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
     }
-    const parsedWalkIns = JSON.parse(cleanedText);
+    let parsedWalkIns = [];
+    try {
+        parsedWalkIns = JSON.parse(cleanedText);
+    }
+    catch (e) {
+        console.warn("Failed to parse JSON response directly for walk-ins. Attempting regex extraction.", e);
+        const match = cleanedText.match(/\[[\s\S]*\]/);
+        if (match) {
+            try {
+                parsedWalkIns = JSON.parse(match[0]);
+            }
+            catch (e2) {
+                console.error("Regex extraction failed for walk-ins JSON.", e2);
+                parsedWalkIns = [];
+            }
+        }
+        else {
+            console.error("No JSON array found in response text for walk-ins:", cleanedText);
+            parsedWalkIns = [];
+        }
+    }
     // Deduplicate walk-ins by date and normalized title
     const seen = new Set();
     const uniqueWalkIns = [];
