@@ -107,17 +107,6 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                     );
                   },
                 ),
-                SwitchListTile(
-                  title: const Text('Annoying Mode'),
-                  subtitle: const Text('Keeps reminding until you say YES'),
-                  value: isAnnoying,
-                  onChanged: (value) {
-                    setDialogState(() {
-                      isAnnoying = value;
-                    });
-                  },
-                  secondary: const Icon(Icons.alarm_on, color: Colors.red),
-                ),
               ],
             ),
           ),
@@ -276,8 +265,8 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                     backgroundColor: reminder.isActive
                         ? Theme.of(context).colorScheme.primary
                         : Colors.grey,
-                    child: Icon(
-                      reminder.isAnnoying ? Icons.alarm_on : Icons.alarm,
+                    child: const Icon(
+                      Icons.alarm,
                       color: Colors.white,
                     ),
                   ),
@@ -305,28 +294,10 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                               fontWeight: FontWeight.w500,
                             ),
                           ),
-                          if (reminder.isAnnoying) ...[
-                            const SizedBox(width: 12),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.red[100],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                'Nag Mode',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.red[900],
-                                  fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
+                  ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

@@ -180,7 +180,11 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
               return IconButton(
                 icon: hasRequests
                     ? Badge(
-                        label: Text(requests.length.toString()),
+                        backgroundColor: Colors.red,
+                        label: Text(
+                          requests.length.toString(),
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
                         child: const Icon(Icons.people_outline),
                       )
                     : const Icon(Icons.people_outline),

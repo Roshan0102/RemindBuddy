@@ -170,18 +170,23 @@ exports.processCalendarReminderTask = functions.tasks
                             nextMoment.add(recurrenceValue, "weeks");
                         } else if (recurrenceUnit === "months") {
                             nextMoment.add(recurrenceValue, "months");
+                        } else if (recurrenceUnit === "minutes") {
+                            nextMoment.add(recurrenceValue, "minutes");
+                        } else if (recurrenceUnit === "hours") {
+                            nextMoment.add(recurrenceValue, "hours");
                         } else {
                             nextMoment.add(recurrenceValue, "days");
                         }
 
                         const nextDateStr = nextMoment.format("YYYY-MM-DD");
+                        const nextTimeStr = nextMoment.format("HH:mm");
                         const nextRemaining = (remaining !== undefined && remaining !== null) ? (remaining - 1) : null;
                         
                         const nextReminderData: any = {
                             title: rData.title,
                             description: rData.description,
                             date: nextDateStr,
-                            time: rData.time,
+                            time: nextTimeStr,
                             status: "pending",
                             createdAt: admin.firestore.FieldValue.serverTimestamp(),
                             isRecurring: true,

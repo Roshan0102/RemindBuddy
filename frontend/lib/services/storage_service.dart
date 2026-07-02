@@ -788,15 +788,65 @@ class StorageService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Stream.empty();
 
-    return FirebaseFirestore.instance
+    final s1 = FirebaseFirestore.instance
         .collection('buddy_links')
         .where('senderUid', isEqualTo: user.uid)
         .where('status', isEqualTo: 'approved')
-        .snapshots()
-        .map((snap) => snap.docs.map((doc) => {
-              ...doc.data(),
-              'id': doc.id,
-            }).toList());
+        .snapshots();
+
+    final s2 = FirebaseFirestore.instance
+        .collection('buddy_links')
+        .where('receiverUid', isEqualTo: user.uid)
+        .where('status', isEqualTo: 'approved')
+        .snapshots();
+
+    final controller = StreamController<List<Map<String, dynamic>>>();
+    List<Map<String, dynamic>> list1 = [];
+    List<Map<String, dynamic>> list2 = [];
+
+    void emitCombined() {
+      final combined = <String, Map<String, dynamic>>{};
+      for (var item in list1) {
+        final buddyUid = item['receiverUid'] as String;
+        final buddyUsername = item['receiverUsername'] as String? ?? 'User';
+        combined[buddyUid] = {
+          'uid': buddyUid,
+          'username': buddyUsername,
+          'receiverUid': buddyUid,
+          'receiverUsername': buddyUsername,
+        };
+      }
+      for (var item in list2) {
+        final buddyUid = item['senderUid'] as String;
+        final buddyUsername = item['senderUsername'] as String? ?? 'User';
+        combined[buddyUid] = {
+          'uid': buddyUid,
+          'username': buddyUsername,
+          'receiverUid': buddyUid,
+          'receiverUsername': buddyUsername,
+        };
+      }
+      if (!controller.isClosed) {
+        controller.add(combined.values.toList());
+      }
+    }
+
+    final sub1 = s1.listen((snap) {
+      list1 = snap.docs.map((doc) => doc.data()).toList();
+      emitCombined();
+    });
+
+    final sub2 = s2.listen((snap) {
+      list2 = snap.docs.map((doc) => doc.data()).toList();
+      emitCombined();
+    });
+
+    controller.onCancel = () {
+      sub1.cancel();
+      sub2.cancel();
+    };
+
+    return controller.stream;
   }
 
   Stream<List<NotificationHistory>> getNotificationHistoryStream() {

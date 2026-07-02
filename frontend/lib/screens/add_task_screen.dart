@@ -383,6 +383,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                   isDense: true,
                                 ),
                                 items: const [
+                                  DropdownMenuItem(value: 'minutes', child: Text('Minutes')),
+                                  DropdownMenuItem(value: 'hours', child: Text('Hours')),
                                   DropdownMenuItem(value: 'days', child: Text('Days')),
                                   DropdownMenuItem(value: 'weeks', child: Text('Weeks')),
                                   DropdownMenuItem(value: 'months', child: Text('Months')),
@@ -429,8 +431,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 4.0),
                           child: Text(
                             _occurrencesLimit == null
-                                ? 'Will repeat every $_recurrenceValue ${_recurrenceValue == 1 ? (_recurrenceUnit == 'days' ? 'day' : _recurrenceUnit == 'weeks' ? 'week' : 'month') : _recurrenceUnit} indefinitely after each completion.'
-                                : 'Will repeat every $_recurrenceValue ${_recurrenceValue == 1 ? (_recurrenceUnit == 'days' ? 'day' : _recurrenceUnit == 'weeks' ? 'week' : 'month') : _recurrenceUnit} for $_occurrencesLimit occurrences.',
+                                ? 'Will repeat every $_recurrenceValue ${_recurrenceValue == 1 ? (_recurrenceUnit == 'minutes' ? 'minute' : _recurrenceUnit == 'hours' ? 'hour' : _recurrenceUnit == 'days' ? 'day' : _recurrenceUnit == 'weeks' ? 'week' : 'month') : _recurrenceUnit} indefinitely after each completion.'
+                                : 'Will repeat every $_recurrenceValue ${_recurrenceValue == 1 ? (_recurrenceUnit == 'minutes' ? 'minute' : _recurrenceUnit == 'hours' ? 'hour' : _recurrenceUnit == 'days' ? 'day' : _recurrenceUnit == 'weeks' ? 'week' : 'month') : _recurrenceUnit} for $_occurrencesLimit occurrences.',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.blue.shade800,
