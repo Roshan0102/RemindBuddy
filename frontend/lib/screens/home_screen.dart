@@ -6,6 +6,8 @@ import '../services/storage_service.dart';
 import 'add_task_screen.dart';
 import '../models/calendar_reminder.dart';
 
+import '../widgets/buddy_widgets.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -30,6 +32,44 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('My Calendar'),
         actions: [
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _storage.getIncomingBuddyRequestsStream(),
+            builder: (context, snapshot) {
+              final requests = snapshot.data ?? [];
+              final hasRequests = requests.isNotEmpty;
+              return IconButton(
+                icon: hasRequests
+                    ? Badge(
+                        label: Text(requests.length.toString()),
+                        child: const Icon(Icons.people_outline),
+                      )
+                    : const Icon(Icons.people_outline),
+                onPressed: () {
+                  showModalBottomSheet(
+                    context: context,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                      ),
+                    ),
+                    builder: (context) => BuddyRequestsSheet(),
+                  );
+                },
+                tooltip: 'Buddy Link Requests',
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.person_add_alt_1),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => const BuddySelectionDialog(),
+              );
+            },
+            tooltip: 'Link a Buddy',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => setState(() {}),
@@ -177,7 +217,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Text(reminder.description),
                       const SizedBox(height: 4),
-                      Text('Time: ${reminder.time}', style: TextStyle(color: Colors.blue.shade700, fontSize: 12)),
+                      Row(
+                        children: [
+                          Text('Time: ${reminder.time}', style: TextStyle(color: Colors.blue.shade700, fontSize: 12)),
+                          if (reminder.scheduledByUsername != null) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'by @${reminder.scheduledByUsername}',
+                                style: TextStyle(color: Colors.blue.shade800, fontSize: 10, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
                   trailing: Row(

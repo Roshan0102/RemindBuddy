@@ -1,6 +1,8 @@
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/storage_service.dart';
+import '../widgets/collaboration_widgets.dart';
 
 class ChecklistsScreen extends StatefulWidget {
   const ChecklistsScreen({super.key});
@@ -34,8 +36,8 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
     _loadChecklists();
   }
 
-  Future<void> _deleteChecklist(String id) async {
-    await _storage.deleteChecklist(id);
+  Future<void> _deleteChecklist(String id, {String? ownerUid}) async {
+    await _storage.deleteChecklist(id, ownerUid: ownerUid);
     _loadChecklists();
   }
 
@@ -169,6 +171,36 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
       appBar: AppBar(
         title: const Text('My Belongings', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
+        actions: [
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _storage.getIncomingRequestsStream('checklist'),
+            builder: (context, snapshot) {
+              final requests = snapshot.data ?? [];
+              final hasRequests = requests.isNotEmpty;
+              return IconButton(
+                icon: hasRequests
+                    ? Badge(
+                        label: Text(requests.length.toString()),
+                        child: const Icon(Icons.people_outline),
+                      )
+                    : const Icon(Icons.people_outline),
+                onPressed: () {
+                  showModalBottomSheet(
+                    context: context,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                      ),
+                    ),
+                    builder: (context) => CollaborationRequestsSheet(type: 'checklist'),
+                  );
+                },
+                tooltip: 'Collaboration Requests',
+              );
+            },
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddDialog,
@@ -207,6 +239,8 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
             );
           }
 
+          final currentUser = FirebaseAuth.instance.currentUser;
+
           return GridView.builder(
             padding: const EdgeInsets.all(16),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -218,9 +252,11 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
             itemCount: checklists.length,
             itemBuilder: (context, index) {
               final list = checklists[index];
-              final colorValue = list['color'] ?? Colors.blue.value;
+              final colorValue = list['colorValue'] ?? list['color'] ?? Colors.blue.value;
               final color = Color(colorValue);
               final icon = _getIconFromCode(list['iconCode']);
+              final sharedWithList = list['sharedWith'] as List?;
+              final isShared = (sharedWithList != null && sharedWithList.isNotEmpty) || (list['ownerUid'] != null && list['ownerUid'] != currentUser?.uid);
 
               return Hero(
                 tag: 'list_${list['id']}',
@@ -237,26 +273,32 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                             checklistId: list['id'],
                             title: list['title'],
                             color: color,
+                            ownerUid: list['ownerUid'],
                           ),
                         ),
                       );
                     },
                     onLongPress: () async {
+                      final isOwn = list['ownerUid'] == null || list['ownerUid'] == currentUser?.uid;
                       final confirm = await showDialog<bool>(
                         context: context,
                         builder: (ctx) => AlertDialog(
-                          title: const Text('Delete List?'),
-                          content: Text('Are you sure you want to delete "${list['title']}"?'),
+                          title: Text(isOwn ? 'Delete List?' : 'Leave Shared List?'),
+                          content: Text(isOwn 
+                              ? 'Are you sure you want to delete "${list['title']}"?' 
+                              : 'Are you sure you want to stop collaborating on "${list['title']}"?'),
                           actions: [
                             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
                             TextButton(
                               onPressed: () => Navigator.pop(ctx, true), 
-                              child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                              child: Text(isOwn ? 'Delete' : 'Leave', style: const TextStyle(color: Colors.red)),
                             ),
                           ],
                         ),
                       );
-                      if (confirm == true) _deleteChecklist(list['id']);
+                      if (confirm == true) {
+                        _deleteChecklist(list['id'], ownerUid: list['ownerUid']);
+                      }
                     },
                     child: Container(
                       decoration: BoxDecoration(
@@ -286,13 +328,44 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.3),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Icon(icon, color: Colors.white, size: 24),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Icon(icon, color: Colors.white, size: 24),
+                                    ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (isShared)
+                                          const Icon(Icons.people, color: Colors.white70, size: 20),
+                                        if (list['ownerUid'] == null || list['ownerUid'] == currentUser?.uid) ...[
+                                          if (isShared) const SizedBox(width: 8),
+                                          IconButton(
+                                            icon: const Icon(Icons.person_add_alt_1, color: Colors.white, size: 20),
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                            onPressed: () {
+                                              showDialog(
+                                                context: context,
+                                                builder: (context) => CollaboratorSelectionDialog(
+                                                  itemId: list['id'],
+                                                  itemTitle: list['title'],
+                                                  type: 'checklist',
+                                                ),
+                                              );
+                                            },
+                                            tooltip: 'Share / Collaborate',
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ],
                                 ),
                                 Text(
                                   list['title'],
@@ -325,12 +398,14 @@ class ChecklistDetailScreen extends StatefulWidget {
   final String checklistId;
   final String title;
   final Color color;
+  final String? ownerUid;
 
   const ChecklistDetailScreen({
     super.key,
     required this.checklistId,
     required this.title,
     required this.color,
+    this.ownerUid,
   });
 
   @override
@@ -347,19 +422,19 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
   }
 
   Future<void> _addItem(String text) async {
-    await _storage.addChecklistItem(widget.checklistId, text);
+    await _storage.addChecklistItem(widget.checklistId, text, ownerUid: widget.ownerUid);
   }
 
   Future<void> _toggleItem(String id, bool isChecked) async {
-    await _storage.toggleChecklistItem(widget.checklistId, id, isChecked);
+    await _storage.toggleChecklistItem(widget.checklistId, id, isChecked, ownerUid: widget.ownerUid);
   }
 
   Future<void> _deleteItem(String id) async {
-    await _storage.deleteChecklistItem(widget.checklistId, id);
+    await _storage.deleteChecklistItem(widget.checklistId, id, ownerUid: widget.ownerUid);
   }
 
   Future<void> _resetList() async {
-    await _storage.resetChecklistItems(widget.checklistId);
+    await _storage.resetChecklistItems(widget.checklistId, ownerUid: widget.ownerUid);
   }
 
   void _showAddItemDialog() {
@@ -413,7 +488,7 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _storage.getChecklistItemsStream(widget.checklistId),
+        stream: _storage.getChecklistItemsStream(widget.checklistId, ownerUid: widget.ownerUid),
         builder: (context, snapshot) {
           final items = snapshot.data ?? [];
           

@@ -18,6 +18,8 @@ import 'vault_tab_wrapper.dart';
 import 'settings_screen.dart';
 import 'notification_control_screen.dart';
 import 'admin_screen.dart';
+import 'notification_history_screen.dart';
+import '../services/update_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -53,6 +55,9 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _loadInitialData() async {
     await _loadPreferences();
     _listenToUserPreferences();
+    if (mounted) {
+      UpdateService.checkForUpdates(context);
+    }
   }
 
   void _listenToUserPreferences() {
@@ -778,6 +783,18 @@ class _MainScreenState extends State<MainScreen> {
                   },
                 ),
               const Divider(),
+              ListTile(
+                leading: const Icon(Icons.history_toggle_off, color: Colors.deepPurple),
+                title: const Text('Notification History'),
+                subtitle: const Text('Last 24 hours of notifications'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const NotificationHistoryScreen()),
+                  );
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.settings, color: Colors.blueGrey),
                 title: const Text('Settings'),

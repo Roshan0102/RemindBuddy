@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/note.dart';
 import '../services/storage_service.dart';
+import '../widgets/collaboration_widgets.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
@@ -59,6 +61,8 @@ class _NotesScreenState extends State<NotesScreen> {
                             content: contentController.text,
                             date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
                             isLocked: isLocked,
+                            ownerUid: note?.ownerUid,
+                            sharedWith: note?.sharedWith ?? [],
                           );
                           try {
                             if (note == null) {
@@ -165,6 +169,40 @@ class _NotesScreenState extends State<NotesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Notes', style: TextStyle(fontWeight: FontWeight.bold)),
+        centerTitle: true,
+        actions: [
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _storageService.getIncomingRequestsStream('note'),
+            builder: (context, snapshot) {
+              final requests = snapshot.data ?? [];
+              final hasRequests = requests.isNotEmpty;
+              return IconButton(
+                icon: hasRequests
+                    ? Badge(
+                        label: Text(requests.length.toString()),
+                        child: const Icon(Icons.people_outline),
+                      )
+                    : const Icon(Icons.people_outline),
+                onPressed: () {
+                  showModalBottomSheet(
+                    context: context,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                      ),
+                    ),
+                    builder: (context) => CollaborationRequestsSheet(type: 'note'),
+                  );
+                },
+                tooltip: 'Collaboration Requests',
+              );
+            },
+          ),
+        ],
+      ),
       body: StreamBuilder<List<Note>>(
         stream: _storageService.getNotesStream(),
         builder: (context, snapshot) {
@@ -181,6 +219,8 @@ class _NotesScreenState extends State<NotesScreen> {
             ]);
           }
 
+          final currentUser = FirebaseAuth.instance.currentUser;
+
           return GridView.builder(
             padding: const EdgeInsets.all(12),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -193,6 +233,7 @@ class _NotesScreenState extends State<NotesScreen> {
             itemBuilder: (context, index) {
               final note = notes[index];
               final Color noteColor = _getNoteColor(note.id ?? '', note.title + note.content);
+              final isShared = note.sharedWith.isNotEmpty || (note.ownerUid != null && note.ownerUid != currentUser?.uid);
               
               return Card(
                 elevation: 0,
@@ -222,7 +263,17 @@ class _NotesScreenState extends State<NotesScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                            if (note.isLocked) const Icon(Icons.lock, size: 14, color: Colors.black54),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (isShared)
+                                  const Icon(Icons.people_outline, size: 16, color: Colors.black54),
+                                if (note.isLocked) ...[
+                                  if (isShared) const SizedBox(width: 4),
+                                  const Icon(Icons.lock, size: 14, color: Colors.black54),
+                                ],
+                              ],
+                            ),
                           ],
                         ),
                         if (note.title.isNotEmpty) const SizedBox(height: 8),
@@ -241,36 +292,61 @@ class _NotesScreenState extends State<NotesScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              DateFormat('MMM d').format(DateFormat('yyyy-MM-dd HH:mm').parse(note.date)),
-                              style: const TextStyle(fontSize: 10, color: Colors.black38, fontWeight: FontWeight.bold),
+                            Expanded(
+                              child: Text(
+                                DateFormat('MMM d').format(DateFormat('yyyy-MM-dd HH:mm').parse(note.date)),
+                                style: const TextStyle(fontSize: 10, color: Colors.black38, fontWeight: FontWeight.bold),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            GestureDetector(
-                              onTap: () async {
-                                if (note.isLocked) {
-                                  bool auth = await _showPinDialog();
-                                  if (!auth) return;
-                                }
-                                final confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Text('Delete Note'),
-                                    content: const Text('Are you sure?'),
-                                    actions: [
-                                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx, true), 
-                                        style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                        child: const Text('Delete')
-                                      ),
-                                    ],
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (note.ownerUid == null || note.ownerUid == currentUser?.uid) ...[
+                                  GestureDetector(
+                                    onTap: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => CollaboratorSelectionDialog(
+                                          itemId: note.id!,
+                                          itemTitle: note.title.isNotEmpty ? note.title : 'Untitled Note',
+                                          type: 'note',
+                                        ),
+                                      );
+                                    },
+                                    child: const Icon(Icons.person_add_alt_1_outlined, size: 18, color: Colors.black38),
                                   ),
-                                );
+                                  const SizedBox(width: 12),
+                                ],
+                                GestureDetector(
+                                  onTap: () async {
+                                    if (note.isLocked) {
+                                      bool auth = await _showPinDialog();
+                                      if (!auth) return;
+                                    }
+                                    final isOwn = note.ownerUid == null || note.ownerUid == currentUser?.uid;
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: Text(isOwn ? 'Delete Note' : 'Leave Shared Note'),
+                                        content: Text(isOwn ? 'Are you sure you want to delete this note?' : 'Are you sure you want to stop collaborating on this note?'),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(ctx, true), 
+                                            style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                            child: Text(isOwn ? 'Delete' : 'Leave')
+                                          ),
+                                        ],
+                                      ),
+                                    );
 
-                                if (confirm != true) return;
-                                await _storageService.deleteNote(note.id!);
-                              },
-                              child: const Icon(Icons.delete_outline, size: 18, color: Colors.black38),
+                                    if (confirm != true) return;
+                                    await _storageService.deleteNote(note.id!, ownerUid: note.ownerUid);
+                                  },
+                                  child: const Icon(Icons.delete_outline, size: 18, color: Colors.black38),
+                                ),
+                              ],
                             ),
                           ],
                         ),

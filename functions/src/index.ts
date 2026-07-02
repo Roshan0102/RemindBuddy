@@ -9,6 +9,39 @@ admin.initializeApp();
 const db = admin.firestore();
 const tasksClient = new CloudTasksClient();
 
+async function logNotification(uid: string, title: string, body: string, type: string) {
+    try {
+        const timestamp = admin.firestore.FieldValue.serverTimestamp();
+        await db.collection("users").doc(uid).collection("notifications").add({
+            title,
+            body,
+            timestamp,
+            type
+        });
+
+        // Cleanup notifications older than 24 hours
+        const cutoff = new Date();
+        cutoff.setHours(cutoff.getHours() - 24);
+
+        const oldNotifications = await db.collection("users")
+            .doc(uid)
+            .collection("notifications")
+            .where("timestamp", "<", cutoff)
+            .get();
+
+        if (!oldNotifications.empty) {
+            const batch = db.batch();
+            oldNotifications.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+            console.log(`Cleaned up ${oldNotifications.size} expired notifications for user ${uid}`);
+        }
+    } catch (error) {
+        console.error("Failed to log/cleanup notification:", error);
+    }
+}
+
 // ----------------------------------------------------------------------------
 // SCRAPERS
 // ----------------------------------------------------------------------------
@@ -101,6 +134,7 @@ exports.processCalendarReminderTask = functions.tasks
                             android: { notification: { channelId: "calendar_reminder_channel" } },
                             data: { type: "CALENDAR_REMINDER", reminderId }
                         });
+                        await logNotification(uid, title, body, "CALENDAR_REMINDER");
                     }
                 }
             } else {
@@ -114,6 +148,55 @@ exports.processCalendarReminderTask = functions.tasks
                 notifiedAt: admin.firestore.FieldValue.serverTimestamp(),
                 expireAt: admin.firestore.Timestamp.fromDate(expireAt)
             });
+
+            // Reschedule recurring reminder
+            const rData = reminderDoc.data();
+            if (rData && rData.isRecurring === true) {
+                const remaining = rData.remainingOccurrences; // undefined, null, or a number
+                
+                // If remaining is explicitly defined, and is <= 1, we stop repeating!
+                if (remaining !== undefined && remaining !== null && remaining <= 1) {
+                    console.log(`Recurring reminder sequence ended for user ${uid} (reminder ${reminderId}).`);
+                } else {
+                    const recurrenceValue = rData.recurrenceValue || 1;
+                    const recurrenceUnit = rData.recurrenceUnit || "days";
+                    const currentScheduledMoment = moment.tz(`${rData.date} ${rData.time}`, "YYYY-MM-DD HH:mm", "Asia/Kolkata");
+                    
+                    if (currentScheduledMoment.isValid()) {
+                        const nextMoment = currentScheduledMoment.clone();
+                        if (recurrenceUnit === "days") {
+                            nextMoment.add(recurrenceValue, "days");
+                        } else if (recurrenceUnit === "weeks") {
+                            nextMoment.add(recurrenceValue, "weeks");
+                        } else if (recurrenceUnit === "months") {
+                            nextMoment.add(recurrenceValue, "months");
+                        } else {
+                            nextMoment.add(recurrenceValue, "days");
+                        }
+
+                        const nextDateStr = nextMoment.format("YYYY-MM-DD");
+                        const nextRemaining = (remaining !== undefined && remaining !== null) ? (remaining - 1) : null;
+                        
+                        const nextReminderData: any = {
+                            title: rData.title,
+                            description: rData.description,
+                            date: nextDateStr,
+                            time: rData.time,
+                            status: "pending",
+                            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                            isRecurring: true,
+                            recurrenceValue: recurrenceValue,
+                            recurrenceUnit: recurrenceUnit
+                        };
+                        if (nextRemaining !== null) {
+                            nextReminderData.remainingOccurrences = nextRemaining;
+                        }
+
+                        await db.collection("users").doc(uid).collection("calendar_reminders").add(nextReminderData);
+                        console.log(`Created next recurring reminder for user ${uid} on date ${nextDateStr} (every ${recurrenceValue} ${recurrenceUnit}, remaining: ${nextRemaining})`);
+                    }
+                }
+            }
         } catch (error) {
             console.error("Task execution failed:", error);
             throw error;
@@ -159,13 +242,18 @@ exports.onCalendarReminderCreated = functions.firestore
             const url = `https://${location}-${project}.cloudfunctions.net/processCalendarReminderTask`;
             const serviceAccountEmail = `${project}@appspot.gserviceaccount.com`;
 
+            let notifTitle = data.title;
+            if (data.scheduledByUsername) {
+                notifTitle = `${data.title} (by @${data.scheduledByUsername})`;
+            }
+
             const taskRequest: any = {
                 parent: queuePath,
                 task: {
                     httpRequest: {
                         httpMethod: 'POST',
                         url,
-                        body: Buffer.from(JSON.stringify({ data: { uid, reminderId, title: data.title, body: data.description } })).toString('base64'),
+                        body: Buffer.from(JSON.stringify({ data: { uid, reminderId, title: notifTitle, body: data.description } })).toString('base64'),
                         headers: { 'Content-Type': 'application/json' },
                         oidcToken: {
                             serviceAccountEmail,
@@ -207,6 +295,7 @@ async function notifyAllUsers(price: number, oldPrice: number | null) {
     }
     const snap = await db.collection("usernames").get();
     const tokens: string[] = [];
+    const targetUids: string[] = [];
     for (const d of snap.docs) {
         const udata = d.data();
         if (udata.fcmToken && udata.uid) {
@@ -218,6 +307,7 @@ async function notifyAllUsers(price: number, oldPrice: number | null) {
                     const notifPrefs = uData?.notificationPreferences || {};
                     if (enabledModules.includes("gold") && notifPrefs.gold_rates !== false) {
                         tokens.push(udata.fcmToken);
+                        targetUids.push(udata.uid);
                     }
                 }
             } catch (err) {
@@ -226,12 +316,17 @@ async function notifyAllUsers(price: number, oldPrice: number | null) {
         }
     }
     if (tokens.length > 0) {
+        const title = `Gold Rate: ₹${price}`;
+        const body = diffText;
         await admin.messaging().sendEachForMulticast({
             tokens,
-            notification: { title: `Gold Rate: ₹${price}`, body: diffText },
+            notification: { title, body },
             android: { notification: { channelId: "gold_price_channel" } },
             data: { type: "GOLD_PRICE" }
         });
+        for (const uid of targetUids) {
+            await logNotification(uid, title, body, "GOLD_PRICE");
+        }
     }
 }
 
@@ -487,12 +582,15 @@ exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('A
             const s = await db.collection('users').doc(userData.uid).collection('shifts').doc(tom.format('YYYY-MM')).collection('daily_shifts').doc(tom.format('YYYY-MM-DD')).get();
             if (s.exists) {
                 console.log(`Sending shift reminder to user ${userData.uid} (Token: ${userData.fcmToken.substring(0, 10)}...)`);
+                const title = "Tomorrow's Shift";
+                const body = s.data()?.shift_type || "Day Off";
                 await admin.messaging().send({
                     token: userData.fcmToken,
-                    notification: { title: "Tomorrow's Shift", body: s.data()?.shift_type || "Day Off" },
+                    notification: { title, body },
                     android: { notification: { channelId: 'shift_reminder_channel' } },
                     data: { type: "shift_reminder" }
                 });
+                await logNotification(userData.uid, title, body, "SHIFT_REMINDER");
             }
         } catch (error) {
             console.error(`Failed to send shift reminder for user ${userData.uid}:`, error);
@@ -531,13 +629,16 @@ exports.checkDailyReminders = functions.pubsub.schedule('* * * * *').timeZone('A
                 console.log(`Found ${rs.size} daily reminders for user ${userData.uid} at ${timeStr}`);
             }
             for (const r of rs.docs) {
-                console.log(`Sending daily reminder: ${r.data().title} to ${userData.uid}`);
+                const title = r.data().title;
+                const body = r.data().description || "Reminder";
+                console.log(`Sending daily reminder: ${title} to ${userData.uid}`);
                 await admin.messaging().send({
                     token: userData.fcmToken,
-                    notification: { title: r.data().title, body: r.data().description || "Reminder" },
+                    notification: { title, body },
                     android: { notification: { channelId: 'daily_reminder_channel' } },
                     data: { type: "daily_reminder" }
                 });
+                await logNotification(userData.uid, title, body, "DAILY_REMINDER");
             }
         } catch (error) {
             console.error(`Failed to send daily reminders for user ${userData.uid}:`, error);
@@ -744,6 +845,7 @@ Respond ONLY with a JSON object matching this schema:
 async function sendChitNotificationToAllUsers(recommendation: string, message: string) {
     const snap = await db.collection("usernames").get();
     const tokens: string[] = [];
+    const targetUids: string[] = [];
     for (const d of snap.docs) {
         const udata = d.data();
         if (udata.fcmToken && udata.uid) {
@@ -755,6 +857,7 @@ async function sendChitNotificationToAllUsers(recommendation: string, message: s
                     const notifPrefs = uData?.notificationPreferences || {};
                     if (enabledModules.includes("gold") && notifPrefs.gold_advice !== false) {
                         tokens.push(udata.fcmToken);
+                        targetUids.push(udata.uid);
                     }
                 }
             } catch (err) {
@@ -770,6 +873,9 @@ async function sendChitNotificationToAllUsers(recommendation: string, message: s
             android: { notification: { channelId: "gold_price_channel" } },
             data: { type: "GOLD_CHIT_ADVICE", recommendation }
         });
+        for (const uid of targetUids) {
+            await logNotification(uid, title, message, "GOLD_CHIT_ADVICE");
+        }
     }
 }
 
@@ -1210,15 +1316,15 @@ Respond ONLY with a JSON array matching this schema:
             if (!usernameDoc.empty) {
                 const token = usernameDoc.docs[0].data().fcmToken;
                 if (token) {
+                    const title = "New Tech Events Found";
+                    const body = `Found ${newCount} new tech event(s) and meetup(s) in Bengaluru.`;
                     await admin.messaging().send({
                         token,
-                        notification: {
-                            title: "New Tech Events Found",
-                            body: `Found ${newCount} new tech event(s) and meetup(s) in Bengaluru.`
-                        },
+                        notification: { title, body },
                         android: { notification: { channelId: "events_reminder_channel" } },
                         data: { type: "events_reminder" }
                     });
+                    await logNotification(uid, title, body, "TECH_EVENTS");
                 }
             }
         }
@@ -1422,15 +1528,15 @@ Respond ONLY with a JSON array matching this schema:
             if (!usernameDoc.empty) {
                 const token = usernameDoc.docs[0].data().fcmToken;
                 if (token) {
+                    const title = "New Walk-In Drives Found";
+                    const body = `Found ${newCount} new walk-in drive(s) for DevOps/Cloud/SRE roles in Bengaluru.`;
                     await admin.messaging().send({
                         token,
-                        notification: {
-                            title: "New Walk-In Drives Found",
-                            body: `Found ${newCount} new walk-in drive(s) for DevOps/Cloud/SRE roles in Bengaluru.`
-                        },
+                        notification: { title, body },
                         android: { notification: { channelId: "walkin_reminder_channel" } },
                         data: { type: "walkin_reminder" }
                     });
+                    await logNotification(uid, title, body, "WALKIN_DRIVES");
                 }
             }
         }

@@ -1,7 +1,9 @@
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/storage_service.dart';
 
 class AddTaskScreen extends StatefulWidget {
@@ -17,16 +19,51 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _occurrencesController = TextEditingController();
   late DateTime _date;
   late TimeOfDay _time;
   bool _isSaving = false;
+  bool _isRecurring = false;
+  int _recurrenceValue = 1;
+  String _recurrenceUnit = 'days';
+  int? _occurrencesLimit;
 
+  List<Map<String, dynamic>> _approvedBuddies = [];
+  bool _isLoadingBuddies = true;
+  StreamSubscription? _buddiesSubscription;
+  String? _myUid;
+  final Set<String> _selectedRecipients = {};
 
   @override
   void initState() {
     super.initState();
     _date = widget.selectedDate ?? DateTime.now();
     _time = TimeOfDay.now();
+    _myUid = FirebaseAuth.instance.currentUser?.uid;
+    if (_myUid != null) {
+      _selectedRecipients.add(_myUid!);
+    }
+    _loadBuddies();
+  }
+
+  void _loadBuddies() {
+    _buddiesSubscription = StorageService().getApprovedBuddiesStream().listen((buddies) {
+      if (mounted) {
+        setState(() {
+          _approvedBuddies = buddies;
+          _isLoadingBuddies = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _buddiesSubscription?.cancel();
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _occurrencesController.dispose();
+    super.dispose();
   }
 
   Future<void> _selectDate(BuildContext context) async {
@@ -94,6 +131,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   Future<void> _saveTask() async {
+    if (_selectedRecipients.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one recipient.')),
+      );
+      return;
+    }
+
     if (_formKey.currentState!.validate()) {
       setState(() { _isSaving = true; });
       final String dateStr = DateFormat('yyyy-MM-dd').format(_date);
@@ -101,12 +145,19 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
       try {
         final storage = StorageService();
-        await storage.insertCalendarReminder(
-          _titleController.text, 
-          _descriptionController.text, 
-          dateStr, 
-          timeStr
-        );
+        for (final recipientUid in _selectedRecipients) {
+          await storage.insertCalendarReminder(
+            _titleController.text, 
+            _descriptionController.text, 
+            dateStr, 
+            timeStr,
+            isRecurring: _isRecurring,
+            recurrenceValue: _recurrenceValue,
+            recurrenceUnit: _recurrenceUnit,
+            remainingOccurrences: _occurrencesLimit,
+            targetUid: recipientUid == _myUid ? null : recipientUid,
+          );
+        }
         
         if (mounted) {
           Navigator.pop(context, true);
@@ -132,6 +183,86 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           key: _formKey,
           child: ListView(
             children: [
+              if (!_isLoadingBuddies) ...[
+                Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Recipients',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Who should receive this reminder notification?',
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                        const SizedBox(height: 8),
+                        CheckboxListTile(
+                          title: const Text('Myself (You)'),
+                          value: _selectedRecipients.contains(_myUid),
+                          activeColor: Theme.of(context).primaryColor,
+                          onChanged: (bool? checked) {
+                            if (_myUid == null) return;
+                            setState(() {
+                              if (checked == true) {
+                                _selectedRecipients.add(_myUid!);
+                              } else {
+                                if (_selectedRecipients.length > 1) {
+                                  _selectedRecipients.remove(_myUid);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('At least one recipient must be selected.')),
+                                  );
+                                }
+                              }
+                            });
+                          },
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        if (_approvedBuddies.isNotEmpty) ...[
+                          const Divider(),
+                          ..._approvedBuddies.map((buddy) {
+                            final buddyUid = buddy['receiverUid'] as String;
+                            final buddyUsername = buddy['receiverUsername'] as String? ?? 'User';
+                            return CheckboxListTile(
+                              title: Text('@$buddyUsername'),
+                              value: _selectedRecipients.contains(buddyUid),
+                              activeColor: Theme.of(context).primaryColor,
+                              onChanged: (bool? checked) {
+                                setState(() {
+                                  if (checked == true) {
+                                    _selectedRecipients.add(buddyUid);
+                                  } else {
+                                    if (_selectedRecipients.length > 1) {
+                                      _selectedRecipients.remove(buddyUid);
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('At least one recipient must be selected.')),
+                                      );
+                                    }
+                                  }
+                                });
+                              },
+                              controlAffinity: ListTileControlAffinity.leading,
+                              contentPadding: EdgeInsets.zero,
+                            );
+                          }),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
               TextFormField(
                 controller: _titleController,
                 decoration: const InputDecoration(
@@ -175,6 +306,139 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         trailing: const Icon(Icons.edit),
                         onTap: () => _selectTime(context),
                       ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey.withOpacity(0.15)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Recurring Reminder', style: TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: const Text('Repeat this reminder at a custom interval'),
+                        secondary: Icon(
+                          _isRecurring ? Icons.repeat_one_on : Icons.repeat, 
+                          color: _isRecurring ? Theme.of(context).primaryColor : Colors.grey
+                        ),
+                        value: _isRecurring,
+                        onChanged: (bool value) {
+                          setState(() {
+                            _isRecurring = value;
+                          });
+                        },
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      if (_isRecurring) ...[
+                        const Divider(),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: TextFormField(
+                                initialValue: _recurrenceValue.toString(),
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'Every',
+                                  hintText: 'e.g. 10',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                onChanged: (val) {
+                                  setState(() {
+                                    _recurrenceValue = int.tryParse(val) ?? 1;
+                                  });
+                                },
+                                validator: (value) {
+                                  if (_isRecurring) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Required';
+                                    }
+                                    final n = int.tryParse(value);
+                                    if (n == null || n <= 0) {
+                                      return 'Must be > 0';
+                                    }
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 3,
+                              child: DropdownButtonFormField<String>(
+                                value: _recurrenceUnit,
+                                decoration: const InputDecoration(
+                                  labelText: 'Unit',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                items: const [
+                                  DropdownMenuItem(value: 'days', child: Text('Days')),
+                                  DropdownMenuItem(value: 'weeks', child: Text('Weeks')),
+                                  DropdownMenuItem(value: 'months', child: Text('Months')),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    setState(() {
+                                      _recurrenceUnit = val;
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _occurrencesController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Number of occurrences (optional)',
+                            hintText: 'e.g. 10 (Leave blank for infinite)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                            prefixIcon: Icon(Icons.pin),
+                          ),
+                          onChanged: (val) {
+                            setState(() {
+                              _occurrencesLimit = int.tryParse(val);
+                            });
+                          },
+                          validator: (value) {
+                            if (_isRecurring && value != null && value.isNotEmpty) {
+                              final n = int.tryParse(value);
+                              if (n == null || n <= 0) {
+                                return 'Must be a positive number';
+                              }
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                          child: Text(
+                            _occurrencesLimit == null
+                                ? 'Will repeat every $_recurrenceValue ${_recurrenceValue == 1 ? (_recurrenceUnit == 'days' ? 'day' : _recurrenceUnit == 'weeks' ? 'week' : 'month') : _recurrenceUnit} indefinitely after each completion.'
+                                : 'Will repeat every $_recurrenceValue ${_recurrenceValue == 1 ? (_recurrenceUnit == 'days' ? 'day' : _recurrenceUnit == 'weeks' ? 'week' : 'month') : _recurrenceUnit} for $_occurrencesLimit occurrences.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue.shade800,
+                              fontWeight: FontWeight.w500
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

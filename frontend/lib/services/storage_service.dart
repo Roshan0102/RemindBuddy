@@ -1,4 +1,5 @@
 
+import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,6 +7,7 @@ import '../models/note.dart';
 import '../models/daily_reminder.dart';
 import '../models/gold_price.dart';
 import '../models/calendar_reminder.dart';
+import '../models/notification_history.dart';
 
 
 class StorageService {
@@ -19,22 +21,47 @@ class StorageService {
 
 
   // Calendar Reminder Methods (New Cloud Tasks backed reminders)
-  Future<String> insertCalendarReminder(String title, String description, String date, String time) async {
+  Future<String> insertCalendarReminder(
+    String title, 
+    String description, 
+    String date, 
+    String time, {
+    bool isRecurring = false,
+    int recurrenceValue = 1,
+    String recurrenceUnit = 'days',
+    int? remainingOccurrences,
+    String? targetUid,
+  }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return '';
     
-    final docRef = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('calendar_reminders')
-        .add({
+    final destinationUid = targetUid ?? user.uid;
+    final Map<String, dynamic> data = {
       'title': title,
       'description': description,
       'date': date,
       'time': time,
       'status': 'pending', 
       'createdAt': FieldValue.serverTimestamp(),
-    });
+      'isRecurring': isRecurring,
+      'recurrenceValue': recurrenceValue,
+      'recurrenceUnit': recurrenceUnit,
+      'remainingOccurrences': remainingOccurrences,
+    };
+
+    if (destinationUid != user.uid) {
+      data['scheduledByUid'] = user.uid;
+      final myUsername = await getCurrentUsername();
+      if (myUsername != null) {
+        data['scheduledByUsername'] = myUsername;
+      }
+    }
+
+    final docRef = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(destinationUid)
+        .collection('calendar_reminders')
+        .add(data);
     
     return docRef.id;
   }
@@ -54,13 +81,14 @@ class StorageService {
         }).toList());
   }
 
-  Future<void> deleteCalendarReminder(String id) async {
+  Future<void> deleteCalendarReminder(String id, {String? targetUid}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     
+    final destinationUid = targetUid ?? user.uid;
     await FirebaseFirestore.instance
         .collection('users')
-        .doc(user.uid)
+        .doc(destinationUid)
         .collection('calendar_reminders')
         .doc(id)
         .delete();
@@ -88,7 +116,11 @@ class StorageService {
         .collection('users')
         .doc(user.uid)
         .collection('notes')
-        .add(note.toMap());
+        .add({
+      ...note.toMap(),
+      'ownerUid': user.uid,
+      'sharedWith': [],
+    });
         
     return docRef.id;
   }
@@ -104,46 +136,112 @@ class StorageService {
         .orderBy('date', descending: true)
         .get();
         
-    return querySnapshot.docs
+    final own = querySnapshot.docs
         .map((doc) => Note.fromMap(doc.data(), doc.id))
         .toList();
+
+    final sharedSnapshot = await FirebaseFirestore.instance
+        .collectionGroup('notes')
+        .where('sharedWith', arrayContains: user.uid)
+        .get();
+
+    final shared = sharedSnapshot.docs
+        .map((doc) => Note.fromMap(doc.data(), doc.id, ownerUid: doc.data()['ownerUid']))
+        .toList();
+
+    final merged = [...own, ...shared];
+    merged.sort((a, b) => b.date.compareTo(a.date));
+    return merged;
   }
 
   Stream<List<Note>> getNotesStream() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Stream.empty();
     
-    return FirebaseFirestore.instance
+    final controller = StreamController<List<Note>>();
+    List<Note> ownNotes = [];
+    List<Note> sharedNotes = [];
+
+    void emitMerged() {
+      final merged = [...ownNotes, ...sharedNotes];
+      merged.sort((a, b) => b.date.compareTo(a.date));
+      if (!controller.isClosed) {
+        controller.add(merged);
+      }
+    }
+
+    final ownSub = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .collection('notes')
-        .orderBy('date', descending: true)
         .snapshots()
-        .map((snap) => snap.docs.map((doc) => Note.fromMap(doc.data(), doc.id)).toList());
+        .map((snap) => snap.docs.map((doc) => Note.fromMap(doc.data(), doc.id)).toList())
+        .listen((notes) {
+          ownNotes = notes;
+          emitMerged();
+        }, onError: (err) {
+          print("Error reading own notes: $err");
+        });
+
+    final sharedSub = FirebaseFirestore.instance
+        .collectionGroup('notes')
+        .where('sharedWith', arrayContains: user.uid)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+          final data = doc.data();
+          return Note.fromMap(data, doc.id, ownerUid: data['ownerUid']);
+        }).toList())
+        .listen((notes) {
+          sharedNotes = notes;
+          emitMerged();
+        }, onError: (err) {
+          print("Error reading shared notes: $err");
+        });
+
+    controller.onCancel = () {
+      ownSub.cancel();
+      sharedSub.cancel();
+    };
+
+    return controller.stream;
   }
 
   Future<void> updateNote(Note note) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || note.id == null) return;
     
+    final targetUid = note.ownerUid ?? user.uid;
+    
     await FirebaseFirestore.instance
         .collection('users')
-        .doc(user.uid)
+        .doc(targetUid)
         .collection('notes')
         .doc(note.id)
         .update(note.toMap());
   }
 
-  Future<void> deleteNote(String id) async {
+  Future<void> deleteNote(String id, {String? ownerUid}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('notes')
-        .doc(id)
-        .delete();
+    final targetUid = ownerUid ?? user.uid;
+    if (targetUid != user.uid) {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(targetUid)
+          .collection('notes')
+          .doc(id)
+          .update({
+            'sharedWith': FieldValue.arrayRemove([user.uid])
+          });
+    } else {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('notes')
+          .doc(id)
+          .delete();
+    }
   }
 
   // Daily Reminder Methods
@@ -225,14 +323,85 @@ class StorageService {
   Future<List<Map<String, dynamic>>> getChecklists() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return [];
-    final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('checklists').orderBy('createdAt', descending: true).get();
-    return snap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList();
+    
+    final ownSnap = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('checklists').orderBy('createdAt', descending: true).get();
+    final own = ownSnap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList();
+
+    final sharedSnap = await FirebaseFirestore.instance.collectionGroup('checklists').where('sharedWith', arrayContains: user.uid).get();
+    final shared = sharedSnap.docs.map((doc) {
+      final data = doc.data();
+      return {...data, 'id': doc.id, 'ownerUid': data['ownerUid']};
+    }).toList();
+
+    final merged = [...own, ...shared];
+    merged.sort((a, b) {
+      final aTime = a['createdAt'] as Timestamp?;
+      final bTime = b['createdAt'] as Timestamp?;
+      if (aTime == null && bTime == null) return 0;
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      return bTime.compareTo(aTime);
+    });
+    return merged;
   }
 
   Stream<List<Map<String, dynamic>>> getChecklistsStream() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Stream.empty();
-    return FirebaseFirestore.instance.collection('users').doc(user.uid).collection('checklists').orderBy('createdAt', descending: true).snapshots().map((snap) => snap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList());
+    
+    final controller = StreamController<List<Map<String, dynamic>>>();
+    List<Map<String, dynamic>> ownLists = [];
+    List<Map<String, dynamic>> sharedLists = [];
+
+    void emitMerged() {
+      final merged = [...ownLists, ...sharedLists];
+      merged.sort((a, b) {
+        final aTime = a['createdAt'] as Timestamp?;
+        final bTime = b['createdAt'] as Timestamp?;
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+        return bTime.compareTo(aTime);
+      });
+      if (!controller.isClosed) {
+        controller.add(merged);
+      }
+    }
+
+    final ownSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('checklists')
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList())
+        .listen((lists) {
+          ownLists = lists;
+          emitMerged();
+        }, onError: (err) {
+          print("Error reading own checklists: $err");
+        });
+
+    final sharedSub = FirebaseFirestore.instance
+        .collectionGroup('checklists')
+        .where('sharedWith', arrayContains: user.uid)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+          final data = doc.data();
+          return {...data, 'id': doc.id, 'ownerUid': data['ownerUid']};
+        }).toList())
+        .listen((lists) {
+          sharedLists = lists;
+          emitMerged();
+        }, onError: (err) {
+          print("Error reading shared checklists: $err");
+        });
+
+    controller.onCancel = () {
+      ownSub.cancel();
+      sharedSub.cancel();
+    };
+
+    return controller.stream;
   }
 
   Future<void> createChecklist(String title, int iconCode, int colorValue) async {
@@ -243,43 +412,61 @@ class StorageService {
       'iconCode': iconCode,
       'colorValue': colorValue,
       'createdAt': FieldValue.serverTimestamp(),
+      'ownerUid': user.uid,
+      'sharedWith': [],
     });
   }
 
-  Future<void> deleteChecklist(String id) async {
+  Future<void> deleteChecklist(String id, {String? ownerUid}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('checklists').doc(id).delete();
+    final targetUid = ownerUid ?? user.uid;
+    if (targetUid != user.uid) {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(targetUid)
+          .collection('checklists')
+          .doc(id)
+          .update({
+            'sharedWith': FieldValue.arrayRemove([user.uid])
+          });
+    } else {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('checklists').doc(id).delete();
+    }
   }
 
-  Future<void> addChecklistItem(String listId, String text) async {
+  Future<void> addChecklistItem(String listId, String text, {String? ownerUid}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('checklists').doc(listId).collection('items').add({
+    final targetUid = ownerUid ?? user.uid;
+    await FirebaseFirestore.instance.collection('users').doc(targetUid).collection('checklists').doc(listId).collection('items').add({
       'text': text,
       'isChecked': false,
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
 
-  Future<void> toggleChecklistItem(String listId, String itemId, bool isChecked) async {
+  Future<void> toggleChecklistItem(String listId, String itemId, bool isChecked, {String? ownerUid}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('checklists').doc(listId).collection('items').doc(itemId).update({
+    final targetUid = ownerUid ?? user.uid;
+    await FirebaseFirestore.instance.collection('users').doc(targetUid).collection('checklists').doc(listId).collection('items').doc(itemId).update({
       'isChecked': isChecked,
     });
   }
 
-  Future<void> deleteChecklistItem(String listId, String itemId) async {
+  Future<void> deleteChecklistItem(String listId, String itemId, {String? ownerUid}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('checklists').doc(listId).collection('items').doc(itemId).delete();
+    final targetUid = ownerUid ?? user.uid;
+    await FirebaseFirestore.instance.collection('users').doc(targetUid).collection('checklists').doc(listId).collection('items').doc(itemId).delete();
   }
 
-  Future<void> resetChecklistItems(String listId) async {
+  Future<void> resetChecklistItems(String listId, {String? ownerUid}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    final items = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('checklists').doc(listId).collection('items').get();
+    final targetUid = ownerUid ?? user.uid;
+    final items = await FirebaseFirestore.instance.collection('users').doc(targetUid).collection('checklists').doc(listId).collection('items').get();
     final batch = FirebaseFirestore.instance.batch();
     for (var doc in items.docs) {
       batch.update(doc.reference, {'isChecked': false});
@@ -287,10 +474,11 @@ class StorageService {
     await batch.commit();
   }
 
-  Stream<List<Map<String, dynamic>>> getChecklistItemsStream(String listId) {
+  Stream<List<Map<String, dynamic>>> getChecklistItemsStream(String listId, {String? ownerUid}) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Stream.empty();
-    return FirebaseFirestore.instance.collection('users').doc(user.uid).collection('checklists').doc(listId).collection('items').orderBy('createdAt', descending: false).snapshots().map((snap) => snap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList());
+    final targetUid = ownerUid ?? user.uid;
+    return FirebaseFirestore.instance.collection('users').doc(targetUid).collection('checklists').doc(listId).collection('items').orderBy('createdAt', descending: false).snapshots().map((snap) => snap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList());
   }
 
 
@@ -421,5 +609,208 @@ class StorageService {
   Future<void> logoutAndClearData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
+  }
+
+  // Collaboration Methods
+  Future<String> getCurrentUsername() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return '';
+    if (user.displayName != null && user.displayName!.isNotEmpty) {
+      return user.displayName!;
+    }
+    final snap = await FirebaseFirestore.instance
+        .collection('usernames')
+        .where('uid', isEqualTo: user.uid)
+        .limit(1)
+        .get();
+    if (snap.docs.isNotEmpty) {
+      return snap.docs.first.id;
+    }
+    return user.email ?? '';
+  }
+
+  Future<List<Map<String, String>>> getAllUsers() async {
+    final snap = await FirebaseFirestore.instance.collection('usernames').get();
+    final user = FirebaseAuth.instance.currentUser;
+    return snap.docs.map((doc) {
+      final data = doc.data();
+      return {
+        'username': doc.id,
+        'email': (data['email'] ?? '').toString(),
+        'uid': (data['uid'] ?? '').toString(),
+      };
+    }).where((u) => u['uid'] != user?.uid && u['uid']!.isNotEmpty).toList(); // exclude self
+  }
+
+  Future<void> sendCollaborationRequest({
+    required String itemId,
+    required String itemTitle,
+    required String type, // 'note' or 'checklist'
+    required String receiverUid,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    final senderUsername = await getCurrentUsername();
+    
+    // First, initialize ownerUid on the original item if not already set
+    final docRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection(type == 'note' ? 'notes' : 'checklists')
+        .doc(itemId);
+        
+    await docRef.update({
+      'ownerUid': user.uid,
+    }).catchError((_) {});
+
+    await FirebaseFirestore.instance.collection('collaboration_requests').add({
+      'senderUid': user.uid,
+      'senderUsername': senderUsername,
+      'receiverUid': receiverUid,
+      'type': type,
+      'itemId': itemId,
+      'title': itemTitle,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Stream<List<Map<String, dynamic>>> getIncomingRequestsStream(String type) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Stream.empty();
+    
+    return FirebaseFirestore.instance
+        .collection('collaboration_requests')
+        .where('receiverUid', isEqualTo: user.uid)
+        .where('type', isEqualTo: type)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList());
+  }
+
+  Future<void> respondToCollaborationRequest(String requestId, bool approve) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    final requestRef = FirebaseFirestore.instance.collection('collaboration_requests').doc(requestId);
+    
+    if (approve) {
+      final snap = await requestRef.get();
+      if (!snap.exists) return;
+      final data = snap.data()!;
+      final senderUid = data['senderUid'];
+      final itemId = data['itemId'];
+      final type = data['type'];
+      
+      final itemRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(senderUid)
+          .collection(type == 'note' ? 'notes' : 'checklists')
+          .doc(itemId);
+          
+      // Update item to add receiver to sharedWith
+      await itemRef.update({
+        'sharedWith': FieldValue.arrayUnion([user.uid]),
+        'ownerUid': senderUid,
+      });
+      
+      await requestRef.update({'status': 'approved'});
+    } else {
+      await requestRef.update({'status': 'rejected'});
+    }
+  }
+
+  // Buddy Link / Scheduling Permissions Methods
+  Future<void> sendBuddyLinkRequest(String receiverUsername) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception("User not logged in");
+
+    final senderUsername = await getCurrentUsername() ?? user.email ?? 'User';
+
+    // Find receiver uid
+    final receiverSnap = await FirebaseFirestore.instance
+        .collection('usernames')
+        .doc(receiverUsername)
+        .get();
+
+    if (!receiverSnap.exists) {
+      throw Exception("User not found");
+    }
+
+    final receiverUid = receiverSnap.data()?['uid'];
+    if (receiverUid == null) {
+      throw Exception("Invalid user data");
+    }
+
+    if (receiverUid == user.uid) {
+      throw Exception("Cannot link with yourself");
+    }
+
+    final linkId = "${user.uid}_$receiverUid";
+
+    await FirebaseFirestore.instance.collection('buddy_links').doc(linkId).set({
+      'senderUid': user.uid,
+      'senderUsername': senderUsername,
+      'receiverUid': receiverUid,
+      'receiverUsername': receiverUsername,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> respondToBuddyRequest(String linkId, String status) async {
+    if (status == 'rejected') {
+      await FirebaseFirestore.instance.collection('buddy_links').doc(linkId).delete();
+    } else {
+      await FirebaseFirestore.instance.collection('buddy_links').doc(linkId).update({
+        'status': status,
+      });
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> getIncomingBuddyRequestsStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Stream.empty();
+
+    return FirebaseFirestore.instance
+        .collection('buddy_links')
+        .where('receiverUid', isEqualTo: user.uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => {
+              ...doc.data(),
+              'id': doc.id,
+            }).toList());
+  }
+
+  Stream<List<Map<String, dynamic>>> getApprovedBuddiesStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Stream.empty();
+
+    return FirebaseFirestore.instance
+        .collection('buddy_links')
+        .where('senderUid', isEqualTo: user.uid)
+        .where('status', isEqualTo: 'approved')
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => {
+              ...doc.data(),
+              'id': doc.id,
+            }).toList());
+  }
+
+  Stream<List<NotificationHistory>> getNotificationHistoryStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Stream.empty();
+
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('notifications')
+        .orderBy('timestamp', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => NotificationHistory.fromMap(doc.data(), doc.id))
+            .toList());
   }
 }

@@ -9,6 +9,12 @@ class CalendarReminder {
   final String time; // HH:mm
   final String status; // pending, scheduled, completed, expired, error
   final Timestamp? expireAt;
+  final bool isRecurring;
+  final int recurrenceValue;
+  final String recurrenceUnit; // 'days', 'weeks', 'months', etc.
+  final int? remainingOccurrences; // null means infinite
+  final String? scheduledByUid;
+  final String? scheduledByUsername;
 
   CalendarReminder({
     this.id,
@@ -18,6 +24,12 @@ class CalendarReminder {
     required this.time,
     this.status = 'pending',
     this.expireAt,
+    this.isRecurring = false,
+    this.recurrenceValue = 1,
+    this.recurrenceUnit = 'days',
+    this.remainingOccurrences,
+    this.scheduledByUid,
+    this.scheduledByUsername,
   });
 
   factory CalendarReminder.fromMap(Map<String, dynamic> json, String docId) {
@@ -29,6 +41,12 @@ class CalendarReminder {
       time: json['time'] ?? '',
       status: json['status'] ?? 'pending',
       expireAt: json['expireAt'] as Timestamp?,
+      isRecurring: json['isRecurring'] ?? false,
+      recurrenceValue: json['recurrenceValue'] ?? 1,
+      recurrenceUnit: json['recurrenceUnit'] ?? 'days',
+      remainingOccurrences: json['remainingOccurrences'] as int?,
+      scheduledByUid: json['scheduledByUid'],
+      scheduledByUsername: json['scheduledByUsername'],
     );
   }
 
@@ -43,6 +61,12 @@ class CalendarReminder {
       'date': date,
       'time': time,
       'status': status,
+      'isRecurring': isRecurring,
+      'recurrenceValue': recurrenceValue,
+      'recurrenceUnit': recurrenceUnit,
+      'remainingOccurrences': remainingOccurrences,
+      if (scheduledByUid != null) 'scheduledByUid': scheduledByUid,
+      if (scheduledByUsername != null) 'scheduledByUsername': scheduledByUsername,
     };
   }
 
@@ -54,6 +78,12 @@ class CalendarReminder {
     String? time,
     String? status,
     Timestamp? expireAt,
+    bool? isRecurring,
+    int? recurrenceValue,
+    String? recurrenceUnit,
+    int? remainingOccurrences,
+    String? scheduledByUid,
+    String? scheduledByUsername,
   }) {
     return CalendarReminder(
       id: id ?? this.id,
@@ -63,6 +93,12 @@ class CalendarReminder {
       time: time ?? this.time,
       status: status ?? this.status,
       expireAt: expireAt ?? this.expireAt,
+      isRecurring: isRecurring ?? this.isRecurring,
+      recurrenceValue: recurrenceValue ?? this.recurrenceValue,
+      recurrenceUnit: recurrenceUnit ?? this.recurrenceUnit,
+      remainingOccurrences: remainingOccurrences ?? this.remainingOccurrences,
+      scheduledByUid: scheduledByUid ?? this.scheduledByUid,
+      scheduledByUsername: scheduledByUsername ?? this.scheduledByUsername,
     );
   }
 }
