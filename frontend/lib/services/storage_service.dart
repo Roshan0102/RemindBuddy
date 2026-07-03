@@ -31,6 +31,10 @@ class StorageService {
     String recurrenceUnit = 'days',
     int? remainingOccurrences,
     String? targetUid,
+    bool snoozeEnabled = false,
+    int snoozeIntervalMinutes = 15,
+    int maxSnoozeCount = 3,
+    int currentSnoozeCount = 0,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return '';
@@ -47,6 +51,10 @@ class StorageService {
       'recurrenceValue': recurrenceValue,
       'recurrenceUnit': recurrenceUnit,
       'remainingOccurrences': remainingOccurrences,
+      'snoozeEnabled': snoozeEnabled,
+      'snoozeIntervalMinutes': snoozeIntervalMinutes,
+      'maxSnoozeCount': maxSnoozeCount,
+      'currentSnoozeCount': currentSnoozeCount,
     };
 
     if (destinationUid != user.uid) {

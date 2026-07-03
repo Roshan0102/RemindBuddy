@@ -20,6 +20,7 @@ import 'notification_control_screen.dart';
 import 'admin_screen.dart';
 import 'notification_history_screen.dart';
 import '../services/update_service.dart';
+import 'voice_assistant_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -333,6 +334,13 @@ class _MainScreenState extends State<MainScreen> {
     return false;
   }
 
+  void _openVoiceAssistant() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const VoiceAssistantScreen()),
+    );
+  }
+
   void _selectTabOrPush(String id) {
     final active = _activeFeatures;
     final idx = active.indexOf(id);
@@ -526,6 +534,16 @@ class _MainScreenState extends State<MainScreen> {
                 );
               },
             },
+          if (_enabledModules.contains('voice_assistant'))
+            {
+              'id': 'voice_assistant',
+              'name': 'Voice AI',
+              'icon': Icons.mic,
+              'color': Colors.redAccent,
+              'action': () {
+                _openVoiceAssistant();
+              },
+            },
           {
             'id': 'customize',
             'name': 'Customize Bar',
@@ -673,8 +691,13 @@ class _MainScreenState extends State<MainScreen> {
               color: Theme.of(context).colorScheme.primary,
             ),
           ),
-          centerTitle: true,
           actions: [
+            if (_enabledModules.contains('voice_assistant'))
+              IconButton(
+                icon: const Icon(Icons.mic, color: Colors.redAccent),
+                onPressed: _openVoiceAssistant,
+                tooltip: 'Voice Assistant',
+              ),
             IconButton(
               icon: Icon(_isDarkMode ? Icons.light_mode : Icons.dark_mode),
               onPressed: _toggleTheme,
@@ -813,6 +836,16 @@ class _MainScreenState extends State<MainScreen> {
                       context,
                       MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)),
                     );
+                  },
+                ),
+              if (_enabledModules.contains('voice_assistant'))
+                ListTile(
+                  leading: const Icon(Icons.mic, color: Colors.redAccent),
+                  title: const Text('Voice Assistant'),
+                  subtitle: const Text('Ask Gemini anything'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openVoiceAssistant();
                   },
                 ),
               const Divider(),

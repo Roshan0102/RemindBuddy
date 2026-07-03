@@ -30,6 +30,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   String _recurrenceUnit = 'days';
   int? _occurrencesLimit;
 
+  bool _snoozeEnabled = false;
+  int _snoozeIntervalMinutes = 15;
+  int _maxSnoozeCount = 3;
+
   List<Map<String, dynamic>> _approvedBuddies = [];
   bool _isLoadingBuddies = true;
   StreamSubscription? _buddiesSubscription;
@@ -54,6 +58,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _recurrenceValue = r.recurrenceValue;
       _recurrenceUnit = r.recurrenceUnit;
       _occurrencesLimit = r.remainingOccurrences;
+      _snoozeEnabled = r.snoozeEnabled;
+      _snoozeIntervalMinutes = r.snoozeIntervalMinutes;
+      _maxSnoozeCount = r.maxSnoozeCount;
       if (_occurrencesLimit != null) {
         _occurrencesController.text = _occurrencesLimit.toString();
       }
@@ -63,6 +70,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     } else {
       _date = widget.selectedDate ?? DateTime.now();
       _time = TimeOfDay.now();
+      _snoozeEnabled = false;
+      _snoozeIntervalMinutes = 15;
+      _maxSnoozeCount = 3;
       if (_myUid != null) {
         _selectedRecipients.add(_myUid!);
       }
@@ -180,6 +190,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             recurrenceUnit: _recurrenceUnit,
             remainingOccurrences: _occurrencesLimit,
             status: 'pending',
+            snoozeEnabled: _snoozeEnabled,
+            snoozeIntervalMinutes: _snoozeIntervalMinutes,
+            maxSnoozeCount: _maxSnoozeCount,
+            currentSnoozeCount: 0,
           );
           await storage.updateCalendarReminder(updated);
         } else {
@@ -194,6 +208,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               recurrenceUnit: _recurrenceUnit,
               remainingOccurrences: _occurrencesLimit,
               targetUid: recipientUid == _myUid ? null : recipientUid,
+              snoozeEnabled: _snoozeEnabled,
+              snoozeIntervalMinutes: _snoozeIntervalMinutes,
+              maxSnoozeCount: _maxSnoozeCount,
+              currentSnoozeCount: 0,
             );
           }
         }
@@ -478,6 +496,104 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                               fontWeight: FontWeight.w500
                             ),
                           ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey.withOpacity(0.15)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Enable Snooze', style: TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: const Text('Repeat notifications if not marked done'),
+                        secondary: Icon(
+                          _snoozeEnabled ? Icons.snooze_outlined : Icons.snooze_rounded,
+                          color: _snoozeEnabled ? Theme.of(context).primaryColor : Colors.grey,
+                        ),
+                        value: _snoozeEnabled,
+                        onChanged: (bool value) {
+                          setState(() {
+                            _snoozeEnabled = value;
+                          });
+                        },
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      if (_snoozeEnabled) ...[
+                        const Divider(),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                initialValue: _snoozeIntervalMinutes.toString(),
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'Interval (minutes)',
+                                  hintText: 'e.g. 15',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                onChanged: (val) {
+                                  setState(() {
+                                    _snoozeIntervalMinutes = int.tryParse(val) ?? 15;
+                                  });
+                                },
+                                validator: (value) {
+                                  if (_snoozeEnabled) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Required';
+                                    }
+                                    final n = int.tryParse(value);
+                                    if (n == null || n <= 0) {
+                                      return 'Must be > 0';
+                                    }
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                initialValue: _maxSnoozeCount.toString(),
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'Max repeats',
+                                  hintText: 'e.g. 3',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                onChanged: (val) {
+                                  setState(() {
+                                    _maxSnoozeCount = int.tryParse(val) ?? 3;
+                                  });
+                                },
+                                validator: (value) {
+                                  if (_snoozeEnabled) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Required';
+                                    }
+                                    final n = int.tryParse(value);
+                                    if (n == null || n <= 0) {
+                                      return 'Must be > 0';
+                                    }
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ],

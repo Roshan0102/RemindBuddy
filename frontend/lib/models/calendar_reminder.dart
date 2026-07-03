@@ -1,4 +1,3 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class CalendarReminder {
@@ -15,6 +14,10 @@ class CalendarReminder {
   final int? remainingOccurrences; // null means infinite
   final String? scheduledByUid;
   final String? scheduledByUsername;
+  final bool snoozeEnabled;
+  final int snoozeIntervalMinutes;
+  final int maxSnoozeCount;
+  final int currentSnoozeCount;
 
   CalendarReminder({
     this.id,
@@ -30,6 +33,10 @@ class CalendarReminder {
     this.remainingOccurrences,
     this.scheduledByUid,
     this.scheduledByUsername,
+    this.snoozeEnabled = false,
+    this.snoozeIntervalMinutes = 15,
+    this.maxSnoozeCount = 3,
+    this.currentSnoozeCount = 0,
   });
 
   factory CalendarReminder.fromMap(Map<String, dynamic> json, String docId) {
@@ -47,6 +54,10 @@ class CalendarReminder {
       remainingOccurrences: json['remainingOccurrences'] as int?,
       scheduledByUid: json['scheduledByUid'],
       scheduledByUsername: json['scheduledByUsername'],
+      snoozeEnabled: json['snoozeEnabled'] ?? false,
+      snoozeIntervalMinutes: json['snoozeIntervalMinutes'] ?? 15,
+      maxSnoozeCount: json['maxSnoozeCount'] ?? 3,
+      currentSnoozeCount: json['currentSnoozeCount'] ?? 0,
     );
   }
 
@@ -65,6 +76,10 @@ class CalendarReminder {
       'recurrenceValue': recurrenceValue,
       'recurrenceUnit': recurrenceUnit,
       'remainingOccurrences': remainingOccurrences,
+      'snoozeEnabled': snoozeEnabled,
+      'snoozeIntervalMinutes': snoozeIntervalMinutes,
+      'maxSnoozeCount': maxSnoozeCount,
+      'currentSnoozeCount': currentSnoozeCount,
       if (scheduledByUid != null) 'scheduledByUid': scheduledByUid,
       if (scheduledByUsername != null) 'scheduledByUsername': scheduledByUsername,
     };
@@ -84,6 +99,10 @@ class CalendarReminder {
     int? remainingOccurrences,
     String? scheduledByUid,
     String? scheduledByUsername,
+    bool? snoozeEnabled,
+    int? snoozeIntervalMinutes,
+    int? maxSnoozeCount,
+    int? currentSnoozeCount,
   }) {
     return CalendarReminder(
       id: id ?? this.id,
@@ -99,6 +118,10 @@ class CalendarReminder {
       remainingOccurrences: remainingOccurrences ?? this.remainingOccurrences,
       scheduledByUid: scheduledByUid ?? this.scheduledByUid,
       scheduledByUsername: scheduledByUsername ?? this.scheduledByUsername,
+      snoozeEnabled: snoozeEnabled ?? this.snoozeEnabled,
+      snoozeIntervalMinutes: snoozeIntervalMinutes ?? this.snoozeIntervalMinutes,
+      maxSnoozeCount: maxSnoozeCount ?? this.maxSnoozeCount,
+      currentSnoozeCount: currentSnoozeCount ?? this.currentSnoozeCount,
     );
   }
 }

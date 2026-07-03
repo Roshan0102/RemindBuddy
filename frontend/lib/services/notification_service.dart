@@ -1,10 +1,75 @@
-
 import 'dart:async';
+import 'package:flutter/widgets.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'log_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+@pragma('vm:entry-point')
+void notificationTapBackground(NotificationResponse notificationResponse) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final payload = notificationResponse.payload;
+  final actionId = notificationResponse.actionId;
+  
+  if (payload != null && actionId != null) {
+    if (payload.startsWith("CALENDAR_REMINDER|")) {
+      final parts = payload.split('|');
+      final reminderId = parts[1];
+      final uid = parts[2];
+      
+      try {
+        await Firebase.initializeApp();
+      } catch (_) {}
+      
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('calendar_reminders')
+          .doc(reminderId);
+          
+      if (actionId == 'action_yes') {
+        final expireAt = DateTime.now().add(const Duration(days: 30));
+        await docRef.update({
+          'status': 'completed',
+          'notifiedAt': FieldValue.serverTimestamp(),
+          'expireAt': Timestamp.fromDate(expireAt),
+        });
+        LogService.staticLog("BG Handler: Marked reminder $reminderId as completed.");
+      } else if (actionId == 'action_no') {
+        final doc = await docRef.get();
+        if (doc.exists) {
+          final data = doc.data()!;
+          final currentSnooze = data['currentSnoozeCount'] ?? 0;
+          final maxSnooze = data['maxSnoozeCount'] ?? 3;
+          final interval = data['snoozeIntervalMinutes'] ?? 15;
+          
+          if (currentSnooze < maxSnooze) {
+            final nextTime = DateTime.now().add(Duration(minutes: interval));
+            final dateStr = "${nextTime.year}-${nextTime.month.toString().padLeft(2, '0')}-${nextTime.day.toString().padLeft(2, '0')}";
+            final timeStr = "${nextTime.hour.toString().padLeft(2, '0')}:${nextTime.minute.toString().padLeft(2, '0')}";
+            
+            await docRef.update({
+              'date': dateStr,
+              'time': timeStr,
+              'status': 'pending',
+              'currentSnoozeCount': currentSnooze + 1,
+            });
+            LogService.staticLog("BG Handler: Snoozed reminder $reminderId to $dateStr $timeStr (Snooze count: ${currentSnooze + 1}).");
+          } else {
+            final expireAt = DateTime.now().add(const Duration(days: 30));
+            await docRef.update({
+              'status': 'completed',
+              'expireAt': Timestamp.fromDate(expireAt),
+            });
+            LogService.staticLog("BG Handler: Max snooze limit reached for $reminderId. Marked completed.");
+          }
+        }
+      }
+    }
+  }
+}
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -40,12 +105,71 @@ class NotificationService {
 
     await _localNotifications.initialize(
       initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        if (response.payload != null && response.payload != 'null') {
-          LogService.staticLog("Local Notification clicked: ${response.payload}");
-          _selectNotificationStream.add(response.payload!);
+      onDidReceiveNotificationResponse: (NotificationResponse response) async {
+        final payload = response.payload;
+        final actionId = response.actionId;
+        
+        LogService.staticLog("Foreground Notification Tap: actionId=$actionId, payload=$payload");
+        
+        if (payload != null && actionId != null) {
+          if (payload.startsWith("CALENDAR_REMINDER|")) {
+            final parts = payload.split('|');
+            final reminderId = parts[1];
+            final uid = parts[2];
+            
+            final docRef = FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .collection('calendar_reminders')
+                .doc(reminderId);
+                
+            if (actionId == 'action_yes') {
+              final expireAt = DateTime.now().add(const Duration(days: 30));
+              await docRef.update({
+                'status': 'completed',
+                'notifiedAt': FieldValue.serverTimestamp(),
+                'expireAt': Timestamp.fromDate(expireAt),
+              });
+              LogService.staticLog("FG Handler: Marked reminder $reminderId as completed.");
+            } else if (actionId == 'action_no') {
+              final doc = await docRef.get();
+              if (doc.exists) {
+                final data = doc.data()!;
+                final currentSnooze = data['currentSnoozeCount'] ?? 0;
+                final maxSnooze = data['maxSnoozeCount'] ?? 3;
+                final interval = data['snoozeIntervalMinutes'] ?? 15;
+                
+                if (currentSnooze < maxSnooze) {
+                  final nextTime = DateTime.now().add(Duration(minutes: interval));
+                  final dateStr = "${nextTime.year}-${nextTime.month.toString().padLeft(2, '0')}-${nextTime.day.toString().padLeft(2, '0')}";
+                  final timeStr = "${nextTime.hour.toString().padLeft(2, '0')}:${nextTime.minute.toString().padLeft(2, '0')}";
+                  
+                  await docRef.update({
+                    'date': dateStr,
+                    'time': timeStr,
+                    'status': 'pending',
+                    'currentSnoozeCount': currentSnooze + 1,
+                  });
+                  LogService.staticLog("FG Handler: Snoozed reminder $reminderId to $dateStr $timeStr.");
+                } else {
+                  final expireAt = DateTime.now().add(const Duration(days: 30));
+                  await docRef.update({
+                    'status': 'completed',
+                    'expireAt': Timestamp.fromDate(expireAt),
+                  });
+                  LogService.staticLog("FG Handler: Max snooze limit reached for $reminderId.");
+                }
+              }
+            }
+          }
+        }
+        
+        if (payload != null && payload != 'null') {
+          final cleanPayload = payload.contains('|') ? payload.split('|')[0] : payload;
+          _selectNotificationStream.add(cleanPayload);
         }
       },
+      onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
 
     // 3. Create Android Channels
@@ -119,7 +243,6 @@ class NotificationService {
       final type = initialMessage.data['type'];
       LogService.staticLog("Notification clicked (from killed): $type");
       if (type != null && type != 'null') {
-        // Delay slightly to allow MainScreen to mount and listen
         Future.delayed(const Duration(seconds: 2), () {
           _selectNotificationStream.add(type);
         });
@@ -134,6 +257,33 @@ class NotificationService {
       AndroidNotification? android = message.notification?.android;
 
       if (notification != null && android != null) {
+        String? payload = message.data['type'];
+        List<AndroidNotificationAction>? actions;
+        
+        if (payload == 'CALENDAR_REMINDER') {
+          final reminderId = message.data['reminderId'] ?? '';
+          final snoozeEnabled = message.data['snoozeEnabled'] == 'true';
+          final user = FirebaseAuth.instance.currentUser;
+          final uid = user?.uid ?? '';
+          
+          payload = "CALENDAR_REMINDER|$reminderId|$uid";
+          
+          if (snoozeEnabled) {
+            actions = <AndroidNotificationAction>[
+              const AndroidNotificationAction(
+                'action_yes',
+                'Yes (Done)',
+                showsUserInterface: false,
+              ),
+              const AndroidNotificationAction(
+                'action_no',
+                'No (Snooze)',
+                showsUserInterface: false,
+              ),
+            ];
+          }
+        }
+
         _localNotifications.show(
           notification.hashCode,
           notification.title,
@@ -145,9 +295,10 @@ class NotificationService {
               importance: Importance.max,
               priority: Priority.high,
               icon: android.smallIcon,
+              actions: actions,
             ),
           ),
-          payload: message.data['type'],
+          payload: payload,
         );
       }
     });
