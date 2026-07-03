@@ -334,28 +334,75 @@ class StorageService {
   }
 
   // Checklist Methods
+  Timestamp? _parseTimestamp(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value;
+    if (value is int) {
+      return Timestamp.fromMillisecondsSinceEpoch(value);
+    }
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) {
+        return Timestamp.fromDate(parsed);
+      }
+    }
+    return null;
+  }
+
   Future<List<Map<String, dynamic>>> getChecklists() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return [];
     
-    final ownSnap = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('checklists').orderBy('createdAt', descending: true).get();
-    final own = ownSnap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList();
+    List<Map<String, dynamic>> own = [];
+    try {
+      final ownSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('checklists')
+          .orderBy('createdAt', descending: true)
+          .get();
+      own = ownSnap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList();
+    } catch (e) {
+      print("Error fetching own checklists: $e");
+      try {
+        final ownSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('checklists')
+            .get();
+        own = ownSnap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList();
+      } catch (e2) {
+        print("Fallback fetching own checklists failed: $e2");
+      }
+    }
 
-    final sharedSnap = await FirebaseFirestore.instance.collectionGroup('checklists').where('sharedWith', arrayContains: user.uid).get();
-    final shared = sharedSnap.docs.map((doc) {
-      final data = doc.data();
-      return {...data, 'id': doc.id, 'ownerUid': data['ownerUid']};
-    }).toList();
+    List<Map<String, dynamic>> shared = [];
+    try {
+      final sharedSnap = await FirebaseFirestore.instance
+          .collectionGroup('checklists')
+          .where('sharedWith', arrayContains: user.uid)
+          .get();
+      shared = sharedSnap.docs.map((doc) {
+        final data = doc.data();
+        return {...data, 'id': doc.id, 'ownerUid': data['ownerUid']};
+      }).toList();
+    } catch (e) {
+      print("Error fetching shared checklists (index might be missing): $e");
+    }
 
     final merged = [...own, ...shared];
-    merged.sort((a, b) {
-      final aTime = a['createdAt'] as Timestamp?;
-      final bTime = b['createdAt'] as Timestamp?;
-      if (aTime == null && bTime == null) return 0;
-      if (aTime == null) return 1;
-      if (bTime == null) return -1;
-      return bTime.compareTo(aTime);
-    });
+    try {
+      merged.sort((a, b) {
+        final aTime = _parseTimestamp(a['createdAt']);
+        final bTime = _parseTimestamp(b['createdAt']);
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+        return bTime.compareTo(aTime);
+      });
+    } catch (e) {
+      print("Error sorting checklists: $e");
+    }
     return merged;
   }
 
@@ -369,50 +416,66 @@ class StorageService {
 
     void emitMerged() {
       final merged = [...ownLists, ...sharedLists];
-      merged.sort((a, b) {
-        final aTime = a['createdAt'] as Timestamp?;
-        final bTime = b['createdAt'] as Timestamp?;
-        if (aTime == null && bTime == null) return 0;
-        if (aTime == null) return 1;
-        if (bTime == null) return -1;
-        return bTime.compareTo(aTime);
-      });
+      try {
+        merged.sort((a, b) {
+          final aTime = _parseTimestamp(a['createdAt']);
+          final bTime = _parseTimestamp(b['createdAt']);
+          if (aTime == null && bTime == null) return 0;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          return bTime.compareTo(aTime);
+        });
+      } catch (e) {
+        print("Error sorting stream checklists: $e");
+      }
       if (!controller.isClosed) {
         controller.add(merged);
       }
     }
 
-    final ownSub = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('checklists')
-        .snapshots()
-        .map((snap) => snap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList())
-        .listen((lists) {
-          ownLists = lists;
-          emitMerged();
-        }, onError: (err) {
-          print("Error reading own checklists: $err");
-        });
+    StreamSubscription? ownSub;
+    StreamSubscription? sharedSub;
 
-    final sharedSub = FirebaseFirestore.instance
-        .collectionGroup('checklists')
-        .where('sharedWith', arrayContains: user.uid)
-        .snapshots()
-        .map((snap) => snap.docs.map((doc) {
-          final data = doc.data();
-          return {...data, 'id': doc.id, 'ownerUid': data['ownerUid']};
-        }).toList())
-        .listen((lists) {
-          sharedLists = lists;
-          emitMerged();
-        }, onError: (err) {
-          print("Error reading shared checklists: $err");
-        });
+    try {
+      ownSub = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('checklists')
+          .snapshots()
+          .map((snap) => snap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList())
+          .listen((lists) {
+            ownLists = lists;
+            emitMerged();
+          }, onError: (err) {
+            print("Error reading own checklists in stream: $err");
+          });
+    } catch (e) {
+      print("Error subscribing to own checklists: $e");
+    }
+
+    try {
+      sharedSub = FirebaseFirestore.instance
+          .collectionGroup('checklists')
+          .where('sharedWith', arrayContains: user.uid)
+          .snapshots()
+          .map((snap) => snap.docs.map((doc) {
+            final data = doc.data();
+            return {...data, 'id': doc.id, 'ownerUid': data['ownerUid']};
+          }).toList())
+          .listen((lists) {
+            sharedLists = lists;
+            emitMerged();
+          }, onError: (err) {
+            print("Error reading shared checklists in stream (index might be missing): $err");
+            emitMerged();
+          });
+    } catch (e) {
+      print("Error subscribing to shared checklists: $e");
+    }
 
     controller.onCancel = () {
-      ownSub.cancel();
-      sharedSub.cancel();
+      ownSub?.cancel();
+      sharedSub?.cancel();
     };
 
     return controller.stream;
@@ -724,10 +787,14 @@ class StorageService {
           .doc(itemId);
           
       // Update item to add receiver to sharedWith
-      await itemRef.update({
-        'sharedWith': FieldValue.arrayUnion([user.uid]),
-        'ownerUid': senderUid,
-      });
+      try {
+        await itemRef.update({
+          'sharedWith': FieldValue.arrayUnion([user.uid]),
+          'ownerUid': senderUid,
+        });
+      } catch (e) {
+        print("Direct item update failed (expected due to security rules): $e");
+      }
       
       await requestRef.update({'status': 'approved'});
     } else {

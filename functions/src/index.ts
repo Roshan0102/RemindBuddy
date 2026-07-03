@@ -425,6 +425,49 @@ exports.onCollaborationRequestCreated = functions.firestore
         }
     });
 
+exports.onCollaborationRequestUpdated = functions.firestore
+    .document('collaboration_requests/{requestId}')
+    .onUpdate(async (change, context) => {
+        const newData = change.after.data();
+        const oldData = change.before.data();
+        
+        if (!newData || !oldData) return;
+        
+        // Check if status changed to approved
+        if (newData.status === 'approved' && oldData.status !== 'approved') {
+            const { senderUid, receiverUid, itemId, type } = newData;
+            if (!senderUid || !receiverUid || !itemId || !type) return;
+            
+            try {
+                const subcollection = type === 'note' ? 'notes' : 'checklists';
+                const docRef = db.collection('users').doc(senderUid).collection(subcollection).doc(itemId);
+                
+                await db.runTransaction(async (transaction) => {
+                    const docSnap = await transaction.get(docRef);
+                    if (!docSnap.exists) {
+                        console.log(`Document users/${senderUid}/${subcollection}/${itemId} not found`);
+                        return;
+                    }
+                    
+                    const docData = docSnap.data() || {};
+                    let sharedWith = docData.sharedWith || [];
+                    if (!sharedWith.includes(receiverUid)) {
+                        sharedWith.push(receiverUid);
+                    }
+                    
+                    transaction.update(docRef, {
+                        sharedWith: sharedWith,
+                        ownerUid: senderUid
+                    });
+                });
+                
+                console.log(`Successfully added collaborator ${receiverUid} to document ${itemId}`);
+            } catch (error) {
+                console.error("Failed to update collaborator on document:", error);
+            }
+        }
+    });
+
 // ----------------------------------------------------------------------------
 // MISC (Gold, Shifts, etc.)
 // ----------------------------------------------------------------------------

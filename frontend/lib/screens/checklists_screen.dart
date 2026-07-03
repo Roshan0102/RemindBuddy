@@ -24,11 +24,18 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
 
   Future<void> _loadChecklists() async {
     setState(() => _isLoading = true);
-    final lists = await _storage.getChecklists();
-    setState(() {
-      _checklists = lists;
-      _isLoading = false;
-    });
+    try {
+      final lists = await _storage.getChecklists();
+      setState(() {
+        _checklists = lists;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print("Error loading checklists in screen: $e");
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _createChecklist(String title, int iconCode, int colorValue) async {
@@ -216,6 +223,9 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _storage.getChecklistsStream(),
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            print("Checklists stream error: ${snapshot.error}");
+          }
           if (snapshot.connectionState == ConnectionState.waiting && _checklists.isEmpty) {
             return const Center(child: CircularProgressIndicator());
           }
