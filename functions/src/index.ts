@@ -150,19 +150,6 @@ exports.processCalendarReminderTask = functions.tasks
                             }
                         };
 
-                        if (snoozeEnabled) {
-                            message.android.notification.actions = [
-                                {
-                                    action: "action_yes",
-                                    title: "Yes"
-                                },
-                                {
-                                    action: "action_no",
-                                    title: "No"
-                                }
-                            ];
-                        }
-
                         await admin.messaging().send(message);
                         await logNotification(uid, title, body, "CALENDAR_REMINDER");
                     }
@@ -1873,6 +1860,9 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             .limit(5)
             .get();
 
+        const goldInsightsPromise = db.collection("gold_ai_insights").doc("latest").get();
+        const goldChitAdvicePromise = db.collection("gold_chit_advice").doc("latest").get();
+
         const [
             remindersSnap,
             dailyRemindersSnap,
@@ -1881,7 +1871,9 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             shiftsSnap,
             goldSnap,
             eventsSnap,
-            walkinsSnap
+            walkinsSnap,
+            goldInsightsSnap,
+            goldChitAdviceSnap
         ] = await Promise.all([
             remindersPromise,
             dailyRemindersPromise,
@@ -1890,7 +1882,9 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             shiftsPromise.catch(() => null),
             goldPromise.catch(() => null),
             eventsPromise.catch(() => null),
-            walkinsPromise.catch(() => null)
+            walkinsPromise.catch(() => null),
+            goldInsightsPromise.catch(() => null),
+            goldChitAdvicePromise.catch(() => null)
         ]);
 
         const checklistsData: any[] = [];
@@ -1985,6 +1979,38 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             contextText += `Price: ₹${gd.price} per gram, Updated: ${gd.timestamp}\n`;
         } else {
             contextText += "Gold price data unavailable.\n";
+        }
+        contextText += "\n";
+
+        contextText += "--- GOLD AI MARKET ANALYSIS & INSIGHTS ---\n";
+        if (goldInsightsSnap && goldInsightsSnap.exists) {
+            const gid = goldInsightsSnap.data();
+            if (gid) {
+                contextText += `Sentiment: ${gid.sentiment || ''} (Score: ${gid.sentimentScore ?? 0})\n`;
+                contextText += `Sentiment Summary: "${gid.sentimentSummary || ''}"\n`;
+                contextText += `Predicted Trend: ${gid.predictedTrend || ''}\n`;
+                contextText += `Predicted Range: ${gid.predictedPriceRange || ''}\n`;
+                contextText += `Rationale: "${gid.predictionRationale || ''}"\n`;
+            } else {
+                contextText += "Gold AI market analysis data empty.\n";
+            }
+        } else {
+            contextText += "No gold AI market analysis available.\n";
+        }
+        contextText += "\n";
+
+        contextText += "--- GOLD CHIT ADVICE (BUYING SUGGESTIONS) ---\n";
+        if (goldChitAdviceSnap && goldChitAdviceSnap.exists) {
+            const gca = goldChitAdviceSnap.data();
+            if (gca) {
+                contextText += `Recommendation: "${gca.recommendation || ''}"\n`;
+                contextText += `Short Reason: "${gca.shortReason || ''}"\n`;
+                contextText += `Full Analysis: "${gca.fullAnalysis || ''}"\n`;
+            } else {
+                contextText += "Gold chit buying advice data empty.\n";
+            }
+        } else {
+            contextText += "No gold chit buying advice available.\n";
         }
         contextText += "\n";
 

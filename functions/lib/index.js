@@ -144,18 +144,6 @@ exports.processCalendarReminderTask = functions.tasks
                             uid: uid
                         }
                     };
-                    if (snoozeEnabled) {
-                        message.android.notification.actions = [
-                            {
-                                action: "action_yes",
-                                title: "Yes"
-                            },
-                            {
-                                action: "action_no",
-                                title: "No"
-                            }
-                        ];
-                    }
                     await admin.messaging().send(message);
                     await logNotification(uid, title, body, "CALENDAR_REMINDER");
                 }
@@ -1648,7 +1636,7 @@ exports.dailyWalkInsFetcher = functions.pubsub.schedule('0 20 * * *').timeZone('
     }
 });
 exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
-    var _a;
+    var _a, _b;
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
     }
@@ -1711,7 +1699,9 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             .orderBy("date")
             .limit(5)
             .get();
-        const [remindersSnap, dailyRemindersSnap, notesSnap, checklistsSnap, shiftsSnap, goldSnap, eventsSnap, walkinsSnap] = await Promise.all([
+        const goldInsightsPromise = db.collection("gold_ai_insights").doc("latest").get();
+        const goldChitAdvicePromise = db.collection("gold_chit_advice").doc("latest").get();
+        const [remindersSnap, dailyRemindersSnap, notesSnap, checklistsSnap, shiftsSnap, goldSnap, eventsSnap, walkinsSnap, goldInsightsSnap, goldChitAdviceSnap] = await Promise.all([
             remindersPromise,
             dailyRemindersPromise,
             notesPromise,
@@ -1719,7 +1709,9 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             shiftsPromise.catch(() => null),
             goldPromise.catch(() => null),
             eventsPromise.catch(() => null),
-            walkinsPromise.catch(() => null)
+            walkinsPromise.catch(() => null),
+            goldInsightsPromise.catch(() => null),
+            goldChitAdvicePromise.catch(() => null)
         ]);
         const checklistsData = [];
         if (checklistsSnap && !checklistsSnap.empty) {
@@ -1814,6 +1806,40 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
         }
         else {
             contextText += "Gold price data unavailable.\n";
+        }
+        contextText += "\n";
+        contextText += "--- GOLD AI MARKET ANALYSIS & INSIGHTS ---\n";
+        if (goldInsightsSnap && goldInsightsSnap.exists) {
+            const gid = goldInsightsSnap.data();
+            if (gid) {
+                contextText += `Sentiment: ${gid.sentiment || ''} (Score: ${(_b = gid.sentimentScore) !== null && _b !== void 0 ? _b : 0})\n`;
+                contextText += `Sentiment Summary: "${gid.sentimentSummary || ''}"\n`;
+                contextText += `Predicted Trend: ${gid.predictedTrend || ''}\n`;
+                contextText += `Predicted Range: ${gid.predictedPriceRange || ''}\n`;
+                contextText += `Rationale: "${gid.predictionRationale || ''}"\n`;
+            }
+            else {
+                contextText += "Gold AI market analysis data empty.\n";
+            }
+        }
+        else {
+            contextText += "No gold AI market analysis available.\n";
+        }
+        contextText += "\n";
+        contextText += "--- GOLD CHIT ADVICE (BUYING SUGGESTIONS) ---\n";
+        if (goldChitAdviceSnap && goldChitAdviceSnap.exists) {
+            const gca = goldChitAdviceSnap.data();
+            if (gca) {
+                contextText += `Recommendation: "${gca.recommendation || ''}"\n`;
+                contextText += `Short Reason: "${gca.shortReason || ''}"\n`;
+                contextText += `Full Analysis: "${gca.fullAnalysis || ''}"\n`;
+            }
+            else {
+                contextText += "Gold chit buying advice data empty.\n";
+            }
+        }
+        else {
+            contextText += "No gold chit buying advice available.\n";
         }
         contextText += "\n";
         contextText += "--- UPCOMING TECH EVENTS ---\n";

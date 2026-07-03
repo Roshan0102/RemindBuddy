@@ -22,6 +22,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
   bool _isThinking = false;
   bool _isSpeaking = false;
   bool _textMode = false;
+  bool _isMuted = false;
   String _currentTranscribedText = "";
   
   final List<Map<String, String>> _messages = [
@@ -209,8 +210,10 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
         });
         _scrollToBottom();
 
-        // Speak response out loud
-        await _flutterTts.speak(spokenResponse);
+        // Speak response out loud if not muted
+        if (!_isMuted) {
+          await _flutterTts.speak(spokenResponse);
+        }
       } else {
         throw Exception(data?['error'] ?? "Unknown function error");
       }
@@ -276,18 +279,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
                         color: isDark ? Colors.white : Colors.black87,
                       ),
                     ),
-                    IconButton(
-                      icon: Icon(
-                        _textMode ? Icons.mic : Icons.keyboard,
-                        color: isDark ? Colors.cyanAccent : Colors.indigo,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _textMode = !_textMode;
-                          _flutterTts.stop();
-                        });
-                      },
-                    ),
+                    const SizedBox(width: 48),
                   ],
                 ),
               ),
@@ -390,141 +382,177 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
               const SizedBox(height: 16.0),
 
               // Interactive Assistant Area
-              if (_textMode)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _textController,
-                          style: GoogleFonts.outfit(color: isDark ? Colors.white : Colors.black87),
-                          decoration: InputDecoration(
-                            hintText: "Type your query...",
-                            hintStyle: GoogleFonts.outfit(color: Colors.grey),
-                            filled: true,
-                            fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(30.0),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 14.0),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20.0, 8.0, 20.0, 24.0),
+                child: _textMode
+                    ? Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.mic, color: Colors.grey),
+                            onPressed: () {
+                              setState(() {
+                                _textMode = false;
+                              });
+                            },
                           ),
-                          onSubmitted: (val) {
-                            if (val.trim().isNotEmpty) {
-                              _sendMessage(val);
-                              _textController.clear();
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12.0),
-                      IconButton(
-                        style: IconButton.styleFrom(
-                          backgroundColor: isDark ? Colors.cyan.shade900 : Colors.indigo,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.all(14.0),
-                        ),
-                        icon: const Icon(Icons.send),
-                        onPressed: () {
-                          final text = _textController.text;
-                          if (text.trim().isNotEmpty) {
-                            _sendMessage(text);
-                            _textController.clear();
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                )
-              else
-                Container(
-                  height: 200,
-                  alignment: Alignment.center,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Glow Pulse waves when listening
-                      if (_isListening)
-                        AnimatedBuilder(
-                          animation: _pulseController,
-                          builder: (context, child) {
-                            return Stack(
+                          Expanded(
+                            child: TextField(
+                              controller: _textController,
+                              style: GoogleFonts.outfit(color: isDark ? Colors.white : Colors.black87),
+                              decoration: InputDecoration(
+                                hintText: "Ask RemindBuddy...",
+                                hintStyle: GoogleFonts.outfit(color: Colors.grey),
+                                filled: true,
+                                fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(30.0),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 14.0),
+                              ),
+                              onSubmitted: (val) {
+                                if (val.trim().isNotEmpty) {
+                                  _sendMessage(val);
+                                  _textController.clear();
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8.0),
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: isDark ? Colors.cyan.shade900 : Colors.indigo,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.all(12.0),
+                            ),
+                            icon: const Icon(Icons.send),
+                            onPressed: () {
+                              final text = _textController.text;
+                              if (text.trim().isNotEmpty) {
+                                _sendMessage(text);
+                                _textController.clear();
+                              }
+                            },
+                          ),
+                        ],
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
+                              padding: const EdgeInsets.all(16.0),
+                            ),
+                            icon: Icon(Icons.keyboard, size: 28, color: isDark ? Colors.white70 : Colors.black54),
+                            onPressed: () {
+                              setState(() {
+                                _textMode = true;
+                              });
+                            },
+                          ),
+                          GestureDetector(
+                            onTap: () {
+                              if (_isListening) {
+                                _stopListeningAndSend(_currentTranscribedText);
+                              } else {
+                                _startListening();
+                              }
+                            },
+                            child: Stack(
                               alignment: Alignment.center,
                               children: [
-                                _buildPulseRing(1.0 + _pulseController.value * 0.8, (1.0 - _pulseController.value) * 0.4, isDark),
-                                _buildPulseRing(1.0 + ((_pulseController.value + 0.5) % 1.0) * 0.8, (1.0 - ((_pulseController.value + 0.5) % 1.0)) * 0.4, isDark),
-                              ],
-                            );
-                          },
-                        ),
-
-                      // Speak waves when TTS is active
-                      if (_isSpeaking)
-                        AnimatedBuilder(
-                          animation: _speakingWaveController,
-                          builder: (context, child) {
-                            final scaleVal = 1.0 + (_speakingWaveController.value * 0.3);
-                            return Container(
-                              width: 140 * scaleVal,
-                              height: 140 * scaleVal,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.pink.withValues(alpha: 0.05 + (1.0 - _speakingWaveController.value) * 0.1),
-                                border: Border.all(
-                                  color: Colors.pinkAccent.withValues(alpha: 0.15 + (1.0 - _speakingWaveController.value) * 0.3),
-                                  width: 2,
+                                if (_isListening)
+                                  AnimatedBuilder(
+                                    animation: _pulseController,
+                                    builder: (context, child) {
+                                      return Stack(
+                                        alignment: Alignment.center,
+                                        children: [
+                                          _buildPulseRing(1.0 + _pulseController.value * 0.8, (1.0 - _pulseController.value) * 0.4, isDark),
+                                          _buildPulseRing(1.0 + ((_pulseController.value + 0.5) % 1.0) * 0.8, (1.0 - ((_pulseController.value + 0.5) % 1.0)) * 0.4, isDark),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                if (_isSpeaking)
+                                  AnimatedBuilder(
+                                    animation: _speakingWaveController,
+                                    builder: (context, child) {
+                                      final scaleVal = 1.0 + (_speakingWaveController.value * 0.3);
+                                      return Container(
+                                        width: 130 * scaleVal,
+                                        height: 130 * scaleVal,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Colors.pink.withValues(alpha: 0.05 + (1.0 - _speakingWaveController.value) * 0.1),
+                                          border: Border.all(
+                                            color: Colors.pinkAccent.withValues(alpha: 0.15 + (1.0 - _speakingWaveController.value) * 0.3),
+                                            width: 2,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  width: 100,
+                                  height: 100,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: LinearGradient(
+                                      colors: _isListening
+                                          ? [Colors.cyan.shade400, Colors.blue.shade900]
+                                          : (_isSpeaking
+                                              ? [Colors.pink.shade400, Colors.deepOrange]
+                                              : [const Color(0xFF8E2DE2), const Color(0xFF4A00E0)]),
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: (_isListening
+                                            ? Colors.cyanAccent
+                                            : (_isSpeaking ? Colors.pinkAccent : const Color(0xFF8E2DE2)))
+                                            .withValues(alpha: 0.4),
+                                        blurRadius: 15,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Icon(
+                                    _isListening ? Icons.mic : (_isSpeaking ? Icons.volume_up : Icons.mic_none),
+                                    size: 38,
+                                    color: Colors.white,
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-
-                      // Microphone Button
-                      GestureDetector(
-                        onTap: () {
-                          if (_isListening) {
-                            _stopListeningAndSend(_currentTranscribedText);
-                          } else {
-                            _startListening();
-                          }
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              colors: _isListening
-                                  ? [Colors.cyan.shade400, Colors.blue.shade900]
-                                  : (_isSpeaking
-                                      ? [Colors.pink.shade400, Colors.deepOrange]
-                                      : [const Color(0xFF8E2DE2), const Color(0xFF4A00E0)]),
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
+                              ],
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: (_isListening
-                                    ? Colors.cyanAccent
-                                    : (_isSpeaking ? Colors.pinkAccent : const Color(0xFF8E2DE2)))
-                                    .withValues(alpha: 0.4),
-                                blurRadius: 20,
-                                spreadRadius: 4,
-                              ),
-                            ],
                           ),
-                          child: Icon(
-                            _isListening ? Icons.mic : (_isSpeaking ? Icons.volume_up : Icons.mic_none),
-                            size: 48,
-                            color: Colors.white,
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
+                              padding: const EdgeInsets.all(16.0),
+                            ),
+                            icon: Icon(
+                              _isMuted ? Icons.volume_off : Icons.volume_up,
+                              size: 28,
+                              color: _isMuted 
+                                  ? Colors.redAccent 
+                                  : (isDark ? Colors.white70 : Colors.black54),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _isMuted = !_isMuted;
+                                if (_isMuted) {
+                                  _flutterTts.stop();
+                                }
+                              });
+                            },
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+              ),
 
               // Footer helper hint
               if (!_textMode)

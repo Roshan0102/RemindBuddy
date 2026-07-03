@@ -34,6 +34,7 @@ class _MainScreenState extends State<MainScreen> {
   bool _isDarkMode = false;
   List<String> _enabledModules = ['gold'];
   List<String> _userSelectedBottomModules = [];
+  List<String> _userMenuOrder = [];
   bool _isLoading = true;
 
   bool get _isVaultEnabled => _enabledModules.contains('vault');
@@ -94,6 +95,7 @@ class _MainScreenState extends State<MainScreen> {
     final isDark = localPrefs.getBool('isDarkMode') ?? false;
     final cachedBottom = localPrefs.getStringList('user_bottom_modules') ?? [];
     final cachedModulesStr = localPrefs.getStringList('cached_enabled_modules');
+    final cachedMenuOrder = localPrefs.getStringList('user_menu_order') ?? [];
 
     if (mounted) {
       setState(() {
@@ -102,6 +104,7 @@ class _MainScreenState extends State<MainScreen> {
           _enabledModules = cachedModulesStr;
         }
         _userSelectedBottomModules = cachedBottom;
+        _userMenuOrder = cachedMenuOrder;
         _isLoading = false;
       });
     }
@@ -438,6 +441,41 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  Future<void> _saveMenuOrder(List<String> order) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('user_menu_order', order);
+    setState(() {
+      _userMenuOrder = order;
+    });
+  }
+
+  Widget _buildMenuItemTile(Map<String, dynamic> item) {
+    return Container(
+      decoration: BoxDecoration(
+        color: (item['color'] as Color).withOpacity(0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: (item['color'] as Color).withOpacity(0.15),
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildMenuIcon(item['id'] as String, item['icon'] as IconData, item['color'] as Color),
+          const SizedBox(height: 8),
+          Text(
+            item['name'] as String,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.outfit(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAppMenuBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -446,213 +484,280 @@ class _MainScreenState extends State<MainScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        final menuItems = [
-          if (_enabledModules.contains('reminders'))
-            {
-              'id': 'reminders',
-              'name': 'Reminders',
-              'icon': Icons.calendar_today,
-              'color': Colors.indigo,
-              'action': () => _selectTabOrPush('reminders'),
-            },
-          if (_enabledModules.contains('gold'))
-            {
-              'id': 'gold',
-              'name': 'Gold Rates',
-              'icon': Icons.monetization_on,
-              'color': Colors.amber,
-              'action': () => _selectTabOrPush('gold'),
-            },
-          if (_enabledModules.contains('notes'))
-            {
-              'id': 'notes',
-              'name': 'Notes',
-              'icon': Icons.note_alt,
-              'color': Colors.teal,
-              'action': () => _selectTabOrPush('notes'),
-            },
-          if (_enabledModules.contains('checklist'))
-            {
-              'id': 'checklist',
-              'name': 'Checklist',
-              'icon': Icons.playlist_add_check_outlined,
-              'color': Colors.blue,
-              'action': () => _selectTabOrPush('checklist'),
-            },
-          if (_enabledModules.contains('shifts'))
-            {
-              'id': 'shifts',
-              'name': 'My Shifts',
-              'icon': Icons.work_history,
-              'color': Colors.orange,
-              'action': () => _selectTabOrPush('shifts'),
-            },
-          if (_enabledModules.contains('events'))
-            {
-              'id': 'events',
-              'name': 'Tech Events',
-              'icon': Icons.event,
-              'color': Colors.green,
-              'action': () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)),
-                );
+        return StatefulBuilder(
+          builder: (context, setBottomSheetState) {
+            final allItems = [
+              if (_enabledModules.contains('reminders'))
+                {
+                  'id': 'reminders',
+                  'name': 'Reminders',
+                  'icon': Icons.calendar_today,
+                  'color': Colors.indigo,
+                  'action': () => _selectTabOrPush('reminders'),
+                },
+              if (_enabledModules.contains('gold'))
+                {
+                  'id': 'gold',
+                  'name': 'Gold Rates',
+                  'icon': Icons.monetization_on,
+                  'color': Colors.amber,
+                  'action': () => _selectTabOrPush('gold'),
+                },
+              if (_enabledModules.contains('notes'))
+                {
+                  'id': 'notes',
+                  'name': 'Notes',
+                  'icon': Icons.note_alt,
+                  'color': Colors.teal,
+                  'action': () => _selectTabOrPush('notes'),
+                },
+              if (_enabledModules.contains('checklist'))
+                {
+                  'id': 'checklist',
+                  'name': 'Checklist',
+                  'icon': Icons.playlist_add_check_outlined,
+                  'color': Colors.blue,
+                  'action': () => _selectTabOrPush('checklist'),
+                },
+              if (_enabledModules.contains('shifts'))
+                {
+                  'id': 'shifts',
+                  'name': 'My Shifts',
+                  'icon': Icons.work_history,
+                  'color': Colors.orange,
+                  'action': () => _selectTabOrPush('shifts'),
+                },
+              if (_enabledModules.contains('events'))
+                {
+                  'id': 'events',
+                  'name': 'Tech Events',
+                  'icon': Icons.event,
+                  'color': Colors.green,
+                  'action': () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)),
+                    );
+                  },
+                },
+              if (_enabledModules.contains('walkin'))
+                {
+                  'id': 'walkin',
+                  'name': 'Walk-In Drives',
+                  'icon': Icons.directions_walk,
+                  'color': Colors.lightBlue,
+                  'action': () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)),
+                    );
+                  },
+                },
+              if (_isVaultEnabled)
+                {
+                  'id': 'vault',
+                  'name': 'Secure Vault',
+                  'icon': Icons.shield,
+                  'color': Colors.blueAccent,
+                  'action': () => _selectTabOrPush('vault'),
+                },
+              if (_enabledModules.contains('daily_reminders'))
+                {
+                  'id': 'daily_reminders',
+                  'name': 'Daily Reminders',
+                  'icon': Icons.alarm_on,
+                  'color': Colors.blue,
+                  'action': () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
+                    );
+                  },
+                },
+              if (_enabledModules.contains('voice_assistant'))
+                {
+                  'id': 'voice_assistant',
+                  'name': 'Voice AI',
+                  'icon': Icons.mic,
+                  'color': Colors.redAccent,
+                  'action': () {
+                    _openVoiceAssistant();
+                  },
+                },
+              {
+                'id': 'customize',
+                'name': 'Customize Bar',
+                'icon': Icons.dashboard_customize,
+                'color': Colors.purple,
+                'action': () => _showCustomizeBottomBarDialog(),
               },
-            },
-          if (_enabledModules.contains('walkin'))
-            {
-              'id': 'walkin',
-              'name': 'Walk-In Drives',
-              'icon': Icons.directions_walk,
-              'color': Colors.lightBlue,
-              'action': () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)),
-                );
+              {
+                'id': 'admin',
+                'name': 'Admin Console',
+                'icon': Icons.admin_panel_settings,
+                'color': Colors.blueGrey,
+                'action': () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AdminScreen()),
+                  ).then((_) {
+                    _loadPreferences();
+                  });
+                },
               },
-            },
-          if (_isVaultEnabled)
-            {
-              'id': 'vault',
-              'name': 'Secure Vault',
-              'icon': Icons.shield,
-              'color': Colors.blueAccent,
-              'action': () => _selectTabOrPush('vault'),
-            },
-          if (_enabledModules.contains('daily_reminders'))
-            {
-              'id': 'daily_reminders',
-              'name': 'Daily Reminders',
-              'icon': Icons.alarm_on,
-              'color': Colors.blue,
-              'action': () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
-                );
-              },
-            },
-          if (_enabledModules.contains('voice_assistant'))
-            {
-              'id': 'voice_assistant',
-              'name': 'Voice AI',
-              'icon': Icons.mic,
-              'color': Colors.redAccent,
-              'action': () {
-                _openVoiceAssistant();
-              },
-            },
-          {
-            'id': 'customize',
-            'name': 'Customize Bar',
-            'icon': Icons.dashboard_customize,
-            'color': Colors.purple,
-            'action': () => _showCustomizeBottomBarDialog(),
-          },
-          {
-            'id': 'admin',
-            'name': 'Admin Console',
-            'icon': Icons.admin_panel_settings,
-            'color': Colors.blueGrey,
-            'action': () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AdminScreen()),
-              ).then((_) {
-                _loadPreferences();
-              });
-            },
-          },
-        ];
+            ];
 
-        return Container(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+            // Reorder based on _userMenuOrder
+            final sortedItems = <Map<String, dynamic>>[];
+            for (final id in _userMenuOrder) {
+              final found = allItems.firstWhere((x) => x['id'] == id, orElse: () => {});
+              if (found.isNotEmpty) {
+                sortedItems.add(found);
+              }
+            }
+            for (final item in allItems) {
+              if (!sortedItems.any((x) => x['id'] == item['id'])) {
+                sortedItems.add(item);
+              }
+            }
+
+            return Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    'App Menu',
-                    style: GoogleFonts.outfit(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 0.95,
-                ),
-                itemCount: menuItems.length,
-                itemBuilder: (context, index) {
-                  final item = menuItems[index];
-                  return InkWell(
-                    onTap: () {
-                      Navigator.pop(context);
-                      (item['action'] as VoidCallback)();
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: (item['color'] as Color).withOpacity(0.06),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: (item['color'] as Color).withOpacity(0.15),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildMenuIcon(item['id'] as String, item['icon'] as IconData, item['color'] as Color),
-                          const SizedBox(height: 8),
                           Text(
-                            item['name'] as String,
-                            textAlign: TextAlign.center,
+                            'App Menu',
                             style: GoogleFonts.outfit(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          Text(
+                            'Long-press & drag to rearrange icons',
+                            style: GoogleFonts.outfit(
+                              fontSize: 12,
+                              color: Colors.grey,
                             ),
                           ),
                         ],
                       ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 0.95,
                     ),
-                  );
-                },
+                    itemCount: sortedItems.length,
+                    itemBuilder: (context, index) {
+                      final item = sortedItems[index];
+                      final itemId = item['id'] as String;
+
+                      return DragTarget<String>(
+                        onAcceptWithDetails: (details) {
+                          final draggedId = details.data;
+                          if (draggedId != itemId) {
+                            setBottomSheetState(() {
+                              final draggedIdx = sortedItems.indexWhere((x) => x['id'] == draggedId);
+                              final targetIdx = sortedItems.indexWhere((x) => x['id'] == itemId);
+                              if (draggedIdx != -1 && targetIdx != -1) {
+                                final temp = sortedItems[draggedIdx];
+                                sortedItems[draggedIdx] = sortedItems[targetIdx];
+                                sortedItems[targetIdx] = temp;
+                                
+                                final newOrder = sortedItems.map((x) => x['id'] as String).toList();
+                                _saveMenuOrder(newOrder);
+                              }
+                            });
+                          }
+                        },
+                        builder: (context, candidateData, rejectedData) {
+                          final isOver = candidateData.isNotEmpty;
+                          return LongPressDraggable<String>(
+                            data: itemId,
+                            feedback: Material(
+                              color: Colors.transparent,
+                              child: Container(
+                                width: 100,
+                                height: 95,
+                                decoration: BoxDecoration(
+                                  color: (item['color'] as Color).withOpacity(0.9),
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    item['icon'] as IconData,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            childWhenDragging: Opacity(
+                              opacity: 0.3,
+                              child: _buildMenuItemTile(item),
+                            ),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              transform: isOver ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  (item['action'] as VoidCallback)();
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: _buildMenuItemTile(item),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
