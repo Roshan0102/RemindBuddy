@@ -93,6 +93,20 @@ class StorageService {
         .doc(id)
         .delete();
   }
+
+  Future<void> updateCalendarReminder(CalendarReminder reminder, {String? targetUid}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || reminder.id == null) return;
+    
+    final destinationUid = targetUid ?? user.uid;
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(destinationUid)
+        .collection('calendar_reminders')
+        .doc(reminder.id)
+        .update(reminder.toMap());
+  }
+
   Stream<List<CalendarReminder>> getAllCalendarRemindersStream() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Stream.empty();

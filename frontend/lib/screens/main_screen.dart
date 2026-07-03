@@ -280,12 +280,45 @@ class _MainScreenState extends State<MainScreen> {
       if (i == mIdx) {
         dests.add(menuDest);
       }
-      dests.add(_moduleRegistry[active[i]]!['destination'] as NavigationDestination);
+      dests.add(_buildDestination(active[i]));
     }
     if (dests.length <= mIdx) {
       dests.add(menuDest);
     }
     return dests;
+  }
+
+  NavigationDestination _buildDestination(String id) {
+    final registry = _moduleRegistry[id]!;
+    final dest = registry['destination'] as NavigationDestination;
+    Widget icon = dest.icon;
+    Widget selectedIcon = dest.selectedIcon;
+
+    if (id == 'notes') {
+      icon = NavigationIconWithBadge(
+        icon: icon,
+        stream: StorageService().getIncomingRequestsStream('note'),
+      );
+      selectedIcon = NavigationIconWithBadge(
+        icon: selectedIcon,
+        stream: StorageService().getIncomingRequestsStream('note'),
+      );
+    } else if (id == 'checklist') {
+      icon = NavigationIconWithBadge(
+        icon: icon,
+        stream: StorageService().getIncomingRequestsStream('checklist'),
+      );
+      selectedIcon = NavigationIconWithBadge(
+        icon: selectedIcon,
+        stream: StorageService().getIncomingRequestsStream('checklist'),
+      );
+    }
+
+    return NavigationDestination(
+      icon: icon,
+      selectedIcon: selectedIcon,
+      label: dest.label,
+    );
   }
 
   bool _isModuleSelected(String id) {
@@ -580,11 +613,7 @@ class _MainScreenState extends State<MainScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            item['icon'] as IconData,
-                            color: item['color'] as Color,
-                            size: 28,
-                          ),
+                          _buildMenuIcon(item['id'] as String, item['icon'] as IconData, item['color'] as Color),
                           const SizedBox(height: 8),
                           Text(
                             item['name'] as String,
@@ -883,5 +912,53 @@ class _MainScreenState extends State<MainScreen> {
             ),
       ), // Close Scaffold
     ); // Close Theme
+  }
+
+  Widget _buildMenuIcon(String id, IconData iconData, Color color) {
+    Widget icon = Icon(
+      iconData,
+      color: color,
+      size: 28,
+    );
+    if (id == 'notes') {
+      return NavigationIconWithBadge(
+        icon: icon,
+        stream: StorageService().getIncomingRequestsStream('note'),
+      );
+    } else if (id == 'checklist') {
+      return NavigationIconWithBadge(
+        icon: icon,
+        stream: StorageService().getIncomingRequestsStream('checklist'),
+      );
+    }
+    return icon;
+  }
+}
+
+class NavigationIconWithBadge extends StatelessWidget {
+  final Widget icon;
+  final Stream<List<Map<String, dynamic>>> stream;
+
+  const NavigationIconWithBadge({
+    super.key,
+    required this.icon,
+    required this.stream,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        final hasRequests = snapshot.hasData && snapshot.data!.isNotEmpty;
+        if (hasRequests) {
+          return Badge(
+            backgroundColor: Colors.red,
+            child: icon,
+          );
+        }
+        return icon;
+      },
+    );
   }
 }

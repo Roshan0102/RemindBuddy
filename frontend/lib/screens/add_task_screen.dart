@@ -5,11 +5,13 @@ import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/storage_service.dart';
+import '../models/calendar_reminder.dart';
 
 class AddTaskScreen extends StatefulWidget {
   final DateTime? selectedDate;
+  final CalendarReminder? existingReminder;
 
-  const AddTaskScreen({super.key, this.selectedDate});
+  const AddTaskScreen({super.key, this.selectedDate, this.existingReminder});
 
   @override
   State<AddTaskScreen> createState() => _AddTaskScreenState();
@@ -37,11 +39,33 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   @override
   void initState() {
     super.initState();
-    _date = widget.selectedDate ?? DateTime.now();
-    _time = TimeOfDay.now();
     _myUid = FirebaseAuth.instance.currentUser?.uid;
-    if (_myUid != null) {
-      _selectedRecipients.add(_myUid!);
+    if (widget.existingReminder != null) {
+      final r = widget.existingReminder!;
+      _titleController.text = r.title;
+      _descriptionController.text = r.description;
+      _date = DateFormat('yyyy-MM-dd').parse(r.date);
+      final timeParts = r.time.split(':');
+      _time = TimeOfDay(
+        hour: int.parse(timeParts[0]),
+        minute: int.parse(timeParts[1]),
+      );
+      _isRecurring = r.isRecurring;
+      _recurrenceValue = r.recurrenceValue;
+      _recurrenceUnit = r.recurrenceUnit;
+      _occurrencesLimit = r.remainingOccurrences;
+      if (_occurrencesLimit != null) {
+        _occurrencesController.text = _occurrencesLimit.toString();
+      }
+      if (_myUid != null) {
+        _selectedRecipients.add(_myUid!);
+      }
+    } else {
+      _date = widget.selectedDate ?? DateTime.now();
+      _time = TimeOfDay.now();
+      if (_myUid != null) {
+        _selectedRecipients.add(_myUid!);
+      }
     }
     _loadBuddies();
   }
@@ -131,7 +155,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   Future<void> _saveTask() async {
-    if (_selectedRecipients.isEmpty) {
+    if (widget.existingReminder == null && _selectedRecipients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select at least one recipient.')),
       );
@@ -145,18 +169,33 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
       try {
         final storage = StorageService();
-        for (final recipientUid in _selectedRecipients) {
-          await storage.insertCalendarReminder(
-            _titleController.text, 
-            _descriptionController.text, 
-            dateStr, 
-            timeStr,
+        if (widget.existingReminder != null) {
+          final updated = widget.existingReminder!.copyWith(
+            title: _titleController.text,
+            description: _descriptionController.text,
+            date: dateStr,
+            time: timeStr,
             isRecurring: _isRecurring,
             recurrenceValue: _recurrenceValue,
             recurrenceUnit: _recurrenceUnit,
             remainingOccurrences: _occurrencesLimit,
-            targetUid: recipientUid == _myUid ? null : recipientUid,
+            status: 'pending',
           );
+          await storage.updateCalendarReminder(updated);
+        } else {
+          for (final recipientUid in _selectedRecipients) {
+            await storage.insertCalendarReminder(
+              _titleController.text, 
+              _descriptionController.text, 
+              dateStr, 
+              timeStr,
+              isRecurring: _isRecurring,
+              recurrenceValue: _recurrenceValue,
+              recurrenceUnit: _recurrenceUnit,
+              remainingOccurrences: _occurrencesLimit,
+              targetUid: recipientUid == _myUid ? null : recipientUid,
+            );
+          }
         }
         
         if (mounted) {
@@ -176,14 +215,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Reminder')),
+      appBar: AppBar(title: Text(widget.existingReminder != null ? 'Edit Reminder' : 'Add Reminder')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
           child: ListView(
             children: [
-              if (!_isLoadingBuddies) ...[
+              if (widget.existingReminder == null && !_isLoadingBuddies) ...[
                 Card(
                   elevation: 1,
                   shape: RoundedRectangleBorder(
@@ -457,7 +496,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   onPressed: _isSaving ? null : _saveTask,
                   child: _isSaving 
                     ? const CircularProgressIndicator(color: Colors.white) 
-                    : const Text('Schedule Reminder', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    : Text(widget.existingReminder != null ? 'Save Changes' : 'Schedule Reminder', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],

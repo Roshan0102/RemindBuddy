@@ -242,11 +242,28 @@ class _HomeScreenState extends State<HomeScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
+                        icon: const Icon(Icons.edit_outlined, color: Colors.blueAccent),
+                        tooltip: 'Edit Reminder',
+                        onPressed: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => AddTaskScreen(
+                                selectedDate: _selectedDay,
+                                existingReminder: reminder,
+                              ),
+                            ),
+                          );
+                          if (result == true) {
+                            setState(() {});
+                          }
+                        },
+                      ),
+                      IconButton(
                         icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                         tooltip: 'Delete Reminder',
                         onPressed: () => _confirmDelete(reminder.id!, silent: false),
                       ),
-                      const Icon(Icons.chevron_left, color: Colors.grey),
                     ],
                   ),
                   isThreeLine: true,

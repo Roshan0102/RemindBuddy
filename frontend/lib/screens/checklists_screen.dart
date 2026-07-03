@@ -220,7 +220,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           
-          final checklists = snapshot.data ?? [];
+          final checklists = snapshot.data ?? _checklists;
           
           if (checklists.isEmpty) {
             return Center(

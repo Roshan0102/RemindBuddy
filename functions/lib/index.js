@@ -217,6 +217,84 @@ exports.onCalendarReminderDeleted = functions.firestore
         }
     }
 });
+exports.onCalendarReminderUpdated = functions.firestore
+    .document('users/{uid}/calendar_reminders/{reminderId}')
+    .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (!before || !after)
+        return;
+    const changed = before.title !== after.title ||
+        before.description !== after.description ||
+        before.date !== after.date ||
+        before.time !== after.time ||
+        before.isRecurring !== after.isRecurring ||
+        before.recurrenceValue !== after.recurrenceValue ||
+        before.recurrenceUnit !== after.recurrenceUnit;
+    if (!changed)
+        return;
+    const { uid, reminderId } = context.params;
+    if (before.taskId) {
+        try {
+            await tasksClient.deleteTask({ name: before.taskId });
+            console.log(`Deleted task ${before.taskId} for rescheduling`);
+        }
+        catch (error) {
+            console.error("Failed to delete old scheduled task:", error);
+        }
+    }
+    const nowKolkata = moment().tz('Asia/Kolkata');
+    const scheduledTime = moment.tz(`${after.date} ${after.time}`, "YYYY-MM-DD HH:mm", "Asia/Kolkata");
+    if (!scheduledTime.isValid() || scheduledTime.isBefore(nowKolkata.subtract(30, 'seconds'))) {
+        console.log(`Rescheduled reminder ${reminderId} is invalid or in the past. Marking as expired.`);
+        return change.after.ref.update({
+            status: "expired",
+            taskId: admin.firestore.FieldValue.delete(),
+            scheduledAtTimestamp: admin.firestore.FieldValue.delete()
+        });
+    }
+    try {
+        const project = process.env.GCLOUD_PROJECT || admin.app().options.projectId;
+        const location = 'us-central1';
+        const queue = 'processCalendarReminderTask';
+        const queuePath = tasksClient.queuePath(project, location, queue);
+        const url = `https://${location}-${project}.cloudfunctions.net/processCalendarReminderTask`;
+        const serviceAccountEmail = `${project}@appspot.gserviceaccount.com`;
+        let notifTitle = after.title;
+        if (after.scheduledByUsername) {
+            notifTitle = `${after.title} (by @${after.scheduledByUsername})`;
+        }
+        const taskRequest = {
+            parent: queuePath,
+            task: {
+                httpRequest: {
+                    httpMethod: 'POST',
+                    url,
+                    body: Buffer.from(JSON.stringify({ data: { uid, reminderId, title: notifTitle, body: after.description } })).toString('base64'),
+                    headers: { 'Content-Type': 'application/json' },
+                    oidcToken: {
+                        serviceAccountEmail,
+                    },
+                },
+                scheduleTime: {
+                    seconds: scheduledTime.unix(),
+                },
+            },
+        };
+        const [response] = await tasksClient.createTask(taskRequest);
+        const taskId = response.name;
+        console.log(`Successfully rescheduled task ${taskId} for reminder ${reminderId}`);
+        return change.after.ref.update({
+            status: "scheduled",
+            taskId: taskId,
+            scheduledAtTimestamp: admin.firestore.Timestamp.fromMillis(scheduledTime.valueOf())
+        });
+    }
+    catch (error) {
+        console.error("Rescheduling failed:", error);
+        return change.after.ref.update({ status: "error", error: String(error) });
+    }
+});
 exports.onCalendarReminderCreated = functions.firestore
     .document('users/{uid}/calendar_reminders/{reminderId}')
     .onCreate(async (snapshot, context) => {
@@ -272,6 +350,53 @@ exports.onCalendarReminderCreated = functions.firestore
     catch (error) {
         console.error("Scheduling failed:", error);
         return snapshot.ref.update({ status: "error", error: String(error) });
+    }
+});
+exports.onCollaborationRequestCreated = functions.firestore
+    .document('collaboration_requests/{requestId}')
+    .onCreate(async (snapshot, context) => {
+    const data = snapshot.data();
+    if (!data)
+        return;
+    const { senderUsername, receiverUid, type, title } = data;
+    if (!receiverUid)
+        return;
+    try {
+        const usernameDoc = await db.collection("usernames").where("uid", "==", receiverUid).limit(1).get();
+        if (usernameDoc.empty) {
+            console.log(`No usernames document found for receiver UID ${receiverUid}`);
+            return;
+        }
+        const token = usernameDoc.docs[0].data().fcmToken;
+        if (!token) {
+            console.log(`No FCM token found for receiver UID ${receiverUid}`);
+            return;
+        }
+        const notifTitle = "Collaboration Request";
+        const typeLabel = type === 'note' ? 'notes' : 'checklist';
+        const body = `${senderUsername} is requesting collaboration for this ${typeLabel}: "${title}"`;
+        await admin.messaging().send({
+            token,
+            notification: {
+                title: notifTitle,
+                body: body
+            },
+            android: {
+                notification: {
+                    channelId: "collaboration_channel"
+                }
+            },
+            data: {
+                type: "collaboration_request",
+                requestId: context.params.requestId,
+                collaborationType: type
+            }
+        });
+        await logNotification(receiverUid, notifTitle, body, "COLLABORATION_REQUEST");
+        console.log(`Successfully sent collaboration request notification to user ${receiverUid}`);
+    }
+    catch (error) {
+        console.error("Failed to send collaboration request notification:", error);
     }
 });
 // ----------------------------------------------------------------------------
