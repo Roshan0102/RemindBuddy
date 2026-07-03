@@ -292,26 +292,30 @@ class _MainScreenState extends State<MainScreen> {
     final registry = _moduleRegistry[id]!;
     final dest = registry['destination'] as NavigationDestination;
     Widget icon = dest.icon;
-    Widget selectedIcon = dest.selectedIcon;
+    Widget? selectedIcon = dest.selectedIcon;
 
     if (id == 'notes') {
       icon = NavigationIconWithBadge(
         icon: icon,
         stream: StorageService().getIncomingRequestsStream('note'),
       );
-      selectedIcon = NavigationIconWithBadge(
-        icon: selectedIcon,
-        stream: StorageService().getIncomingRequestsStream('note'),
-      );
+      if (selectedIcon != null) {
+        selectedIcon = NavigationIconWithBadge(
+          icon: selectedIcon,
+          stream: StorageService().getIncomingRequestsStream('note'),
+        );
+      }
     } else if (id == 'checklist') {
       icon = NavigationIconWithBadge(
         icon: icon,
         stream: StorageService().getIncomingRequestsStream('checklist'),
       );
-      selectedIcon = NavigationIconWithBadge(
-        icon: selectedIcon,
-        stream: StorageService().getIncomingRequestsStream('checklist'),
-      );
+      if (selectedIcon != null) {
+        selectedIcon = NavigationIconWithBadge(
+          icon: selectedIcon,
+          stream: StorageService().getIncomingRequestsStream('checklist'),
+        );
+      }
     }
 
     return NavigationDestination(
