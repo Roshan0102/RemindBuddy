@@ -55,6 +55,11 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   void initState() {
     super.initState();
     _selectedTab = widget.initialTab;
+    if (_selectedTab == 1) {
+      _isEventsEnabled = true;
+    } else if (_selectedTab == 2) {
+      _isWalkInEnabled = true;
+    }
     _loadShifts();
     _listenToEventsPermission();
   }
@@ -114,12 +119,21 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
         if (mounted) {
           setState(() {
-            _isEventsEnabled = enabledModules.contains('events');
-            _isWalkInEnabled = enabledModules.contains('walkin');
+            _isEventsEnabled = enabledModules.contains('events') || _selectedTab == 1;
+            _isWalkInEnabled = enabledModules.contains('walkin') || _selectedTab == 2;
             _eventInterests = interests;
             _walkinRoles = walkinRoles;
             _eventsLastUpdated = lastUpdated;
             _walkinsLastUpdated = walkinsLastUpdated;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _isEventsEnabled = _selectedTab == 1;
+            _isWalkInEnabled = _selectedTab == 2;
+            _eventInterests = ['Cloud', 'Devops', 'AI', 'Agentic AI'];
+            _walkinRoles = ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer'];
           });
         }
       }
@@ -1624,14 +1638,30 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    onPressed: _triggerFetchEvents,
-                    icon: const Icon(Icons.sync),
-                    label: const Text('Fetch Events via AI'),
-                    style: ElevatedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      backgroundColor: Colors.green,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _editInterestsDialog,
+                        icon: const Icon(Icons.interests_outlined),
+                        label: const Text('Edit Interests'),
+                        style: ElevatedButton.styleFrom(
+                          foregroundColor: Colors.green,
+                          backgroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.green),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        onPressed: _triggerFetchEvents,
+                        icon: const Icon(Icons.sync),
+                        label: const Text('Fetch Events via AI'),
+                        style: ElevatedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          backgroundColor: Colors.green,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1749,12 +1779,12 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: shiftLabel == 'no data'
-                                      ? Colors.grey.shade100
+                                      ? Colors.grey.withOpacity(0.1)
                                       : shiftBadgeColor.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: shiftLabel == 'no data'
-                                        ? Colors.grey.shade300
+                                        ? Colors.grey.withOpacity(0.3)
                                         : shiftBadgeColor.withOpacity(0.3),
                                   ),
                                 ),
@@ -1787,7 +1817,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                               const SizedBox(width: 8),
                               Text(
                                 timings,
-                                style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                style: const TextStyle(fontSize: 13),
                               ),
                             ],
                           ),
@@ -1800,7 +1830,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                               Expanded(
                                 child: Text(
                                   location,
-                                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                  style: const TextStyle(fontSize: 13),
                                 ),
                               ),
                             ],
@@ -1956,14 +1986,30 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    onPressed: _triggerFetchWalkIns,
-                    icon: const Icon(Icons.sync),
-                    label: const Text('Fetch Walk-Ins via AI'),
-                    style: ElevatedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      backgroundColor: Colors.lightBlue,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _editWalkInRolesDialog,
+                        icon: const Icon(Icons.interests_outlined),
+                        label: const Text('Edit Roles'),
+                        style: ElevatedButton.styleFrom(
+                          foregroundColor: Colors.lightBlue,
+                          backgroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.lightBlue),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        onPressed: _triggerFetchWalkIns,
+                        icon: const Icon(Icons.sync),
+                        label: const Text('Fetch Walk-Ins via AI'),
+                        style: ElevatedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          backgroundColor: Colors.lightBlue,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -2074,12 +2120,12 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: shiftLabel == 'no data'
-                                      ? Colors.grey.shade100
+                                      ? Colors.grey.withOpacity(0.1)
                                       : shiftBadgeColor.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: shiftLabel == 'no data'
-                                        ? Colors.grey.shade300
+                                        ? Colors.grey.withOpacity(0.3)
                                         : shiftBadgeColor.withOpacity(0.3),
                                   ),
                                 ),
@@ -2112,7 +2158,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                               const SizedBox(width: 8),
                               Text(
                                 timings,
-                                style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                style: const TextStyle(fontSize: 13),
                               ),
                             ],
                           ),
@@ -2125,7 +2171,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                               Expanded(
                                 child: Text(
                                   location,
-                                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                  style: const TextStyle(fontSize: 13),
                                 ),
                               ),
                             ],

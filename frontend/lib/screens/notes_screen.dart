@@ -26,93 +26,150 @@ class _NotesScreenState extends State<NotesScreen> {
       if (!authenticated) return;
     }
 
-    bool _isSaving = false;
+    bool isSaving = false;
+    bool hasSaved = false;
+
+    if (!mounted) return;
 
     await Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (context) => StatefulBuilder(
-          builder: (context, setDialogState) => Scaffold(
-            appBar: AppBar(
-              title: Text(note == null ? 'New Note' : 'Edit Note'),
-              actions: [
-                IconButton(
-                  icon: Icon(isLocked ? Icons.lock : Icons.lock_open, 
-                    color: isLocked ? Colors.red : Colors.green),
-                  onPressed: () {
-                    setDialogState(() {
-                      isLocked = !isLocked;
-                    });
-                  },
-                  tooltip: isLocked ? 'Unlock Note' : 'Lock Note (PIN: 0000)',
-                ),
-                _isSaving 
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                    )
-                  : TextButton(
-                      onPressed: () async {
-                        if (titleController.text.isNotEmpty || contentController.text.isNotEmpty) {
-                          setDialogState(() => _isSaving = true);
-                          final newNote = Note(
-                            id: note?.id,
-                            title: titleController.text,
-                            content: contentController.text,
-                            date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
-                            isLocked: isLocked,
-                            ownerUid: note?.ownerUid,
-                            sharedWith: note?.sharedWith ?? [],
-                          );
-                          try {
-                            if (note == null) {
-                              await _storageService.insertNote(newNote);
-                            } else {
-                              await _storageService.updateNote(newNote);
-                            }
-                            if (mounted) Navigator.pop(context);
-                          } catch (e) {
-                            setDialogState(() => _isSaving = false);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Error saving note: $e'), backgroundColor: Colors.red),
-                              );
+          builder: (context, setDialogState) => PopScope(
+            canPop: true,
+            onPopInvokedWithResult: (bool didPop, Object? result) async {
+              if (didPop && !hasSaved) {
+                final title = titleController.text;
+                final content = contentController.text;
+                if (note == null) {
+                  if (title.isNotEmpty || content.isNotEmpty) {
+                    hasSaved = true;
+                    final newNote = Note(
+                      title: title,
+                      content: content,
+                      date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                      isLocked: isLocked,
+                      sharedWith: [],
+                    );
+                    try {
+                      await _storageService.insertNote(newNote);
+                    } catch (e) {
+                      debugPrint("Error auto-saving new note: $e");
+                    }
+                  }
+                } else {
+                  if (title != note.title || content != note.content || isLocked != note.isLocked) {
+                    hasSaved = true;
+                    final updatedNote = Note(
+                      id: note.id,
+                      title: title,
+                      content: content,
+                      date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                      isLocked: isLocked,
+                      ownerUid: note.ownerUid,
+                      sharedWith: note.sharedWith,
+                    );
+                    try {
+                      await _storageService.updateNote(updatedNote);
+                    } catch (e) {
+                      debugPrint("Error auto-saving updated note: $e");
+                    }
+                  }
+                }
+              }
+            },
+            child: Scaffold(
+              appBar: AppBar(
+                title: Text(note == null ? 'New Note' : 'Edit Note'),
+                actions: [
+                  IconButton(
+                    icon: Icon(isLocked ? Icons.lock : Icons.lock_open, 
+                      color: isLocked ? Colors.red : Colors.green),
+                    onPressed: () async {
+                      if (!isLocked) {
+                        bool hasPin = await _ensureNotesPin(context);
+                        if (!hasPin) return;
+                      }
+                      setDialogState(() {
+                        isLocked = !isLocked;
+                      });
+                    },
+                    tooltip: isLocked ? 'Unlock Note' : 'Lock Note',
+                  ),
+                  isSaving 
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                      )
+                    : TextButton(
+                        onPressed: () async {
+                          if (titleController.text.isNotEmpty || contentController.text.isNotEmpty) {
+                            setDialogState(() {
+                              isSaving = true;
+                              hasSaved = true;
+                            });
+                            final newNote = Note(
+                              id: note?.id,
+                              title: titleController.text,
+                              content: contentController.text,
+                              date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                              isLocked: isLocked,
+                              ownerUid: note?.ownerUid,
+                              sharedWith: note?.sharedWith ?? [],
+                            );
+                            try {
+                              if (note == null) {
+                                await _storageService.insertNote(newNote);
+                              } else {
+                                await _storageService.updateNote(newNote);
+                              }
+                              if (context.mounted) Navigator.pop(context);
+                            } catch (e) {
+                              setDialogState(() {
+                                isSaving = false;
+                                hasSaved = false;
+                              });
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error saving note: $e'), backgroundColor: Colors.red),
+                                );
+                              }
                             }
                           }
-                        }
-                      },
-                      child: const Text('SAVE', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-              ],
-            ),
-            body: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: titleController,
-                    decoration: const InputDecoration(
-                      hintText: 'Title',
-                      border: InputBorder.none,
-                      hintStyle: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                    ),
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                    autofocus: note == null,
-                  ),
-                  const Divider(),
-                  Expanded(
-                    child: TextField(
-                      controller: contentController,
-                      decoration: const InputDecoration(
-                        hintText: 'Start typing your note...',
-                        border: InputBorder.none,
+                        },
+                        child: const Text('SAVE', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
-                      maxLines: null,
-                      expands: true,
-                      textAlignVertical: TextAlignVertical.top,
-                    ),
-                  ),
                 ],
+              ),
+              body: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: titleController,
+                      decoration: const InputDecoration(
+                        hintText: 'Title',
+                        border: InputBorder.none,
+                        hintStyle: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      ),
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      autofocus: note == null,
+                    ),
+                    const Divider(),
+                    Expanded(
+                      child: TextField(
+                        controller: contentController,
+                        decoration: const InputDecoration(
+                          hintText: 'Start typing your note...',
+                          border: InputBorder.none,
+                        ),
+                        maxLines: null,
+                        expands: true,
+                        textAlignVertical: TextAlignVertical.top,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -121,8 +178,91 @@ class _NotesScreenState extends State<NotesScreen> {
     );
   }
 
+  Future<bool> _ensureNotesPin(BuildContext context) async {
+    final currentPin = await _storageService.getNotesPin();
+    if (currentPin != null && currentPin.isNotEmpty) {
+      return true;
+    }
+
+    final newPinController = TextEditingController();
+    final confirmPinController = TextEditingController();
+
+    if (!context.mounted) return false;
+
+    final pinSetUpResult = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Set up Notes PIN'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'You need to set up a 4-digit PIN to lock your notes.',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: newPinController,
+              keyboardType: TextInputType.number,
+              obscureText: true,
+              maxLength: 4,
+              decoration: const InputDecoration(
+                labelText: 'New PIN',
+                hintText: 'Enter 4-digit PIN',
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: confirmPinController,
+              keyboardType: TextInputType.number,
+              obscureText: true,
+              maxLength: 4,
+              decoration: const InputDecoration(
+                labelText: 'Confirm PIN',
+                hintText: 'Re-enter 4-digit PIN',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final p1 = newPinController.text;
+              final p2 = confirmPinController.text;
+              if (p1.length != 4) {
+                ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                  const SnackBar(content: Text('PIN must be 4 digits.')),
+                );
+                return;
+              }
+              if (p1 != p2) {
+                ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                  const SnackBar(content: Text('PINs do not match.')),
+                );
+                return;
+              }
+              await _storageService.setNotesPin(p1);
+              if (dialogCtx.mounted) {
+                Navigator.pop(dialogCtx, true);
+              }
+            },
+            child: const Text('Save PIN'),
+          ),
+        ],
+      ),
+    );
+    return pinSetUpResult ?? false;
+  }
+
   Future<bool> _showPinDialog() async {
     final pinController = TextEditingController();
+    final correctPin = await _storageService.getNotesPin() ?? '0000';
+    if (!mounted) return false;
     return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -138,7 +278,7 @@ class _NotesScreenState extends State<NotesScreen> {
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () {
-              if (pinController.text == '0000') {
+              if (pinController.text == correctPin) {
                 Navigator.pop(context, true);
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incorrect PIN')));
@@ -151,19 +291,31 @@ class _NotesScreenState extends State<NotesScreen> {
     ) ?? false;
   }
 
-  final List<Color> _aestheticColors = [
-    const Color(0xFFFFE5E5), // Soft Pink
-    const Color(0xFFE5FFEB), // Mint
-    const Color(0xFFE5F6FF), // Soft Blue
-    const Color(0xFFFFF9E5), // Soft Yellow
-    const Color(0xFFF3E5FF), // Lavender
-    const Color(0xFFFFECE5), // Peach
-    const Color(0xFFE5FFF9), // Aqua
+  static const List<Color> _lightAestheticColors = [
+    Color(0xFFFFE5E5), // Soft Pink
+    Color(0xFFE5FFEB), // Mint
+    Color(0xFFE5F6FF), // Soft Blue
+    Color(0xFFFFF9E5), // Soft Yellow
+    Color(0xFFF3E5FF), // Lavender
+    Color(0xFFFFECE5), // Peach
+    Color(0xFFE5FFF9), // Aqua
   ];
 
-  Color _getNoteColor(String id, String content) {
+  static const List<Color> _darkAestheticColors = [
+    Color(0xFF352222), // Soft Pink (Dark)
+    Color(0xFF223525), // Mint (Dark)
+    Color(0xFF222B35), // Soft Blue (Dark)
+    Color(0xFF353022), // Soft Yellow (Dark)
+    Color(0xFF2B2235), // Lavender (Dark)
+    Color(0xFF352622), // Peach (Dark)
+    Color(0xFF223530), // Aqua (Dark)
+  ];
+
+  Color _getNoteColor(BuildContext context, String id, String content) {
     int hash = id.hashCode + content.hashCode;
-    return _aestheticColors[hash.abs() % _aestheticColors.length];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colors = isDark ? _darkAestheticColors : _lightAestheticColors;
+    return colors[hash.abs() % colors.length];
   }
 
   @override
@@ -236,8 +388,12 @@ class _NotesScreenState extends State<NotesScreen> {
             itemCount: notes.length,
             itemBuilder: (context, index) {
               final note = notes[index];
-              final Color noteColor = _getNoteColor(note.id ?? '', note.title + note.content);
+              final Color noteColor = _getNoteColor(context, note.id ?? '', note.title + note.content);
               final isShared = note.sharedWith.isNotEmpty || (note.ownerUid != null && note.ownerUid != currentUser?.uid);
+              final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+              final titleColor = isDarkTheme ? Colors.white.withValues(alpha: 0.9) : Colors.black87;
+              final subtitleColor = isDarkTheme ? Colors.white.withValues(alpha: 0.7) : Colors.black54;
+              final hintIconColor = isDarkTheme ? Colors.white.withValues(alpha: 0.5) : Colors.black38;
               
               return Card(
                 elevation: 0,
@@ -258,10 +414,10 @@ class _NotesScreenState extends State<NotesScreen> {
                               Expanded(
                                 child: Text(
                                   note.title,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.black87,
+                                    color: titleColor,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -271,10 +427,10 @@ class _NotesScreenState extends State<NotesScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 if (isShared)
-                                  const Icon(Icons.people_outline, size: 16, color: Colors.black54),
+                                  Icon(Icons.people_outline, size: 16, color: subtitleColor),
                                 if (note.isLocked) ...[
                                   if (isShared) const SizedBox(width: 4),
-                                  const Icon(Icons.lock, size: 14, color: Colors.black54),
+                                  Icon(Icons.lock, size: 14, color: subtitleColor),
                                 ],
                               ],
                             ),
@@ -286,7 +442,7 @@ class _NotesScreenState extends State<NotesScreen> {
                             note.isLocked ? 'Locked Content' : note.content,
                             overflow: TextOverflow.fade,
                             style: TextStyle(
-                              color: Colors.black54, 
+                              color: subtitleColor, 
                               fontSize: 13,
                               fontStyle: note.isLocked ? FontStyle.italic : FontStyle.normal
                             ),
@@ -299,7 +455,7 @@ class _NotesScreenState extends State<NotesScreen> {
                             Expanded(
                               child: Text(
                                 DateFormat('MMM d').format(DateFormat('yyyy-MM-dd HH:mm').parse(note.date)),
-                                style: const TextStyle(fontSize: 10, color: Colors.black38, fontWeight: FontWeight.bold),
+                                style: TextStyle(fontSize: 10, color: hintIconColor, fontWeight: FontWeight.bold),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -318,7 +474,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                         ),
                                       );
                                     },
-                                    child: const Icon(Icons.person_add_alt_1_outlined, size: 18, color: Colors.black38),
+                                    child: Icon(Icons.person_add_alt_1_outlined, size: 18, color: hintIconColor),
                                   ),
                                   const SizedBox(width: 12),
                                 ],
@@ -328,6 +484,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                       bool auth = await _showPinDialog();
                                       if (!auth) return;
                                     }
+                                    if (!context.mounted) return;
                                     final isOwn = note.ownerUid == null || note.ownerUid == currentUser?.uid;
                                     final confirm = await showDialog<bool>(
                                       context: context,
@@ -348,7 +505,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                     if (confirm != true) return;
                                     await _storageService.deleteNote(note.id!, ownerUid: note.ownerUid);
                                   },
-                                  child: const Icon(Icons.delete_outline, size: 18, color: Colors.black38),
+                                  child: Icon(Icons.delete_outline, size: 18, color: hintIconColor),
                                 ),
                               ],
                             ),

@@ -165,8 +165,7 @@ class NotificationService {
         }
         
         if (payload != null && payload != 'null') {
-          final cleanPayload = payload.contains('|') ? payload.split('|')[0] : payload;
-          _selectNotificationStream.add(cleanPayload);
+          _selectNotificationStream.add(payload);
         }
       },
       onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
@@ -234,7 +233,14 @@ class NotificationService {
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       final type = message.data['type'];
       LogService.staticLog("Notification clicked (from background): $type");
-      if (type != null && type != 'null') _selectNotificationStream.add(type);
+      if (type == 'CALENDAR_REMINDER') {
+        final reminderId = message.data['reminderId'] ?? '';
+        final user = FirebaseAuth.instance.currentUser;
+        final uid = user?.uid ?? '';
+        _selectNotificationStream.add("CALENDAR_REMINDER|$reminderId|$uid");
+      } else if (type != null && type != 'null') {
+        _selectNotificationStream.add(type);
+      }
     });
 
     // 6. Handle notification that launched the app from killed state
@@ -242,7 +248,14 @@ class NotificationService {
     if (initialMessage != null) {
       final type = initialMessage.data['type'];
       LogService.staticLog("Notification clicked (from killed): $type");
-      if (type != null && type != 'null') {
+      if (type == 'CALENDAR_REMINDER') {
+        final reminderId = initialMessage.data['reminderId'] ?? '';
+        final user = FirebaseAuth.instance.currentUser;
+        final uid = user?.uid ?? '';
+        Future.delayed(const Duration(seconds: 2), () {
+          _selectNotificationStream.add("CALENDAR_REMINDER|$reminderId|$uid");
+        });
+      } else if (type != null && type != 'null') {
         Future.delayed(const Duration(seconds: 2), () {
           _selectNotificationStream.add(type);
         });
@@ -258,30 +271,12 @@ class NotificationService {
 
       if (notification != null && android != null) {
         String? payload = message.data['type'];
-        List<AndroidNotificationAction>? actions;
         
         if (payload == 'CALENDAR_REMINDER') {
           final reminderId = message.data['reminderId'] ?? '';
-          final snoozeEnabled = message.data['snoozeEnabled'] == 'true';
           final user = FirebaseAuth.instance.currentUser;
           final uid = user?.uid ?? '';
-          
           payload = "CALENDAR_REMINDER|$reminderId|$uid";
-          
-          if (snoozeEnabled) {
-            actions = <AndroidNotificationAction>[
-              const AndroidNotificationAction(
-                'action_yes',
-                'Yes (Done)',
-                showsUserInterface: false,
-              ),
-              const AndroidNotificationAction(
-                'action_no',
-                'No (Snooze)',
-                showsUserInterface: false,
-              ),
-            ];
-          }
         }
 
         _localNotifications.show(
@@ -295,7 +290,6 @@ class NotificationService {
               importance: Importance.max,
               priority: Priority.high,
               icon: android.smallIcon,
-              actions: actions,
             ),
           ),
           payload: payload,

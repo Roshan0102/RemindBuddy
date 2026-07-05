@@ -21,6 +21,8 @@ import 'admin_screen.dart';
 import 'notification_history_screen.dart';
 import '../services/update_service.dart';
 import 'voice_assistant_screen.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import '../main.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -128,24 +130,159 @@ class _MainScreenState extends State<MainScreen> {
       LogService.staticLog("MainScreen received notification event: $type");
       if (!mounted) return;
 
-      switch (type) {
-        case 'GOLD_PRICE':
-          _selectTabOrPush('gold');
-          break;
-        case 'CALENDAR_REMINDER':
+      if (type.startsWith('CALENDAR_REMINDER')) {
+        final parts = type.split('|');
+        if (parts.length >= 3) {
+          final reminderId = parts[1];
+          final uid = parts[2];
+          _showReminderActionDialog(reminderId, uid);
+        } else {
           _selectTabOrPush('reminders');
-          break;
-        case 'shift_reminder':
-          _selectTabOrPush('shifts');
-          break;
-        case 'daily_reminder':
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
-          );
-          break;
+        }
+      } else {
+        switch (type) {
+          case 'GOLD_PRICE':
+            _selectTabOrPush('gold');
+            break;
+          case 'shift_reminder':
+            _selectTabOrPush('shifts');
+            break;
+          case 'daily_reminder':
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
+            );
+            break;
+        }
       }
     });
+  }
+
+  Future<void> _showReminderActionDialog(String reminderId, String uid) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('calendar_reminders')
+          .doc(reminderId)
+          .get();
+
+      if (!doc.exists) {
+        _selectTabOrPush('reminders');
+        return;
+      }
+
+      final data = doc.data()!;
+      final title = data['title'] ?? 'Reminder';
+      final description = data['description'] ?? '';
+      final snoozeEnabled = data['snoozeEnabled'] ?? false;
+      final currentSnoozeCount = data['currentSnoozeCount'] ?? 0;
+      final maxSnoozeCount = data['maxSnoozeCount'] ?? 3;
+      final snoozeIntervalMinutes = data['snoozeIntervalMinutes'] ?? 15;
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogCtx) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.alarm, color: Colors.blueAccent),
+              const SizedBox(width: 8),
+              Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold))),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (description.isNotEmpty) ...[
+                Text(description, style: const TextStyle(fontSize: 16)),
+                const SizedBox(height: 16),
+              ],
+              Text(
+                'Is this reminder done or do you want to snooze it?',
+                style: TextStyle(color: Colors.grey[700]),
+              ),
+              if (snoozeEnabled) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Snooze count: $currentSnoozeCount/$maxSnoozeCount (Interval: $snoozeIntervalMinutes mins)',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('Close'),
+            ),
+            if (snoozeEnabled && currentSnoozeCount < maxSnoozeCount)
+              ElevatedButton.icon(
+                icon: const Icon(Icons.snooze, size: 16),
+                label: const Text('Snooze'),
+                onPressed: () async {
+                  final nextTime = DateTime.now().add(Duration(minutes: snoozeIntervalMinutes));
+                  final dateStr = "${nextTime.year}-${nextTime.month.toString().padLeft(2, '0')}-${nextTime.day.toString().padLeft(2, '0')}";
+                  final timeStr = "${nextTime.hour.toString().padLeft(2, '0')}:${nextTime.minute.toString().padLeft(2, '0')}";
+
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(uid)
+                      .collection('calendar_reminders')
+                      .doc(reminderId)
+                      .update({
+                        'date': dateStr,
+                        'time': timeStr,
+                        'status': 'pending',
+                        'currentSnoozeCount': currentSnoozeCount + 1,
+                      });
+
+                  if (dialogCtx.mounted) {
+                    Navigator.pop(dialogCtx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Snoozed for $snoozeIntervalMinutes minutes.')),
+                    );
+                  }
+                },
+              ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.check, size: 16),
+              label: const Text('Done'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                final expireAt = DateTime.now().add(const Duration(days: 30));
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(uid)
+                    .collection('calendar_reminders')
+                    .doc(reminderId)
+                    .update({
+                      'status': 'completed',
+                      'notifiedAt': FieldValue.serverTimestamp(),
+                      'expireAt': Timestamp.fromDate(expireAt),
+                    });
+
+                if (dialogCtx.mounted) {
+                  Navigator.pop(dialogCtx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Reminder marked as completed!')),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      LogService.staticLog("Error showing reminder action dialog: $e");
+      _selectTabOrPush('reminders');
+    }
   }
 
   @override
@@ -162,6 +299,7 @@ class _MainScreenState extends State<MainScreen> {
       _isDarkMode = !_isDarkMode;
     });
     await prefs.setBool('isDarkMode', _isDarkMode);
+    themeNotifier.value = _isDarkMode ? ThemeMode.dark : ThemeMode.light;
   }
 
   final Map<String, Map<String, dynamic>> _moduleRegistry = {
@@ -771,22 +909,7 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // FIX: Wrap with Theme to apply dark/light mode
-    return Theme(
-      data: _isDarkMode 
-        ? ThemeData.dark(useMaterial3: true).copyWith(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.dark,
-            ),
-          )
-        : ThemeData.light(useMaterial3: true).copyWith(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.light,
-            ),
-          ),
-      child: Scaffold(
+    return Scaffold(
         appBar: AppBar(
           title: Text(
             'RemindBuddy',
@@ -1003,24 +1126,27 @@ class _MainScreenState extends State<MainScreen> {
               ListTile(
                 leading: const Icon(Icons.info_outline),
                 title: const Text('About'),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
-                  showAboutDialog(
-                    context: context,
-                    applicationName: 'RemindBuddy',
-                    applicationVersion: '1.5.1',
-                    applicationIcon: const Icon(Icons.alarm_add, size: 48),
-                    children: [
-                      const Text('Your friendly daily reminder companion!'),
-                      const SizedBox(height: 8),
-                      const Text('Features:'),
-                      const Text('• Calendar-based reminders'),
-                      const Text('• Gold Price Tracker'),
-                      const Text('• My Shifts - Work schedule manager'),
-                      const Text('• Checklists for everything'),
-                      const Text('• Secure notes with PIN lock'),
-                    ],
-                  );
+                  final PackageInfo packageInfo = await PackageInfo.fromPlatform();
+                  if (context.mounted) {
+                    showAboutDialog(
+                      context: context,
+                      applicationName: 'RemindBuddy',
+                      applicationVersion: '${packageInfo.version}+${packageInfo.buildNumber}',
+                      applicationIcon: const Icon(Icons.alarm_add, size: 48),
+                      children: [
+                        const Text('Your friendly daily reminder companion!'),
+                        const SizedBox(height: 8),
+                        const Text('Features:'),
+                        const Text('• Calendar-based reminders'),
+                        const Text('• Gold Price Tracker'),
+                        const Text('• My Shifts - Work schedule manager'),
+                        const Text('• Checklists for everything'),
+                        const Text('• Secure notes with PIN lock'),
+                      ],
+                    );
+                  }
                 },
               ),
             ],
@@ -1052,8 +1178,7 @@ class _MainScreenState extends State<MainScreen> {
               },
               destinations: _navBarDestinations,
             ),
-      ), // Close Scaffold
-    ); // Close Theme
+    );
   }
 
   Widget _buildMenuIcon(String id, IconData iconData, Color color) {

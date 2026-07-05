@@ -714,6 +714,77 @@ class StorageService {
     return user.email ?? '';
   }
 
+  Future<String?> getNotesPin() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+
+    if (doc.exists) {
+      return doc.data()?['notesPin'] as String?;
+    }
+    return null;
+  }
+
+  Future<void> setNotesPin(String pin) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .set({
+          'notesPin': pin,
+        }, SetOptions(merge: true));
+  }
+
+  Future<String> getUsernameFromUid(String uid) async {
+    final snap = await FirebaseFirestore.instance
+        .collection('usernames')
+        .where('uid', isEqualTo: uid)
+        .limit(1)
+        .get();
+    if (snap.docs.isNotEmpty) {
+      return snap.docs.first.id;
+    }
+    return 'User';
+  }
+
+  Future<void> removeCollaborator({
+    required String itemId,
+    required String type,
+    required String collaboratorUid,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final subcollection = type == 'note' ? 'notes' : 'checklists';
+    final docRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection(subcollection)
+        .doc(itemId);
+
+    await docRef.update({
+      'sharedWith': FieldValue.arrayRemove([collaboratorUid])
+    });
+
+    final requestsSnap = await FirebaseFirestore.instance
+        .collection('collaboration_requests')
+        .where('senderUid', isEqualTo: user.uid)
+        .where('receiverUid', isEqualTo: collaboratorUid)
+        .where('itemId', isEqualTo: itemId)
+        .where('type', isEqualTo: type)
+        .get();
+
+    for (final doc in requestsSnap.docs) {
+      await doc.reference.delete();
+    }
+  }
+
   Future<List<Map<String, String>>> getAllUsers() async {
     final snap = await FirebaseFirestore.instance.collection('usernames').get();
     final user = FirebaseAuth.instance.currentUser;
@@ -877,65 +948,22 @@ class StorageService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Stream.empty();
 
-    final s1 = FirebaseFirestore.instance
+    return FirebaseFirestore.instance
         .collection('buddy_links')
         .where('senderUid', isEqualTo: user.uid)
         .where('status', isEqualTo: 'approved')
-        .snapshots();
-
-    final s2 = FirebaseFirestore.instance
-        .collection('buddy_links')
-        .where('receiverUid', isEqualTo: user.uid)
-        .where('status', isEqualTo: 'approved')
-        .snapshots();
-
-    final controller = StreamController<List<Map<String, dynamic>>>();
-    List<Map<String, dynamic>> list1 = [];
-    List<Map<String, dynamic>> list2 = [];
-
-    void emitCombined() {
-      final combined = <String, Map<String, dynamic>>{};
-      for (var item in list1) {
-        final buddyUid = item['receiverUid'] as String;
-        final buddyUsername = item['receiverUsername'] as String? ?? 'User';
-        combined[buddyUid] = {
-          'uid': buddyUid,
-          'username': buddyUsername,
-          'receiverUid': buddyUid,
-          'receiverUsername': buddyUsername,
-        };
-      }
-      for (var item in list2) {
-        final buddyUid = item['senderUid'] as String;
-        final buddyUsername = item['senderUsername'] as String? ?? 'User';
-        combined[buddyUid] = {
-          'uid': buddyUid,
-          'username': buddyUsername,
-          'receiverUid': buddyUid,
-          'receiverUsername': buddyUsername,
-        };
-      }
-      if (!controller.isClosed) {
-        controller.add(combined.values.toList());
-      }
-    }
-
-    final sub1 = s1.listen((snap) {
-      list1 = snap.docs.map((doc) => doc.data()).toList();
-      emitCombined();
-    });
-
-    final sub2 = s2.listen((snap) {
-      list2 = snap.docs.map((doc) => doc.data()).toList();
-      emitCombined();
-    });
-
-    controller.onCancel = () {
-      sub1.cancel();
-      sub2.cancel();
-    };
-
-    return controller.stream;
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final val = doc.data();
+              final buddyUid = val['receiverUid'] as String;
+              final buddyUsername = val['receiverUsername'] as String? ?? 'User';
+              return {
+                'uid': buddyUid,
+                'username': buddyUsername,
+                'receiverUid': buddyUid,
+                'receiverUsername': buddyUsername,
+              };
+            }).toList());
   }
 
   Stream<List<NotificationHistory>> getNotificationHistoryStream() {

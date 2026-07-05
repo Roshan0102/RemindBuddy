@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/storage_service.dart';
 
 class CollaboratorSelectionDialog extends StatefulWidget {
@@ -24,11 +27,79 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
   bool _isLoading = true;
   String _searchQuery = '';
   String? _sendingToUid;
+  List<String> _sharedWith = [];
+  Map<String, String> _uidToUsername = {};
+  StreamSubscription? _itemSubscription;
+  bool _isOwner = false;
 
   @override
   void initState() {
     super.initState();
     _loadUsers();
+    _listenToItem();
+  }
+
+  void _listenToItem() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final subcollection = widget.type == 'note' ? 'notes' : 'checklists';
+    _itemSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection(subcollection)
+        .doc(widget.itemId)
+        .snapshots()
+        .listen((snap) async {
+          if (snap.exists && mounted) {
+            final data = snap.data();
+            final sharedWith = List<String>.from(data?['sharedWith'] ?? []);
+            setState(() {
+              _sharedWith = sharedWith;
+              _isOwner = true;
+            });
+            for (final uid in sharedWith) {
+              if (!_uidToUsername.containsKey(uid)) {
+                final username = await _storage.getUsernameFromUid(uid);
+                if (mounted) {
+                  setState(() {
+                    _uidToUsername[uid] = username;
+                  });
+                }
+              }
+            }
+          } else if (mounted) {
+            setState(() {
+              _isOwner = false;
+            });
+          }
+        });
+  }
+
+  @override
+  void dispose() {
+    _itemSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _removeCollaborator(String collaboratorUid) async {
+    try {
+      await _storage.removeCollaborator(
+        itemId: widget.itemId,
+        type: widget.type,
+        collaboratorUid: collaboratorUid,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Collaborator removed successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to remove collaborator: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _loadUsers() async {
@@ -100,7 +171,7 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         padding: const EdgeInsets.all(16),
-        constraints: const BoxConstraints(maxHeight: 450),
+        constraints: const BoxConstraints(maxHeight: 550),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -120,10 +191,49 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
             ),
             const SizedBox(height: 8),
             Text(
-              'Select a user to share "${widget.itemTitle}"',
+              'Manage collaborators for "${widget.itemTitle}"',
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
             const SizedBox(height: 12),
+            if (_sharedWith.isNotEmpty) ...[
+              const Text(
+                'Active Collaborators',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 120),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _sharedWith.length,
+                  itemBuilder: (context, index) {
+                    final uid = _sharedWith[index];
+                    final username = _uidToUsername[uid] ?? 'Loading...';
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.person, color: Colors.blue),
+                      title: Text(username, style: const TextStyle(fontWeight: FontWeight.w500)),
+                      trailing: _isOwner
+                          ? IconButton(
+                              icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                              onPressed: () => _removeCollaborator(uid),
+                            )
+                          : null,
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            const Text(
+              'Invite New Collaborator',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            const SizedBox(height: 6),
             TextField(
               decoration: InputDecoration(
                 hintText: 'Search by username or email...',
@@ -156,6 +266,7 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
                           itemBuilder: (context, index) {
                             final user = _filteredUsers[index];
                             final isSending = _sendingToUid == user['uid'];
+                            final isAlreadyCollaborating = _sharedWith.contains(user['uid']);
                             return Card(
                               margin: const EdgeInsets.symmetric(vertical: 4),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -176,16 +287,18 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
                                   style: const TextStyle(fontWeight: FontWeight.bold),
                                 ),
                                 subtitle: Text(user['email']!, style: const TextStyle(fontSize: 12)),
-                                trailing: isSending
-                                    ? const SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    : IconButton(
-                                        icon: const Icon(Icons.share, color: Colors.blue),
-                                        onPressed: () => _sendRequest(user),
-                                      ),
+                                trailing: isAlreadyCollaborating
+                                    ? const Text('Collaborating', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))
+                                    : isSending
+                                        ? const SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          )
+                                        : IconButton(
+                                            icon: const Icon(Icons.share, color: Colors.blue),
+                                            onPressed: () => _sendRequest(user),
+                                          ),
                               ),
                             );
                           },
