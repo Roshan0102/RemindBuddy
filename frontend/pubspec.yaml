@@ -2,7 +2,7 @@ name: remindbuddy
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.5.7+336
+version: 1.5.8+337
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

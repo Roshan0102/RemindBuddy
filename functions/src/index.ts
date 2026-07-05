@@ -136,7 +136,8 @@ exports.processCalendarReminderTask = functions.tasks
                             notification: { title, body },
                             android: { 
                                 notification: { 
-                                    channelId: "calendar_reminder_channel" 
+                                    channelId: "calendar_reminder_channel",
+                                    tag: `calendar_reminder_${reminderId}`
                                 } 
                             },
                             data: { 
@@ -431,7 +432,8 @@ exports.onCollaborationRequestCreated = functions.firestore
                 },
                 android: { 
                     notification: { 
-                        channelId: "collaboration_channel" 
+                        channelId: "collaboration_channel",
+                        tag: `collaboration_${context.params.requestId}`
                     } 
                 },
                 data: { 
@@ -531,7 +533,12 @@ async function notifyAllUsers(price: number, oldPrice: number | null) {
         await admin.messaging().sendEachForMulticast({
             tokens,
             notification: { title, body },
-            android: { notification: { channelId: "gold_price_channel" } },
+            android: { 
+                notification: { 
+                    channelId: "gold_price_channel",
+                    tag: "gold_price"
+                } 
+            },
             data: { type: "GOLD_PRICE" }
         });
         for (const uid of targetUids) {
@@ -797,7 +804,12 @@ exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('A
                 await admin.messaging().send({
                     token: userData.fcmToken,
                     notification: { title, body },
-                    android: { notification: { channelId: 'shift_reminder_channel' } },
+                    android: { 
+                        notification: { 
+                            channelId: 'shift_reminder_channel',
+                            tag: `shift_reminder_${tom.format('YYYY-MM-DD')}`
+                        } 
+                    },
                     data: { type: "shift_reminder" }
                 });
                 await logNotification(userData.uid, title, body, "SHIFT_REMINDER");
@@ -845,7 +857,12 @@ exports.checkDailyReminders = functions.pubsub.schedule('* * * * *').timeZone('A
                 await admin.messaging().send({
                     token: userData.fcmToken,
                     notification: { title, body },
-                    android: { notification: { channelId: 'daily_reminder_channel' } },
+                    android: { 
+                        notification: { 
+                            channelId: 'daily_reminder_channel',
+                            tag: `daily_reminder_${r.id}`
+                        } 
+                    },
                     data: { type: "daily_reminder" }
                 });
                 await logNotification(userData.uid, title, body, "DAILY_REMINDER");
@@ -1080,7 +1097,12 @@ async function sendChitNotificationToAllUsers(recommendation: string, message: s
         await admin.messaging().sendEachForMulticast({
             tokens,
             notification: { title, body: message },
-            android: { notification: { channelId: "gold_price_channel" } },
+            android: { 
+                notification: { 
+                    channelId: "gold_price_channel",
+                    tag: "gold_chit"
+                } 
+            },
             data: { type: "GOLD_CHIT_ADVICE", recommendation }
         });
         for (const uid of targetUids) {
@@ -1531,7 +1553,12 @@ Respond ONLY with a JSON array matching this schema:
                     await admin.messaging().send({
                         token,
                         notification: { title, body },
-                        android: { notification: { channelId: "events_reminder_channel" } },
+                        android: { 
+                            notification: { 
+                                channelId: "events_reminder_channel",
+                                tag: "tech_events"
+                            } 
+                        },
                         data: { type: "events_reminder" }
                     });
                     await logNotification(uid, title, body, "TECH_EVENTS");
@@ -1743,7 +1770,12 @@ Respond ONLY with a JSON array matching this schema:
                     await admin.messaging().send({
                         token,
                         notification: { title, body },
-                        android: { notification: { channelId: "walkin_reminder_channel" } },
+                        android: { 
+                            notification: { 
+                                channelId: "walkin_reminder_channel",
+                                tag: "walkin_drives"
+                            } 
+                        },
                         data: { type: "walkin_reminder" }
                     });
                     await logNotification(uid, title, body, "WALKIN_DRIVES");
