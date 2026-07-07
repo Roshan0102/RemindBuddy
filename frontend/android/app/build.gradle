@@ -80,6 +80,7 @@ dependencies {
     
     // Force consistent work-runtime version to avoid duplicate classes
     implementation 'androidx.work:work-runtime:2.8.1'
+    implementation 'com.google.android.gms:play-services-location:21.2.0'
 }
 
 configurations.all {

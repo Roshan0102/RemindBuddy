@@ -12,9 +12,18 @@ import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import android.app.PendingIntent
+import com.google.android.gms.location.ActivityRecognition
+import com.google.android.gms.location.SleepSegmentRequest
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.remindbuddy/battery"
+    private var permissionResult: MethodChannel.Result? = null
+    private val ACTIVITY_RECOGNITION_REQUEST_CODE = 1001
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,6 +61,68 @@ class MainActivity: FlutterActivity() {
                     result.notImplemented()
                 }
             }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/sleep_tracker").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "checkPermission" -> {
+                    result.success(hasActivityRecognitionPermission())
+                }
+                "requestPermission" -> {
+                    requestActivityRecognitionPermission(result)
+                }
+                "requestSleepUpdates" -> {
+                    requestSleepUpdates(result)
+                }
+                "removeSleepUpdates" -> {
+                    removeSleepUpdates(result)
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+    }
+
+    private fun getSleepPendingIntent(): PendingIntent {
+        val intent = Intent(this, SleepReceiver::class.java)
+        return PendingIntent.getBroadcast(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        )
+    }
+
+    private fun requestSleepUpdates(result: MethodChannel.Result) {
+        try {
+            ActivityRecognition.getClient(this)
+                .requestSleepSegmentCallbacks(getSleepPendingIntent(), SleepSegmentRequest.getDefaultSleepSegmentRequest())
+                .addOnSuccessListener {
+                    result.success(true)
+                }
+                .addOnFailureListener { e ->
+                    result.error("SLEEP_API_ERROR", e.message, null)
+                }
+        } catch (e: SecurityException) {
+            result.error("PERMISSION_DENIED", "Activity Recognition permission is required", null)
+        } catch (e: Exception) {
+            result.error("UNKNOWN_ERROR", e.message ?: "Failed to start sleep updates", null)
+        }
+    }
+
+    private fun removeSleepUpdates(result: MethodChannel.Result) {
+        try {
+            ActivityRecognition.getClient(this)
+                .removeSleepSegmentCallbacks(getSleepPendingIntent())
+                .addOnSuccessListener {
+                    result.success(true)
+                }
+                .addOnFailureListener { e ->
+                    result.error("SLEEP_API_ERROR", e.message, null)
+                }
+        } catch (e: Exception) {
+            result.error("UNKNOWN_ERROR", e.message ?: "Failed to remove sleep updates", null)
         }
     }
 
@@ -130,5 +201,40 @@ class MainActivity: FlutterActivity() {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
         intent.data = Uri.parse("package:$packageName")
         startActivity(intent)
+    }
+
+    private fun hasActivityRecognitionPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    private fun requestActivityRecognitionPermission(result: MethodChannel.Result) {
+        if (hasActivityRecognitionPermission()) {
+            result.success(true)
+            return
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            permissionResult = result
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.ACTIVITY_RECOGNITION),
+                ACTIVITY_RECOGNITION_REQUEST_CODE
+            )
+        } else {
+            result.success(true)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == ACTIVITY_RECOGNITION_REQUEST_CODE) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            permissionResult?.success(granted)
+            permissionResult = null
+        }
     }
 }

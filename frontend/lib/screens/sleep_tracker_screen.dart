@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
@@ -11,6 +12,7 @@ class SleepTrackerScreen extends StatefulWidget {
 }
 
 class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
+  static const _channel = MethodChannel('com.remindbuddy/sleep_tracker');
   bool _permissionGranted = false;
   double _todaySleepDuration = 0.0;
   String _todayStartTime = '';
@@ -26,7 +28,13 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
 
   Future<void> _loadSleepData() async {
     final prefs = await SharedPreferences.getInstance();
-    final granted = prefs.getBool('sleep_api_permission_granted') ?? false;
+    bool granted = false;
+    try {
+      granted = await _channel.invokeMethod<bool>('checkPermission') ?? false;
+      await prefs.setBool('sleep_api_permission_granted', granted);
+    } catch (e) {
+      granted = prefs.getBool('sleep_api_permission_granted') ?? false;
+    }
     
     // Load local history list
     final historyStrings = prefs.getStringList('sleep_tracker_history') ?? [];
@@ -67,6 +75,8 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
     });
   }
 
+
+
   Future<void> _requestPermission() async {
     showDialog(
       context: context,
@@ -90,12 +100,28 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('sleep_api_permission_granted', true);
-              setState(() {
-                _permissionGranted = true;
-              });
-              _addMockDataIfEmpty();
+              try {
+                final bool granted = await _channel.invokeMethod<bool>('requestPermission') ?? false;
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('sleep_api_permission_granted', granted);
+                
+                if (granted) {
+                  await _channel.invokeMethod('requestSleepUpdates');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Android Sleep API updates successfully registered!'),
+                      backgroundColor: Color(0xFF0D9488),
+                    ),
+                  );
+                }
+                
+                setState(() {
+                  _permissionGranted = granted;
+                });
+                _loadSleepData();
+              } catch (e) {
+                print("Error requesting permission or subscribing: $e");
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.indigo,
@@ -107,26 +133,6 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
         ],
       ),
     );
-  }
-
-  Future<void> _addMockDataIfEmpty() async {
-    if (_sleepHistory.isEmpty) {
-      // Pre-populate with some beautiful mock sleep records
-      final now = DateTime.now();
-      final formatter = DateFormat('yyyy-MM-dd');
-      
-      final mockData = [
-        '${formatter.format(now.subtract(const Duration(days: 1)))}|11:00 PM|07:30 AM|8.5',
-        '${formatter.format(now.subtract(const Duration(days: 2)))}|11:30 PM|06:00 AM|6.5',
-        '${formatter.format(now.subtract(const Duration(days: 3)))}|10:45 PM|05:15 AM|6.5',
-        '${formatter.format(now.subtract(const Duration(days: 4)))}|01:00 AM|06:30 AM|5.5',
-        '${formatter.format(now.subtract(const Duration(days: 5)))}|11:15 PM|07:15 AM|8.0',
-      ];
-      
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList('sleep_tracker_history', mockData);
-      _loadSleepData();
-    }
   }
 
   Future<void> _simulateSleepEvent(double hours) async {
@@ -172,6 +178,11 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('sleep_tracker_history');
     await prefs.remove('sleep_api_permission_granted');
+    try {
+      await _channel.invokeMethod('removeSleepUpdates');
+    } catch (e) {
+      print("Error removing sleep updates: $e");
+    }
     setState(() {
       _sleepHistory.clear();
       _todaySleepDuration = 0.0;
