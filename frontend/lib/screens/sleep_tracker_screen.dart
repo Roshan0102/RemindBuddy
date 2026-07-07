@@ -265,7 +265,7 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
             // Permission Banner
             if (!_permissionGranted)
               Container(
-                margin: const EdgeInsets.bottom(20),
+                margin: const EdgeInsets.only(bottom: 20),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
@@ -295,7 +295,7 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
                     const SizedBox(height: 8),
                     Text(
                       'Enable the low-power Android Sleep API to start tracking your sleep cycles automatically.',
-                      style: GoogleFonts.outfit(color: Colors.white80, fontSize: 13),
+                      style: GoogleFonts.outfit(color: Colors.white70, fontSize: 13),
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(

@@ -22,6 +22,7 @@ import 'notification_history_screen.dart';
 import '../services/update_service.dart';
 import 'voice_assistant_screen.dart';
 import 'sleep_tracker_screen.dart';
+import 'astro_calendar_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../main.dart';
 
@@ -81,6 +82,9 @@ class _MainScreenState extends State<MainScreen> {
         if (!firestoreModules.contains('sleep_tracker')) {
           firestoreModules.add('sleep_tracker');
         }
+        if (!firestoreModules.contains('astro_calendar')) {
+          firestoreModules.add('astro_calendar');
+        }
         
         final localPrefs = await SharedPreferences.getInstance();
         await localPrefs.setStringList('cached_enabled_modules', firestoreModules);
@@ -112,6 +116,9 @@ class _MainScreenState extends State<MainScreen> {
         if (!_enabledModules.contains('sleep_tracker')) {
           _enabledModules.add('sleep_tracker');
         }
+        if (!_enabledModules.contains('astro_calendar')) {
+          _enabledModules.add('astro_calendar');
+        }
         _userSelectedBottomModules = cachedBottom;
         _userMenuOrder = cachedMenuOrder;
         _isLoading = false;
@@ -123,6 +130,9 @@ class _MainScreenState extends State<MainScreen> {
       final firestoreModules = List<String>.from(prefs['enabledModules'] ?? ['gold']);
       if (!firestoreModules.contains('sleep_tracker')) {
         firestoreModules.add('sleep_tracker');
+      }
+      if (!firestoreModules.contains('astro_calendar')) {
+        firestoreModules.add('astro_calendar');
       }
       await localPrefs.setStringList('cached_enabled_modules', firestoreModules);
       if (mounted) {
@@ -374,6 +384,15 @@ class _MainScreenState extends State<MainScreen> {
         icon: Icon(Icons.bedtime_outlined, color: Colors.indigo),
         selectedIcon: Icon(Icons.bedtime, color: Colors.indigo),
         label: 'Sleep',
+      ),
+    },
+    'astro_calendar': {
+      'screen': const AstroCalendarScreen(),
+      'name': 'Astro Calendar',
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.sunny, color: Colors.orange),
+        selectedIcon: Icon(Icons.wb_sunny, color: Colors.orange),
+        label: 'Astro',
       ),
     },
   };
@@ -739,6 +758,14 @@ class _MainScreenState extends State<MainScreen> {
                   'color': Colors.indigo,
                   'action': () => _selectTabOrPush('sleep_tracker'),
                 },
+              if (_enabledModules.contains('astro_calendar'))
+                {
+                  'id': 'astro_calendar',
+                  'name': 'Astro Calendar',
+                  'icon': Icons.sunny,
+                  'color': Colors.orange,
+                  'action': () => _selectTabOrPush('astro_calendar'),
+                },
               if (_enabledModules.contains('voice_assistant'))
                 {
                   'id': 'voice_assistant',
@@ -1050,6 +1077,16 @@ class _MainScreenState extends State<MainScreen> {
                   onTap: () {
                     Navigator.pop(context);
                     _selectTabOrPush('sleep_tracker');
+                  },
+                ),
+              if (_enabledModules.contains('astro_calendar'))
+                ListTile(
+                  leading: const Icon(Icons.sunny, color: Colors.orange),
+                  title: const Text('Astro Calendar'),
+                  selected: _isModuleSelected('astro_calendar'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _selectTabOrPush('astro_calendar');
                   },
                 ),
               const Divider(),
