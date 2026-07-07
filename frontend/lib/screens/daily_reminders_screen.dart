@@ -253,7 +253,7 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.only(left: 8, right: 8, top: 8, bottom: 88),
             itemCount: reminders.length,
             itemBuilder: (context, index) {
               final reminder = reminders[index];

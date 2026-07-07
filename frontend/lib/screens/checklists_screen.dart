@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/storage_service.dart';
 import '../widgets/collaboration_widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChecklistsScreen extends StatefulWidget {
   const ChecklistsScreen({super.key});
@@ -15,11 +16,52 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
   final StorageService _storage = StorageService();
   List<Map<String, dynamic>> _checklists = [];
   bool _isLoading = true;
+  List<String> _customOrderIds = [];
 
   @override
   void initState() {
     super.initState();
+    _loadCustomOrder();
     _loadChecklists();
+  }
+
+  Future<void> _loadCustomOrder() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _customOrderIds = prefs.getStringList('checklists_custom_order_$uid') ?? [];
+    });
+  }
+
+  Future<void> _saveCustomOrder(List<String> order) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('checklists_custom_order_$uid', order);
+  }
+
+  List<Map<String, dynamic>> _sortChecklistsWithCustomOrder(List<Map<String, dynamic>> lists) {
+    if (_customOrderIds.isEmpty) return List<Map<String, dynamic>>.from(lists);
+    
+    final sorted = List<Map<String, dynamic>>.from(lists);
+    sorted.sort((a, b) {
+      final aIndex = _customOrderIds.indexOf(a['id'] ?? '');
+      final bIndex = _customOrderIds.indexOf(b['id'] ?? '');
+      
+      if (aIndex != -1 && bIndex != -1) {
+        return aIndex.compareTo(bIndex);
+      }
+      if (aIndex != -1) return 1;
+      if (bIndex != -1) return -1;
+      
+      // Fallback: sort by createdAt descending
+      final aTime = a['createdAt'];
+      final bTime = b['createdAt'];
+      if (aTime == null && bTime == null) return 0;
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      return bTime.toString().compareTo(aTime.toString());
+    });
+    return sorted;
   }
 
   Future<void> _loadChecklists() async {
@@ -231,8 +273,9 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
           }
           
           final checklists = snapshot.data ?? _checklists;
+          final orderedChecklists = _sortChecklistsWithCustomOrder(checklists);
           
-          if (checklists.isEmpty) {
+          if (orderedChecklists.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -256,153 +299,219 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
           final currentUser = FirebaseAuth.instance.currentUser;
 
           return GridView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 88),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 16,
               mainAxisSpacing: 16,
               childAspectRatio: 1.1,
             ),
-            itemCount: checklists.length,
+            itemCount: orderedChecklists.length,
             itemBuilder: (context, index) {
-              final list = checklists[index];
+              final list = orderedChecklists[index];
               final colorValue = list['colorValue'] ?? list['color'] ?? Colors.blue.value;
               final color = Color(colorValue);
               final icon = _getIconFromCode(list['iconCode']);
               final sharedWithList = list['sharedWith'] as List?;
               final isShared = (sharedWithList != null && sharedWithList.isNotEmpty) || (list['ownerUid'] != null && list['ownerUid'] != currentUser?.uid);
 
-              return Hero(
-                tag: 'list_${list['id']}',
-                child: Material(
-                  borderRadius: BorderRadius.circular(24),
-                  elevation: 2,
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ChecklistDetailScreen(
-                            checklistId: list['id'],
-                            title: list['title'],
-                            color: color,
-                            ownerUid: list['ownerUid'],
-                          ),
+              final card = _buildChecklistCard(
+                list: list,
+                color: color,
+                icon: icon,
+                isShared: isShared,
+                currentUser: currentUser,
+              );
+
+              return DragTarget<int>(
+                onWillAcceptWithDetails: (details) => details.data != index,
+                onAcceptWithDetails: (details) {
+                  final fromIndex = details.data;
+                  setState(() {
+                    final currentIds = orderedChecklists.map((l) => (l['id'] as String?) ?? '').toList();
+                    final draggedId = currentIds.removeAt(fromIndex);
+                    currentIds.insert(index, draggedId);
+                    _customOrderIds = currentIds;
+                    _saveCustomOrder(_customOrderIds);
+                  });
+                },
+                builder: (context, candidateData, rejectedData) {
+                  return LongPressDraggable<int>(
+                    data: index,
+                    feedback: SizedBox(
+                      width: MediaQuery.of(context).size.width / 2.2,
+                      height: (MediaQuery.of(context).size.width / 2.2) / 1.1,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: Transform.scale(
+                          scale: 1.05,
+                          child: card,
                         ),
-                      );
-                    },
-                    onLongPress: () async {
-                      final isOwn = list['ownerUid'] == null || list['ownerUid'] == currentUser?.uid;
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: Text(isOwn ? 'Delete List?' : 'Leave Shared List?'),
-                          content: Text(isOwn 
-                              ? 'Are you sure you want to delete "${list['title']}"?' 
-                              : 'Are you sure you want to stop collaborating on "${list['title']}"?'),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, true), 
-                              child: Text(isOwn ? 'Delete' : 'Leave', style: const TextStyle(color: Colors.red)),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirm == true) {
-                        _deleteChecklist(list['id'], ownerUid: list['ownerUid']);
-                      }
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            color.withOpacity(0.8),
-                            color,
-                          ],
-                        ),
-                      ),
-                      child: Stack(
-                        children: [
-                          Positioned(
-                            right: -20,
-                            bottom: -20,
-                            child: Icon(
-                              icon,
-                              size: 100,
-                              color: Colors.white.withOpacity(0.2),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.all(20.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.3),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Icon(icon, color: Colors.white, size: 24),
-                                    ),
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (isShared)
-                                          const Icon(Icons.people, color: Colors.white70, size: 20),
-                                        if (list['ownerUid'] == null || list['ownerUid'] == currentUser?.uid) ...[
-                                          if (isShared) const SizedBox(width: 8),
-                                          IconButton(
-                                            icon: const Icon(Icons.person_add_alt_1, color: Colors.white, size: 20),
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(),
-                                            onPressed: () {
-                                              showDialog(
-                                                context: context,
-                                                builder: (context) => CollaboratorSelectionDialog(
-                                                  itemId: list['id'],
-                                                  itemTitle: list['title'],
-                                                  type: 'checklist',
-                                                ),
-                                              );
-                                            },
-                                            tooltip: 'Share / Collaborate',
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                Text(
-                                  list['title'],
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
                       ),
                     ),
-                  ),
-                ),
+                    childWhenDragging: Opacity(
+                      opacity: 0.4,
+                      child: card,
+                    ),
+                    child: card,
+                  );
+                },
               );
             },
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildChecklistCard({
+    required Map<String, dynamic> list,
+    required Color color,
+    required IconData icon,
+    required bool isShared,
+    required User? currentUser,
+  }) {
+    final isOwn = list['ownerUid'] == null || list['ownerUid'] == currentUser?.uid;
+    return Hero(
+      tag: 'list_${list['id']}',
+      child: Material(
+        borderRadius: BorderRadius.circular(24),
+        elevation: 2,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ChecklistDetailScreen(
+                  checklistId: list['id'],
+                  title: list['title'],
+                  color: color,
+                  ownerUid: list['ownerUid'],
+                ),
+              ),
+            );
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withOpacity(0.8),
+                  color,
+                ],
+              ),
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -20,
+                  bottom: -20,
+                  child: Icon(
+                    icon,
+                    size: 100,
+                    color: Colors.white.withOpacity(0.2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(icon, color: Colors.white, size: 24),
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isShared)
+                                const Icon(Icons.people, color: Colors.white70, size: 20),
+                              if (list['ownerUid'] == null || list['ownerUid'] == currentUser?.uid) ...[
+                                if (isShared) const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.person_add_alt_1, color: Colors.white, size: 20),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (context) => CollaboratorSelectionDialog(
+                                        itemId: list['id'],
+                                        itemTitle: list['title'],
+                                        type: 'checklist',
+                                      ),
+                                    );
+                                  },
+                                  tooltip: 'Share / Collaborate',
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              list['title'],
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.white, size: 20),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: Text(isOwn ? 'Delete List?' : 'Leave Shared List?'),
+                                  content: Text(isOwn 
+                                      ? 'Are you sure you want to delete "${list['title']}"?' 
+                                      : 'Are you sure you want to stop collaborating on "${list['title']}"?'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, true), 
+                                      child: Text(isOwn ? 'Delete' : 'Leave', style: const TextStyle(color: Colors.red)),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                _deleteChecklist(list['id'], ownerUid: list['ownerUid']);
+                              }
+                            },
+                            tooltip: isOwn ? 'Delete List' : 'Leave List',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

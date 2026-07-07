@@ -115,49 +115,55 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   Future<void> _selectTime(BuildContext context) async {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       builder: (BuildContext builder) {
-        return Container(
-          height: MediaQuery.of(context).copyWith().size.height / 3,
-          color: Colors.white,
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  TextButton(
-                    child: const Text('Cancel'),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  TextButton(
-                    child: const Text('Done'),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      setState(() {}); // Refresh UI
-                    },
-                  ),
-                ],
-              ),
-              Expanded(
-                child: CupertinoDatePicker(
-                  mode: CupertinoDatePickerMode.time,
-                  initialDateTime: DateTime(
-                    DateTime.now().year,
-                    DateTime.now().month,
-                    DateTime.now().day,
-                    _time.hour,
-                    _time.minute,
-                  ),
-                  onDateTimeChanged: (DateTime newDateTime) {
-                    setState(() {
-                      _time = TimeOfDay.fromDateTime(newDateTime);
-                    });
-                  },
-                  use24hFormat: false,
+        return CupertinoTheme(
+          data: CupertinoThemeData(
+            brightness: isDarkMode ? Brightness.dark : Brightness.light,
+          ),
+          child: Container(
+            height: MediaQuery.of(context).size.height / 3,
+            color: isDarkMode ? Colors.grey[900] : Colors.white,
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    TextButton(
+                      child: const Text('Cancel'),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    TextButton(
+                      child: const Text('Done'),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        setState(() {}); // Refresh UI
+                      },
+                    ),
+                  ],
                 ),
-              ),
-            ],
+                Expanded(
+                  child: CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.time,
+                    initialDateTime: DateTime(
+                      DateTime.now().year,
+                      DateTime.now().month,
+                      DateTime.now().day,
+                      _time.hour,
+                      _time.minute,
+                    ),
+                    onDateTimeChanged: (DateTime newDateTime) {
+                      setState(() {
+                        _time = TimeOfDay.fromDateTime(newDateTime);
+                      });
+                    },
+                    use24hFormat: false,
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },

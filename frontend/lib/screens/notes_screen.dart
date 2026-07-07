@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/note.dart';
 import '../services/storage_service.dart';
 import '../widgets/collaboration_widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
@@ -14,6 +15,45 @@ class NotesScreen extends StatefulWidget {
 
 class _NotesScreenState extends State<NotesScreen> {
   final StorageService _storageService = StorageService();
+  List<String> _customOrderIds = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomOrder();
+  }
+
+  Future<void> _loadCustomOrder() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _customOrderIds = prefs.getStringList('notes_custom_order_$uid') ?? [];
+    });
+  }
+
+  Future<void> _saveCustomOrder(List<String> order) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('notes_custom_order_$uid', order);
+  }
+
+  List<Note> _sortNotesWithCustomOrder(List<Note> notes) {
+    if (_customOrderIds.isEmpty) return List<Note>.from(notes);
+    
+    final sorted = List<Note>.from(notes);
+    sorted.sort((a, b) {
+      final aIndex = _customOrderIds.indexOf(a.id ?? '');
+      final bIndex = _customOrderIds.indexOf(b.id ?? '');
+      
+      if (aIndex != -1 && bIndex != -1) {
+        return aIndex.compareTo(bIndex);
+      }
+      if (aIndex != -1) return 1;
+      if (bIndex != -1) return -1;
+      return b.date.compareTo(a.date);
+    });
+    return sorted;
+  }
 
   Future<void> _addOrEditNote({Note? note}) async {
     final titleController = TextEditingController(text: note?.title ?? '');
@@ -367,8 +407,9 @@ class _NotesScreenState extends State<NotesScreen> {
           }
           
           final notes = snapshot.data ?? [];
+          final orderedNotes = _sortNotesWithCustomOrder(notes);
           
-          if (notes.isEmpty) {
+          if (orderedNotes.isEmpty) {
             return ListView(children: const [
               SizedBox(height: 50),
               Center(child: Text('No notes yet. Tap + to add one.\nUpdates are synced in real-time.', textAlign: TextAlign.center))
@@ -378,16 +419,16 @@ class _NotesScreenState extends State<NotesScreen> {
           final currentUser = FirebaseAuth.instance.currentUser;
 
           return GridView.builder(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.only(left: 12, right: 12, top: 12, bottom: 88),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
               childAspectRatio: 0.85,
             ),
-            itemCount: notes.length,
+            itemCount: orderedNotes.length,
             itemBuilder: (context, index) {
-              final note = notes[index];
+              final note = orderedNotes[index];
               final Color noteColor = _getNoteColor(context, note.id ?? '', note.title + note.content);
               final isShared = note.sharedWith.isNotEmpty || (note.ownerUid != null && note.ownerUid != currentUser?.uid);
               final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
@@ -395,126 +436,49 @@ class _NotesScreenState extends State<NotesScreen> {
               final subtitleColor = isDarkTheme ? Colors.white.withValues(alpha: 0.7) : Colors.black54;
               final hintIconColor = isDarkTheme ? Colors.white.withValues(alpha: 0.5) : Colors.black38;
               
-              return Card(
-                elevation: 0,
-                color: noteColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                child: InkWell(
-                  onTap: () => _addOrEditNote(note: note),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            if (note.title.isNotEmpty)
-                              Expanded(
-                                child: Text(
-                                  note.title,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: titleColor,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (isShared)
-                                  Icon(Icons.people_outline, size: 16, color: subtitleColor),
-                                if (note.isLocked) ...[
-                                  if (isShared) const SizedBox(width: 4),
-                                  Icon(Icons.lock, size: 14, color: subtitleColor),
-                                ],
-                              ],
-                            ),
-                          ],
-                        ),
-                        if (note.title.isNotEmpty) const SizedBox(height: 8),
-                        Expanded(
-                          child: Text(
-                            note.isLocked ? 'Locked Content' : note.content,
-                            overflow: TextOverflow.fade,
-                            style: TextStyle(
-                              color: subtitleColor, 
-                              fontSize: 13,
-                              fontStyle: note.isLocked ? FontStyle.italic : FontStyle.normal
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                DateFormat('MMM d').format(DateFormat('yyyy-MM-dd HH:mm').parse(note.date)),
-                                style: TextStyle(fontSize: 10, color: hintIconColor, fontWeight: FontWeight.bold),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (note.ownerUid == null || note.ownerUid == currentUser?.uid) ...[
-                                  GestureDetector(
-                                    onTap: () {
-                                      showDialog(
-                                        context: context,
-                                        builder: (context) => CollaboratorSelectionDialog(
-                                          itemId: note.id!,
-                                          itemTitle: note.title.isNotEmpty ? note.title : 'Untitled Note',
-                                          type: 'note',
-                                        ),
-                                      );
-                                    },
-                                    child: Icon(Icons.person_add_alt_1_outlined, size: 18, color: hintIconColor),
-                                  ),
-                                  const SizedBox(width: 12),
-                                ],
-                                GestureDetector(
-                                  onTap: () async {
-                                    if (note.isLocked) {
-                                      bool auth = await _showPinDialog();
-                                      if (!auth) return;
-                                    }
-                                    if (!context.mounted) return;
-                                    final isOwn = note.ownerUid == null || note.ownerUid == currentUser?.uid;
-                                    final confirm = await showDialog<bool>(
-                                      context: context,
-                                      builder: (ctx) => AlertDialog(
-                                        title: Text(isOwn ? 'Delete Note' : 'Leave Shared Note'),
-                                        content: Text(isOwn ? 'Are you sure you want to delete this note?' : 'Are you sure you want to stop collaborating on this note?'),
-                                        actions: [
-                                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(ctx, true), 
-                                            style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                            child: Text(isOwn ? 'Delete' : 'Leave')
-                                          ),
-                                        ],
-                                      ),
-                                    );
+              final card = _buildNoteCard(
+                note: note,
+                currentUser: currentUser,
+                noteColor: noteColor,
+                isShared: isShared,
+                titleColor: titleColor,
+                subtitleColor: subtitleColor,
+                hintIconColor: hintIconColor,
+              );
 
-                                    if (confirm != true) return;
-                                    await _storageService.deleteNote(note.id!, ownerUid: note.ownerUid);
-                                  },
-                                  child: Icon(Icons.delete_outline, size: 18, color: hintIconColor),
-                                ),
-                              ],
-                            ),
-                          ],
+              return DragTarget<int>(
+                onWillAcceptWithDetails: (details) => details.data != index,
+                onAcceptWithDetails: (details) {
+                  final fromIndex = details.data;
+                  setState(() {
+                    final currentIds = orderedNotes.map((n) => n.id ?? '').toList();
+                    final draggedId = currentIds.removeAt(fromIndex);
+                    currentIds.insert(index, draggedId);
+                    _customOrderIds = currentIds;
+                    _saveCustomOrder(_customOrderIds);
+                  });
+                },
+                builder: (context, candidateData, rejectedData) {
+                  return LongPressDraggable<int>(
+                    data: index,
+                    feedback: SizedBox(
+                      width: MediaQuery.of(context).size.width / 2.2,
+                      height: (MediaQuery.of(context).size.width / 2.2) / 0.85,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: Transform.scale(
+                          scale: 1.05,
+                          child: card,
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
+                    childWhenDragging: Opacity(
+                      opacity: 0.4,
+                      child: card,
+                    ),
+                    child: card,
+                  );
+                },
               );
             },
           );
@@ -523,6 +487,138 @@ class _NotesScreenState extends State<NotesScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _addOrEditNote(),
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _buildNoteCard({
+    required Note note,
+    required User? currentUser,
+    required Color noteColor,
+    required bool isShared,
+    required Color titleColor,
+    required Color subtitleColor,
+    required Color hintIconColor,
+  }) {
+    return Card(
+      elevation: 0,
+      color: noteColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: () => _addOrEditNote(note: note),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (note.title.isNotEmpty)
+                    Expanded(
+                      child: Text(
+                        note.title,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: titleColor,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isShared)
+                        Icon(Icons.people_outline, size: 16, color: subtitleColor),
+                      if (note.isLocked) ...[
+                        if (isShared) const SizedBox(width: 4),
+                        Icon(Icons.lock, size: 14, color: subtitleColor),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+              if (note.title.isNotEmpty) const SizedBox(height: 8),
+              Expanded(
+                child: Text(
+                  note.isLocked ? 'Locked Content' : note.content,
+                  overflow: TextOverflow.fade,
+                  style: TextStyle(
+                    color: subtitleColor, 
+                    fontSize: 13,
+                    fontStyle: note.isLocked ? FontStyle.italic : FontStyle.normal
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      DateFormat('MMM d').format(DateFormat('yyyy-MM-dd HH:mm').parse(note.date)),
+                      style: TextStyle(fontSize: 10, color: hintIconColor, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (note.ownerUid == null || note.ownerUid == currentUser?.uid) ...[
+                        GestureDetector(
+                          onTap: () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => CollaboratorSelectionDialog(
+                                itemId: note.id!,
+                                itemTitle: note.title.isNotEmpty ? note.title : 'Untitled Note',
+                                type: 'note',
+                              ),
+                            );
+                          },
+                          child: Icon(Icons.person_add_alt_1_outlined, size: 18, color: hintIconColor),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      GestureDetector(
+                        onTap: () async {
+                          if (note.isLocked) {
+                            bool auth = await _showPinDialog();
+                            if (!auth) return;
+                          }
+                          if (!context.mounted) return;
+                          final isOwn = note.ownerUid == null || note.ownerUid == currentUser?.uid;
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: Text(isOwn ? 'Delete Note' : 'Leave Shared Note'),
+                              content: Text(isOwn ? 'Are you sure you want to delete this note?' : 'Are you sure you want to stop collaborating on this note?'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true), 
+                                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                  child: Text(isOwn ? 'Delete' : 'Leave')
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (confirm != true) return;
+                          await _storageService.deleteNote(note.id!, ownerUid: note.ownerUid);
+                        },
+                        child: Icon(Icons.delete_outline, size: 18, color: hintIconColor),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

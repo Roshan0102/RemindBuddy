@@ -1622,36 +1622,78 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     );
   }
 
-  Widget _buildTabButton(String label, int index) {
-    final isSelected = _selectedTab == index;
-    final themeColor = index == 0 
-        ? Colors.teal 
-        : (index == 1 ? Colors.green : Colors.lightBlue);
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedTab = index;
-        });
-      },
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? themeColor : themeColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? themeColor : themeColor.withOpacity(0.3),
-            width: 1.5,
+  Widget _buildCustomTabBar() {
+    if (!_isEventsEnabled && !_isWalkInEnabled) {
+      return const SizedBox.shrink();
+    }
+    
+    final tabs = <Map<String, dynamic>>[
+      {'label': 'Schedule', 'index': 0, 'icon': Icons.calendar_today, 'color': Colors.teal},
+      if (_isEventsEnabled)
+        {'label': 'Events', 'index': 1, 'icon': Icons.event, 'color': Colors.green},
+      if (_isWalkInEnabled)
+        {'label': 'Walk-In', 'index': 2, 'icon': Icons.campaign, 'color': Colors.blue},
+    ];
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: isSelected ? Colors.white : themeColor,
-          ),
-        ),
+        ],
+      ),
+      child: Row(
+        children: tabs.map((tab) {
+          final isSelected = _selectedTab == tab['index'];
+          final color = tab['color'] as Color;
+          
+          return Expanded(
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _selectedTab = tab['index'];
+                });
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: isSelected ? color : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      tab['icon'] as IconData,
+                      size: 16,
+                      color: isSelected ? Colors.white : color.withOpacity(0.8),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      tab['label'] as String,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? Colors.white : color.withOpacity(0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -2367,23 +2409,11 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 4.0,
-        title: Row(
-          children: [
-            if (_isEventsEnabled || _isWalkInEnabled) ...[
-              _buildTabButton('Schedule', 0),
-              if (_isEventsEnabled) ...[
-                const SizedBox(width: 4),
-                _buildTabButton('Events', 1),
-              ],
-              if (_isWalkInEnabled) ...[
-                const SizedBox(width: 4),
-                _buildTabButton('Walk-In', 2),
-              ],
-            ] else ...[
-              const Text('Schedule', style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ],
+        title: Text(
+          _selectedTab == 0
+              ? 'My Shifts'
+              : (_selectedTab == 1 ? 'Tech Events' : 'Walk-In Drives'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           if (_selectedTab == 0 && _hasData) ...[
@@ -2470,6 +2500,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
           : null,
       body: Column(
         children: [
+          _buildCustomTabBar(),
           _buildHeader(),
           Expanded(
             child: _selectedTab == 0

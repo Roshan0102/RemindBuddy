@@ -21,6 +21,7 @@ import 'admin_screen.dart';
 import 'notification_history_screen.dart';
 import '../services/update_service.dart';
 import 'voice_assistant_screen.dart';
+import 'sleep_tracker_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../main.dart';
 
@@ -77,6 +78,9 @@ class _MainScreenState extends State<MainScreen> {
       if (snapshot.exists && snapshot.data() != null) {
         final data = snapshot.data()!;
         final firestoreModules = List<String>.from(data['enabledModules'] ?? ['gold']);
+        if (!firestoreModules.contains('sleep_tracker')) {
+          firestoreModules.add('sleep_tracker');
+        }
         
         final localPrefs = await SharedPreferences.getInstance();
         await localPrefs.setStringList('cached_enabled_modules', firestoreModules);
@@ -105,6 +109,9 @@ class _MainScreenState extends State<MainScreen> {
         if (cachedModulesStr != null) {
           _enabledModules = cachedModulesStr;
         }
+        if (!_enabledModules.contains('sleep_tracker')) {
+          _enabledModules.add('sleep_tracker');
+        }
         _userSelectedBottomModules = cachedBottom;
         _userMenuOrder = cachedMenuOrder;
         _isLoading = false;
@@ -114,6 +121,9 @@ class _MainScreenState extends State<MainScreen> {
     try {
       final prefs = await StorageService().getUserPreferences();
       final firestoreModules = List<String>.from(prefs['enabledModules'] ?? ['gold']);
+      if (!firestoreModules.contains('sleep_tracker')) {
+        firestoreModules.add('sleep_tracker');
+      }
       await localPrefs.setStringList('cached_enabled_modules', firestoreModules);
       if (mounted) {
         setState(() {
@@ -355,6 +365,15 @@ class _MainScreenState extends State<MainScreen> {
         icon: Icon(Icons.shield_outlined, color: Colors.blueAccent),
         selectedIcon: Icon(Icons.shield, color: Colors.blueAccent),
         label: 'Vault',
+      ),
+    },
+    'sleep_tracker': {
+      'screen': const SleepTrackerScreen(),
+      'name': 'Sleep Tracker',
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.bedtime_outlined, color: Colors.indigo),
+        selectedIcon: Icon(Icons.bedtime, color: Colors.indigo),
+        label: 'Sleep',
       ),
     },
   };
@@ -712,6 +731,14 @@ class _MainScreenState extends State<MainScreen> {
                     );
                   },
                 },
+              if (_enabledModules.contains('sleep_tracker'))
+                {
+                  'id': 'sleep_tracker',
+                  'name': 'Sleep Tracker',
+                  'icon': Icons.bedtime,
+                  'color': Colors.indigo,
+                  'action': () => _selectTabOrPush('sleep_tracker'),
+                },
               if (_enabledModules.contains('voice_assistant'))
                 {
                   'id': 'voice_assistant',
@@ -1013,6 +1040,16 @@ class _MainScreenState extends State<MainScreen> {
                   onTap: () {
                     Navigator.pop(context);
                     _selectTabOrPush('gold');
+                  },
+                ),
+              if (_enabledModules.contains('sleep_tracker'))
+                ListTile(
+                  leading: const Icon(Icons.bedtime, color: Colors.indigo),
+                  title: const Text('Sleep Tracker'),
+                  selected: _isModuleSelected('sleep_tracker'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _selectTabOrPush('sleep_tracker');
                   },
                 ),
               const Divider(),

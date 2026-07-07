@@ -39,6 +39,7 @@ class _AdminScreenState extends State<AdminScreen> {
     {'id': 'events', 'label': 'Tech Events'},
     {'id': 'walkin', 'label': 'Walk-In Drives'},
     {'id': 'voice_assistant', 'label': 'Voice Assistant'},
+    {'id': 'ask_gemini', 'label': 'Ask Gemini Buttons'},
   ];
 
   @override

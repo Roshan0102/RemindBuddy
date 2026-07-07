@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/gold_price_service.dart';
 import '../models/gold_price.dart';
 
@@ -19,10 +21,40 @@ class _GoldScreenState extends State<GoldScreen> {
   bool _isGeneratingChit = false;
   int _aiActiveTab = 0; // 0 for Forecast, 1 for Chit Assistant
   String _selectedChartRange = '7D';
+  
+  String? _uid;
+  bool _askGeminiEnabled = false;
+  StreamSubscription? _userSubscription;
+  late Stream<List<GoldPrice>> _goldPricesStream;
 
   @override
   void initState() {
     super.initState();
+    _goldPricesStream = _goldService.getGlobalGoldPricesStream();
+    _uid = FirebaseAuth.instance.currentUser?.uid;
+    if (_uid != null) {
+      _userSubscription = FirebaseFirestore.instance
+          .collection('users')
+          .doc(_uid)
+          .snapshots()
+          .listen((doc) {
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          final enabledModules = List<String>.from(data['enabledModules'] ?? ['gold']);
+          if (mounted) {
+            setState(() {
+              _askGeminiEnabled = enabledModules.contains('ask_gemini');
+            });
+          }
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _userSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchPrice() async {
@@ -146,7 +178,7 @@ class _GoldScreenState extends State<GoldScreen> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<GoldPrice>>(
-      stream: _goldService.getGlobalGoldPricesStream(),
+      stream: _goldPricesStream,
       builder: (context, snapshot) {
         final history = snapshot.data ?? [];
         final currentPrice = history.isNotEmpty ? history.first : null;
@@ -1062,6 +1094,7 @@ class _GoldScreenState extends State<GoldScreen> {
   }
 
   Widget _buildGenerateAIButton() {
+    if (!_askGeminiEnabled) return const SizedBox.shrink();
     return _isGeneratingAI
         ? const Center(
             child: Padding(
@@ -1089,6 +1122,7 @@ class _GoldScreenState extends State<GoldScreen> {
   }
 
   Widget _buildGenerateChitButton() {
+    if (!_askGeminiEnabled) return const SizedBox.shrink();
     return _isGeneratingChit
         ? const Center(
             child: Padding(
