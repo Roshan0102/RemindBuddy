@@ -86,7 +86,7 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
                         Text(
                           'Lat: ${_latitude.toStringAsFixed(4)}° N  |  Lng: ${_longitude.toStringAsFixed(4)}° E',
                           style: GoogleFonts.outfit(
-                            color: Colors.white80,
+                            color: Colors.white70,
                             fontSize: 12,
                           ),
                         ),
