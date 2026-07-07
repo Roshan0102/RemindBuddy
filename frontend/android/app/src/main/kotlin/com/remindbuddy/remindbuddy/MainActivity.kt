@@ -97,11 +97,11 @@ class MainActivity: FlutterActivity() {
     private fun requestSleepUpdates(result: MethodChannel.Result) {
         try {
             ActivityRecognition.getClient(this)
-                .requestSleepSegmentCallbacks(getSleepPendingIntent(), SleepSegmentRequest.getDefaultSleepSegmentRequest())
+                .requestSleepSegmentUpdates(getSleepPendingIntent(), SleepSegmentRequest.getDefaultSleepSegmentRequest())
                 .addOnSuccessListener {
                     result.success(true)
                 }
-                .addOnFailureListener { e ->
+                .addOnFailureListener { e: Exception ->
                     result.error("SLEEP_API_ERROR", e.message, null)
                 }
         } catch (e: SecurityException) {
@@ -114,11 +114,11 @@ class MainActivity: FlutterActivity() {
     private fun removeSleepUpdates(result: MethodChannel.Result) {
         try {
             ActivityRecognition.getClient(this)
-                .removeSleepSegmentCallbacks(getSleepPendingIntent())
+                .removeSleepSegmentUpdates(getSleepPendingIntent())
                 .addOnSuccessListener {
                     result.success(true)
                 }
-                .addOnFailureListener { e ->
+                .addOnFailureListener { e: Exception ->
                     result.error("SLEEP_API_ERROR", e.message, null)
                 }
         } catch (e: Exception) {
