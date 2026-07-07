@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/shift.dart';
 import '../services/storage_service.dart';
@@ -29,6 +30,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   Map<String, int>? _statistics;
   bool _isLoading = true;
   bool _hasData = false;
+  String? _rosterImageUrl;
   
   // Multi-month support
   DateTime _currentDate = DateTime.now();
@@ -631,16 +633,18 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         
         String monthForQuery = _selectedRosterMonth;
         final stats = await _storage.getShiftStatistics(monthForQuery, rosterMonth: _selectedRosterMonth);
+        final imageUrl = metadata['roster_image_url'] as String?;
         
         setState(() {
-
           _shifts = shifts;
           _statistics = stats;
+          _rosterImageUrl = imageUrl;
           _hasData = true;
           _isLoading = false;
         });
       } else {
         setState(() {
+          _rosterImageUrl = null;
           _hasData = false;
           _isLoading = false;
         });
@@ -649,6 +653,64 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       LogService().error('Failed to load shifts', e);
       setState(() => _isLoading = false);
     }
+  }
+
+  void _viewRosterImage() {
+    if (_rosterImageUrl == null) return;
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  _rosterImageUrl!,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.broken_image, size: 64, color: Colors.red),
+                          SizedBox(height: 16),
+                          Text('Failed to load roster image', style: TextStyle(color: Colors.black)),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: CircleAvatar(
+                backgroundColor: Colors.black.withOpacity(0.5),
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
   
 
@@ -985,6 +1047,19 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                       String rosterMonth = _selectedRosterMonth;
                       String updatedMonthLabel = DateFormat('MMMM yyyy').format(_currentDate);
 
+                      String? rosterImageUrl;
+                      if (selectedImage != null) {
+                        final user = FirebaseAuth.instance.currentUser;
+                        if (user != null) {
+                          final ref = FirebaseStorage.instance
+                              .ref()
+                              .child('users/${user.uid}/rosters/$rosterMonth.jpg');
+                          final bytes = await selectedImage!.readAsBytes();
+                          await ref.putData(bytes);
+                          rosterImageUrl = await ref.getDownloadURL();
+                        }
+                      }
+
                       // Rewrite the shift dates to match the selected month/year.
                       final shiftsToSave = parsedShifts.map((s) {
                         final map = s.toMap();
@@ -1016,6 +1091,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         shiftsToSave,
                         rosterMonth: rosterMonth,
                         rawJson: newJsonString,
+                        rosterImageUrl: rosterImageUrl,
                       );
 
                       // Schedule notifications
@@ -2108,7 +2184,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                         style: const TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
-                                          color: Colors.black87,
                                         ),
                                       ),
                                     ],
@@ -2312,6 +2387,13 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         ),
         actions: [
           if (_selectedTab == 0 && _hasData) ...[
+            if (_rosterImageUrl != null) ...[
+              IconButton(
+                icon: const Icon(Icons.visibility),
+                onPressed: _viewRosterImage,
+                tooltip: 'View Roster Image',
+              ),
+            ],
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: _loadShifts,

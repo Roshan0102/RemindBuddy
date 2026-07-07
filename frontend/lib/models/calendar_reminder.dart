@@ -14,6 +14,8 @@ class CalendarReminder {
   final int? remainingOccurrences; // null means infinite
   final String? scheduledByUid;
   final String? scheduledByUsername;
+  final String? scheduledForUid;
+  final String? scheduledForUsername;
   final bool snoozeEnabled;
   final int snoozeIntervalMinutes;
   final int maxSnoozeCount;
@@ -33,6 +35,8 @@ class CalendarReminder {
     this.remainingOccurrences,
     this.scheduledByUid,
     this.scheduledByUsername,
+    this.scheduledForUid,
+    this.scheduledForUsername,
     this.snoozeEnabled = false,
     this.snoozeIntervalMinutes = 15,
     this.maxSnoozeCount = 3,
@@ -54,6 +58,8 @@ class CalendarReminder {
       remainingOccurrences: json['remainingOccurrences'] as int?,
       scheduledByUid: json['scheduledByUid'],
       scheduledByUsername: json['scheduledByUsername'],
+      scheduledForUid: json['scheduledForUid'],
+      scheduledForUsername: json['scheduledForUsername'],
       snoozeEnabled: json['snoozeEnabled'] ?? false,
       snoozeIntervalMinutes: json['snoozeIntervalMinutes'] ?? 15,
       maxSnoozeCount: json['maxSnoozeCount'] ?? 3,
@@ -82,6 +88,8 @@ class CalendarReminder {
       'currentSnoozeCount': currentSnoozeCount,
       if (scheduledByUid != null) 'scheduledByUid': scheduledByUid,
       if (scheduledByUsername != null) 'scheduledByUsername': scheduledByUsername,
+      if (scheduledForUid != null) 'scheduledForUid': scheduledForUid,
+      if (scheduledForUsername != null) 'scheduledForUsername': scheduledForUsername,
     };
   }
 
@@ -99,6 +107,8 @@ class CalendarReminder {
     int? remainingOccurrences,
     String? scheduledByUid,
     String? scheduledByUsername,
+    String? scheduledForUid,
+    String? scheduledForUsername,
     bool? snoozeEnabled,
     int? snoozeIntervalMinutes,
     int? maxSnoozeCount,
@@ -118,6 +128,8 @@ class CalendarReminder {
       remainingOccurrences: remainingOccurrences ?? this.remainingOccurrences,
       scheduledByUid: scheduledByUid ?? this.scheduledByUid,
       scheduledByUsername: scheduledByUsername ?? this.scheduledByUsername,
+      scheduledForUid: scheduledForUid ?? this.scheduledForUid,
+      scheduledForUsername: scheduledForUsername ?? this.scheduledForUsername,
       snoozeEnabled: snoozeEnabled ?? this.snoozeEnabled,
       snoozeIntervalMinutes: snoozeIntervalMinutes ?? this.snoozeIntervalMinutes,
       maxSnoozeCount: maxSnoozeCount ?? this.maxSnoozeCount,

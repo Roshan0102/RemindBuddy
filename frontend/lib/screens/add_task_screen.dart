@@ -198,6 +198,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           await storage.updateCalendarReminder(updated);
         } else {
           for (final recipientUid in _selectedRecipients) {
+            String? targetUsername;
+            if (recipientUid != _myUid) {
+              final buddy = _approvedBuddies.firstWhere(
+                (b) => b['receiverUid'] == recipientUid,
+                orElse: () => <String, dynamic>{},
+              );
+              targetUsername = buddy['receiverUsername'] as String?;
+            }
+
             await storage.insertCalendarReminder(
               _titleController.text, 
               _descriptionController.text, 
@@ -208,6 +217,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               recurrenceUnit: _recurrenceUnit,
               remainingOccurrences: _occurrencesLimit,
               targetUid: recipientUid == _myUid ? null : recipientUid,
+              targetUsername: targetUsername,
               snoozeEnabled: _snoozeEnabled,
               snoozeIntervalMinutes: _snoozeIntervalMinutes,
               maxSnoozeCount: _maxSnoozeCount,

@@ -40,46 +40,64 @@ class RemindBuddyApp extends StatelessWidget {
   
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeNotifier,
-      builder: (_, ThemeMode currentMode, __) {
-        return MaterialApp(
-          title: 'RemindBuddy',
-          debugShowCheckedModeBanner: false,
-          navigatorKey: navigatorKey,
-          themeMode: currentMode,
-          theme: ThemeData(
-            primarySwatch: Colors.blue,
-            useMaterial3: true,
-            brightness: Brightness.light,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.light,
-            ),
-          ),
-          darkTheme: ThemeData(
-            primarySwatch: Colors.blue,
-            useMaterial3: true,
-            brightness: Brightness.dark,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.dark,
-            ),
-          ),
-          home: StreamBuilder<User?>(
-            stream: FirebaseAuth.instance.authStateChanges(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return ValueListenableBuilder<ThemeMode>(
+            valueListenable: themeNotifier,
+            builder: (_, ThemeMode currentMode, __) {
+              return MaterialApp(
+                title: 'RemindBuddy',
+                debugShowCheckedModeBanner: false,
+                themeMode: currentMode,
+                theme: ThemeData(
+                  brightness: Brightness.light,
+                  useMaterial3: true,
+                ),
+                darkTheme: ThemeData(
+                  brightness: Brightness.dark,
+                  useMaterial3: true,
+                ),
+                home: const Scaffold(
                   body: Center(child: CircularProgressIndicator()),
-                );
-              }
-              if (snapshot.hasData && snapshot.data != null) {
-                return const MainScreen();
-              }
-              return const AuthScreen();
+                ),
+              );
             },
-          ),
+          );
+        }
+        
+        final bool isLoggedIn = snapshot.hasData && snapshot.data != null;
+        
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeNotifier,
+          builder: (_, ThemeMode currentMode, __) {
+            return MaterialApp(
+              title: 'RemindBuddy',
+              debugShowCheckedModeBanner: false,
+              navigatorKey: navigatorKey,
+              themeMode: currentMode,
+              theme: ThemeData(
+                primarySwatch: Colors.blue,
+                useMaterial3: true,
+                brightness: Brightness.light,
+                colorScheme: ColorScheme.fromSeed(
+                  seedColor: Colors.blue,
+                  brightness: Brightness.light,
+                ),
+              ),
+              darkTheme: ThemeData(
+                primarySwatch: Colors.blue,
+                useMaterial3: true,
+                brightness: Brightness.dark,
+                colorScheme: ColorScheme.fromSeed(
+                  seedColor: Colors.blue,
+                  brightness: Brightness.dark,
+                ),
+              ),
+              home: isLoggedIn ? const MainScreen() : const AuthScreen(),
+            );
+          },
         );
       },
     );

@@ -174,6 +174,41 @@ exports.processCalendarReminderTask = functions.tasks
 
             await reminderRef.update(updateData);
 
+            if (snoozeEnabled) {
+                try {
+                    const project = process.env.GCLOUD_PROJECT || admin.app().options.projectId;
+                    const location = 'us-central1';
+                    const queue = 'autoSnoozeReminderCheckTask';
+                    const queuePath = tasksClient.queuePath(project!, location, queue);
+                    const url = `https://${location}-${project}.cloudfunctions.net/autoSnoozeReminderCheckTask`;
+                    const serviceAccountEmail = `${project}@appspot.gserviceaccount.com`;
+
+                    const runTime = moment().tz('Asia/Kolkata').add(1, 'minute');
+
+                    const checkRequest: any = {
+                        parent: queuePath,
+                        task: {
+                            httpRequest: {
+                                httpMethod: 'POST',
+                                url,
+                                body: Buffer.from(JSON.stringify({ data: { uid, reminderId } })).toString('base64'),
+                                headers: { 'Content-Type': 'application/json' },
+                                oidcToken: {
+                                    serviceAccountEmail,
+                                },
+                            },
+                            scheduleTime: {
+                                seconds: runTime.unix(),
+                            },
+                        },
+                    };
+                    await tasksClient.createTask(checkRequest);
+                    console.log(`Enqueued autoSnooze check task for reminder ${reminderId} at ${runTime.format()}`);
+                } catch (err) {
+                    console.error("Failed to enqueue autoSnooze check task:", err);
+                }
+            }
+
             // Reschedule recurring reminder
             if (rData && rData.isRecurring === true) {
                 const remaining = rData.remainingOccurrences; // undefined, null, or a number
@@ -232,6 +267,56 @@ exports.processCalendarReminderTask = functions.tasks
         }
     });
 
+exports.autoSnoozeReminderCheckTask = functions.tasks
+    .taskQueue({
+        retryConfig: { maxAttempts: 3 },
+        rateLimits: { maxConcurrentDispatches: 10 },
+    })
+    .onDispatch(async (data) => {
+        const { uid, reminderId } = data;
+        try {
+            const reminderRef = db.collection("users").doc(uid).collection("calendar_reminders").doc(reminderId);
+            const reminderDoc = await reminderRef.get();
+            if (!reminderDoc.exists) return;
+
+            const rData = reminderDoc.data();
+            if (!rData || rData.status !== "notified") {
+                console.log(`Auto-snooze check: Reminder ${reminderId} is not in notified status (current status: ${rData?.status}). Skipping.`);
+                return;
+            }
+
+            console.log(`Auto-snooze check: User did not interact with reminder ${reminderId}. Auto-snoozing.`);
+
+            const currentSnooze = rData.currentSnoozeCount || 0;
+            const maxSnooze = rData.maxSnoozeCount || 3;
+            const interval = rData.snoozeIntervalMinutes || 15;
+
+            if (currentSnooze < maxSnooze) {
+                const nextTime = moment().tz('Asia/Kolkata').add(interval, 'minutes');
+                const dateStr = nextTime.format('YYYY-MM-DD');
+                const timeStr = nextTime.format('HH:mm');
+
+                await reminderRef.update({
+                    date: dateStr,
+                    time: timeStr,
+                    status: "pending",
+                    currentSnoozeCount: currentSnooze + 1
+                });
+                console.log(`Auto-snoozed reminder ${reminderId} to ${dateStr} ${timeStr}. (Snooze count: ${currentSnooze + 1}/${maxSnooze})`);
+            } else {
+                const expireAt = new Date();
+                expireAt.setDate(expireAt.getDate() + 30);
+                await reminderRef.update({
+                    status: "completed",
+                    expireAt: admin.firestore.Timestamp.fromDate(expireAt)
+                });
+                console.log(`Auto-snooze check: Max snooze reached for reminder ${reminderId}. Marked completed.`);
+            }
+        } catch (error) {
+            console.error(`Auto-snooze check failed for ${reminderId}:`, error);
+        }
+    });
+
 exports.onCalendarReminderDeleted = functions.firestore
     .document('users/{uid}/calendar_reminders/{reminderId}')
     .onDelete(async (snapshot, context) => {
@@ -252,6 +337,16 @@ exports.onCalendarReminderUpdated = functions.firestore
         const after = change.after.data();
         if (!before || !after) return;
 
+        const { uid, reminderId } = context.params;
+
+        if (after.scheduledForUid && after.scheduledForUid !== uid) {
+            console.log(`Reminder update for creator copy. Setting status to scheduled without enqueuing task.`);
+            if (after.status !== "scheduled") {
+                return change.after.ref.update({ status: "scheduled" });
+            }
+            return;
+        }
+
         const changed = 
             before.title !== after.title ||
             before.description !== after.description ||
@@ -263,7 +358,7 @@ exports.onCalendarReminderUpdated = functions.firestore
 
         if (!changed) return;
 
-        const { uid, reminderId } = context.params;
+
 
         if (before.taskId) {
             try {
@@ -339,6 +434,11 @@ exports.onCalendarReminderCreated = functions.firestore
         const data = snapshot.data();
         if (!data) return;
         const { uid, reminderId } = context.params;
+
+        if (data.scheduledForUid && data.scheduledForUid !== uid) {
+            console.log(`Reminder ${reminderId} is for another user (${data.scheduledForUid}). Setting status to scheduled without enqueuing task for creator.`);
+            return snapshot.ref.update({ status: "scheduled" });
+        }
         
         // Use Asia/Kolkata for all calculations
         const nowKolkata = moment().tz('Asia/Kolkata');

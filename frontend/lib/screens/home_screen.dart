@@ -234,6 +234,20 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           ],
+                          if (reminder.scheduledForUsername != null) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'for @${reminder.scheduledForUsername}',
+                                style: TextStyle(color: Colors.orange.shade800, fontSize: 10, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ],

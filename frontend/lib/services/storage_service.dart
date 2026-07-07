@@ -31,6 +31,7 @@ class StorageService {
     String recurrenceUnit = 'days',
     int? remainingOccurrences,
     String? targetUid,
+    String? targetUsername,
     bool snoozeEnabled = false,
     int snoozeIntervalMinutes = 15,
     int maxSnoozeCount = 3,
@@ -63,6 +64,28 @@ class StorageService {
       if (myUsername != null) {
         data['scheduledByUsername'] = myUsername;
       }
+      
+      // Save for destination user (User B)
+      final docRef = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(destinationUid)
+          .collection('calendar_reminders')
+          .add(data);
+
+      // Save a copy for creator (User A)
+      final Map<String, dynamic> myCopy = Map<String, dynamic>.from(data);
+      myCopy['scheduledForUid'] = destinationUid;
+      if (targetUsername != null) {
+        myCopy['scheduledForUsername'] = targetUsername;
+      }
+      
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('calendar_reminders')
+          .add(myCopy);
+
+      return docRef.id;
     }
 
     final docRef = await FirebaseFirestore.instance
@@ -600,19 +623,31 @@ class StorageService {
     return {'morning': m, 'afternoon': a, 'night': n, 'week_off': w, 'total_working': tw};
   }
 
-  Future<void> saveShiftRoster(String employeeName, String monthLabel, List<Map<String, dynamic>> shifts, {required String rosterMonth, required String rawJson}) async {
+  Future<void> saveShiftRoster(
+    String employeeName, 
+    String monthLabel, 
+    List<Map<String, dynamic>> shifts, {
+    required String rosterMonth, 
+    required String rawJson,
+    String? rosterImageUrl,
+  }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     
     final batch = FirebaseFirestore.instance.batch();
     final monthRef = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('shifts').doc(rosterMonth);
     
-    batch.set(monthRef, {
+    final Map<String, dynamic> docData = {
       'employee_name': employeeName,
       'month_label': monthLabel,
       'last_updated': FieldValue.serverTimestamp(),
       'raw_json': rawJson,
-    });
+    };
+    if (rosterImageUrl != null) {
+      docData['roster_image_url'] = rosterImageUrl;
+    }
+    
+    batch.set(monthRef, docData, SetOptions(merge: true));
 
     final dailyShiftsRef = monthRef.collection('daily_shifts');
     for (var s in shifts) {
