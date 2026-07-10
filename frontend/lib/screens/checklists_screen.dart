@@ -298,62 +298,79 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
 
           final currentUser = FirebaseAuth.instance.currentUser;
 
-          return GridView.builder(
-            padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 88),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 1.1,
-            ),
-            itemCount: orderedChecklists.length,
-            itemBuilder: (context, index) {
-              final list = orderedChecklists[index];
-              final colorValue = list['colorValue'] ?? list['color'] ?? Colors.blue.value;
-              final color = Color(colorValue);
-              final icon = _getIconFromCode(list['iconCode']);
-              final sharedWithList = list['sharedWith'] as List?;
-              final isShared = (sharedWithList != null && sharedWithList.isNotEmpty) || (list['ownerUid'] != null && list['ownerUid'] != currentUser?.uid);
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final double width = constraints.maxWidth;
+              int crossAxisCount = 2;
+              if (width > 1200) {
+                crossAxisCount = 5;
+              } else if (width > 900) {
+                crossAxisCount = 4;
+              } else if (width > 600) {
+                crossAxisCount = 3;
+              }
+              
+              final double cardWidth = (width - (crossAxisCount - 1) * 16 - 32) / crossAxisCount;
+              final double childAspectRatio = cardWidth / 180.0; // Fixed height around 180px like Notes
 
-              final card = _buildChecklistCard(
-                list: list,
-                color: color,
-                icon: icon,
-                isShared: isShared,
-                currentUser: currentUser,
-              );
+              return GridView.builder(
+                padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 88),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: childAspectRatio,
+                ),
+                itemCount: orderedChecklists.length,
+                itemBuilder: (context, index) {
+                  final list = orderedChecklists[index];
+                  final colorValue = list['colorValue'] ?? list['color'] ?? Colors.blue.value;
+                  final color = Color(colorValue);
+                  final icon = _getIconFromCode(list['iconCode']);
+                  final sharedWithList = list['sharedWith'] as List?;
+                  final isShared = (sharedWithList != null && sharedWithList.isNotEmpty) || (list['ownerUid'] != null && list['ownerUid'] != currentUser?.uid);
 
-              return DragTarget<int>(
-                onWillAcceptWithDetails: (details) => details.data != index,
-                onAcceptWithDetails: (details) {
-                  final fromIndex = details.data;
-                  setState(() {
-                    final currentIds = orderedChecklists.map((l) => (l['id'] as String?) ?? '').toList();
-                    final draggedId = currentIds.removeAt(fromIndex);
-                    currentIds.insert(index, draggedId);
-                    _customOrderIds = currentIds;
-                    _saveCustomOrder(_customOrderIds);
-                  });
-                },
-                builder: (context, candidateData, rejectedData) {
-                  return LongPressDraggable<int>(
-                    data: index,
-                    feedback: SizedBox(
-                      width: MediaQuery.of(context).size.width / 2.2,
-                      height: (MediaQuery.of(context).size.width / 2.2) / 1.1,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: Transform.scale(
-                          scale: 1.05,
+                  final card = _buildChecklistCard(
+                    list: list,
+                    color: color,
+                    icon: icon,
+                    isShared: isShared,
+                    currentUser: currentUser,
+                  );
+
+                  return DragTarget<int>(
+                    onWillAcceptWithDetails: (details) => details.data != index,
+                    onAcceptWithDetails: (details) {
+                      final fromIndex = details.data;
+                      setState(() {
+                        final currentIds = orderedChecklists.map((l) => (l['id'] as String?) ?? '').toList();
+                        final draggedId = currentIds.removeAt(fromIndex);
+                        currentIds.insert(index, draggedId);
+                        _customOrderIds = currentIds;
+                        _saveCustomOrder(_customOrderIds);
+                      });
+                    },
+                    builder: (context, candidateData, rejectedData) {
+                      return LongPressDraggable<int>(
+                        data: index,
+                        feedback: SizedBox(
+                          width: cardWidth,
+                          height: 180.0,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: Transform.scale(
+                              scale: 1.05,
+                              child: card,
+                            ),
+                          ),
+                        ),
+                        childWhenDragging: Opacity(
+                          opacity: 0.4,
                           child: card,
                         ),
-                      ),
-                    ),
-                    childWhenDragging: Opacity(
-                      opacity: 0.4,
-                      child: card,
-                    ),
-                    child: card,
+                        child: card,
+                      );
+                    },
                   );
                 },
               );

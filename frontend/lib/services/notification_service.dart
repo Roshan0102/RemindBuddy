@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -96,122 +97,127 @@ class NotificationService {
     );
 
     // 2. Setup Local Notifications (for Foreground support & Channels)
-    const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const DarwinInitializationSettings initializationSettingsDarwin = DarwinInitializationSettings();
-    const InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsDarwin,
-    );
+    if (!kIsWeb) {
+      const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const DarwinInitializationSettings initializationSettingsDarwin = DarwinInitializationSettings();
+      const InitializationSettings initializationSettings = InitializationSettings(
+        android: initializationSettingsAndroid,
+        iOS: initializationSettingsDarwin,
+      );
 
-    await _localNotifications.initialize(
-      initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) async {
-        final payload = response.payload;
-        final actionId = response.actionId;
-        
-        LogService.staticLog("Foreground Notification Tap: actionId=$actionId, payload=$payload");
-        
-        if (payload != null && actionId != null) {
-          if (payload.startsWith("CALENDAR_REMINDER|")) {
-            final parts = payload.split('|');
-            final reminderId = parts[1];
-            final uid = parts[2];
-            
-            final docRef = FirebaseFirestore.instance
-                .collection('users')
-                .doc(uid)
-                .collection('calendar_reminders')
-                .doc(reminderId);
-                
-            if (actionId == 'action_yes') {
-              final expireAt = DateTime.now().add(const Duration(days: 30));
-              await docRef.update({
-                'status': 'completed',
-                'notifiedAt': FieldValue.serverTimestamp(),
-                'expireAt': Timestamp.fromDate(expireAt),
-              });
-              LogService.staticLog("FG Handler: Marked reminder $reminderId as completed.");
-            } else if (actionId == 'action_no') {
-              final doc = await docRef.get();
-              if (doc.exists) {
-                final data = doc.data()!;
-                final currentSnooze = data['currentSnoozeCount'] ?? 0;
-                final maxSnooze = data['maxSnoozeCount'] ?? 3;
-                final interval = data['snoozeIntervalMinutes'] ?? 15;
-                
-                if (currentSnooze < maxSnooze) {
-                  final nextTime = DateTime.now().add(Duration(minutes: interval));
-                  final dateStr = "${nextTime.year}-${nextTime.month.toString().padLeft(2, '0')}-${nextTime.day.toString().padLeft(2, '0')}";
-                  final timeStr = "${nextTime.hour.toString().padLeft(2, '0')}:${nextTime.minute.toString().padLeft(2, '0')}";
+      await _localNotifications.initialize(
+        initializationSettings,
+        onDidReceiveNotificationResponse: (NotificationResponse response) async {
+          final payload = response.payload;
+          final actionId = response.actionId;
+          
+          LogService.staticLog("Foreground Notification Tap: actionId=$actionId, payload=$payload");
+          
+          if (payload != null && actionId != null) {
+            if (payload.startsWith("CALENDAR_REMINDER|")) {
+              final parts = payload.split('|');
+              final reminderId = parts[1];
+              final uid = parts[2];
+              
+              final docRef = FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(uid)
+                  .collection('calendar_reminders')
+                  .doc(reminderId);
                   
-                  await docRef.update({
-                    'date': dateStr,
-                    'time': timeStr,
-                    'status': 'pending',
-                    'currentSnoozeCount': currentSnooze + 1,
-                  });
-                  LogService.staticLog("FG Handler: Snoozed reminder $reminderId to $dateStr $timeStr.");
-                } else {
-                  final expireAt = DateTime.now().add(const Duration(days: 30));
-                  await docRef.update({
-                    'status': 'completed',
-                    'expireAt': Timestamp.fromDate(expireAt),
-                  });
-                  LogService.staticLog("FG Handler: Max snooze limit reached for $reminderId.");
+              if (actionId == 'action_yes') {
+                final expireAt = DateTime.now().add(const Duration(days: 30));
+                await docRef.update({
+                  'status': 'completed',
+                  'notifiedAt': FieldValue.serverTimestamp(),
+                  'expireAt': Timestamp.fromDate(expireAt),
+                });
+                LogService.staticLog("FG Handler: Marked reminder $reminderId as completed.");
+              } else if (actionId == 'action_no') {
+                final doc = await docRef.get();
+                if (doc.exists) {
+                  final data = doc.data()!;
+                  final currentSnooze = data['currentSnoozeCount'] ?? 0;
+                  final maxSnooze = data['maxSnoozeCount'] ?? 3;
+                  final interval = data['snoozeIntervalMinutes'] ?? 15;
+                  
+                  if (currentSnooze < maxSnooze) {
+                    final nextTime = DateTime.now().add(Duration(minutes: interval));
+                    final dateStr = "${nextTime.year}-${nextTime.month.toString().padLeft(2, '0')}-${nextTime.day.toString().padLeft(2, '0')}";
+                    final timeStr = "${nextTime.hour.toString().padLeft(2, '0')}:${nextTime.minute.toString().padLeft(2, '0')}";
+                    
+                    await docRef.update({
+                      'date': dateStr,
+                      'time': timeStr,
+                      'status': 'pending',
+                      'currentSnoozeCount': currentSnooze + 1,
+                    });
+                    LogService.staticLog("FG Handler: Snoozed reminder $reminderId to $dateStr $timeStr.");
+                  } else {
+                    final expireAt = DateTime.now().add(const Duration(days: 30));
+                    await docRef.update({
+                      'status': 'completed',
+                      'expireAt': Timestamp.fromDate(expireAt),
+                    });
+                    LogService.staticLog("FG Handler: Max snooze limit reached for $reminderId.");
+                  }
                 }
               }
             }
           }
-        }
-        
-        if (payload != null && payload != 'null') {
-          _selectNotificationStream.add(payload);
-        }
-      },
-      onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
-    );
+          
+          if (payload != null && payload != 'null') {
+            _selectNotificationStream.add(payload);
+          }
+        },
+        onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
+      );
 
-    // 3. Create Android Channels
-    const List<AndroidNotificationChannel> channels = [
-      AndroidNotificationChannel(
-        'gold_price_channel',
-        'Gold Price Alerts',
-        description: 'Notifications for gold price updates',
-        importance: Importance.max,
-        playSound: true,
-      ),
-      AndroidNotificationChannel(
-        'daily_reminder_channel',
-        'Daily Reminders',
-        description: 'Notifications for your personal daily reminders',
-        importance: Importance.max,
-        playSound: true,
-      ),
-      AndroidNotificationChannel(
-        'shift_reminder_channel',
-        'Shift Reminders',
-        description: 'Notifications for your work shift schedule',
-        importance: Importance.max,
-        playSound: true,
-      ),
-      AndroidNotificationChannel(
-        'calendar_reminder_channel',
-        'Calendar Reminders',
-        description: 'Notifications for tasks scheduled on specific dates',
-        importance: Importance.max,
-        playSound: true,
-      ),
-    ];
+      // 3. Create Android Channels
+      const List<AndroidNotificationChannel> channels = [
+        AndroidNotificationChannel(
+          'gold_price_channel',
+          'Gold Price Alerts',
+          description: 'Notifications for gold price updates',
+          importance: Importance.max,
+          playSound: true,
+        ),
+        AndroidNotificationChannel(
+          'daily_reminder_channel',
+          'Daily Reminders',
+          description: 'Notifications for your personal daily reminders',
+          importance: Importance.max,
+          playSound: true,
+        ),
+        AndroidNotificationChannel(
+          'shift_reminder_channel',
+          'Shift Reminders',
+          description: 'Notifications for your work shift schedule',
+          importance: Importance.max,
+          playSound: true,
+        ),
+        AndroidNotificationChannel(
+          'calendar_reminder_channel',
+          'Calendar Reminders',
+          description: 'Notifications for tasks scheduled on specific dates',
+          importance: Importance.max,
+          playSound: true,
+        ),
+      ];
 
-    final androidPlugin = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-    if (androidPlugin != null) {
-      for (var channel in channels) {
-        await androidPlugin.createNotificationChannel(channel);
+      final androidPlugin = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (androidPlugin != null) {
+        for (var channel in channels) {
+          await androidPlugin.createNotificationChannel(channel);
+        }
       }
     }
 
     // 4. Get Messaging Token and update Firestore
-    messaging.getToken().then((token) async {
+    // Note: VAPID key is strictly required on Web for push notifications to work.
+    // Replace the placeholder below with your actual Web Push certificate key pair from Firebase Console -> Project Settings -> Cloud Messaging -> Web configuration.
+    final String? vapidKey = kIsWeb ? 'YOUR_PUBLIC_VAPID_KEY_HERE' : null;
+    messaging.getToken(vapidKey: vapidKey).then((token) async {
       LogService.staticLog("FCM Token: $token");
       if (token != null) {
         final user = FirebaseAuth.instance.currentUser;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
@@ -18,6 +19,7 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
   String _todayStartTime = '';
   String _todayEndTime = '';
   List<Map<String, dynamic>> _sleepHistory = [];
+  List<String> _rawLogs = [];
   bool _isLoading = true;
 
   @override
@@ -29,11 +31,15 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
   Future<void> _loadSleepData() async {
     final prefs = await SharedPreferences.getInstance();
     bool granted = false;
-    try {
-      granted = await _channel.invokeMethod<bool>('checkPermission') ?? false;
-      await prefs.setBool('sleep_api_permission_granted', granted);
-    } catch (e) {
-      granted = prefs.getBool('sleep_api_permission_granted') ?? false;
+    if (kIsWeb) {
+      granted = true;
+    } else {
+      try {
+        granted = await _channel.invokeMethod<bool>('checkPermission') ?? false;
+        await prefs.setBool('sleep_api_permission_granted', granted);
+      } catch (e) {
+        granted = prefs.getBool('sleep_api_permission_granted') ?? false;
+      }
     }
     
     // Load local history list
@@ -52,6 +58,10 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
       }
     }
 
+    // Load raw logs
+    final rawLogs = prefs.getStringList('sleep_tracker_raw_logs') ?? [];
+    rawLogs.sort((a, b) => b.compareTo(a)); // Sort descending text (starts with date)
+
     // Sort history by date descending
     history.sort((a, b) => b['date'].compareTo(a['date']));
 
@@ -68,6 +78,7 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
     setState(() {
       _permissionGranted = granted;
       _sleepHistory = history;
+      _rawLogs = rawLogs;
       _todaySleepDuration = todayDur;
       _todayStartTime = todayStart;
       _todayEndTime = todayEnd;
@@ -177,18 +188,22 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
   Future<void> _clearAllData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('sleep_tracker_history');
+    await prefs.remove('sleep_tracker_raw_logs');
     await prefs.remove('sleep_api_permission_granted');
-    try {
-      await _channel.invokeMethod('removeSleepUpdates');
-    } catch (e) {
-      print("Error removing sleep updates: $e");
+    if (!kIsWeb) {
+      try {
+        await _channel.invokeMethod('removeSleepUpdates');
+      } catch (e) {
+        print("Error removing sleep updates: $e");
+      }
     }
     setState(() {
       _sleepHistory.clear();
+      _rawLogs.clear();
       _todaySleepDuration = 0.0;
       _todayStartTime = '';
       _todayEndTime = '';
-      _permissionGranted = false;
+      _permissionGranted = kIsWeb;
     });
   }
 
@@ -222,6 +237,39 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
     }
   }
 
+  void _showRawLogsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Raw Sleep API Logs', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: _rawLogs.isEmpty
+              ? const Center(child: Text('No raw events received yet.'))
+              : ListView.builder(
+                  itemCount: _rawLogs.length,
+                  itemBuilder: (context, index) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                      child: Text(
+                        _rawLogs[index],
+                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -242,6 +290,11 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
           style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bug_report_outlined),
+            onPressed: _showRawLogsDialog,
+            tooltip: 'View Raw API Logs',
+          ),
           if (_sleepHistory.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete_sweep_outlined),

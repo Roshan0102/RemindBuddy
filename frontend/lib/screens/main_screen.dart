@@ -962,296 +962,612 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-        appBar: AppBar(
-          title: Text(
-            'RemindBuddy',
-            style: GoogleFonts.pacifico( // Creative Font
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.primary,
+  Widget _buildDesktopSidebar(List<String> activeModules, int displayIndex) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sidebarBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final borderCol = isDark ? Colors.white10 : Colors.black12;
+    final activeColor = Theme.of(context).colorScheme.primary;
+    final activeBg = activeColor.withOpacity(isDark ? 0.15 : 0.08);
+
+    final active = activeModules;
+
+    return Container(
+      width: 260,
+      decoration: BoxDecoration(
+        color: sidebarBg,
+        border: Border(
+          right: BorderSide(color: borderCol, width: 1),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Sidebar Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Row(
+              children: [
+                Icon(Icons.alarm_add, color: activeColor, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'RemindBuddy',
+                    style: GoogleFonts.pacifico(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: activeColor,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ),
-          actions: [
-            if (_enabledModules.contains('voice_assistant'))
-              IconButton(
-                icon: const Icon(Icons.mic, color: Colors.redAccent),
-                onPressed: _openVoiceAssistant,
-                tooltip: 'Voice Assistant',
-              ),
-            IconButton(
-              icon: Icon(_isDarkMode ? Icons.light_mode : Icons.dark_mode),
-              onPressed: _toggleTheme,
-              tooltip: _isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+          const Divider(height: 1),
+          
+          // Navigation List
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text(
+                    'DASHBOARD',
+                    style: GoogleFonts.outfit(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+                
+                ...List.generate(active.length, (index) {
+                  final id = active[index];
+                  final registry = _moduleRegistry[id]!;
+                  final name = registry['name'] as String;
+                  final isSelected = displayIndex == index;
+                  final dest = registry['destination'] as NavigationDestination;
+                  
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    child: ListTile(
+                      dense: true,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      selected: isSelected,
+                      selectedTileColor: activeBg,
+                      selectedColor: activeColor,
+                      iconColor: Colors.grey,
+                      textColor: isDark ? Colors.white70 : Colors.black87,
+                      leading: _buildMenuIcon(id, (dest.icon as Icon).icon!, isSelected ? activeColor : Colors.grey),
+                      title: Text(
+                        name,
+                        style: GoogleFonts.outfit(
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          fontSize: 14,
+                        ),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _selectedIndex = index;
+                        });
+                      },
+                    ),
+                  );
+                }),
+                
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 8),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text(
+                    'OTHER UTILITIES',
+                    style: GoogleFonts.outfit(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+
+                if (_enabledModules.contains('daily_reminders'))
+                  _buildSidebarItem(
+                    icon: Icons.alarm_on,
+                    color: Colors.blue,
+                    title: 'Daily Reminders',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
+                      );
+                    },
+                  ),
+                if (_enabledModules.contains('events'))
+                  _buildSidebarItem(
+                    icon: Icons.event,
+                    color: Colors.green,
+                    title: 'Tech Events',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)),
+                      );
+                    },
+                  ),
+                if (_enabledModules.contains('walkin'))
+                  _buildSidebarItem(
+                    icon: Icons.directions_walk,
+                    color: Colors.lightBlue,
+                    title: 'Walk-In Drives',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)),
+                      );
+                    },
+                  ),
+                if (_enabledModules.contains('voice_assistant'))
+                  _buildSidebarItem(
+                    icon: Icons.mic,
+                    color: Colors.redAccent,
+                    title: 'Voice Assistant',
+                    onTap: _openVoiceAssistant,
+                  ),
+
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 8),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text(
+                    'SYSTEM',
+                    style: GoogleFonts.outfit(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+
+                _buildSidebarItem(
+                  icon: Icons.history_toggle_off,
+                  color: Colors.deepPurple,
+                  title: 'Notification History',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const NotificationHistoryScreen()),
+                    );
+                  },
+                ),
+                _buildSidebarItem(
+                  icon: Icons.settings,
+                  color: Colors.blueGrey,
+                  title: 'Settings',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                    ).then((result) {
+                      if (result == 'customize_bottom_bar') {
+                        _showCustomizeBottomBarDialog();
+                      }
+                      setState(() {});
+                      _loadPreferences();
+                    });
+                  },
+                ),
+                _buildSidebarItem(
+                  icon: Icons.admin_panel_settings,
+                  color: Colors.blueGrey,
+                  title: 'Admin Console',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AdminScreen()),
+                    ).then((_) {
+                      _loadPreferences();
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+          
+          const Divider(height: 1),
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: Icon(_isDarkMode ? Icons.light_mode : Icons.dark_mode),
+                      onPressed: _toggleTheme,
+                      tooltip: _isDarkMode ? 'Light Mode' : 'Dark Mode',
+                    ),
+                    if (FirebaseAuth.instance.currentUser != null)
+                      IconButton(
+                        icon: const Icon(Icons.logout, color: Colors.redAccent),
+                        onPressed: () async {
+                          await FirebaseAuth.instance.signOut();
+                          if (mounted) {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (context) => const AuthScreen()),
+                            );
+                          }
+                        },
+                        tooltip: 'Sign Out',
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'RemindBuddy v1.0.0',
+                  style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebarItem({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      child: ListTile(
+        dense: true,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        iconColor: Colors.grey,
+        textColor: isDark ? Colors.white70 : Colors.black87,
+        leading: Icon(icon, color: color, size: 20),
+        title: Text(
+          title,
+          style: GoogleFonts.outfit(
+            fontWeight: FontWeight.w500,
+            fontSize: 14,
+          ),
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isLargeScreen = screenWidth >= 768;
+
+    final activeModules = isLargeScreen
+        ? _moduleRegistry.keys.toList()
+        : _activeFeatures;
+
+    if (_selectedIndex >= activeModules.length) {
+      _selectedIndex = 0;
+    }
+    final int displayIndex = _selectedIndex;
+
+    final mainBody = IndexedStack(
+      index: displayIndex,
+      children: activeModules
+          .map((id) => _moduleRegistry[id]!['screen'] as Widget)
+          .toList(),
+    );
+
+    if (isLargeScreen) {
+      return Scaffold(
+        body: Row(
+          children: [
+            _buildDesktopSidebar(activeModules, displayIndex),
+            Expanded(
+              child: mainBody,
             ),
           ],
         ),
-        drawer: Drawer(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              DrawerHeader(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Theme.of(context).colorScheme.primary,
-                      Theme.of(context).colorScheme.primaryContainer,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    const Icon(Icons.alarm_add, size: 48, color: Colors.white),
-                    const SizedBox(height: 8),
-                    Text(
-                      'RemindBuddy',
-                      style: GoogleFonts.pacifico(
-                        fontSize: 24,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      'Your Daily Companion',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: 14,
-                      ),
-                    ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'RemindBuddy',
+          style: GoogleFonts.pacifico( // Creative Font
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+        actions: [
+          if (_enabledModules.contains('voice_assistant'))
+            IconButton(
+              icon: const Icon(Icons.mic, color: Colors.redAccent),
+              onPressed: _openVoiceAssistant,
+              tooltip: 'Voice Assistant',
+            ),
+          IconButton(
+            icon: Icon(_isDarkMode ? Icons.light_mode : Icons.dark_mode),
+            onPressed: _toggleTheme,
+            tooltip: _isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+          ),
+        ],
+      ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Theme.of(context).colorScheme.primary,
+                    Theme.of(context).colorScheme.primaryContainer,
                   ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
               ),
-              if (_enabledModules.contains('checklist')) ...[
-                ListTile(
-                  leading: const Icon(Icons.playlist_add_check_outlined, color: Colors.blue),
-                  title: const Text('Checklist'),
-                  subtitle: const Text('Checklists for travel/office'),
-                  selected: _isModuleSelected('checklist'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _selectTabOrPush('checklist');
-                  },
-                ),
-                const Divider(),
-              ],
-              if (_enabledModules.contains('reminders'))
-                ListTile(
-                  leading: const Icon(Icons.calendar_today, color: Colors.indigo),
-                  title: const Text('Reminders'),
-                  selected: _isModuleSelected('reminders'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _selectTabOrPush('reminders');
-                  },
-                ),
-              if (_enabledModules.contains('notes'))
-                ListTile(
-                  leading: const Icon(Icons.note_alt, color: Colors.teal),
-                  title: const Text('Notes'),
-                  selected: _isModuleSelected('notes'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _selectTabOrPush('notes');
-                  },
-                ),
-              if (_enabledModules.contains('gold'))
-                ListTile(
-                  leading: const Icon(Icons.monetization_on, color: Colors.amber),
-                  title: const Text('Gold Rates'),
-                  selected: _isModuleSelected('gold'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _selectTabOrPush('gold');
-                  },
-                ),
-              if (_enabledModules.contains('sleep_tracker'))
-                ListTile(
-                  leading: const Icon(Icons.bedtime, color: Colors.indigo),
-                  title: const Text('Sleep Tracker'),
-                  selected: _isModuleSelected('sleep_tracker'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _selectTabOrPush('sleep_tracker');
-                  },
-                ),
-              if (_enabledModules.contains('astro_calendar'))
-                ListTile(
-                  leading: const Icon(Icons.sunny, color: Colors.orange),
-                  title: const Text('Astro Calendar'),
-                  selected: _isModuleSelected('astro_calendar'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _selectTabOrPush('astro_calendar');
-                  },
-                ),
-              const Divider(),
-              if (_enabledModules.contains('daily_reminders'))
-                ListTile(
-                  leading: const Icon(Icons.alarm_on, color: Colors.blue),
-                  title: const Text('Daily Reminders'),
-                  subtitle: const Text('Recurring reminders'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
-                    );
-                  },
-                ),
-              if (_enabledModules.contains('shifts'))
-                ListTile(
-                  leading: const Icon(Icons.work_history, color: Colors.purple),
-                  title: const Text('My Shifts'),
-                  subtitle: const Text('Work schedule & reminders'),
-                  selected: _isModuleSelected('shifts'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _selectTabOrPush('shifts');
-                  },
-                ),
-              if (_enabledModules.contains('events'))
-                ListTile(
-                  leading: const Icon(Icons.event, color: Colors.green),
-                  title: const Text('Tech Events'),
-                  subtitle: const Text('Local tech events & meetups'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)),
-                    );
-                  },
-                ),
-              if (_enabledModules.contains('walkin'))
-                ListTile(
-                  leading: const Icon(Icons.directions_walk, color: Colors.lightBlue),
-                  title: const Text('Walk-In Drives'),
-                  subtitle: const Text('DevOps/Cloud/SRE interviews'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)),
-                    );
-                  },
-                ),
-              if (_enabledModules.contains('voice_assistant'))
-                ListTile(
-                  leading: const Icon(Icons.mic, color: Colors.redAccent),
-                  title: const Text('Voice Assistant'),
-                  subtitle: const Text('Ask Gemini anything'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openVoiceAssistant();
-                  },
-                ),
-              const Divider(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  const Icon(Icons.alarm_add, size: 48, color: Colors.white),
+                  const SizedBox(height: 8),
+                  Text(
+                    'RemindBuddy',
+                    style: GoogleFonts.pacifico(
+                      fontSize: 24,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    'Your Daily Companion',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_enabledModules.contains('checklist')) ...[
               ListTile(
-                leading: const Icon(Icons.history_toggle_off, color: Colors.deepPurple),
-                title: const Text('Notification History'),
-                subtitle: const Text('Last 24 hours of notifications'),
+                leading: const Icon(Icons.playlist_add_check_outlined, color: Colors.blue),
+                title: const Text('Checklist'),
+                subtitle: const Text('Checklists for travel/office'),
+                selected: _isModuleSelected('checklist'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectTabOrPush('checklist');
+                },
+              ),
+              const Divider(),
+            ],
+            if (_enabledModules.contains('reminders'))
+              ListTile(
+                leading: const Icon(Icons.calendar_today, color: Colors.indigo),
+                title: const Text('Reminders'),
+                selected: _isModuleSelected('reminders'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectTabOrPush('reminders');
+                },
+              ),
+            if (_enabledModules.contains('notes'))
+              ListTile(
+                leading: const Icon(Icons.note_alt, color: Colors.teal),
+                title: const Text('Notes'),
+                selected: _isModuleSelected('notes'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectTabOrPush('notes');
+                },
+              ),
+            if (_enabledModules.contains('gold'))
+              ListTile(
+                leading: const Icon(Icons.monetization_on, color: Colors.amber),
+                title: const Text('Gold Rates'),
+                selected: _isModuleSelected('gold'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectTabOrPush('gold');
+                },
+              ),
+            if (_enabledModules.contains('sleep_tracker'))
+              ListTile(
+                leading: const Icon(Icons.bedtime, color: Colors.indigo),
+                title: const Text('Sleep Tracker'),
+                selected: _isModuleSelected('sleep_tracker'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectTabOrPush('sleep_tracker');
+                },
+              ),
+            if (_enabledModules.contains('astro_calendar'))
+              ListTile(
+                leading: const Icon(Icons.sunny, color: Colors.orange),
+                title: const Text('Astro Calendar'),
+                selected: _isModuleSelected('astro_calendar'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectTabOrPush('astro_calendar');
+                },
+              ),
+            const Divider(),
+            if (_enabledModules.contains('daily_reminders'))
+              ListTile(
+                leading: const Icon(Icons.alarm_on, color: Colors.blue),
+                title: const Text('Daily Reminders'),
+                subtitle: const Text('Recurring reminders'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const NotificationHistoryScreen()),
+                    MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
                   );
                 },
               ),
+            if (_enabledModules.contains('shifts'))
               ListTile(
-                leading: const Icon(Icons.settings, color: Colors.blueGrey),
-                title: const Text('Settings'),
-                subtitle: const Text('Profile, Bottom Bar & Notifications'),
+                leading: const Icon(Icons.work_history, color: Colors.purple),
+                title: const Text('My Shifts'),
+                subtitle: const Text('Work schedule & reminders'),
+                selected: _isModuleSelected('shifts'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectTabOrPush('shifts');
+                },
+              ),
+            if (_enabledModules.contains('events'))
+              ListTile(
+                leading: const Icon(Icons.event, color: Colors.green),
+                title: const Text('Tech Events'),
+                subtitle: const Text('Local tech events & meetups'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
-                  ).then((result) {
-                    if (result == 'customize_bottom_bar') {
-                      _showCustomizeBottomBarDialog();
-                    }
-                    setState(() {});
-                    _loadPreferences();
-                  });
+                    MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)),
+                  );
                 },
               ),
-              const Divider(),
+            if (_enabledModules.contains('walkin'))
               ListTile(
-                leading: const Icon(Icons.admin_panel_settings, color: Colors.blueGrey),
-                title: const Text('Admin Console'),
-                subtitle: const Text('Configure features & permissions'),
+                leading: const Icon(Icons.directions_walk, color: Colors.lightBlue),
+                title: const Text('Walk-In Drives'),
+                subtitle: const Text('DevOps/Cloud/SRE interviews'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const AdminScreen()),
-                  ).then((_) {
-                    _loadPreferences();
-                  });
+                    MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)),
+                  );
                 },
               ),
-              const Divider(),
+            if (_enabledModules.contains('voice_assistant'))
               ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('About'),
-                onTap: () async {
+                leading: const Icon(Icons.mic, color: Colors.redAccent),
+                title: const Text('Voice Assistant'),
+                subtitle: const Text('Ask Gemini anything'),
+                onTap: () {
                   Navigator.pop(context);
-                  final PackageInfo packageInfo = await PackageInfo.fromPlatform();
-                  if (context.mounted) {
-                    showAboutDialog(
-                      context: context,
-                      applicationName: 'RemindBuddy',
-                      applicationVersion: '${packageInfo.version}+${packageInfo.buildNumber}',
-                      applicationIcon: const Icon(Icons.alarm_add, size: 48),
-                      children: [
-                        const Text('Your friendly daily reminder companion!'),
-                        const SizedBox(height: 8),
-                        const Text('Features:'),
-                        const Text('• Calendar-based reminders'),
-                        const Text('• Gold Price Tracker'),
-                        const Text('• My Shifts - Work schedule manager'),
-                        const Text('• Checklists for everything'),
-                        const Text('• Secure notes with PIN lock'),
-                      ],
-                    );
-                  }
+                  _openVoiceAssistant();
                 },
               ),
-            ],
-          ),
-        ),
-        body: _isLoading 
-          ? const Center(child: CircularProgressIndicator())
-          : IndexedStack(
-              index: _selectedIndex < _activeFeatures.length ? _selectedIndex : 0,
-              children: _activeFeatures
-                  .map((id) => _moduleRegistry[id]!['screen'] as Widget)
-                  .toList(),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.history_toggle_off, color: Colors.deepPurple),
+              title: const Text('Notification History'),
+              subtitle: const Text('Last 24 hours of notifications'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const NotificationHistoryScreen()),
+                );
+              },
             ),
-        bottomNavigationBar: _isLoading 
-          ? null 
-          : NavigationBar(
-              selectedIndex: _navBarSelectedIndex,
-              onDestinationSelected: (int index) {
-                final active = _activeFeatures;
-                final mIdx = _menuIndex;
-                if (index == mIdx) {
-                  _showAppMenuBottomSheet();
-                } else {
-                  int targetIndex = index < mIdx ? index : index - 1;
-                  if (targetIndex >= 0 && targetIndex < active.length) {
-                    _onItemTapped(targetIndex);
+            ListTile(
+              leading: const Icon(Icons.settings, color: Colors.blueGrey),
+              title: const Text('Settings'),
+              subtitle: const Text('Profile, Bottom Bar & Notifications'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                ).then((result) {
+                  if (result == 'customize_bottom_bar') {
+                    _showCustomizeBottomBarDialog();
                   }
+                  setState(() {});
+                  _loadPreferences();
+                });
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.admin_panel_settings, color: Colors.blueGrey),
+              title: const Text('Admin Console'),
+              subtitle: const Text('Configure features & permissions'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AdminScreen()),
+                ).then((_) {
+                  _loadPreferences();
+                });
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('About'),
+              onTap: () async {
+                Navigator.pop(context);
+                final PackageInfo packageInfo = await PackageInfo.fromPlatform();
+                if (context.mounted) {
+                  showAboutDialog(
+                    context: context,
+                    applicationName: 'RemindBuddy',
+                    applicationVersion: '${packageInfo.version}+${packageInfo.buildNumber}',
+                    applicationIcon: const Icon(Icons.alarm_add, size: 48),
+                    children: [
+                      const Text('Your friendly daily reminder companion!'),
+                      const SizedBox(height: 8),
+                      const Text('Features:'),
+                      const Text('• Calendar-based reminders'),
+                      const Text('• Gold Price Tracker'),
+                      const Text('• My Shifts - Work schedule manager'),
+                      const Text('• Checklists for everything'),
+                      const Text('• Secure notes with PIN lock'),
+                    ],
+                  );
                 }
               },
-              destinations: _navBarDestinations,
             ),
+          ],
+        ),
+      ),
+      body: mainBody,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _navBarSelectedIndex,
+        onDestinationSelected: (int index) {
+          final active = _activeFeatures;
+          final mIdx = _menuIndex;
+          if (index == mIdx) {
+            _showAppMenuBottomSheet();
+          } else {
+            int targetIndex = index < mIdx ? index : index - 1;
+            if (targetIndex >= 0 && targetIndex < active.length) {
+              _onItemTapped(targetIndex);
+            }
+          }
+        },
+        destinations: _navBarDestinations,
+      ),
     );
   }
 

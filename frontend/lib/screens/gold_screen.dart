@@ -348,44 +348,92 @@ class _GoldScreenState extends State<GoldScreen> {
 
   Widget _buildHistoryTable(List<GoldPrice> history) {
     return Card(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columnSpacing: 20,
-          columns: const [
-            DataColumn(label: Text('Date & Time')),
-            DataColumn(label: Text('Price (22K)')),
-            DataColumn(label: Text('Change')),
-            DataColumn(label: Text('Source')),
-          ],
-          rows: history.map((price) {
-            final change = price.priceChange;
-            return DataRow(cells: [
-              DataCell(Text(_formatDate(price.timestamp))),
-              DataCell(Text('₹ ${price.price.toStringAsFixed(0)}')),
-              DataCell(
-                change != 0
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                           Icon(
-                             change > 0 ? Icons.arrow_upward : Icons.arrow_downward,
-                             size: 16,
-                             color: change > 0 ? Colors.green : Colors.red,
-                           ),
-                           Text(
-                             '₹${change.abs().toStringAsFixed(0)}',
-                             style: TextStyle(
-                               color: change > 0 ? Colors.green : Colors.red,
-                             ),
-                           ),
-                        ],
-                      )
-                    : const Text('-'),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.withOpacity(0.15)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Table(
+          columnWidths: const {
+            0: FlexColumnWidth(2.2),
+            1: FlexColumnWidth(2.0),
+            2: FlexColumnWidth(2.0),
+            3: FlexColumnWidth(1.8),
+          },
+          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+          children: [
+            TableRow(
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
               ),
-              DataCell(Text(price.source, style: const TextStyle(fontSize: 10))),
-            ]);
-          }).toList(),
+              children: const [
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12.0),
+                  child: Text('Date & Time', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12.0),
+                  child: Text('Price (22K)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12.0),
+                  child: Text('Change', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12.0),
+                  child: Text('Source', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
+                ),
+              ],
+            ),
+            ...history.map((price) {
+              final change = price.priceChange;
+              return TableRow(
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.1))),
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    child: Text(_formatDate(price.timestamp), style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    child: Text('₹ ${price.price.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    child: change != 0
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                change > 0 ? Icons.arrow_upward : Icons.arrow_downward,
+                                size: 14,
+                                color: change > 0 ? Colors.green : Colors.red,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '₹${change.abs().toStringAsFixed(0)}',
+                                style: TextStyle(
+                                  color: change > 0 ? Colors.green : Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Text('-', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    child: Text(price.source, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ),
+                ],
+              );
+            }).toList(),
+          ],
         ),
       ),
     );

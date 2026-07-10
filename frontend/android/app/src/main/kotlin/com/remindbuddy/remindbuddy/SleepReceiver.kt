@@ -18,13 +18,29 @@ class SleepReceiver : BroadcastReceiver() {
             val historySet = sharedPreferences.getStringSet("flutter.sleep_tracker_history", null) ?: emptySet()
             val newHistorySet = HashSet(historySet)
 
+            val rawLogSet = sharedPreferences.getStringSet("flutter.sleep_tracker_raw_logs", null) ?: emptySet()
+            val newRawLogSet = HashSet(rawLogSet)
+
             val dfDate = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val dfTime = SimpleDateFormat("h:mm a", Locale.US)
+            val dfFull = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+            val nowStr = dfFull.format(Date())
 
             for (event in events) {
+                val statusStr = when(event.status) {
+                    SleepSegmentEvent.STATUS_SUCCESSFUL -> "SUCCESSFUL"
+                    SleepSegmentEvent.STATUS_MISSING_DATA -> "MISSING_DATA"
+                    SleepSegmentEvent.STATUS_NOT_DETECTED -> "NOT_DETECTED"
+                    else -> "UNKNOWN(${event.status})"
+                }
+                
+                val startMillis = event.startTimeMillis
+                val endMillis = event.endTimeMillis
+                
+                val rawLogEntry = "[$nowStr] Status: $statusStr, Start: ${dfTime.format(Date(startMillis))}, End: ${dfTime.format(Date(endMillis))}"
+                newRawLogSet.add(rawLogEntry)
+
                 if (event.status == SleepSegmentEvent.STATUS_SUCCESSFUL) {
-                    val startMillis = event.startTimeMillis
-                    val endMillis = event.endTimeMillis
                     val durationMs = endMillis - startMillis
                     val durationHours = durationMs.toDouble() / 3600000.0
 
@@ -40,6 +56,7 @@ class SleepReceiver : BroadcastReceiver() {
 
             sharedPreferences.edit()
                 .putStringSet("flutter.sleep_tracker_history", newHistorySet)
+                .putStringSet("flutter.sleep_tracker_raw_logs", newRawLogSet)
                 .apply()
         }
     }

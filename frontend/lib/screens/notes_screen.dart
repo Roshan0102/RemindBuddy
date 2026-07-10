@@ -418,65 +418,82 @@ class _NotesScreenState extends State<NotesScreen> {
 
           final currentUser = FirebaseAuth.instance.currentUser;
 
-          return GridView.builder(
-            padding: const EdgeInsets.only(left: 12, right: 12, top: 12, bottom: 88),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 0.85,
-            ),
-            itemCount: orderedNotes.length,
-            itemBuilder: (context, index) {
-              final note = orderedNotes[index];
-              final Color noteColor = _getNoteColor(context, note.id ?? '', note.title + note.content);
-              final isShared = note.sharedWith.isNotEmpty || (note.ownerUid != null && note.ownerUid != currentUser?.uid);
-              final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
-              final titleColor = isDarkTheme ? Colors.white.withValues(alpha: 0.9) : Colors.black87;
-              final subtitleColor = isDarkTheme ? Colors.white.withValues(alpha: 0.7) : Colors.black54;
-              final hintIconColor = isDarkTheme ? Colors.white.withValues(alpha: 0.5) : Colors.black38;
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final double width = constraints.maxWidth;
+              int crossAxisCount = 2;
+              if (width > 1200) {
+                crossAxisCount = 5;
+              } else if (width > 900) {
+                crossAxisCount = 4;
+              } else if (width > 600) {
+                crossAxisCount = 3;
+              }
               
-              final card = _buildNoteCard(
-                note: note,
-                currentUser: currentUser,
-                noteColor: noteColor,
-                isShared: isShared,
-                titleColor: titleColor,
-                subtitleColor: subtitleColor,
-                hintIconColor: hintIconColor,
-              );
+              final double cardWidth = (width - (crossAxisCount - 1) * 10 - 24) / crossAxisCount;
+              final double childAspectRatio = cardWidth / 180.0; // Keeping card height around 180px
 
-              return DragTarget<int>(
-                onWillAcceptWithDetails: (details) => details.data != index,
-                onAcceptWithDetails: (details) {
-                  final fromIndex = details.data;
-                  setState(() {
-                    final currentIds = orderedNotes.map((n) => n.id ?? '').toList();
-                    final draggedId = currentIds.removeAt(fromIndex);
-                    currentIds.insert(index, draggedId);
-                    _customOrderIds = currentIds;
-                    _saveCustomOrder(_customOrderIds);
-                  });
-                },
-                builder: (context, candidateData, rejectedData) {
-                  return LongPressDraggable<int>(
-                    data: index,
-                    feedback: SizedBox(
-                      width: MediaQuery.of(context).size.width / 2.2,
-                      height: (MediaQuery.of(context).size.width / 2.2) / 0.85,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: Transform.scale(
-                          scale: 1.05,
+              return GridView.builder(
+                padding: const EdgeInsets.only(left: 12, right: 12, top: 12, bottom: 88),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: childAspectRatio,
+                ),
+                itemCount: orderedNotes.length,
+                itemBuilder: (context, index) {
+                  final note = orderedNotes[index];
+                  final Color noteColor = _getNoteColor(context, note.id ?? '', note.title + note.content);
+                  final isShared = note.sharedWith.isNotEmpty || (note.ownerUid != null && note.ownerUid != currentUser?.uid);
+                  final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+                  final titleColor = isDarkTheme ? Colors.white.withValues(alpha: 0.9) : Colors.black87;
+                  final subtitleColor = isDarkTheme ? Colors.white.withValues(alpha: 0.7) : Colors.black54;
+                  final hintIconColor = isDarkTheme ? Colors.white.withValues(alpha: 0.5) : Colors.black38;
+                  
+                  final card = _buildNoteCard(
+                    note: note,
+                    currentUser: currentUser,
+                    noteColor: noteColor,
+                    isShared: isShared,
+                    titleColor: titleColor,
+                    subtitleColor: subtitleColor,
+                    hintIconColor: hintIconColor,
+                  );
+
+                  return DragTarget<int>(
+                    onWillAcceptWithDetails: (details) => details.data != index,
+                    onAcceptWithDetails: (details) {
+                      final fromIndex = details.data;
+                      setState(() {
+                        final currentIds = orderedNotes.map((n) => n.id ?? '').toList();
+                        final draggedId = currentIds.removeAt(fromIndex);
+                        currentIds.insert(index, draggedId);
+                        _customOrderIds = currentIds;
+                        _saveCustomOrder(_customOrderIds);
+                      });
+                    },
+                    builder: (context, candidateData, rejectedData) {
+                      return LongPressDraggable<int>(
+                        data: index,
+                        feedback: SizedBox(
+                          width: cardWidth,
+                          height: 180.0,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: Transform.scale(
+                              scale: 1.05,
+                              child: card,
+                            ),
+                          ),
+                        ),
+                        childWhenDragging: Opacity(
+                          opacity: 0.4,
                           child: card,
                         ),
-                      ),
-                    ),
-                    childWhenDragging: Opacity(
-                      opacity: 0.4,
-                      child: card,
-                    ),
-                    child: card,
+                        child: card,
+                      );
+                    },
                   );
                 },
               );

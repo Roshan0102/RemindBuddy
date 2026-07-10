@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -6,6 +7,7 @@ class BatteryOptimizationService {
 
   /// Check if battery optimization is enabled for the app
   static Future<bool> isBatteryOptimizationEnabled() async {
+    if (kIsWeb) return false;
     try {
       final bool result = await platform.invokeMethod('isBatteryOptimizationEnabled');
       return result;
@@ -17,6 +19,7 @@ class BatteryOptimizationService {
 
   /// Check if exact alarm permission is granted (Android 12+)
   static Future<bool> isExactAlarmPermissionGranted() async {
+    if (kIsWeb) return true;
     try {
       final bool result = await platform.invokeMethod('isExactAlarmPermissionGranted');
       return result;
@@ -28,6 +31,7 @@ class BatteryOptimizationService {
 
   /// Request to disable battery optimization
   static Future<void> requestDisableBatteryOptimization() async {
+    if (kIsWeb) return;
     try {
       await platform.invokeMethod('requestDisableBatteryOptimization');
     } on PlatformException catch (e) {
@@ -37,6 +41,7 @@ class BatteryOptimizationService {
 
   /// Request exact alarm permission
   static Future<void> requestExactAlarmPermission() async {
+    if (kIsWeb) return;
     try {
       await platform.invokeMethod('requestExactAlarmPermission');
     } on PlatformException catch (e) {
@@ -46,6 +51,7 @@ class BatteryOptimizationService {
 
   /// Open Autostart settings directly (Vivo/iQOO support)
   static Future<void> openAutostartSettings() async {
+    if (kIsWeb) return;
     try {
       await platform.invokeMethod('openAutostartSettings');
     } on PlatformException catch (e) {
@@ -55,6 +61,7 @@ class BatteryOptimizationService {
 
   /// Open Notification settings directly
   static Future<void> openNotificationSettings() async {
+    if (kIsWeb) return;
     try {
       await platform.invokeMethod('openNotificationSettings');
     } on PlatformException catch (e) {

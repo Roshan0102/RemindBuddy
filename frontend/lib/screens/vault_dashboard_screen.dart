@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/family_member.dart';
 import '../models/secure_document.dart';
 import '../services/vault_service.dart';
@@ -578,7 +581,6 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
 
   void _shareFileDirectly(Uint8List fileBytes, String storagePath, bool isPdf) async {
     try {
-      final tempDir = await getTemporaryDirectory();
       final name = storagePath.split('/').last;
       var cleanName = name.replaceAll('_-_', ' - ').replaceAll('_', ' ');
       final extIndex = cleanName.lastIndexOf('.');
@@ -588,7 +590,16 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
         nameWithoutExt = nameWithoutExt.replaceAll(RegExp(r'\s\d+\s\d+$'), '');
         cleanName = '$nameWithoutExt$ext';
       }
+
+      if (kIsWeb) {
+        final mime = isPdf ? 'application/pdf' : 'image/jpeg';
+        final base64Data = base64Encode(fileBytes);
+        final url = 'data:$mime;base64,$base64Data';
+        await launchUrl(Uri.parse(url));
+        return;
+      }
       
+      final tempDir = await getTemporaryDirectory();
       final tempPath = '${tempDir.path}/$cleanName';
       final file = File(tempPath);
       await file.writeAsBytes(fileBytes);
