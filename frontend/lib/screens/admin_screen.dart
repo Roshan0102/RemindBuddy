@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../services/encryption_service.dart';
+import '../services/update_service.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -19,8 +20,11 @@ class _AdminScreenState extends State<AdminScreen> {
   final _adminUserUsernameController = TextEditingController();
   final _adminUserPasswordController = TextEditingController();
   final _latestStableVersionController = TextEditingController();
-  final _latestBetaVersionController = TextEditingController();
-  final _betaTesterUidsController = TextEditingController();
+  
+  List<Map<String, String>> _allUsers = [];
+  List<String> _selectedBetaTesterUids = [];
+  String _latestGitHubBetaVersion = '';
+  bool _isFetchingGithub = false;
   
   bool _isAuthenticated = false;
   bool _isLoading = true;
@@ -60,8 +64,6 @@ class _AdminScreenState extends State<AdminScreen> {
     _adminUserUsernameController.dispose();
     _adminUserPasswordController.dispose();
     _latestStableVersionController.dispose();
-    _latestBetaVersionController.dispose();
-    _betaTesterUidsController.dispose();
     super.dispose();
   }
 
@@ -152,19 +154,54 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Future<void> _fetchAppUpdatesConfig() async {
+    setState(() {
+      _isLoading = true;
+      _isFetchingGithub = true;
+    });
+
     try {
+      // 1. Fetch all users from usernames collection
+      final usernamesSnap = await FirebaseFirestore.instance.collection('usernames').get();
+      final List<Map<String, String>> usersList = [];
+      for (var doc in usernamesSnap.docs) {
+        final data = doc.data();
+        final username = doc.id;
+        final uid = data['uid'] as String? ?? '';
+        if (uid.isNotEmpty) {
+          usersList.add({'username': username, 'uid': uid});
+        }
+      }
+
+      // 2. Fetch latest tag from GitHub (the automatic beta version)
+      final latestGitTag = await UpdateService.fetchLatestGitHubTag();
+
+      // 3. Fetch app_updates config from Firestore
       final doc = await FirebaseFirestore.instance
           .collection('admin_creds')
           .doc('app_updates')
           .get();
+
+      String stableVersion = '';
+      List<dynamic> uids = [];
+
       if (doc.exists && doc.data() != null) {
-        _latestStableVersionController.text = doc.data()!['latest_stable_version'] ?? '';
-        _latestBetaVersionController.text = doc.data()!['latest_beta_version'] ?? '';
-        
-        List<dynamic> uids = doc.data()!['beta_tester_uids'] ?? [];
-        _betaTesterUidsController.text = uids.join(',');
+        stableVersion = doc.data()!['latest_stable_version'] ?? '';
+        uids = doc.data()!['beta_tester_uids'] ?? [];
       }
+
+      setState(() {
+        _allUsers = usersList;
+        _selectedBetaTesterUids = List<String>.from(uids);
+        _latestGitHubBetaVersion = latestGitTag;
+        _latestStableVersionController.text = stableVersion;
+        _isLoading = false;
+        _isFetchingGithub = false;
+      });
     } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _isFetchingGithub = false;
+      });
       print('Error fetching App Updates config: $e');
     }
   }
@@ -206,9 +243,15 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Future<void> _updateAppUpdatesConfig() async {
     setState(() => _isLoading = true);
-    
-    final betaUidsStr = _betaTesterUidsController.text;
-    final betaUidsList = betaUidsStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+
+    // Map selected UIDs back to usernames for storage
+    final List<String> betaUsernames = [];
+    for (var uid in _selectedBetaTesterUids) {
+      final userMap = _allUsers.firstWhere((u) => u['uid'] == uid, orElse: () => {});
+      if (userMap.isNotEmpty && userMap['username'] != null) {
+        betaUsernames.add(userMap['username']!);
+      }
+    }
 
     try {
       await FirebaseFirestore.instance
@@ -216,8 +259,9 @@ class _AdminScreenState extends State<AdminScreen> {
           .doc('app_updates')
           .set({
         'latest_stable_version': _latestStableVersionController.text.trim(),
-        'latest_beta_version': _latestBetaVersionController.text.trim(),
-        'beta_tester_uids': betaUidsList,
+        'latest_beta_version': _latestGitHubBetaVersion.isNotEmpty ? _latestGitHubBetaVersion : '1.6.1', // fallback
+        'beta_tester_uids': _selectedBetaTesterUids,
+        'beta_tester_usernames': betaUsernames,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -643,6 +687,62 @@ class _AdminScreenState extends State<AdminScreen> {
                       style: TextStyle(color: Colors.grey, fontSize: 13),
                     ),
                     const SizedBox(height: 16),
+                    
+                    // Beta version info (auto-fetched from GitHub)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.black12,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.bug_report, color: Colors.orange, size: 24),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Latest Beta Version (GitHub)',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                                const SizedBox(height: 2),
+                                _isFetchingGithub
+                                    ? const SizedBox(
+                                        height: 16,
+                                        width: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : Text(
+                                        _latestGitHubBetaVersion.isNotEmpty
+                                            ? _latestGitHubBetaVersion
+                                            : 'Not found',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                              ],
+                            ),
+                          ),
+                          if (_latestGitHubBetaVersion.isNotEmpty)
+                            TextButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _latestStableVersionController.text = _latestGitHubBetaVersion;
+                                });
+                              },
+                              icon: const Icon(Icons.copy, size: 16),
+                              label: const Text('Promote to Stable'),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Stable version input
                     TextField(
                       controller: _latestStableVersionController,
                       decoration: const InputDecoration(
@@ -651,24 +751,58 @@ class _AdminScreenState extends State<AdminScreen> {
                         prefixIcon: Icon(Icons.verified),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _latestBetaVersionController,
-                      decoration: const InputDecoration(
-                        labelText: 'Latest Beta Version (e.g. 1.6.1)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.bug_report),
-                      ),
+                    const SizedBox(height: 20),
+
+                    // Checkbox list of Beta Testers
+                    const Text(
+                      '👥 Select Beta Testers',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _betaTesterUidsController,
-                      decoration: const InputDecoration(
-                        labelText: 'Beta Tester UIDs (comma separated)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.people),
-                      ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Check users who should receive beta updates automatically.',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
                     ),
+                    const SizedBox(height: 8),
+                    _allUsers.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8.0),
+                            child: Text(
+                              'No registered users found.',
+                              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                            ),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _allUsers.length,
+                            itemBuilder: (context, idx) {
+                              final user = _allUsers[idx];
+                              final username = user['username']!;
+                              final uid = user['uid']!;
+                              final isChecked = _selectedBetaTesterUids.contains(uid);
+                              return CheckboxListTile(
+                                title: Text(username),
+                                subtitle: Text(
+                                  uid,
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                ),
+                                value: isChecked,
+                                dense: true,
+                                controlAffinity: ListTileControlAffinity.leading,
+                                contentPadding: EdgeInsets.zero,
+                                onChanged: (val) {
+                                  setState(() {
+                                    if (val == true) {
+                                      _selectedBetaTesterUids.add(uid);
+                                    } else {
+                                      _selectedBetaTesterUids.remove(uid);
+                                    }
+                                  });
+                                },
+                              );
+                            },
+                          ),
                     const SizedBox(height: 16),
                     ElevatedButton.icon(
                       onPressed: _updateAppUpdatesConfig,

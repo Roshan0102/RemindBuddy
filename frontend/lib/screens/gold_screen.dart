@@ -440,30 +440,36 @@ class _GoldScreenState extends State<GoldScreen> {
   }
 
   Widget _buildChartFilterButtons() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: ['7D', '1M', '3M', '6M', '1Y', 'Max'].map((range) {
-        final isSelected = _selectedChartRange == range;
-        return InkWell(
-          onTap: () => setState(() => _selectedChartRange = range),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: isSelected ? Colors.amber : Colors.transparent,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.amber),
-            ),
-            child: Text(
-              range,
-              style: TextStyle(
-                color: isSelected ? Colors.black : Colors.amber,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: ['7D', 'This Month', '1M', '3M', '6M', '1Y', 'Max'].map((range) {
+          final isSelected = _selectedChartRange == range;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: InkWell(
+              onTap: () => setState(() => _selectedChartRange = range),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.amber : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.amber),
+                ),
+                child: Text(
+                  range,
+                  style: TextStyle(
+                    color: isSelected ? Colors.black : Colors.amber,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
               ),
             ),
-          ),
-        );
-      }).toList(),
+          );
+        }).toList(),
+      ),
     );
   }
 
@@ -476,6 +482,15 @@ class _GoldScreenState extends State<GoldScreen> {
     
     if (_selectedChartRange == 'Max') {
       filteredHistory = history;
+    } else if (_selectedChartRange == 'This Month') {
+      final startOfMonth = DateTime(now.year, now.month, 1);
+      filteredHistory = history.where((p) {
+        try {
+          return DateTime.parse(p.timestamp).isAfter(startOfMonth);
+        } catch (_) {
+          return false;
+        }
+      }).toList();
     } else {
       Duration duration;
       switch (_selectedChartRange) {

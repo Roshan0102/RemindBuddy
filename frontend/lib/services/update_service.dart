@@ -25,23 +25,31 @@ class UpdateService {
       if (configDoc.exists && configDoc.data() != null) {
         final data = configDoc.data()!;
         final stableVersion = data['latest_stable_version'] as String? ?? currentVersion;
-        final betaVersion = data['latest_beta_version'] as String? ?? stableVersion;
-        
-        List<dynamic> betaTesters = data['beta_tester_usernames'] ?? [];
+        List<dynamic> betaUids = data['beta_tester_uids'] ?? [];
         
         // Find if current user is a beta tester
         final user = FirebaseAuth.instance.currentUser;
         bool isBetaTester = false;
-        if (user != null && user.email != null) {
-          // Assuming usernames might match email prefixes or we can just check if their UID is in the list
-          // But to be safe we check email or uid. Let's check uid.
-          List<dynamic> betaUids = data['beta_tester_uids'] ?? [];
+        if (user != null) {
           if (betaUids.contains(user.uid)) {
             isBetaTester = true;
           }
         }
         
-        targetVersion = isBetaTester ? betaVersion : stableVersion;
+        if (isBetaTester) {
+          // Beta testers automatically fetch the latest release from GitHub
+          final latestGitTag = await fetchLatestGitHubTag();
+          targetVersion = latestGitTag.isNotEmpty ? latestGitTag : (data['latest_beta_version'] as String? ?? currentVersion);
+          
+          // Also automatically keep Firestore updated with this beta version so Admin Screen can read it
+          if (latestGitTag.isNotEmpty && latestGitTag != data['latest_beta_version']) {
+            FirebaseFirestore.instance.collection('admin_creds').doc('app_updates').update({
+              'latest_beta_version': latestGitTag,
+            }).catchError((_) {});
+          }
+        } else {
+          targetVersion = stableVersion;
+        }
       }
 
       // 3. Compare versions
@@ -82,6 +90,21 @@ class UpdateService {
     }
   }
 
+  /// Fetches the latest tag name from GitHub releases
+  static Future<String> fetchLatestGitHubTag() async {
+    try {
+      final response = await http.get(Uri.parse('https://api.github.com/repos/Roshan0102/RemindBuddy/releases/latest'));
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        final String tag = data['tag_name'] ?? '';
+        return tag.replaceAll('v', '');
+      }
+    } catch (e) {
+      debugPrint('Error fetching latest GitHub release: $e');
+    }
+    return '';
+  }
+
   /// Helper to compare semantic versions: returns true if latestVersion > currentVersion
   static bool _isNewerVersion(String currentVersion, String latestVersion) {
     final cleanLatest = latestVersion.replaceAll(RegExp(r'[^\d.]'), '');
@@ -112,11 +135,11 @@ class UpdateService {
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.system_update_alt, color: Colors.deepPurple, size: 28),
-              SizedBox(width: 10),
-              Text('Update Available!'),
+              const Icon(Icons.system_update_alt, color: Colors.deepPurple, size: 28),
+              const SizedBox(width: 10),
+              Text('Update to v$newVersion Available!'),
             ],
           ),
           content: Column(
@@ -124,7 +147,7 @@ class UpdateService {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'A new version of RemindBuddy (v$newVersion) is available.',
+                'A new version (v$newVersion) of RemindBuddy is ready to install.',
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
