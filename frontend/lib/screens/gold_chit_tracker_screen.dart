@@ -141,9 +141,9 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
   Future<void> _setDefaultPlan(Map<String, dynamic> plan) async {
     if (_uid == null) return;
 
-    await _db.collection('users').doc(_uid).update({
+    await _db.collection('users').doc(_uid).set({
       'defaultGoldChitPlanId': plan['id'],
-    });
+    }, SetOptions(merge: true));
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -353,9 +353,9 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
 
     // If it's the user's first plan, set as their default
     if (_defaultPlanId == null) {
-      await _db.collection('users').doc(_uid).update({
+      await _db.collection('users').doc(_uid).set({
         'defaultGoldChitPlanId': planRef.id,
-      });
+      }, SetOptions(merge: true));
     }
 
     // Populate installments subcollection
