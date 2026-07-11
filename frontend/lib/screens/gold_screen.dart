@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/gold_price_service.dart';
 import '../models/gold_price.dart';
+import 'gold_chit_tracker_screen.dart';
 
 class GoldScreen extends StatefulWidget {
   const GoldScreen({super.key});
@@ -24,6 +25,7 @@ class _GoldScreenState extends State<GoldScreen> {
   
   String? _uid;
   bool _askGeminiEnabled = false;
+  bool _goldChitEnabled = false;
   StreamSubscription? _userSubscription;
   late Stream<List<GoldPrice>> _goldPricesStream;
 
@@ -44,6 +46,7 @@ class _GoldScreenState extends State<GoldScreen> {
           if (mounted) {
             setState(() {
               _askGeminiEnabled = enabledModules.contains('ask_gemini');
+              _goldChitEnabled = enabledModules.contains('gold_chit');
             });
           }
         }
@@ -188,6 +191,15 @@ class _GoldScreenState extends State<GoldScreen> {
           appBar: AppBar(
             title: const Text('Gold Rates (22K)'),
             actions: [
+              if (_goldChitEnabled)
+                IconButton(
+                  icon: const Icon(Icons.savings_outlined),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const GoldChitTrackerScreen()),
+                  ),
+                  tooltip: 'Gold Chit Tracker',
+                ),
               IconButton(
                 icon: const Icon(Icons.compare_arrows),
                 onPressed: _showSourceChecker,

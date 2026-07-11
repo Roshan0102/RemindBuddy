@@ -37,6 +37,8 @@ class _AdminScreenState extends State<AdminScreen> {
 
   final List<Map<String, String>> _availableModules = [
     {'id': 'gold', 'label': 'Gold Rates'},
+    {'id': 'gold_chit', 'label': 'Gold Chit Tracker'},
+    {'id': 'sleep_tracker', 'label': 'Sleep Tracker'},
     {'id': 'reminders', 'label': 'Calendar Reminders'},
     {'id': 'daily_reminders', 'label': 'Daily Reminders'},
     {'id': 'notes', 'label': 'Aesthetic Notes'},

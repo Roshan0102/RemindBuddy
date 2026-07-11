@@ -1,11 +1,12 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:ota_update/ota_update.dart';
 
 class UpdateService {
   /// Checks for updates. If a new version is available, it pops up an update dialog.
@@ -133,60 +134,164 @@ class UpdateService {
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: [
-              const Icon(Icons.system_update_alt, color: Colors.deepPurple, size: 28),
-              const SizedBox(width: 10),
-              Text('Update to v$newVersion Available!'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'A new version (v$newVersion) of RemindBuddy is ready to install.',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Please update to get the latest features, security patches, and bug fixes.',
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Later', style: TextStyle(color: Colors.grey)),
+        return OtaUpdateDialog(newVersion: newVersion, downloadUrl: downloadUrl);
+      },
+    );
+  }
+}
+
+class OtaUpdateDialog extends StatefulWidget {
+  final String newVersion;
+  final String downloadUrl;
+
+  const OtaUpdateDialog({
+    super.key,
+    required this.newVersion,
+    required this.downloadUrl,
+  });
+
+  @override
+  State<OtaUpdateDialog> createState() => _OtaUpdateDialogState();
+}
+
+class _OtaUpdateDialogState extends State<OtaUpdateDialog> {
+  bool _isDownloading = false;
+  String _progress = '0';
+  String _statusMessage = '';
+  StreamSubscription? _otaSubscription;
+
+  @override
+  void dispose() {
+    _otaSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _startDownload() {
+    setState(() {
+      _isDownloading = true;
+      _statusMessage = 'Downloading update...';
+    });
+
+    try {
+      _otaSubscription = OtaUpdate().execute(
+        widget.downloadUrl,
+        destinationFilename: 'remindbuddy_${widget.newVersion}.apk',
+      ).listen(
+        (OtaEvent event) {
+          switch (event.status) {
+            case OtaStatus.DOWNLOADING:
+              setState(() {
+                _progress = event.value ?? '0';
+                _statusMessage = 'Downloading update: $_progress%';
+              });
+              break;
+            case OtaStatus.INSTALLING:
+              setState(() {
+                _statusMessage = 'Launching installer...';
+              });
+              if (mounted) {
+                Navigator.of(context).pop(); // Close dialog on launch installer
+              }
+              break;
+            case OtaStatus.PERMISSION_NOT_GRANTED_ERROR:
+              setState(() {
+                _isDownloading = false;
+                _statusMessage = 'Permission not granted to install unknown apps.';
+              });
+              break;
+            case OtaStatus.DOWNLOAD_ERROR:
+            case OtaStatus.INTERNAL_ERROR:
+              setState(() {
+                _isDownloading = false;
+                _statusMessage = 'Failed to download the update.';
+              });
+              break;
+            default:
+              break;
+          }
+        },
+        onError: (err) {
+          setState(() {
+            _isDownloading = false;
+            _statusMessage = 'Error during update: $err';
+          });
+        },
+      );
+    } catch (e) {
+      setState(() {
+        _isDownloading = false;
+        _statusMessage = 'Failed to start update: $e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(
+        children: [
+          const Icon(Icons.system_update_alt, color: Colors.deepPurple, size: 28),
+          const SizedBox(width: 10),
+          Expanded(child: Text(_isDownloading ? 'Downloading Update' : 'Update to v${widget.newVersion} Available!')),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!_isDownloading) ...[
+            Text(
+              'A new version (v${widget.newVersion}) of RemindBuddy is ready to install.',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                final Uri url = Uri.parse(downloadUrl);
-                if (await canLaunchUrl(url)) {
-                  await launchUrl(url, mode: LaunchMode.externalApplication);
-                } else {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Could not open browser to download the update.')),
-                    );
-                  }
-                }
-                if (context.mounted) {
-                  Navigator.pop(context);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            const SizedBox(height: 8),
+            const Text(
+              'Please update to get the latest features, security patches, and bug fixes.',
+            ),
+            if (_statusMessage.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                _statusMessage,
+                style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
               ),
-              child: const Text('Update Now'),
+            ],
+          ] else ...[
+            Text(_statusMessage),
+            const SizedBox(height: 16),
+            LinearProgressIndicator(
+              value: double.tryParse(_progress) != null ? double.parse(_progress) / 100 : 0.0,
+              backgroundColor: Colors.grey.shade300,
+              color: Colors.deepPurple,
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '$_progress%',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
             ),
           ],
-        );
-      },
+        ],
+      ),
+      actions: _isDownloading
+          ? []
+          : [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Later', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                onPressed: _startDownload,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Update Now'),
+              ),
+            ],
     );
   }
 }

@@ -79,9 +79,6 @@ class _MainScreenState extends State<MainScreen> {
       if (snapshot.exists && snapshot.data() != null) {
         final data = snapshot.data()!;
         final firestoreModules = List<String>.from(data['enabledModules'] ?? ['gold']);
-        if (!firestoreModules.contains('sleep_tracker')) {
-          firestoreModules.add('sleep_tracker');
-        }
         if (!firestoreModules.contains('astro_calendar')) {
           firestoreModules.add('astro_calendar');
         }
@@ -113,9 +110,6 @@ class _MainScreenState extends State<MainScreen> {
         if (cachedModulesStr != null) {
           _enabledModules = cachedModulesStr;
         }
-        if (!_enabledModules.contains('sleep_tracker')) {
-          _enabledModules.add('sleep_tracker');
-        }
         if (!_enabledModules.contains('astro_calendar')) {
           _enabledModules.add('astro_calendar');
         }
@@ -128,9 +122,6 @@ class _MainScreenState extends State<MainScreen> {
     try {
       final prefs = await StorageService().getUserPreferences();
       final firestoreModules = List<String>.from(prefs['enabledModules'] ?? ['gold']);
-      if (!firestoreModules.contains('sleep_tracker')) {
-        firestoreModules.add('sleep_tracker');
-      }
       if (!firestoreModules.contains('astro_calendar')) {
         firestoreModules.add('astro_calendar');
       }
