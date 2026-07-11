@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'auth_screen.dart';
 import 'notification_control_screen.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/update_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -124,20 +125,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          // Check for Updates Option
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              leading: const Icon(Icons.system_update_alt, color: Colors.deepPurple, size: 28),
-              title: const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: const Text('Look for newer versions of RemindBuddy'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                UpdateService.checkForUpdates(context, showNoUpdateMsg: true);
-              },
+          if (!kIsWeb)
+            // Check for Updates Option
+            Card(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                leading: const Icon(Icons.system_update_alt, color: Colors.deepPurple, size: 28),
+                title: const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Look for newer versions of RemindBuddy'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  UpdateService.checkForUpdates(context, showNoUpdateMsg: true);
+                },
+              ),
             ),
-          ),
         ],
       ),
     );

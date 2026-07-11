@@ -775,7 +775,7 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
             const SizedBox(height: 8),
             const Text(
               'Create a monthly gold chit scheme to track your payments, purchase rates, and accumulated gold weight.',
-              textAlign: Center,
+              textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 24),
@@ -955,7 +955,7 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
             stream: _db.collection('gold_chits')
                        .doc(_selectedPlan!['id'])
                        .collection('installments')
-                       .orderBy('monthKey', ascending: true)
+                       .orderBy('monthKey', descending: false)
                        .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
