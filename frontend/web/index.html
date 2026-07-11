@@ -38,8 +38,44 @@
   </script>
   <!-- This script adds the flutter initialization JS code -->
   <script src="flutter.js" defer></script>
+  <style>
+    body {
+      background-color: #0F172A;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .loading-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 
+      to { transform: rotate(360deg); } 
+    }
+    .loading-text {
+      margin-top: 16px;
+      color: #e2e8f0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-weight: 500;
+    }
+  </style>
 </head>
 <body>
+  <div id="loading" class="loading-container">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading RemindBuddy...</div>
+  </div>
   <script>
     window.addEventListener('load', function(ev) {
       // Download main.dart.js
@@ -48,6 +84,7 @@
           engineInitializer.initializeEngine({
             renderer: "html"
           }).then(function(appRunner) {
+            document.getElementById("loading").remove();
             appRunner.runApp();
           });
         }

@@ -18,6 +18,9 @@ class _AdminScreenState extends State<AdminScreen> {
   final _geminiApiKeyController = TextEditingController();
   final _adminUserUsernameController = TextEditingController();
   final _adminUserPasswordController = TextEditingController();
+  final _latestStableVersionController = TextEditingController();
+  final _latestBetaVersionController = TextEditingController();
+  final _betaTesterUidsController = TextEditingController();
   
   bool _isAuthenticated = false;
   bool _isLoading = true;
@@ -56,6 +59,9 @@ class _AdminScreenState extends State<AdminScreen> {
     _geminiApiKeyController.dispose();
     _adminUserUsernameController.dispose();
     _adminUserPasswordController.dispose();
+    _latestStableVersionController.dispose();
+    _latestBetaVersionController.dispose();
+    _betaTesterUidsController.dispose();
     super.dispose();
   }
 
@@ -64,6 +70,7 @@ class _AdminScreenState extends State<AdminScreen> {
     final isAuth = prefs.getBool('isAdminAuthenticated') ?? false;
     if (isAuth) {
       await _fetchGeminiApiKey();
+      await _fetchAppUpdatesConfig();
     }
     setState(() {
       _isAuthenticated = isAuth;
@@ -96,6 +103,7 @@ class _AdminScreenState extends State<AdminScreen> {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isAdminAuthenticated', true);
           await _fetchGeminiApiKey();
+          await _fetchAppUpdatesConfig();
           setState(() {
             _isAuthenticated = true;
             _errorMessage = '';
@@ -143,6 +151,24 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
+  Future<void> _fetchAppUpdatesConfig() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('admin_creds')
+          .doc('app_updates')
+          .get();
+      if (doc.exists && doc.data() != null) {
+        _latestStableVersionController.text = doc.data()!['latest_stable_version'] ?? '';
+        _latestBetaVersionController.text = doc.data()!['latest_beta_version'] ?? '';
+        
+        List<dynamic> uids = doc.data()!['beta_tester_uids'] ?? [];
+        _betaTesterUidsController.text = uids.join(',');
+      }
+    } catch (e) {
+      print('Error fetching App Updates config: $e');
+    }
+  }
+
   Future<void> _updateGeminiApiKey() async {
     final key = _geminiApiKeyController.text.trim();
     setState(() => _isLoading = true);
@@ -173,6 +199,39 @@ class _AdminScreenState extends State<AdminScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to update Gemini API Key: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _updateAppUpdatesConfig() async {
+    setState(() => _isLoading = true);
+    
+    final betaUidsStr = _betaTesterUidsController.text;
+    final betaUidsList = betaUidsStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('admin_creds')
+          .doc('app_updates')
+          .set({
+        'latest_stable_version': _latestStableVersionController.text.trim(),
+        'latest_beta_version': _latestBetaVersionController.text.trim(),
+        'beta_tester_uids': betaUidsList,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('App Updates configuration saved!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update config: $e')),
         );
       }
     }
@@ -560,6 +619,66 @@ class _AdminScreenState extends State<AdminScreen> {
                         style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                       ),
                     ],
+                  ],
+                ),
+              ),
+            ),
+
+            // Section 1.8: App Updates & Release Management
+            Card(
+              margin: const EdgeInsets.all(16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      '🚀 App Updates & Rollouts',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Control which versions of the app are promoted to stable (all users) versus beta (testers only).',
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _latestStableVersionController,
+                      decoration: const InputDecoration(
+                        labelText: 'Latest Stable Version (e.g. 1.6.0)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.verified),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _latestBetaVersionController,
+                      decoration: const InputDecoration(
+                        labelText: 'Latest Beta Version (e.g. 1.6.1)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.bug_report),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _betaTesterUidsController,
+                      decoration: const InputDecoration(
+                        labelText: 'Beta Tester UIDs (comma separated)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.people),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: _updateAppUpdatesConfig,
+                      icon: const Icon(Icons.save),
+                      label: const Text('Save Release Config'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple.shade700,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
                   ],
                 ),
               ),
