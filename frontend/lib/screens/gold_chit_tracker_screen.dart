@@ -20,7 +20,8 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
   Map<String, dynamic>? _selectedPlan;
   bool _isLoadingPlans = true;
   String? _defaultPlanId;
-  StreamSubscription? _plansSubscription;
+  StreamSubscription? _ownedPlansSubscription;
+  StreamSubscription? _sharedPlansSubscription;
   StreamSubscription? _userSubscription;
 
   @override
@@ -34,7 +35,8 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
 
   @override
   void dispose() {
-    _plansSubscription?.cancel();
+    _ownedPlansSubscription?.cancel();
+    _sharedPlansSubscription?.cancel();
     _userSubscription?.cancel();
     super.dispose();
   }
@@ -55,46 +57,84 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
   Future<void> _loadPlans() async {
     if (_uid == null) return;
     
-    _plansSubscription?.cancel();
-    _plansSubscription = _db.collection('gold_chits')
-       .where(Filter.or(
-         Filter('ownerId', isEqualTo: _uid),
-         Filter('sharedWith', arrayContains: _uid),
-       ))
+    _ownedPlansSubscription?.cancel();
+    _sharedPlansSubscription?.cancel();
+
+    List<Map<String, dynamic>> ownedPlans = [];
+    List<Map<String, dynamic>> sharedPlans = [];
+
+    void updatePlansState() {
+      if (!mounted) return;
+
+      // Merge and deduplicate by document id
+      final Map<String, Map<String, dynamic>> merged = {};
+      for (final p in ownedPlans) {
+        if (p['id'] != null) merged[p['id']] = p;
+      }
+      for (final p in sharedPlans) {
+        if (p['id'] != null) merged[p['id']] = p;
+      }
+
+      final plansList = merged.values.toList();
+
+      // Sort in memory by createdAt descending
+      plansList.sort((a, b) {
+        final aTime = a['createdAt'] as Timestamp?;
+        final bTime = b['createdAt'] as Timestamp?;
+        if (aTime == null || bTime == null) return 0;
+        return bTime.compareTo(aTime);
+      });
+
+      setState(() {
+        _plans = plansList;
+        _isLoadingPlans = false;
+        
+        // Auto-select plan: Default plan takes priority, otherwise the first plan
+        if (_plans.isNotEmpty) {
+          final defaultPlanIndex = _plans.indexWhere((p) => p['id'] == _defaultPlanId);
+          if (defaultPlanIndex != -1) {
+            _selectedPlan = _plans[defaultPlanIndex];
+          } else {
+            // Keep current selected plan if it still exists in the list
+            final stillExists = _selectedPlan != null && _plans.any((p) => p['id'] == _selectedPlan!['id']);
+            if (!stillExists) {
+              _selectedPlan = _plans.first;
+            }
+          }
+        } else {
+          _selectedPlan = null;
+        }
+      });
+    }
+
+    _ownedPlansSubscription = _db.collection('gold_chits')
+       .where('ownerId', isEqualTo: _uid)
        .snapshots()
        .listen((snapshot) {
-         final plansList = snapshot.docs.map((doc) {
+         ownedPlans = snapshot.docs.map((doc) {
            final data = doc.data();
            data['id'] = doc.id;
            return data;
          }).toList();
+         updatePlansState();
+       }, onError: (err) {
+         print("Error loading owned plans: $err");
+         updatePlansState();
+       });
 
-         // Sort in memory by createdAt descending
-         plansList.sort((a, b) {
-           final aTime = a['createdAt'] as Timestamp?;
-           final bTime = b['createdAt'] as Timestamp?;
-           if (aTime == null || bTime == null) return 0;
-           return bTime.compareTo(aTime);
-         });
-
-         if (mounted) {
-           setState(() {
-             _plans = plansList;
-             _isLoadingPlans = false;
-             
-             // Auto-select plan: Default plan takes priority, otherwise the first plan
-             if (_plans.isNotEmpty) {
-               final defaultPlanIndex = _plans.indexWhere((p) => p['id'] == _defaultPlanId);
-               if (defaultPlanIndex != -1) {
-                 _selectedPlan = _plans[defaultPlanIndex];
-               } else {
-                 _selectedPlan = _plans.first;
-               }
-             } else {
-               _selectedPlan = null;
-             }
-           });
-         }
+    _sharedPlansSubscription = _db.collection('gold_chits')
+       .where('sharedWith', arrayContains: _uid)
+       .snapshots()
+       .listen((snapshot) {
+         sharedPlans = snapshot.docs.map((doc) {
+           final data = doc.data();
+           data['id'] = doc.id;
+           return data;
+         }).toList();
+         updatePlansState();
+       }, onError: (err) {
+         print("Error loading shared plans: $err");
+         updatePlansState();
        });
   }
 
@@ -707,6 +747,7 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
       'goldRatePerGram': rate,
       'gramsAccumulated': grams,
       'updatedAt': FieldValue.serverTimestamp(),
+      'updatedBy': _uid,
     });
   }
 
@@ -724,6 +765,7 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
       'goldRatePerGram': FieldValue.delete(),
       'gramsAccumulated': FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
+      'updatedBy': _uid,
     });
   }
 

@@ -2370,3 +2370,156 @@ Output MUST be a JSON object matching this schema:
     }
 });
 
+exports.onInstallmentUpdated = functions.firestore
+    .document('gold_chits/{planId}/installments/{monthKey}')
+    .onUpdate(async (change, context) => {
+        const before = change.before.data();
+        const after = change.after.data();
+
+        if (after.status === 'paid' && before.status !== 'paid') {
+            const planId = context.params.planId;
+            const monthKey = context.params.monthKey;
+            
+            // Calculate target send time: 10 minutes from now
+            const sendAt = moment().tz('Asia/Kolkata').add(10, 'minutes').toDate();
+            
+            // Save to pending_gold_chit_notifications collection
+            await db.collection('pending_gold_chit_notifications').add({
+                planId,
+                monthKey,
+                updatedBy: after.updatedBy || '',
+                sendAt: admin.firestore.Timestamp.fromDate(sendAt),
+                status: 'pending',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            console.log(`Scheduled delayed notification for plan ${planId}, month ${monthKey} at ${sendAt.toISOString()}`);
+        } else if (after.status !== 'paid' && before.status === 'paid') {
+            const planId = context.params.planId;
+            const monthKey = context.params.monthKey;
+            
+            const pendingSnap = await db.collection('pending_gold_chit_notifications')
+                .where('planId', '==', planId)
+                .where('monthKey', '==', monthKey)
+                .where('status', '==', 'pending')
+                .get();
+                
+            const batch = db.batch();
+            pendingSnap.docs.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+            console.log(`Cancelled/deleted pending notifications for plan ${planId}, month ${monthKey} because status is no longer paid.`);
+        }
+    });
+
+exports.checkPendingGoldChitNotifications = functions.pubsub.schedule('* * * * *')
+    .timeZone('Asia/Kolkata')
+    .onRun(async (context) => {
+        const now = admin.firestore.Timestamp.now();
+        const pendingSnap = await db.collection('pending_gold_chit_notifications')
+            .where('status', '==', 'pending')
+            .where('sendAt', '<=', now)
+            .get();
+
+        if (pendingSnap.empty) {
+            return;
+        }
+
+        for (const doc of pendingSnap.docs) {
+            const data = doc.data();
+            const { planId, monthKey, updatedBy } = data;
+
+            try {
+                // Get plan details
+                const planDoc = await db.collection('gold_chits').doc(planId).get();
+                if (!planDoc.exists) {
+                    await doc.ref.update({ status: 'failed', error: 'Plan document not found' });
+                    continue;
+                }
+
+                const planData = planDoc.data()!;
+                const planName = planData.name || 'Gold Chit Plan';
+                const ownerId = planData.ownerId;
+                const sharedWith = planData.sharedWith || [];
+
+                // Collect all UIDs to notify (owner + shared users)
+                const uids = new Set<string>();
+                if (ownerId) uids.add(ownerId);
+                for (const uid of sharedWith) {
+                    uids.add(uid);
+                }
+
+                // Remove updater so they don't notify themselves
+                if (updatedBy) {
+                    uids.delete(updatedBy);
+                }
+
+                if (uids.size === 0) {
+                    await doc.ref.update({ status: 'sent', info: 'No other users to notify' });
+                    continue;
+                }
+
+                // Get updater username
+                let updaterUsername = 'A user';
+                if (updatedBy) {
+                    const updaterSnap = await db.collection('usernames').where('uid', '==', updatedBy).limit(1).get();
+                    if (!updaterSnap.empty) {
+                        updaterUsername = updaterSnap.docs[0].id;
+                    }
+                }
+
+                // Format month name (e.g. "2026-07" -> "July 2026")
+                let formattedMonth = monthKey;
+                try {
+                    const dateVal = moment(`${monthKey}-01`, 'YYYY-MM-DD');
+                    if (dateVal.isValid()) {
+                        formattedMonth = dateVal.format('MMMM YYYY');
+                    }
+                } catch (_) {}
+
+                const uidsList = Array.from(uids);
+                const usernamesSnap = await db.collection('usernames').where('uid', 'in', uidsList).get();
+                
+                const tokens: string[] = [];
+                const targetUids: string[] = [];
+
+                for (const uDoc of usernamesSnap.docs) {
+                    const uData = uDoc.data();
+                    if (uData.fcmToken && uData.uid) {
+                        tokens.push(uData.fcmToken);
+                        targetUids.push(uData.uid);
+                    }
+                }
+
+                if (tokens.length > 0) {
+                    const title = `💰 Gold Chit Updated`;
+                    const body = `${updaterUsername} updated the payment for ${formattedMonth} in plan "${planName}".`;
+
+                    await admin.messaging().sendEachForMulticast({
+                        tokens,
+                        notification: { title, body },
+                        android: {
+                            notification: {
+                                channelId: 'gold_price_channel',
+                                tag: `gold_chit_update_${planId}_${monthKey}`
+                            }
+                        },
+                        data: {
+                            type: 'GOLD_CHIT_UPDATE',
+                            planId,
+                            monthKey
+                        }
+                    });
+
+                    // Log in Firestore notifications collection
+                    for (const targetUid of targetUids) {
+                        await logNotification(targetUid, title, body, 'GOLD_CHIT_UPDATE');
+                    }
+                }
+
+                await doc.ref.update({ status: 'sent', notifiedUids: targetUids });
+            } catch (err: any) {
+                console.error(`Error sending delayed notification for pending doc ${doc.id}:`, err);
+                await doc.ref.update({ status: 'failed', error: err.message || err.toString() });
+            }
+        }
+    });
+
