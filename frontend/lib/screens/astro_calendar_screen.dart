@@ -269,12 +269,14 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
                           children: [
                             const Icon(Icons.nightlight_outlined, size: 20, color: Colors.blueGrey),
                             const SizedBox(width: 8),
-                            Text(
-                              'Amavasai (New Moon)',
-                              style: GoogleFonts.outfit(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: textColor,
+                            Expanded(
+                              child: Text(
+                                'Amavasai (New Moon)',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: textColor,
+                                ),
                               ),
                             ),
                           ],
@@ -302,12 +304,14 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
                           children: [
                             const Icon(Icons.lens, size: 20, color: Colors.amber),
                             const SizedBox(width: 8),
-                            Text(
-                              'Pournami (Full Moon)',
-                              style: GoogleFonts.outfit(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: textColor,
+                            Expanded(
+                              child: Text(
+                                'Pournami (Full Moon)',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: textColor,
+                                ),
                               ),
                             ),
                           ],
@@ -373,9 +377,11 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
   }
 
   Widget _buildTimingRow(String label, String value, IconData icon, Color color) {
+    final parts = value.split('|').map((s) => s.trim()).toList();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(icon, color: color, size: 22),
           const SizedBox(width: 12),
@@ -388,13 +394,18 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
               ),
             ),
           ),
-          Text(
-            value,
-            style: GoogleFonts.outfit(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: parts.map((part) => Text(
+              part,
+              style: GoogleFonts.outfit(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            )).toList(),
           ),
         ],
       ),

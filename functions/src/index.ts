@@ -800,19 +800,18 @@ async function internalPerformGoldFetch(force: boolean = false) {
     const nowIST = moment().tz('Asia/Kolkata');
     const todayStr = nowIST.format('YYYY-MM-DD');
 
-    // Fetch existing records for today to handle duplicate checks
-    const todayDocs = await db.collection("global_gold_prices").where("date", "==", todayStr).get();
-    if (!todayDocs.empty) {
-        // If we already have a record for today, skip if the current price matches today's existing price(s)
-        const matchesTodayPrice = todayDocs.docs.some(doc => doc.data().price === currentPrice);
-        if (matchesTodayPrice) {
+    // Get the most recent price overall to compute priceChange and prevent duplicate spam within a short window
+    const lastDocs = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(1).get();
+    const lastPrice = lastDocs.empty ? null : lastDocs.docs[0].data().price;
+    const lastTimestampStr = lastDocs.empty ? null : lastDocs.docs[0].data().timestamp;
+
+    if (lastPrice !== null && currentPrice === lastPrice && lastTimestampStr) {
+        const lastTimestamp = moment(lastTimestampStr);
+        // If the price is the same and the last update was less than 5 minutes ago, skip it
+        if (nowIST.diff(lastTimestamp, 'minutes') < 5) {
             return { success: true, status: 'no_change', price: currentPrice };
         }
     }
-
-    // Get the most recent price overall to compute priceChange
-    const lastDocs = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(1).get();
-    const lastPrice = lastDocs.empty ? null : lastDocs.docs[0].data().price;
 
     const timestampStr = nowIST.toISOString();
     await db.collection("global_gold_prices").doc(timestampStr.replace(/[:.]/g, '-')).set({
@@ -823,13 +822,6 @@ async function internalPerformGoldFetch(force: boolean = false) {
         source: results[0] ? "LiveChennai" : "BankBazaar"
     });
     await notifyAllUsers(currentPrice, lastPrice);
-
-    // Auto-trigger prediction when the gold price changes
-    try {
-        await runGoldAIPredictionInternal();
-    } catch (aiErr) {
-        console.error("Auto AI Prediction failed during gold fetch:", aiErr);
-    }
 
     return { success: true, status: 'changed', price: currentPrice };
 }
@@ -855,14 +847,7 @@ exports.checkGoldSources = functions.https.onCall(async () => {
 exports.scheduledGoldFetch = functions.pubsub.schedule('0 11,19 * * *').timeZone('Asia/Kolkata').onRun(() => internalPerformGoldFetch());
 exports.forceGoldFetch = functions.https.onCall(() => internalPerformGoldFetch(true));
 
-exports.scheduledGoldAIInsights = functions.pubsub.schedule('1 11 * * *').timeZone('Asia/Kolkata').onRun(async () => {
-    try {
-        console.log("Running scheduledGoldAIInsights at 11:01 AM IST");
-        await runGoldAIPredictionInternal();
-    } catch (error) {
-        console.error("Error in scheduledGoldAIInsights:", error);
-    }
-});
+
 
 exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('Asia/Kolkata').onRun(async () => {
     const nowKolkata = moment().tz('Asia/Kolkata');
@@ -1279,66 +1264,173 @@ exports.generateGoldChitAdvice = functions.runWith({ timeoutSeconds: 120, memory
     }
 });
 
-exports.scheduledGoldChitAdvice = functions.pubsub.schedule('1 11 * * *').timeZone('Asia/Kolkata').onRun(async () => {
-    try {
-        const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
-        let apiKey = "";
-        if (configDoc.exists) {
-            apiKey = configDoc.data()?.apiKey || "";
-        }
-        if (!apiKey) return;
+exports.onGoldPriceCreated = functions.runWith({ timeoutSeconds: 300, memory: "512MB" }).firestore
+    .document('global_gold_prices/{docId}')
+    .onCreate(async (snap, context) => {
+        console.log(`onGoldPriceCreated: Waiting 1 minute before running analysis for doc ${context.params.docId}...`);
+        await new Promise(resolve => setTimeout(resolve, 60000));
 
-        // 1. Fetch prices
-        const priceSnap = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(15).get();
-        const priceHistory: any[] = [];
-        priceSnap.forEach(d => {
-            const val = d.data();
-            priceHistory.push({
-                date: val.date,
-                price: val.price,
-                priceChange: val.priceChange,
-                source: val.source
-            });
-        });
-
-        // 2. Fetch news
-        const newsUrl = 'https://news.google.com/rss/search?q=gold+price+india&hl=en-IN&gl=IN&ceid=IN:en';
-        let newsItems: any[] = [];
         try {
-            const newsResponse = await axios.get(newsUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-                timeout: 10000
-            });
-            const $ = cheerio.load(newsResponse.data, { xmlMode: true });
-            $('item').slice(0, 8).each((i, el) => {
-                newsItems.push({
-                    title: $(el).find('title').text(),
-                    link: $(el).find('link').text(),
-                    pubDate: $(el).find('pubDate').text(),
-                    source: $(el).find('source').text()
+            const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
+            let apiKey = "";
+            if (configDoc.exists) {
+                apiKey = configDoc.data()?.apiKey || "";
+            }
+            if (!apiKey) return;
+
+            // 1. Fetch prices
+            const priceSnap = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(15).get();
+            const priceHistory: any[] = [];
+            priceSnap.forEach(d => {
+                const val = d.data();
+                priceHistory.push({
+                    date: val.date,
+                    price: val.price,
+                    priceChange: val.priceChange,
+                    source: val.source
                 });
             });
-        } catch (e) {}
 
-        const advice = await generateGoldChitRecommendation(apiKey, priceHistory, newsItems);
-        
-        const nowIST = moment().tz('Asia/Kolkata');
-        const timestampStr = nowIST.toISOString();
-        const docData = {
-            ...advice,
-            timestamp: timestampStr,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        };
+            // 2. Fetch news
+            const newsUrl = 'https://news.google.com/rss/search?q=gold+price+india&hl=en-IN&gl=IN&ceid=IN:en';
+            let newsItems: any[] = [];
+            try {
+                const newsResponse = await axios.get(newsUrl, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                    timeout: 10000
+                });
+                const $ = cheerio.load(newsResponse.data, { xmlMode: true });
+                $('item').slice(0, 8).each((i, el) => {
+                    newsItems.push({
+                        title: $(el).find('title').text(),
+                        link: $(el).find('link').text(),
+                        pubDate: $(el).find('pubDate').text(),
+                        source: $(el).find('source').text()
+                    });
+                });
+            } catch (e) {}
 
-        await db.collection("gold_chit_advice").doc("latest").set(docData);
-        await db.collection("gold_chit_advice").doc(timestampStr.replace(/[:.]/g, '-')).set(docData);
+            // -- PART A: GOLD CHIT ASSISTANT --
+            try {
+                const advice = await generateGoldChitRecommendation(apiKey, priceHistory, newsItems);
+                
+                const nowIST = moment().tz('Asia/Kolkata');
+                const timestampStr = nowIST.toISOString();
+                const docData = {
+                    ...advice,
+                    timestamp: timestampStr,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                };
 
-        // Send push notification
-        await sendChitNotificationToAllUsers(advice.recommendation, advice.shortReason);
-    } catch (e) {
-        console.error("Error in scheduledGoldChitAdvice:", e);
-    }
-});
+                await db.collection("gold_chit_advice").doc("latest").set(docData);
+                await db.collection("gold_chit_advice").doc(timestampStr.replace(/[:.]/g, '-')).set(docData);
+
+                // Send push notification
+                await sendChitNotificationToAllUsers(advice.recommendation, advice.shortReason);
+            } catch (chitErr) {
+                console.error("Error in onGoldPriceCreated chit advice generation:", chitErr);
+            }
+
+            // -- PART B: MARKET FORECAST (AI INSIGHTS) --
+            try {
+                const currentPriceInfo = priceHistory.length > 0 ? priceHistory[0] : null;
+                const prompt = `You are a financial analyst specializing in precious metals, especially Gold rates in India.
+Analyze the following recent historical 22K gold prices (per 2 grams or current units) and the latest gold market news headlines.
+Specifically, make sure to consider:
+- American and global economic news (such as US Federal Reserve interest rates).
+- Geopolitical events or war news related to gold (which typically increases gold's appeal as a safe haven).
+- Tax and import/export duty changes in India as well as other countries that affect the gold price in India.
+- Any general news affecting demand/supply in the Indian gold market.
+
+Your output must be written in very simple, plain, and easy-to-understand English. 
+CRITICAL: Do NOT use difficult financial jargon (like 'bearish', 'bullish', 'consolidation', 'correction') without immediately explaining them in extremely simple terms. For example, instead of 'market is bearish', write 'prices are likely to fall (bearish)'. Keep explanations very simple.
+
+Provide:
+1. Market Sentiment: "bullish" (upward trend/prices rising), "bearish" (downward trend/prices dropping), or "neutral".
+2. Sentiment Score: An integer from -100 (extremely bearish/falling) to 100 (extremely bullish/rising).
+3. Sentiment Summary: A concise, 1-2 sentence summary of what is driving this sentiment using simple English.
+4. Predicted Trend: "upward", "downward", or "stable" for the next 1-3 days.
+5. Predicted Price Range: A realistic price range (e.g. "13,100 - 13,300") in the same format/currency unit as the input price (the current latest price is ${currentPriceInfo ? currentPriceInfo.price : 'unknown'}).
+6. Prediction Rationale: A detailed bullet-pointed explanation of why you predict this trend, referencing recent price trends, US/global news, geopolitics/war news, or tax updates.
+
+Input Data:
+Recent Price History (latest first):
+${JSON.stringify(priceHistory, null, 2)}
+
+Latest Gold News Headlines:
+${JSON.stringify(newsItems, null, 2)}
+
+Respond ONLY with a JSON object matching this schema:
+{
+  "sentiment": "bullish" | "bearish" | "neutral",
+  "sentimentScore": number,
+  "sentimentSummary": "string",
+  "predictedTrend": "upward" | "downward" | "stable",
+  "predictedPriceRange": "string",
+  "predictionRationale": "string"
+}`;
+
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+                const payload = {
+                    contents: [
+                        {
+                            parts: [
+                                { text: prompt }
+                            ]
+                        }
+                    ],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                sentiment: { type: "STRING", description: "bullish, bearish, or neutral" },
+                                sentimentScore: { type: "INTEGER", description: "-100 to 100 score" },
+                                sentimentSummary: { type: "STRING" },
+                                predictedTrend: { type: "STRING", description: "upward, downward, or stable" },
+                                predictedPriceRange: { type: "STRING" },
+                                predictionRationale: { type: "STRING", description: "Clear, detailed reasoning text" }
+                            },
+                            required: ["sentiment", "sentimentScore", "sentimentSummary", "predictedTrend", "predictedPriceRange", "predictionRationale"]
+                        }
+                    }
+                };
+
+                const response = await axios.post(url, payload, {
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 60000
+                });
+
+                const candidates = response.data?.candidates;
+                if (candidates && candidates.length > 0) {
+                    const textResponse = candidates[0].content?.parts[0]?.text;
+                    if (textResponse) {
+                        const parsedResult = JSON.parse(textResponse);
+                        const nowIST = moment().tz('Asia/Kolkata');
+                        const timestampStr = nowIST.toISOString();
+                        const docId = timestampStr.replace(/[:.]/g, '-');
+                        
+                        const insightData = {
+                            ...parsedResult,
+                            news: newsItems,
+                            priceHistoryAnalyzed: priceHistory,
+                            timestamp: timestampStr,
+                            createdAt: admin.firestore.FieldValue.serverTimestamp()
+                        };
+
+                        await db.collection("gold_ai_insights").doc(docId).set(insightData);
+                        await db.collection("gold_ai_insights").doc("latest").set(insightData);
+                        console.log("Gold AI Insights generated successfully.");
+                    }
+                }
+            } catch (forecastErr) {
+                console.error("Error in onGoldPriceCreated market forecast generation:", forecastErr);
+            }
+
+        } catch (e) {
+            console.error("Error in onGoldPriceCreated:", e);
+        }
+    });
 
 exports.adminCreateUser = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
     if (!context.auth) {

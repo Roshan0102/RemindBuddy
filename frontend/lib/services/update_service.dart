@@ -236,44 +236,47 @@ class _OtaUpdateDialogState extends State<OtaUpdateDialog> {
           Expanded(child: Text(_isDownloading ? 'Downloading Update' : 'Update to v${widget.newVersion} Available!')),
         ],
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!_isDownloading) ...[
-            Text(
-              'A new version (v${widget.newVersion}) of RemindBuddy is ready to install.',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Please update to get the latest features, security patches, and bug fixes.',
-            ),
-            if (_statusMessage.isNotEmpty) ...[
-              const SizedBox(height: 12),
+      content: SizedBox(
+        width: 280,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!_isDownloading) ...[
               Text(
-                _statusMessage,
-                style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
+                'A new version (v${widget.newVersion}) of RemindBuddy is ready to install.',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Please update to get the latest features, security patches, and bug fixes.',
+              ),
+              if (_statusMessage.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _statusMessage,
+                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ] else ...[
+              Text(_statusMessage),
+              const SizedBox(height: 16),
+              LinearProgressIndicator(
+                value: double.tryParse(_progress) != null ? double.parse(_progress) / 100 : 0.0,
+                backgroundColor: Colors.grey.shade300,
+                color: Colors.deepPurple,
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '$_progress%',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
               ),
             ],
-          ] else ...[
-            Text(_statusMessage),
-            const SizedBox(height: 16),
-            LinearProgressIndicator(
-              value: double.tryParse(_progress) != null ? double.parse(_progress) / 100 : 0.0,
-              backgroundColor: Colors.grey.shade300,
-              color: Colors.deepPurple,
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                '$_progress%',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ),
           ],
-        ],
+        ),
       ),
       actions: _isDownloading
           ? []

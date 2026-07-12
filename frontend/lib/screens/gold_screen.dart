@@ -436,7 +436,7 @@ class _GoldScreenState extends State<GoldScreen> {
                               ),
                             ],
                           )
-                        : const Text('-', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                        : const Text('₹0', style: TextStyle(color: Colors.grey, fontSize: 13)),
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12.0),
@@ -465,14 +465,14 @@ class _GoldScreenState extends State<GoldScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: isSelected ? Colors.amber : Colors.transparent,
+                  color: isSelected ? Colors.indigo : Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.amber),
+                  border: Border.all(color: Colors.indigo),
                 ),
                 child: Text(
                   range,
                   style: TextStyle(
-                    color: isSelected ? Colors.black : Colors.amber,
+                    color: isSelected ? Colors.white : Colors.indigo,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -571,8 +571,8 @@ class _GoldScreenState extends State<GoldScreen> {
                     dataSource: sortedHistory,
                     xValueMapper: (GoldPrice p, _) => _formatDate(p.timestamp),
                     yValueMapper: (GoldPrice p, _) => p.price,
-                    color: Colors.amber.withOpacity(0.3),
-                    borderColor: Colors.amber,
+                    color: Colors.indigo.withOpacity(0.15),
+                    borderColor: Colors.indigo,
                     borderWidth: 2,
                     markerSettings: const MarkerSettings(isVisible: true),
                   ),

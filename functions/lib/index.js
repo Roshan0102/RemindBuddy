@@ -741,18 +741,17 @@ async function internalPerformGoldFetch(force = false) {
         return { success: false, error: "No price retrieved from scrapers." };
     const nowIST = moment().tz('Asia/Kolkata');
     const todayStr = nowIST.format('YYYY-MM-DD');
-    // Fetch existing records for today to handle duplicate checks
-    const todayDocs = await db.collection("global_gold_prices").where("date", "==", todayStr).get();
-    if (!todayDocs.empty) {
-        // If we already have a record for today, skip if the current price matches today's existing price(s)
-        const matchesTodayPrice = todayDocs.docs.some(doc => doc.data().price === currentPrice);
-        if (matchesTodayPrice) {
+    // Get the most recent price overall to compute priceChange and prevent duplicate spam within a short window
+    const lastDocs = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(1).get();
+    const lastPrice = lastDocs.empty ? null : lastDocs.docs[0].data().price;
+    const lastTimestampStr = lastDocs.empty ? null : lastDocs.docs[0].data().timestamp;
+    if (lastPrice !== null && currentPrice === lastPrice && lastTimestampStr) {
+        const lastTimestamp = moment(lastTimestampStr);
+        // If the price is the same and the last update was less than 5 minutes ago, skip it
+        if (nowIST.diff(lastTimestamp, 'minutes') < 5) {
             return { success: true, status: 'no_change', price: currentPrice };
         }
     }
-    // Get the most recent price overall to compute priceChange
-    const lastDocs = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(1).get();
-    const lastPrice = lastDocs.empty ? null : lastDocs.docs[0].data().price;
     const timestampStr = nowIST.toISOString();
     await db.collection("global_gold_prices").doc(timestampStr.replace(/[:.]/g, '-')).set({
         date: todayStr,
@@ -762,13 +761,6 @@ async function internalPerformGoldFetch(force = false) {
         source: results[0] ? "LiveChennai" : "BankBazaar"
     });
     await notifyAllUsers(currentPrice, lastPrice);
-    // Auto-trigger prediction when the gold price changes
-    try {
-        await runGoldAIPredictionInternal();
-    }
-    catch (aiErr) {
-        console.error("Auto AI Prediction failed during gold fetch:", aiErr);
-    }
     return { success: true, status: 'changed', price: currentPrice };
 }
 exports.generateGoldAIInsights = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
@@ -789,15 +781,6 @@ exports.checkGoldSources = functions.https.onCall(async () => {
 });
 exports.scheduledGoldFetch = functions.pubsub.schedule('0 11,19 * * *').timeZone('Asia/Kolkata').onRun(() => internalPerformGoldFetch());
 exports.forceGoldFetch = functions.https.onCall(() => internalPerformGoldFetch(true));
-exports.scheduledGoldAIInsights = functions.pubsub.schedule('1 11 * * *').timeZone('Asia/Kolkata').onRun(async () => {
-    try {
-        console.log("Running scheduledGoldAIInsights at 11:01 AM IST");
-        await runGoldAIPredictionInternal();
-    }
-    catch (error) {
-        console.error("Error in scheduledGoldAIInsights:", error);
-    }
-});
 exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('Asia/Kolkata').onRun(async () => {
     var _a;
     const nowKolkata = moment().tz('Asia/Kolkata');
@@ -1184,8 +1167,12 @@ exports.generateGoldChitAdvice = functions.runWith({ timeoutSeconds: 120, memory
         throw new functions.https.HttpsError('internal', error.message || "Failed to generate gold chit advice.");
     }
 });
-exports.scheduledGoldChitAdvice = functions.pubsub.schedule('1 11 * * *').timeZone('Asia/Kolkata').onRun(async () => {
-    var _a;
+exports.onGoldPriceCreated = functions.runWith({ timeoutSeconds: 300, memory: "512MB" }).firestore
+    .document('global_gold_prices/{docId}')
+    .onCreate(async (snap, context) => {
+    var _a, _b, _c, _d;
+    console.log(`onGoldPriceCreated: Waiting 1 minute before running analysis for doc ${context.params.docId}...`);
+    await new Promise(resolve => setTimeout(resolve, 60000));
     try {
         const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
         let apiKey = "";
@@ -1225,17 +1212,108 @@ exports.scheduledGoldChitAdvice = functions.pubsub.schedule('1 11 * * *').timeZo
             });
         }
         catch (e) { }
-        const advice = await generateGoldChitRecommendation(apiKey, priceHistory, newsItems);
-        const nowIST = moment().tz('Asia/Kolkata');
-        const timestampStr = nowIST.toISOString();
-        const docData = Object.assign(Object.assign({}, advice), { timestamp: timestampStr, createdAt: admin.firestore.FieldValue.serverTimestamp() });
-        await db.collection("gold_chit_advice").doc("latest").set(docData);
-        await db.collection("gold_chit_advice").doc(timestampStr.replace(/[:.]/g, '-')).set(docData);
-        // Send push notification
-        await sendChitNotificationToAllUsers(advice.recommendation, advice.shortReason);
+        // -- PART A: GOLD CHIT ASSISTANT --
+        try {
+            const advice = await generateGoldChitRecommendation(apiKey, priceHistory, newsItems);
+            const nowIST = moment().tz('Asia/Kolkata');
+            const timestampStr = nowIST.toISOString();
+            const docData = Object.assign(Object.assign({}, advice), { timestamp: timestampStr, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+            await db.collection("gold_chit_advice").doc("latest").set(docData);
+            await db.collection("gold_chit_advice").doc(timestampStr.replace(/[:.]/g, '-')).set(docData);
+            // Send push notification
+            await sendChitNotificationToAllUsers(advice.recommendation, advice.shortReason);
+        }
+        catch (chitErr) {
+            console.error("Error in onGoldPriceCreated chit advice generation:", chitErr);
+        }
+        // -- PART B: MARKET FORECAST (AI INSIGHTS) --
+        try {
+            const currentPriceInfo = priceHistory.length > 0 ? priceHistory[0] : null;
+            const prompt = `You are a financial analyst specializing in precious metals, especially Gold rates in India.
+Analyze the following recent historical 22K gold prices (per 2 grams or current units) and the latest gold market news headlines.
+Specifically, make sure to consider:
+- American and global economic news (such as US Federal Reserve interest rates).
+- Geopolitical events or war news related to gold (which typically increases gold's appeal as a safe haven).
+- Tax and import/export duty changes in India as well as other countries that affect the gold price in India.
+- Any general news affecting demand/supply in the Indian gold market.
+
+Your output must be written in very simple, plain, and easy-to-understand English. 
+CRITICAL: Do NOT use difficult financial jargon (like 'bearish', 'bullish', 'consolidation', 'correction') without immediately explaining them in extremely simple terms. For example, instead of 'market is bearish', write 'prices are likely to fall (bearish)'. Keep explanations very simple.
+
+Provide:
+1. Market Sentiment: "bullish" (upward trend/prices rising), "bearish" (downward trend/prices dropping), or "neutral".
+2. Sentiment Score: An integer from -100 (extremely bearish/falling) to 100 (extremely bullish/rising).
+3. Sentiment Summary: A concise, 1-2 sentence summary of what is driving this sentiment using simple English.
+4. Predicted Trend: "upward", "downward", or "stable" for the next 1-3 days.
+5. Predicted Price Range: A realistic price range (e.g. "13,100 - 13,300") in the same format/currency unit as the input price (the current latest price is ${currentPriceInfo ? currentPriceInfo.price : 'unknown'}).
+6. Prediction Rationale: A detailed bullet-pointed explanation of why you predict this trend, referencing recent price trends, US/global news, geopolitics/war news, or tax updates.
+
+Input Data:
+Recent Price History (latest first):
+${JSON.stringify(priceHistory, null, 2)}
+
+Latest Gold News Headlines:
+${JSON.stringify(newsItems, null, 2)}
+
+Respond ONLY with a JSON object matching this schema:
+{
+  "sentiment": "bullish" | "bearish" | "neutral",
+  "sentimentScore": number,
+  "sentimentSummary": "string",
+  "predictedTrend": "upward" | "downward" | "stable",
+  "predictedPriceRange": "string",
+  "predictionRationale": "string"
+}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [
+                    {
+                        parts: [
+                            { text: prompt }
+                        ]
+                    }
+                ],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            sentiment: { type: "STRING", description: "bullish, bearish, or neutral" },
+                            sentimentScore: { type: "INTEGER", description: "-100 to 100 score" },
+                            sentimentSummary: { type: "STRING" },
+                            predictedTrend: { type: "STRING", description: "upward, downward, or stable" },
+                            predictedPriceRange: { type: "STRING" },
+                            predictionRationale: { type: "STRING", description: "Clear, detailed reasoning text" }
+                        },
+                        required: ["sentiment", "sentimentScore", "sentimentSummary", "predictedTrend", "predictedPriceRange", "predictionRationale"]
+                    }
+                }
+            };
+            const response = await axios_1.default.post(url, payload, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 60000
+            });
+            const candidates = (_b = response.data) === null || _b === void 0 ? void 0 : _b.candidates;
+            if (candidates && candidates.length > 0) {
+                const textResponse = (_d = (_c = candidates[0].content) === null || _c === void 0 ? void 0 : _c.parts[0]) === null || _d === void 0 ? void 0 : _d.text;
+                if (textResponse) {
+                    const parsedResult = JSON.parse(textResponse);
+                    const nowIST = moment().tz('Asia/Kolkata');
+                    const timestampStr = nowIST.toISOString();
+                    const docId = timestampStr.replace(/[:.]/g, '-');
+                    const insightData = Object.assign(Object.assign({}, parsedResult), { news: newsItems, priceHistoryAnalyzed: priceHistory, timestamp: timestampStr, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+                    await db.collection("gold_ai_insights").doc(docId).set(insightData);
+                    await db.collection("gold_ai_insights").doc("latest").set(insightData);
+                    console.log("Gold AI Insights generated successfully.");
+                }
+            }
+        }
+        catch (forecastErr) {
+            console.error("Error in onGoldPriceCreated market forecast generation:", forecastErr);
+        }
     }
     catch (e) {
-        console.error("Error in scheduledGoldChitAdvice:", e);
+        console.error("Error in onGoldPriceCreated:", e);
     }
 });
 exports.adminCreateUser = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
@@ -2186,6 +2264,140 @@ Output MUST be a JSON object matching this schema:
     catch (err) {
         console.error("Error in voiceAssistantQuery:", err);
         throw new functions.https.HttpsError('internal', err.message || 'Failed to process voice query.');
+    }
+});
+exports.onInstallmentUpdated = functions.firestore
+    .document('gold_chits/{planId}/installments/{monthKey}')
+    .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    if (after.status === 'paid' && before.status !== 'paid') {
+        const planId = context.params.planId;
+        const monthKey = context.params.monthKey;
+        // Calculate target send time: 10 minutes from now
+        const sendAt = moment().tz('Asia/Kolkata').add(10, 'minutes').toDate();
+        // Save to pending_gold_chit_notifications collection
+        await db.collection('pending_gold_chit_notifications').add({
+            planId,
+            monthKey,
+            updatedBy: after.updatedBy || '',
+            sendAt: admin.firestore.Timestamp.fromDate(sendAt),
+            status: 'pending',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`Scheduled delayed notification for plan ${planId}, month ${monthKey} at ${sendAt.toISOString()}`);
+    }
+    else if (after.status !== 'paid' && before.status === 'paid') {
+        const planId = context.params.planId;
+        const monthKey = context.params.monthKey;
+        const pendingSnap = await db.collection('pending_gold_chit_notifications')
+            .where('planId', '==', planId)
+            .where('monthKey', '==', monthKey)
+            .where('status', '==', 'pending')
+            .get();
+        const batch = db.batch();
+        pendingSnap.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        console.log(`Cancelled/deleted pending notifications for plan ${planId}, month ${monthKey} because status is no longer paid.`);
+    }
+});
+exports.checkPendingGoldChitNotifications = functions.pubsub.schedule('* * * * *')
+    .timeZone('Asia/Kolkata')
+    .onRun(async (context) => {
+    const now = admin.firestore.Timestamp.now();
+    const pendingSnap = await db.collection('pending_gold_chit_notifications')
+        .where('status', '==', 'pending')
+        .where('sendAt', '<=', now)
+        .get();
+    if (pendingSnap.empty) {
+        return;
+    }
+    for (const doc of pendingSnap.docs) {
+        const data = doc.data();
+        const { planId, monthKey, updatedBy } = data;
+        try {
+            // Get plan details
+            const planDoc = await db.collection('gold_chits').doc(planId).get();
+            if (!planDoc.exists) {
+                await doc.ref.update({ status: 'failed', error: 'Plan document not found' });
+                continue;
+            }
+            const planData = planDoc.data();
+            const planName = planData.name || 'Gold Chit Plan';
+            const ownerId = planData.ownerId;
+            const sharedWith = planData.sharedWith || [];
+            // Collect all UIDs to notify (owner + shared users)
+            const uids = new Set();
+            if (ownerId)
+                uids.add(ownerId);
+            for (const uid of sharedWith) {
+                uids.add(uid);
+            }
+            // Remove updater so they don't notify themselves
+            if (updatedBy) {
+                uids.delete(updatedBy);
+            }
+            if (uids.size === 0) {
+                await doc.ref.update({ status: 'sent', info: 'No other users to notify' });
+                continue;
+            }
+            // Get updater username
+            let updaterUsername = 'A user';
+            if (updatedBy) {
+                const updaterSnap = await db.collection('usernames').where('uid', '==', updatedBy).limit(1).get();
+                if (!updaterSnap.empty) {
+                    updaterUsername = updaterSnap.docs[0].id;
+                }
+            }
+            // Format month name (e.g. "2026-07" -> "July 2026")
+            let formattedMonth = monthKey;
+            try {
+                const dateVal = moment(`${monthKey}-01`, 'YYYY-MM-DD');
+                if (dateVal.isValid()) {
+                    formattedMonth = dateVal.format('MMMM YYYY');
+                }
+            }
+            catch (_) { }
+            const uidsList = Array.from(uids);
+            const usernamesSnap = await db.collection('usernames').where('uid', 'in', uidsList).get();
+            const tokens = [];
+            const targetUids = [];
+            for (const uDoc of usernamesSnap.docs) {
+                const uData = uDoc.data();
+                if (uData.fcmToken && uData.uid) {
+                    tokens.push(uData.fcmToken);
+                    targetUids.push(uData.uid);
+                }
+            }
+            if (tokens.length > 0) {
+                const title = `💰 Gold Chit Updated`;
+                const body = `${updaterUsername} updated the payment for ${formattedMonth} in plan "${planName}".`;
+                await admin.messaging().sendEachForMulticast({
+                    tokens,
+                    notification: { title, body },
+                    android: {
+                        notification: {
+                            channelId: 'gold_price_channel',
+                            tag: `gold_chit_update_${planId}_${monthKey}`
+                        }
+                    },
+                    data: {
+                        type: 'GOLD_CHIT_UPDATE',
+                        planId,
+                        monthKey
+                    }
+                });
+                // Log in Firestore notifications collection
+                for (const targetUid of targetUids) {
+                    await logNotification(targetUid, title, body, 'GOLD_CHIT_UPDATE');
+                }
+            }
+            await doc.ref.update({ status: 'sent', notifiedUids: targetUids });
+        }
+        catch (err) {
+            console.error(`Error sending delayed notification for pending doc ${doc.id}:`, err);
+            await doc.ref.update({ status: 'failed', error: err.message || err.toString() });
+        }
     }
 });
 //# sourceMappingURL=index.js.map

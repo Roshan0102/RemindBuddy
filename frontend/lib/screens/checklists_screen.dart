@@ -218,7 +218,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Belongings', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Checklist', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         actions: [
           StreamBuilder<List<Map<String, dynamic>>>(

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -12,6 +13,8 @@ import '../models/shift.dart';
 import '../services/storage_service.dart';
 import '../services/shift_service.dart';
 import '../services/log_service.dart';
+import '../widgets/web_image_viewer.dart';
+
 
 class MyShiftsScreen extends StatefulWidget {
   final int initialTab;
@@ -671,29 +674,31 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               maxScale: 4.0,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  _rosterImageUrl!,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: Colors.white,
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(Icons.broken_image, size: 64, color: Colors.red),
-                          SizedBox(height: 16),
-                          Text('Failed to load roster image', style: TextStyle(color: Colors.black)),
-                        ],
+                child: kIsWeb
+                    ? WebImageViewerWrapper(imageUrl: _rosterImageUrl!)
+                    : Image.network(
+                        _rosterImageUrl!,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return const Center(
+                            child: CircularProgressIndicator(color: Colors.white),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.white,
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(Icons.broken_image, size: 64, color: Colors.red),
+                                SizedBox(height: 16),
+                                Text('Failed to load roster image', style: TextStyle(color: Colors.black)),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
             ),
             Positioned(
