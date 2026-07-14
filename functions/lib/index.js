@@ -1116,11 +1116,23 @@ async function hasPaidAllChitsForCurrentMonth(uid) {
             .get();
         const allPlans = [...ownedPlans.docs, ...sharedPlans.docs].filter(planDoc => {
             const data = planDoc.data();
-            return data.status !== "completed" && data.status !== "inactive";
+            if (data.status === "completed" || data.status === "inactive") {
+                return false;
+            }
+            // Check if current month is within the plan's duration
+            const startMonth = data.startMonth; // e.g. "2026-01"
+            const endMonth = data.endMonth; // e.g. "2026-12"
+            if (startMonth && currentMonthKey < startMonth) {
+                return false; // Plan hasn't started yet
+            }
+            if (endMonth && currentMonthKey > endMonth) {
+                return false; // Plan has already ended
+            }
+            return true;
         });
         if (allPlans.length === 0) {
-            // If they have no active plans, they haven't paid anything, but they also don't have any chits.
-            // Return false so they can still see general advice notifications if they enabled the module.
+            // If they have no active plans for the current month, return false
+            // so they can still see general advice notifications if they enabled the module.
             return false;
         }
         // Check each plan's current month installment
@@ -1134,7 +1146,7 @@ async function hasPaidAllChitsForCurrentMonth(uid) {
                 return false;
             }
         }
-        // All plans are paid for this month
+        // All plans active for this month are paid
         return true;
     }
     catch (err) {
