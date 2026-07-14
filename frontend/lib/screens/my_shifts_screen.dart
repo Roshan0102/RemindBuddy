@@ -250,6 +250,31 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     }
   }
 
+  Future<void> _toggleEventInterest(String eventDocId, bool currentInterest) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('events')
+          .doc(eventDocId)
+          .update({'interested': !currentInterest});
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(!currentInterest ? 'Marked as interested' : 'Removed interest')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update event: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _clearAllEventsDialog() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -359,6 +384,31 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Marked as not interested')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update walk-in: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleWalkInInterest(String walkinDocId, bool currentInterest) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('walkins')
+          .doc(walkinDocId)
+          .update({'interested': !currentInterest});
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(!currentInterest ? 'Marked as interested' : 'Removed interest')),
         );
       }
     } catch (e) {
@@ -1804,6 +1854,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               final regLink = data['registrationLink'] ?? '';
               final sourcePlatform = data['sourcePlatform'] ?? '';
               final isNewEvent = data['isNew'] as bool? ?? false;
+              final isInterested = data['interested'] as bool? ?? false;
 
               // Format date nicely: YYYY-MM-DD to "EEE, MMM d"
               String formattedDate = dateStr;
@@ -1962,6 +2013,16 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
+                              TextButton.icon(
+                                onPressed: () => _toggleEventInterest(docId, isInterested),
+                                icon: Icon(isInterested ? Icons.star : Icons.star_border, size: 16, color: Colors.amber),
+                                label: Text(isInterested ? 'Interested' : 'Mark Interested'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.amber,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
                               TextButton.icon(
                                 onPressed: () => _markNotInterested(docId),
                                 icon: const Icon(Icons.block, size: 16, color: Colors.red),
@@ -2152,6 +2213,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               final regLink = data['registrationLink'] ?? '';
               final company = data['company'] ?? '';
               final isNewWalkIn = data['isNew'] as bool? ?? false;
+              final isInterested = data['interested'] as bool? ?? false;
 
               // Format date nicely: YYYY-MM-DD to "EEE, MMM d"
               String formattedDate = dateStr;
@@ -2302,6 +2364,16 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
+                              TextButton.icon(
+                                onPressed: () => _toggleWalkInInterest(docId, isInterested),
+                                icon: Icon(isInterested ? Icons.star : Icons.star_border, size: 16, color: Colors.amber),
+                                label: Text(isInterested ? 'Interested' : 'Mark Interested'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.amber,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
                               TextButton.icon(
                                 onPressed: () => _markWalkInNotInterested(docId),
                                 icon: const Icon(Icons.block, size: 16, color: Colors.red),

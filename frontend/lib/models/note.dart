@@ -6,6 +6,8 @@ class Note {
   final bool isLocked;
   final String? ownerUid;
   final List<String> sharedWith;
+  final bool isChecklist;
+  final List<Map<String, dynamic>> checklistItems;
 
   Note({
     this.id,
@@ -15,6 +17,8 @@ class Note {
     this.isLocked = false,
     this.ownerUid,
     this.sharedWith = const [],
+    this.isChecklist = false,
+    this.checklistItems = const [],
   });
 
   Map<String, dynamic> toMap() {
@@ -25,6 +29,8 @@ class Note {
       'isLocked': isLocked,
       'ownerUid': ownerUid,
       'sharedWith': sharedWith,
+      'isChecklist': isChecklist,
+      'checklistItems': checklistItems,
     };
   }
 
@@ -37,6 +43,10 @@ class Note {
       isLocked: map['isLocked'] == true,
       ownerUid: ownerUid ?? map['ownerUid'],
       sharedWith: List<String>.from(map['sharedWith'] ?? []),
+      isChecklist: map['isChecklist'] == true,
+      checklistItems: List<Map<String, dynamic>>.from(
+        (map['checklistItems'] as List?)?.map((item) => Map<String, dynamic>.from(item)) ?? []
+      ),
     );
   }
 }

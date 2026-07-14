@@ -678,14 +678,7 @@ class _MainScreenState extends State<MainScreen> {
                   'color': Colors.teal,
                   'action': () => _selectTabOrPush('notes'),
                 },
-              if (_enabledModules.contains('checklist'))
-                {
-                  'id': 'checklist',
-                  'name': 'Checklist',
-                  'icon': Icons.playlist_add_check_outlined,
-                  'color': Colors.blue,
-                  'action': () => _selectTabOrPush('checklist'),
-                },
+              // Checklist feature integrated directly into Notes
               if (_enabledModules.contains('shifts'))
                 {
                   'id': 'shifts',
@@ -1342,19 +1335,7 @@ class _MainScreenState extends State<MainScreen> {
                 ],
               ),
             ),
-            if (_enabledModules.contains('checklist')) ...[
-              ListTile(
-                leading: const Icon(Icons.playlist_add_check_outlined, color: Colors.blue),
-                title: const Text('Checklist'),
-                subtitle: const Text('Checklists for travel/office'),
-                selected: _isModuleSelected('checklist'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('checklist');
-                },
-              ),
-              const Divider(),
-            ],
+            // Checklist feature integrated directly into Notes
             if (_enabledModules.contains('reminders'))
               ListTile(
                 leading: const Icon(Icons.calendar_today, color: Colors.indigo),

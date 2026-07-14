@@ -59,6 +59,9 @@ class _NotesScreenState extends State<NotesScreen> {
     final titleController = TextEditingController(text: note?.title ?? '');
     final contentController = TextEditingController(text: note?.content ?? '');
     bool isLocked = note?.isLocked ?? false;
+    bool isChecklist = note?.isChecklist ?? false;
+    List<Map<String, dynamic>> checklistItems = List<Map<String, dynamic>>.from(note?.checklistItems ?? []);
+    final List<TextEditingController> itemControllers = checklistItems.map((item) => TextEditingController(text: item['text'] as String)).toList();
 
     // Check Lock
     if (note != null && note.isLocked) {
@@ -80,9 +83,15 @@ class _NotesScreenState extends State<NotesScreen> {
             onPopInvokedWithResult: (bool didPop, Object? result) async {
               if (didPop && !hasSaved) {
                 final title = titleController.text;
+                if (isChecklist) {
+                  for (int i = 0; i < checklistItems.length; i++) {
+                    checklistItems[i]['text'] = itemControllers[i].text;
+                  }
+                  contentController.text = checklistItems.map((item) => (item['isChecked'] == true ? '[x] ' : '[ ] ') + (item['text'] as String)).join('\n');
+                }
                 final content = contentController.text;
                 if (note == null) {
-                  if (title.isNotEmpty || content.isNotEmpty) {
+                  if (title.isNotEmpty || (isChecklist ? checklistItems.isNotEmpty : content.isNotEmpty)) {
                     hasSaved = true;
                     final newNote = Note(
                       title: title,
@@ -90,6 +99,8 @@ class _NotesScreenState extends State<NotesScreen> {
                       date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
                       isLocked: isLocked,
                       sharedWith: [],
+                      isChecklist: isChecklist,
+                      checklistItems: checklistItems,
                     );
                     try {
                       await _storageService.insertNote(newNote);
@@ -98,7 +109,25 @@ class _NotesScreenState extends State<NotesScreen> {
                     }
                   }
                 } else {
-                  if (title != note.title || content != note.content || isLocked != note.isLocked) {
+                  bool isChanged = title != note.title || isLocked != note.isLocked || isChecklist != note.isChecklist;
+                  if (!isChanged) {
+                    if (isChecklist) {
+                      if (checklistItems.length != note.checklistItems.length) {
+                        isChanged = true;
+                      } else {
+                        for (int i = 0; i < checklistItems.length; i++) {
+                          if (checklistItems[i]['text'] != note.checklistItems[i]['text'] ||
+                              checklistItems[i]['isChecked'] != note.checklistItems[i]['isChecked']) {
+                            isChanged = true;
+                            break;
+                          }
+                        }
+                      }
+                    } else {
+                      isChanged = content != note.content;
+                    }
+                  }
+                  if (isChanged) {
                     hasSaved = true;
                     final updatedNote = Note(
                       id: note.id,
@@ -108,6 +137,8 @@ class _NotesScreenState extends State<NotesScreen> {
                       isLocked: isLocked,
                       ownerUid: note.ownerUid,
                       sharedWith: note.sharedWith,
+                      isChecklist: isChecklist,
+                      checklistItems: checklistItems,
                     );
                     try {
                       await _storageService.updateNote(updatedNote);
@@ -122,6 +153,51 @@ class _NotesScreenState extends State<NotesScreen> {
               appBar: AppBar(
                 title: Text(note == null ? 'New Note' : 'Edit Note'),
                 actions: [
+                  IconButton(
+                    icon: Icon(isChecklist ? Icons.notes : Icons.playlist_add_check),
+                    onPressed: () {
+                      setDialogState(() {
+                        if (isChecklist) {
+                          // Switching to normal Note
+                          for (int i = 0; i < checklistItems.length; i++) {
+                            checklistItems[i]['text'] = itemControllers[i].text;
+                          }
+                          contentController.text = checklistItems
+                              .map((item) => item['text'] as String)
+                              .where((text) => text.trim().isNotEmpty)
+                              .join('\n');
+                          isChecklist = false;
+                        } else {
+                          // Switching to Checklist
+                          final text = contentController.text;
+                          checklistItems = text
+                              .split('\n')
+                              .map((line) {
+                                String cleaned = line;
+                                bool isChecked = false;
+                                if (line.startsWith('[x] ')) {
+                                  cleaned = line.substring(4);
+                                  isChecked = true;
+                                } else if (line.startsWith('[ ] ')) {
+                                  cleaned = line.substring(4);
+                                }
+                                return {'text': cleaned, 'isChecked': isChecked};
+                              })
+                              .where((item) => (item['text'] as String).trim().isNotEmpty)
+                              .toList();
+                          if (checklistItems.isEmpty) {
+                            checklistItems = [{'text': '', 'isChecked': false}];
+                          }
+                          itemControllers.clear();
+                          for (var item in checklistItems) {
+                            itemControllers.add(TextEditingController(text: item['text'] as String));
+                          }
+                          isChecklist = true;
+                        }
+                      });
+                    },
+                    tooltip: isChecklist ? 'Convert to Note' : 'Convert to Checklist',
+                  ),
                   IconButton(
                     icon: Icon(isLocked ? Icons.lock : Icons.lock_open, 
                       color: isLocked ? Colors.red : Colors.green),
@@ -143,19 +219,29 @@ class _NotesScreenState extends State<NotesScreen> {
                       )
                     : TextButton(
                         onPressed: () async {
-                          if (titleController.text.isNotEmpty || contentController.text.isNotEmpty) {
+                          final title = titleController.text;
+                          if (isChecklist) {
+                            for (int i = 0; i < checklistItems.length; i++) {
+                              checklistItems[i]['text'] = itemControllers[i].text;
+                            }
+                            contentController.text = checklistItems.map((item) => (item['isChecked'] == true ? '[x] ' : '[ ] ') + (item['text'] as String)).join('\n');
+                          }
+                          final content = contentController.text;
+                          if (title.isNotEmpty || (isChecklist ? checklistItems.isNotEmpty : content.isNotEmpty)) {
                             setDialogState(() {
                               isSaving = true;
                               hasSaved = true;
                             });
                             final newNote = Note(
                               id: note?.id,
-                              title: titleController.text,
-                              content: contentController.text,
+                              title: title,
+                              content: content,
                               date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
                               isLocked: isLocked,
                               ownerUid: note?.ownerUid,
                               sharedWith: note?.sharedWith ?? [],
+                              isChecklist: isChecklist,
+                              checklistItems: checklistItems,
                             );
                             try {
                               if (note == null) {
@@ -197,16 +283,77 @@ class _NotesScreenState extends State<NotesScreen> {
                     ),
                     const Divider(),
                     Expanded(
-                      child: TextField(
-                        controller: contentController,
-                        decoration: const InputDecoration(
-                          hintText: 'Start typing your note...',
-                          border: InputBorder.none,
-                        ),
-                        maxLines: null,
-                        expands: true,
-                        textAlignVertical: TextAlignVertical.top,
-                      ),
+                      child: isChecklist
+                          ? Column(
+                              children: [
+                                Expanded(
+                                  child: ListView.builder(
+                                    itemCount: checklistItems.length,
+                                    itemBuilder: (context, index) {
+                                      final item = checklistItems[index];
+                                      return Row(
+                                        children: [
+                                          Checkbox(
+                                            value: item['isChecked'] == true,
+                                            onChanged: (val) {
+                                              setDialogState(() {
+                                                item['isChecked'] = val ?? false;
+                                              });
+                                            },
+                                          ),
+                                          Expanded(
+                                            child: TextField(
+                                              controller: itemControllers[index],
+                                              decoration: const InputDecoration(
+                                                hintText: 'Add item...',
+                                                border: InputBorder.none,
+                                              ),
+                                              textCapitalization: TextCapitalization.sentences,
+                                              onChanged: (val) {
+                                                item['text'] = val;
+                                              },
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.close, color: Colors.grey),
+                                            onPressed: () {
+                                              setDialogState(() {
+                                                checklistItems.removeAt(index);
+                                                itemControllers[index].dispose();
+                                                itemControllers.removeAt(index);
+                                              });
+                                            },
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton.icon(
+                                    icon: const Icon(Icons.add),
+                                    label: const Text('Add Item'),
+                                    onPressed: () {
+                                      setDialogState(() {
+                                        checklistItems.add({'text': '', 'isChecked': false});
+                                        itemControllers.add(TextEditingController(text: ''));
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
+                            )
+                          : TextField(
+                              controller: contentController,
+                              decoration: const InputDecoration(
+                                hintText: 'Start typing your note...',
+                                border: InputBorder.none,
+                              ),
+                              maxLines: null,
+                              expands: true,
+                              textAlignVertical: TextAlignVertical.top,
+                            ),
                     ),
                   ],
                 ),
@@ -560,15 +707,56 @@ class _NotesScreenState extends State<NotesScreen> {
               ),
               if (note.title.isNotEmpty) const SizedBox(height: 8),
               Expanded(
-                child: Text(
-                  note.isLocked ? 'Locked Content' : note.content,
-                  overflow: TextOverflow.fade,
-                  style: TextStyle(
-                    color: subtitleColor, 
-                    fontSize: 13,
-                    fontStyle: note.isLocked ? FontStyle.italic : FontStyle.normal
-                  ),
-                ),
+                child: note.isLocked
+                    ? Text(
+                        'Locked Content',
+                        style: TextStyle(
+                          color: subtitleColor,
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      )
+                    : note.isChecklist
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: note.checklistItems.take(3).map<Widget>((item) {
+                              final checked = item['isChecked'] == true;
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 2.0),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      checked ? Icons.check_box_outlined : Icons.check_box_outline_blank,
+                                      size: 14,
+                                      color: subtitleColor.withOpacity(0.7),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        item['text'] ?? '',
+                                        style: TextStyle(
+                                          color: subtitleColor,
+                                          fontSize: 12,
+                                          decoration: checked ? TextDecoration.lineThrough : null,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          )
+                        : Text(
+                            note.content,
+                            overflow: TextOverflow.fade,
+                            style: TextStyle(
+                              color: subtitleColor,
+                              fontSize: 13,
+                            ),
+                          ),
               ),
               const SizedBox(height: 8),
               Row(

@@ -741,15 +741,51 @@ async function internalPerformGoldFetch(force = false) {
         return { success: false, error: "No price retrieved from scrapers." };
     const nowIST = moment().tz('Asia/Kolkata');
     const todayStr = nowIST.format('YYYY-MM-DD');
-    // Get the most recent price overall to compute priceChange and prevent duplicate spam within a short window
+    const currentHour = nowIST.hour();
+    // Get the most recent price overall to compute priceChange
     const lastDocs = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(1).get();
     const lastPrice = lastDocs.empty ? null : lastDocs.docs[0].data().price;
-    const lastTimestampStr = lastDocs.empty ? null : lastDocs.docs[0].data().timestamp;
-    if (lastPrice !== null && currentPrice === lastPrice && lastTimestampStr) {
-        const lastTimestamp = moment(lastTimestampStr);
-        // If the price is the same and the last update was less than 5 minutes ago, skip it
-        if (nowIST.diff(lastTimestamp, 'minutes') < 5) {
-            return { success: true, status: 'no_change', price: currentPrice };
+    // Check scheduling rules unless force is true
+    if (!force) {
+        // At 11:00 AM, we always insert and notify (compulsory).
+        // At 7:00 PM (19:00), we only insert/notify if the price changed compared to the 11:00 AM price of the same day.
+        if (currentHour === 19) {
+            // Find 11:00 AM price of today
+            const todayPrices = await db.collection("global_gold_prices")
+                .where("date", "==", todayStr)
+                .orderBy("timestamp", "asc")
+                .get();
+            let priceAt11 = null;
+            for (const doc of todayPrices.docs) {
+                const data = doc.data();
+                if (data.timestamp) {
+                    const docTime = moment(data.timestamp).tz('Asia/Kolkata');
+                    if (docTime.hour() === 11) {
+                        priceAt11 = data.price;
+                        break;
+                    }
+                }
+            }
+            // Fallback: use first price of today if 11:00 AM is not specifically found
+            if (priceAt11 === null && !todayPrices.empty) {
+                priceAt11 = todayPrices.docs[0].data().price;
+            }
+            if (priceAt11 !== null && currentPrice === priceAt11) {
+                console.log(`[GoldFetch] 7:00 PM price (${currentPrice}) is same as 11:00 AM price (${priceAt11}). Skipping insert and notifications.`);
+                return { success: true, status: 'no_change', price: currentPrice };
+            }
+        }
+        else if (currentHour !== 11) {
+            // If it is any other unscheduled hour, check if it matches the last overall price
+            // to avoid spamming within short intervals (default behavior)
+            const lastTimestampStr = lastDocs.empty ? null : lastDocs.docs[0].data().timestamp;
+            if (lastPrice !== null && currentPrice === lastPrice && lastTimestampStr) {
+                const lastTimestamp = moment(lastTimestampStr);
+                if (nowIST.diff(lastTimestamp, 'minutes') < 5) {
+                    console.log(`[GoldFetch] Price is same and updated less than 5 mins ago. Skipping.`);
+                    return { success: true, status: 'no_change', price: currentPrice };
+                }
+            }
         }
     }
     const timestampStr = nowIST.toISOString();
@@ -1065,6 +1101,47 @@ Respond ONLY with a JSON object matching this schema:
     }
     return JSON.parse(textResponse);
 }
+async function hasPaidAllChitsForCurrentMonth(uid) {
+    var _a;
+    try {
+        const nowIST = moment().tz('Asia/Kolkata');
+        const currentMonthKey = nowIST.format('YYYY-MM'); // e.g. "2026-07"
+        // Find plans owned by user
+        const ownedPlans = await db.collection("gold_chits")
+            .where("ownerId", "==", uid)
+            .get();
+        // Find plans shared with user
+        const sharedPlans = await db.collection("gold_chits")
+            .where("sharedWith", "array-contains", uid)
+            .get();
+        const allPlans = [...ownedPlans.docs, ...sharedPlans.docs].filter(planDoc => {
+            const data = planDoc.data();
+            return data.status !== "completed" && data.status !== "inactive";
+        });
+        if (allPlans.length === 0) {
+            // If they have no active plans, they haven't paid anything, but they also don't have any chits.
+            // Return false so they can still see general advice notifications if they enabled the module.
+            return false;
+        }
+        // Check each plan's current month installment
+        for (const planDoc of allPlans) {
+            const installmentDoc = await planDoc.ref
+                .collection("installments")
+                .doc(currentMonthKey)
+                .get();
+            if (!installmentDoc.exists || ((_a = installmentDoc.data()) === null || _a === void 0 ? void 0 : _a.status) !== "paid") {
+                // Found at least one active plan that is unpaid for this month
+                return false;
+            }
+        }
+        // All plans are paid for this month
+        return true;
+    }
+    catch (err) {
+        console.error(`Error in hasPaidAllChitsForCurrentMonth for user ${uid}:`, err);
+        return false;
+    }
+}
 async function sendChitNotificationToAllUsers(recommendation, message) {
     const snap = await db.collection("usernames").get();
     const tokens = [];
@@ -1079,6 +1156,11 @@ async function sendChitNotificationToAllUsers(recommendation, message) {
                     const enabledModules = (uData === null || uData === void 0 ? void 0 : uData.enabledModules) || [];
                     const notifPrefs = (uData === null || uData === void 0 ? void 0 : uData.notificationPreferences) || {};
                     if (enabledModules.includes("gold") && notifPrefs.gold_advice !== false) {
+                        const hasPaid = await hasPaidAllChitsForCurrentMonth(udata.uid);
+                        if (hasPaid) {
+                            console.log(`[GoldChitAdvice] Skipping notification for user ${udata.uid} as they have paid all chits for this month.`);
+                            continue;
+                        }
                         tokens.push(udata.fcmToken);
                         targetUids.push(udata.uid);
                     }
@@ -2397,6 +2479,88 @@ exports.checkPendingGoldChitNotifications = functions.pubsub.schedule('* * * * *
         catch (err) {
             console.error(`Error sending delayed notification for pending doc ${doc.id}:`, err);
             await doc.ref.update({ status: 'failed', error: err.message || err.toString() });
+        }
+    }
+});
+exports.checkInterestedEventsNotifications = functions.pubsub.schedule('0 18 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+    const tomorrowStr = moment().tz('Asia/Kolkata').add(1, 'days').format('YYYY-MM-DD');
+    console.log(`Running checkInterestedEventsNotifications at ${moment().tz('Asia/Kolkata').format()} (Target Date: ${tomorrowStr})`);
+    const users = await db.collection('usernames').get();
+    for (const u of users.docs) {
+        const userData = u.data();
+        if (!userData.fcmToken || !userData.uid)
+            continue;
+        const uid = userData.uid;
+        try {
+            // Check if user profile exists and if modules are enabled
+            const userProfileDoc = await db.collection("users").doc(uid).get();
+            if (!userProfileDoc.exists)
+                continue;
+            const uData = userProfileDoc.data();
+            const enabledModules = (uData === null || uData === void 0 ? void 0 : uData.enabledModules) || [];
+            const notifPrefs = (uData === null || uData === void 0 ? void 0 : uData.notificationPreferences) || {};
+            // We only process if either events or walkins module is enabled
+            const checkEvents = enabledModules.includes("events") && notifPrefs.events !== false;
+            const checkWalkins = enabledModules.includes("walkin") && notifPrefs.walkin !== false;
+            if (!checkEvents && !checkWalkins)
+                continue;
+            if (checkEvents) {
+                const eventsSnap = await db.collection('users').doc(uid).collection('events')
+                    .where('interested', '==', true)
+                    .where('date', '==', tomorrowStr)
+                    .get();
+                for (const doc of eventsSnap.docs) {
+                    const eventData = doc.data();
+                    if (eventData.notifiedInterested === true)
+                        continue;
+                    const title = `📅 Upcoming Event: ${eventData.title || 'Tech Event'}`;
+                    const body = `Reminder: "${eventData.title}" is happening tomorrow at ${eventData.timings || 'scheduled time'}.`;
+                    console.log(`Sending interested event reminder: ${title} to user ${uid}`);
+                    await admin.messaging().send({
+                        token: userData.fcmToken,
+                        notification: { title, body },
+                        android: {
+                            notification: {
+                                channelId: 'events_reminder_channel',
+                                tag: `event_interest_${doc.id}`
+                            }
+                        },
+                        data: { type: "event_interest_reminder", eventId: doc.id }
+                    });
+                    await logNotification(uid, title, body, "TECH_EVENTS");
+                    await doc.ref.update({ notifiedInterested: true });
+                }
+            }
+            if (checkWalkins) {
+                const walkinsSnap = await db.collection('users').doc(uid).collection('walkins')
+                    .where('interested', '==', true)
+                    .where('date', '==', tomorrowStr)
+                    .get();
+                for (const doc of walkinsSnap.docs) {
+                    const walkinData = doc.data();
+                    if (walkinData.notifiedInterested === true)
+                        continue;
+                    const title = `🚶 Upcoming Walk-In: ${walkinData.title || 'Walk-In'}`;
+                    const body = `Reminder: Walk-In for "${walkinData.title}" is happening tomorrow at ${walkinData.timings || 'scheduled time'}.`;
+                    console.log(`Sending interested walkin reminder: ${title} to user ${uid}`);
+                    await admin.messaging().send({
+                        token: userData.fcmToken,
+                        notification: { title, body },
+                        android: {
+                            notification: {
+                                channelId: 'events_reminder_channel',
+                                tag: `walkin_interest_${doc.id}`
+                            }
+                        },
+                        data: { type: "walkin_interest_reminder", walkinId: doc.id }
+                    });
+                    await logNotification(uid, title, body, "WALK_INS");
+                    await doc.ref.update({ notifiedInterested: true });
+                }
+            }
+        }
+        catch (error) {
+            console.error(`Failed to check/send interested notifications for user ${uid}:`, error);
         }
     }
 });
