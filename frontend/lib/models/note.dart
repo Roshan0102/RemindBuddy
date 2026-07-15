@@ -8,6 +8,7 @@ class Note {
   final List<String> sharedWith;
   final bool isChecklist;
   final List<Map<String, dynamic>> checklistItems;
+  final bool isStarred;
 
   Note({
     this.id,
@@ -19,6 +20,7 @@ class Note {
     this.sharedWith = const [],
     this.isChecklist = false,
     this.checklistItems = const [],
+    this.isStarred = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -31,6 +33,7 @@ class Note {
       'sharedWith': sharedWith,
       'isChecklist': isChecklist,
       'checklistItems': checklistItems,
+      'isStarred': isStarred,
     };
   }
 
@@ -47,6 +50,7 @@ class Note {
       checklistItems: List<Map<String, dynamic>>.from(
         (map['checklistItems'] as List?)?.map((item) => Map<String, dynamic>.from(item)) ?? []
       ),
+      isStarred: map['isStarred'] == true,
     );
   }
 }

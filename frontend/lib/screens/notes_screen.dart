@@ -16,6 +16,7 @@ class NotesScreen extends StatefulWidget {
 class _NotesScreenState extends State<NotesScreen> {
   final StorageService _storageService = StorageService();
   List<String> _customOrderIds = [];
+  int? _draggedIndex;
 
   @override
   void initState() {
@@ -38,21 +39,27 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   List<Note> _sortNotesWithCustomOrder(List<Note> notes) {
-    if (_customOrderIds.isEmpty) return List<Note>.from(notes);
-    
-    final sorted = List<Note>.from(notes);
-    sorted.sort((a, b) {
-      final aIndex = _customOrderIds.indexOf(a.id ?? '');
-      final bIndex = _customOrderIds.indexOf(b.id ?? '');
-      
-      if (aIndex != -1 && bIndex != -1) {
-        return aIndex.compareTo(bIndex);
-      }
-      if (aIndex != -1) return 1;
-      if (bIndex != -1) return -1;
-      return b.date.compareTo(a.date);
-    });
-    return sorted;
+    final starredNotes = notes.where((n) => n.isStarred).toList();
+    final unstarredNotes = notes.where((n) => !n.isStarred).toList();
+
+    starredNotes.sort((a, b) => b.date.compareTo(a.date));
+
+    if (_customOrderIds.isNotEmpty) {
+      unstarredNotes.sort((a, b) {
+        final aIndex = _customOrderIds.indexOf(a.id ?? '');
+        final bIndex = _customOrderIds.indexOf(b.id ?? '');
+        if (aIndex != -1 && bIndex != -1) {
+          return aIndex.compareTo(bIndex);
+        }
+        if (aIndex != -1) return 1;
+        if (bIndex != -1) return -1;
+        return b.date.compareTo(a.date);
+      });
+    } else {
+      unstarredNotes.sort((a, b) => b.date.compareTo(a.date));
+    }
+
+    return [...starredNotes, ...unstarredNotes];
   }
 
   Future<void> _addOrEditNote({Note? note}) async {
@@ -62,6 +69,38 @@ class _NotesScreenState extends State<NotesScreen> {
     bool isChecklist = note?.isChecklist ?? false;
     List<Map<String, dynamic>> checklistItems = List<Map<String, dynamic>>.from(note?.checklistItems ?? []);
     final List<TextEditingController> itemControllers = checklistItems.map((item) => TextEditingController(text: item['text'] as String)).toList();
+    final List<FocusNode> itemFocusNodes = checklistItems.map((_) => FocusNode()).toList();
+
+    void reorderChecklist(void Function(void Function()) setDialogState) {
+      setDialogState(() {
+        List<Map<String, dynamic>> combined = [];
+        for (int i = 0; i < checklistItems.length; i++) {
+          combined.add({
+            'item': checklistItems[i],
+            'controller': itemControllers[i],
+            'focusNode': itemFocusNodes[i],
+          });
+        }
+
+        // Sort: unchecked first, checked last
+        combined.sort((a, b) {
+          bool aChecked = a['item']['isChecked'] == true;
+          bool bChecked = b['item']['isChecked'] == true;
+          if (aChecked && !bChecked) return 1;
+          if (!aChecked && bChecked) return -1;
+          return 0;
+        });
+
+        checklistItems.clear();
+        itemControllers.clear();
+        itemFocusNodes.clear();
+        for (var pair in combined) {
+          checklistItems.add(pair['item'] as Map<String, dynamic>);
+          itemControllers.add(pair['controller'] as TextEditingController);
+          itemFocusNodes.add(pair['focusNode'] as FocusNode);
+        }
+      });
+    }
 
     // Check Lock
     if (note != null && note.isLocked) {
@@ -139,6 +178,7 @@ class _NotesScreenState extends State<NotesScreen> {
                       sharedWith: note.sharedWith,
                       isChecklist: isChecklist,
                       checklistItems: checklistItems,
+                      isStarred: note.isStarred,
                     );
                     try {
                       await _storageService.updateNote(updatedNote);
@@ -189,8 +229,11 @@ class _NotesScreenState extends State<NotesScreen> {
                             checklistItems = [{'text': '', 'isChecked': false}];
                           }
                           itemControllers.clear();
+                          itemFocusNodes.forEach((node) => node.dispose());
+                          itemFocusNodes.clear();
                           for (var item in checklistItems) {
                             itemControllers.add(TextEditingController(text: item['text'] as String));
+                            itemFocusNodes.add(FocusNode());
                           }
                           isChecklist = true;
                         }
@@ -242,6 +285,7 @@ class _NotesScreenState extends State<NotesScreen> {
                               sharedWith: note?.sharedWith ?? [],
                               isChecklist: isChecklist,
                               checklistItems: checklistItems,
+                              isStarred: note?.isStarred ?? false,
                             );
                             try {
                               if (note == null) {
@@ -292,26 +336,47 @@ class _NotesScreenState extends State<NotesScreen> {
                                     itemBuilder: (context, index) {
                                       final item = checklistItems[index];
                                       return Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Checkbox(
-                                            value: item['isChecked'] == true,
-                                            onChanged: (val) {
-                                              setDialogState(() {
-                                                item['isChecked'] = val ?? false;
-                                              });
-                                            },
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 12.0),
+                                            child: Checkbox(
+                                              value: item['isChecked'] == true,
+                                              onChanged: (val) {
+                                                setDialogState(() {
+                                                  item['isChecked'] = val ?? false;
+                                                });
+                                                reorderChecklist(setDialogState);
+                                              },
+                                            ),
                                           ),
                                           Expanded(
-                                            child: TextField(
-                                              controller: itemControllers[index],
-                                              decoration: const InputDecoration(
-                                                hintText: 'Add item...',
-                                                border: InputBorder.none,
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                              child: TextField(
+                                                controller: itemControllers[index],
+                                                focusNode: itemFocusNodes[index],
+                                                style: TextStyle(
+                                                  decoration: item['isChecked'] == true
+                                                      ? TextDecoration.lineThrough
+                                                      : null,
+                                                  color: item['isChecked'] == true
+                                                      ? Colors.grey
+                                                      : null,
+                                                ),
+                                                decoration: const InputDecoration(
+                                                  hintText: 'Add item...',
+                                                  border: InputBorder.none,
+                                                  isDense: true,
+                                                  contentPadding: EdgeInsets.symmetric(vertical: 4.0),
+                                                ),
+                                                textCapitalization: TextCapitalization.sentences,
+                                                maxLines: null,
+                                                keyboardType: TextInputType.multiline,
+                                                onChanged: (val) {
+                                                  item['text'] = val;
+                                                },
                                               ),
-                                              textCapitalization: TextCapitalization.sentences,
-                                              onChanged: (val) {
-                                                item['text'] = val;
-                                              },
                                             ),
                                           ),
                                           IconButton(
@@ -321,6 +386,8 @@ class _NotesScreenState extends State<NotesScreen> {
                                                 checklistItems.removeAt(index);
                                                 itemControllers[index].dispose();
                                                 itemControllers.removeAt(index);
+                                                itemFocusNodes[index].dispose();
+                                                itemFocusNodes.removeAt(index);
                                               });
                                             },
                                           ),
@@ -338,6 +405,11 @@ class _NotesScreenState extends State<NotesScreen> {
                                       setDialogState(() {
                                         checklistItems.add({'text': '', 'isChecked': false});
                                         itemControllers.add(TextEditingController(text: ''));
+                                        final newFocusNode = FocusNode();
+                                        itemFocusNodes.add(newFocusNode);
+                                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                                          newFocusNode.requestFocus();
+                                        });
                                       });
                                     },
                                   ),
@@ -353,6 +425,8 @@ class _NotesScreenState extends State<NotesScreen> {
                               maxLines: null,
                               expands: true,
                               textAlignVertical: TextAlignVertical.top,
+                              keyboardType: TextInputType.multiline,
+                              textCapitalization: TextCapitalization.sentences,
                             ),
                     ),
                   ],
@@ -363,6 +437,14 @@ class _NotesScreenState extends State<NotesScreen> {
         ),
       ),
     );
+
+    // Dispose resources on dialog close
+    for (var controller in itemControllers) {
+      controller.dispose();
+    }
+    for (var node in itemFocusNodes) {
+      node.dispose();
+    }
   }
 
   Future<bool> _ensureNotesPin(BuildContext context) async {
@@ -598,14 +680,61 @@ class _NotesScreenState extends State<NotesScreen> {
                   final subtitleColor = isDarkTheme ? Colors.white.withValues(alpha: 0.7) : Colors.black54;
                   final hintIconColor = isDarkTheme ? Colors.white.withValues(alpha: 0.5) : Colors.black38;
                   
-                  final card = _buildNoteCard(
-                    note: note,
-                    currentUser: currentUser,
-                    noteColor: noteColor,
-                    isShared: isShared,
-                    titleColor: titleColor,
-                    subtitleColor: subtitleColor,
-                    hintIconColor: hintIconColor,
+                  Widget? dragHandle;
+                  if (!note.isStarred) {
+                    dragHandle = Draggable<int>(
+                      data: index,
+                      feedback: SizedBox(
+                        width: cardWidth,
+                        height: 180.0,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: Transform.scale(
+                            scale: 1.05,
+                            child: _buildNoteCard(
+                              note: note,
+                              currentUser: currentUser,
+                              noteColor: noteColor,
+                              isShared: isShared,
+                              titleColor: titleColor,
+                              subtitleColor: subtitleColor,
+                              hintIconColor: hintIconColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                      onDragStarted: () {
+                        setState(() {
+                          _draggedIndex = index;
+                        });
+                      },
+                      onDraggableCanceled: (_, __) {
+                        setState(() {
+                          _draggedIndex = null;
+                        });
+                      },
+                      onDragCompleted: () {
+                        setState(() {
+                          _draggedIndex = null;
+                        });
+                      },
+                      child: Icon(Icons.drag_indicator, size: 18, color: hintIconColor),
+                    );
+                  }
+
+                  final isDragging = _draggedIndex == index;
+                  final card = Opacity(
+                    opacity: isDragging ? 0.4 : 1.0,
+                    child: _buildNoteCard(
+                      note: note,
+                      currentUser: currentUser,
+                      noteColor: noteColor,
+                      isShared: isShared,
+                      titleColor: titleColor,
+                      subtitleColor: subtitleColor,
+                      hintIconColor: hintIconColor,
+                      dragHandle: dragHandle,
+                    ),
                   );
 
                   return DragTarget<int>(
@@ -621,25 +750,7 @@ class _NotesScreenState extends State<NotesScreen> {
                       });
                     },
                     builder: (context, candidateData, rejectedData) {
-                      return LongPressDraggable<int>(
-                        data: index,
-                        feedback: SizedBox(
-                          width: cardWidth,
-                          height: 180.0,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: Transform.scale(
-                              scale: 1.05,
-                              child: card,
-                            ),
-                          ),
-                        ),
-                        childWhenDragging: Opacity(
-                          opacity: 0.4,
-                          child: card,
-                        ),
-                        child: card,
-                      );
+                      return card;
                     },
                   );
                 },
@@ -663,6 +774,7 @@ class _NotesScreenState extends State<NotesScreen> {
     required Color titleColor,
     required Color subtitleColor,
     required Color hintIconColor,
+    Widget? dragHandle,
   }) {
     return Card(
       elevation: 0,
@@ -772,6 +884,33 @@ class _NotesScreenState extends State<NotesScreen> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (dragHandle != null) ...[
+                        dragHandle,
+                        const SizedBox(width: 12),
+                      ],
+                      GestureDetector(
+                        onTap: () async {
+                          final updatedNote = Note(
+                            id: note.id,
+                            title: note.title,
+                            content: note.content,
+                            date: note.date,
+                            isLocked: note.isLocked,
+                            ownerUid: note.ownerUid,
+                            sharedWith: note.sharedWith,
+                            isChecklist: note.isChecklist,
+                            checklistItems: note.checklistItems,
+                            isStarred: !note.isStarred,
+                          );
+                          await _storageService.updateNote(updatedNote);
+                        },
+                        child: Icon(
+                          note.isStarred ? Icons.star : Icons.star_border,
+                          size: 18,
+                          color: note.isStarred ? Colors.amber : hintIconColor,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
                       if (note.ownerUid == null || note.ownerUid == currentUser?.uid) ...[
                         GestureDetector(
                           onTap: () {

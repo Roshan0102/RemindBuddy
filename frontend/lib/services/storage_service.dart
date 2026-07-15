@@ -195,7 +195,11 @@ class StorageService {
         .toList();
 
     final merged = [...own, ...shared];
-    merged.sort((a, b) => b.date.compareTo(a.date));
+    merged.sort((a, b) {
+      if (a.isStarred && !b.isStarred) return -1;
+      if (!a.isStarred && b.isStarred) return 1;
+      return b.date.compareTo(a.date);
+    });
     return merged;
   }
 
@@ -209,7 +213,11 @@ class StorageService {
 
     void emitMerged() {
       final merged = [...ownNotes, ...sharedNotes];
-      merged.sort((a, b) => b.date.compareTo(a.date));
+      merged.sort((a, b) {
+        if (a.isStarred && !b.isStarred) return -1;
+        if (!a.isStarred && b.isStarred) return 1;
+        return b.date.compareTo(a.date);
+      });
       if (!controller.isClosed) {
         controller.add(merged);
       }

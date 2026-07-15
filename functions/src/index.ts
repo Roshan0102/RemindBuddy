@@ -885,6 +885,18 @@ exports.checkGoldSources = functions.https.onCall(async () => {
 exports.scheduledGoldFetch = functions.pubsub.schedule('0 11,19 * * *').timeZone('Asia/Kolkata').onRun(() => internalPerformGoldFetch());
 exports.forceGoldFetch = functions.https.onCall(() => internalPerformGoldFetch(true));
 
+exports.scheduledMarketForecast = functions.runWith({ timeoutSeconds: 300, memory: "1GB" }).pubsub.schedule('2 11 * * *')
+    .timeZone('Asia/Kolkata')
+    .onRun(async () => {
+        try {
+            console.log("Running scheduled market forecast at 11:02 AM IST...");
+            await runGoldAIPredictionInternal();
+            console.log("Scheduled market forecast finished successfully.");
+        } catch (error: any) {
+            console.error("Error in scheduledMarketForecast:", error);
+        }
+    });
+
 
 
 exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('Asia/Kolkata').onRun(async () => {
