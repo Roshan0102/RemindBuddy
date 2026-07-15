@@ -21,7 +21,7 @@ class _GoldScreenState extends State<GoldScreen> {
   bool _isGeneratingAI = false;
   bool _isGeneratingChit = false;
   int _aiActiveTab = 0; // 0 for Forecast, 1 for Chit Assistant
-  String _selectedChartRange = '7D';
+  String _selectedChartRange = 'This Month';
   
   String? _uid;
   bool _askGeminiEnabled = false;

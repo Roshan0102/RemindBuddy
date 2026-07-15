@@ -647,6 +647,41 @@ async function notifyAllUsers(price: number, oldPrice: number | null) {
     }
 }
 
+async function fetchLatestGoldNews(): Promise<any[]> {
+    const queries = [
+        'gold price india',
+        'gold price CPI inflation Federal Reserve US economy JPMorgan'
+    ];
+    const newsItems: any[] = [];
+    const seenTitles = new Set<string>();
+
+    for (const query of queries) {
+        try {
+            const newsUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-IN&gl=IN&ceid=IN:en`;
+            const newsResponse = await axios.get(newsUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                timeout: 10000
+            });
+            const $ = cheerio.load(newsResponse.data, { xmlMode: true });
+            $('item').slice(0, 8).each((i, el) => {
+                const title = $(el).find('title').text();
+                const link = $(el).find('link').text();
+                const pubDate = $(el).find('pubDate').text();
+                const source = $(el).find('source').text();
+                
+                const normTitle = title.toLowerCase().trim();
+                if (!seenTitles.has(normTitle)) {
+                    seenTitles.add(normTitle);
+                    newsItems.push({ title, link, pubDate, source });
+                }
+            });
+        } catch (newsErr) {
+            console.error(`Error fetching news for query "${query}":`, newsErr);
+        }
+    }
+    return newsItems.slice(0, 15);
+}
+
 async function runGoldAIPredictionInternal(): Promise<any> {
     // 1. Fetch Gemini API key from Firestore
     const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
@@ -671,35 +706,20 @@ async function runGoldAIPredictionInternal(): Promise<any> {
         });
     });
 
-    // 3. Fetch latest news from Google News RSS
-    const newsUrl = 'https://news.google.com/rss/search?q=gold+price+india&hl=en-IN&gl=IN&ceid=IN:en';
-    let newsItems: any[] = [];
-    try {
-        const newsResponse = await axios.get(newsUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-            timeout: 10000
-        });
-        const $ = cheerio.load(newsResponse.data, { xmlMode: true });
-        $('item').slice(0, 8).each((i, el) => {
-            const title = $(el).find('title').text();
-            const link = $(el).find('link').text();
-            const pubDate = $(el).find('pubDate').text();
-            const source = $(el).find('source').text();
-            newsItems.push({ title, link, pubDate, source });
-        });
-    } catch (newsErr) {
-        console.error("Error fetching news in runGoldAIPredictionInternal:", newsErr);
-    }
+    // 3. Fetch latest news from Google News RSS using fetchLatestGoldNews helper
+    const newsItems = await fetchLatestGoldNews();
 
     // 4. Prepare prompt for Gemini
     const currentPriceInfo = priceHistory.length > 0 ? priceHistory[0] : null;
     const prompt = `You are a financial analyst specializing in precious metals, especially Gold rates in India.
 Analyze the following recent historical 22K gold prices (per 2 grams or current units) and the latest gold market news headlines.
-Specifically, make sure to consider:
-- American and global economic news (such as US Federal Reserve interest rates).
-- Geopolitical events or war news related to gold (which typically increases gold's appeal as a safe haven).
-- Tax and import/export duty changes in India as well as other countries that affect the gold price in India.
-- Any general news affecting demand/supply in the Indian gold market.
+
+CRITICAL INSTRUCTIONS:
+- You must carefully analyze major macroeconomic events, indicators, and releases that directly impact the price of gold globally and in India.
+- Specifically consider US inflation data (such as Consumer Price Index / CPI, Core CPI, PCE), Federal Reserve policy decisions (interest rates, rate cuts/hikes), US Dollar Index movements, Treasury yields, and statements/reports from major financial institutions (like JPMorgan, Goldman Sachs, etc.).
+- Analyze the correlation of these events. For example, explain how a lower US CPI/inflation rate signals potential Fed rate cuts, which weakens the US Dollar and consequently drives gold prices up.
+- Highlight upcoming or recently released key economic reports (like CPI releases or Fed meetings) and detail their predicted direction and specific impact on gold prices.
+- Geopolitical tensions/wars (which boost gold's appeal as a safe haven) and local Indian demand, taxes, or import/export duties must also be factored in.
 
 Your output must be written in very simple, plain, and easy-to-understand English. 
 CRITICAL: Do NOT use difficult financial jargon (like 'bearish', 'bullish', 'consolidation', 'correction') without immediately explaining them in extremely simple terms. For example, instead of 'market is bearish', write 'prices are likely to fall (bearish)'. Keep explanations very simple.
@@ -710,7 +730,7 @@ Provide:
 3. Sentiment Summary: A concise, 1-2 sentence summary of what is driving this sentiment using simple English.
 4. Predicted Trend: "upward", "downward", or "stable" for the next 1-3 days.
 5. Predicted Price Range: A realistic price range (e.g. "13,100 - 13,300") in the same format/currency unit as the input price (the current latest price is ${currentPriceInfo ? currentPriceInfo.price : 'unknown'}).
-6. Prediction Rationale: A detailed bullet-pointed explanation of why you predict this trend, referencing recent price trends, US/global news, geopolitics/war news, or tax updates.
+6. Prediction Rationale: A detailed bullet-pointed explanation of why you predict this trend. You must explicitly reference specific recent economic data releases (e.g. CPI/inflation releases, Federal Reserve rate expectations, JPMorgan or major bank reports) and explain exactly how they affect the gold price in simple, logical terms.
 
 Input Data:
 Recent Price History (latest first):
@@ -729,7 +749,6 @@ Respond ONLY with a JSON object matching this schema:
   "predictionRationale": "string"
 }`;
 
-    // 5. Call Gemini API
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
@@ -756,40 +775,60 @@ Respond ONLY with a JSON object matching this schema:
         }
     };
 
-    const response = await axios.post(url, payload, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 60000
-    });
+    let attempts = 0;
+    const maxAttempts = 3;
+    let lastError: any = null;
 
-    const candidates = response.data?.candidates;
-    if (!candidates || candidates.length === 0) {
-        throw new Error('No response candidates returned from Gemini API.');
+    while (attempts < maxAttempts) {
+        try {
+            attempts++;
+            console.log(`Calling Gemini API for market forecast prediction (attempt ${attempts}/${maxAttempts})...`);
+            const response = await axios.post(url, payload, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 60000
+            });
+
+            const candidates = response.data?.candidates;
+            if (!candidates || candidates.length === 0) {
+                throw new Error('No response candidates returned from Gemini API.');
+            }
+
+            const textResponse = candidates[0].content?.parts[0]?.text;
+            if (!textResponse) {
+                throw new Error('Empty content returned from Gemini API.');
+            }
+
+            const parsedResult = JSON.parse(textResponse);
+            
+            // 6. Store the result in Firestore
+            const nowIST = moment().tz('Asia/Kolkata');
+            const timestampStr = nowIST.toISOString();
+            const docId = timestampStr.replace(/[:.]/g, '-');
+            
+            const insightData = {
+                ...parsedResult,
+                news: newsItems,
+                priceHistoryAnalyzed: priceHistory,
+                timestamp: timestampStr,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+
+            await db.collection("gold_ai_insights").doc(docId).set(insightData);
+            await db.collection("gold_ai_insights").doc("latest").set(insightData);
+
+            return insightData;
+        } catch (error: any) {
+            lastError = error;
+            console.error(`Attempt ${attempts} failed for market forecast:`, error.message);
+            if (attempts < maxAttempts) {
+                const backoffMs = attempts * 10000;
+                console.log(`Waiting ${backoffMs / 1000}s before retrying...`);
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
+            }
+        }
     }
 
-    const textResponse = candidates[0].content?.parts[0]?.text;
-    if (!textResponse) {
-        throw new Error('Empty content returned from Gemini API.');
-    }
-
-    const parsedResult = JSON.parse(textResponse);
-    
-    // 6. Store the result in Firestore
-    const nowIST = moment().tz('Asia/Kolkata');
-    const timestampStr = nowIST.toISOString();
-    const docId = timestampStr.replace(/[:.]/g, '-');
-    
-    const insightData = {
-        ...parsedResult,
-        news: newsItems,
-        priceHistoryAnalyzed: priceHistory,
-        timestamp: timestampStr,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-
-    await db.collection("gold_ai_insights").doc(docId).set(insightData);
-    await db.collection("gold_ai_insights").doc("latest").set(insightData);
-
-    return insightData;
+    throw lastError || new Error("Failed to generate gold AI insights after maximum attempts.");
 }
 
 async function internalPerformGoldFetch(force: boolean = false) {
@@ -1341,25 +1380,7 @@ exports.generateGoldChitAdvice = functions.runWith({ timeoutSeconds: 120, memory
         });
 
         // 2. Fetch news
-        const newsUrl = 'https://news.google.com/rss/search?q=gold+price+india&hl=en-IN&gl=IN&ceid=IN:en';
-        let newsItems: any[] = [];
-        try {
-            const newsResponse = await axios.get(newsUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-                timeout: 10000
-            });
-            const $ = cheerio.load(newsResponse.data, { xmlMode: true });
-            $('item').slice(0, 8).each((i, el) => {
-                newsItems.push({
-                    title: $(el).find('title').text(),
-                    link: $(el).find('link').text(),
-                    pubDate: $(el).find('pubDate').text(),
-                    source: $(el).find('source').text()
-                });
-            });
-        } catch (newsErr) {
-            console.error("Error fetching news in generateGoldChitAdvice:", newsErr);
-        }
+        const newsItems = await fetchLatestGoldNews();
 
         const advice = await generateGoldChitRecommendation(apiKey, priceHistory, newsItems);
         
@@ -1409,23 +1430,7 @@ exports.onGoldPriceCreated = functions.runWith({ timeoutSeconds: 300, memory: "5
             });
 
             // 2. Fetch news
-            const newsUrl = 'https://news.google.com/rss/search?q=gold+price+india&hl=en-IN&gl=IN&ceid=IN:en';
-            let newsItems: any[] = [];
-            try {
-                const newsResponse = await axios.get(newsUrl, {
-                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-                    timeout: 10000
-                });
-                const $ = cheerio.load(newsResponse.data, { xmlMode: true });
-                $('item').slice(0, 8).each((i, el) => {
-                    newsItems.push({
-                        title: $(el).find('title').text(),
-                        link: $(el).find('link').text(),
-                        pubDate: $(el).find('pubDate').text(),
-                        source: $(el).find('source').text()
-                    });
-                });
-            } catch (e) {}
+            const newsItems = await fetchLatestGoldNews();
 
             // -- PART A: GOLD CHIT ASSISTANT --
             try {
@@ -1450,97 +1455,9 @@ exports.onGoldPriceCreated = functions.runWith({ timeoutSeconds: 300, memory: "5
 
             // -- PART B: MARKET FORECAST (AI INSIGHTS) --
             try {
-                const currentPriceInfo = priceHistory.length > 0 ? priceHistory[0] : null;
-                const prompt = `You are a financial analyst specializing in precious metals, especially Gold rates in India.
-Analyze the following recent historical 22K gold prices (per 2 grams or current units) and the latest gold market news headlines.
-Specifically, make sure to consider:
-- American and global economic news (such as US Federal Reserve interest rates).
-- Geopolitical events or war news related to gold (which typically increases gold's appeal as a safe haven).
-- Tax and import/export duty changes in India as well as other countries that affect the gold price in India.
-- Any general news affecting demand/supply in the Indian gold market.
-
-Your output must be written in very simple, plain, and easy-to-understand English. 
-CRITICAL: Do NOT use difficult financial jargon (like 'bearish', 'bullish', 'consolidation', 'correction') without immediately explaining them in extremely simple terms. For example, instead of 'market is bearish', write 'prices are likely to fall (bearish)'. Keep explanations very simple.
-
-Provide:
-1. Market Sentiment: "bullish" (upward trend/prices rising), "bearish" (downward trend/prices dropping), or "neutral".
-2. Sentiment Score: An integer from -100 (extremely bearish/falling) to 100 (extremely bullish/rising).
-3. Sentiment Summary: A concise, 1-2 sentence summary of what is driving this sentiment using simple English.
-4. Predicted Trend: "upward", "downward", or "stable" for the next 1-3 days.
-5. Predicted Price Range: A realistic price range (e.g. "13,100 - 13,300") in the same format/currency unit as the input price (the current latest price is ${currentPriceInfo ? currentPriceInfo.price : 'unknown'}).
-6. Prediction Rationale: A detailed bullet-pointed explanation of why you predict this trend, referencing recent price trends, US/global news, geopolitics/war news, or tax updates.
-
-Input Data:
-Recent Price History (latest first):
-${JSON.stringify(priceHistory, null, 2)}
-
-Latest Gold News Headlines:
-${JSON.stringify(newsItems, null, 2)}
-
-Respond ONLY with a JSON object matching this schema:
-{
-  "sentiment": "bullish" | "bearish" | "neutral",
-  "sentimentScore": number,
-  "sentimentSummary": "string",
-  "predictedTrend": "upward" | "downward" | "stable",
-  "predictedPriceRange": "string",
-  "predictionRationale": "string"
-}`;
-
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-                const payload = {
-                    contents: [
-                        {
-                            parts: [
-                                { text: prompt }
-                            ]
-                        }
-                    ],
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: {
-                                sentiment: { type: "STRING", description: "bullish, bearish, or neutral" },
-                                sentimentScore: { type: "INTEGER", description: "-100 to 100 score" },
-                                sentimentSummary: { type: "STRING" },
-                                predictedTrend: { type: "STRING", description: "upward, downward, or stable" },
-                                predictedPriceRange: { type: "STRING" },
-                                predictionRationale: { type: "STRING", description: "Clear, detailed reasoning text" }
-                            },
-                            required: ["sentiment", "sentimentScore", "sentimentSummary", "predictedTrend", "predictedPriceRange", "predictionRationale"]
-                        }
-                    }
-                };
-
-                const response = await axios.post(url, payload, {
-                    headers: { 'Content-Type': 'application/json' },
-                    timeout: 60000
-                });
-
-                const candidates = response.data?.candidates;
-                if (candidates && candidates.length > 0) {
-                    const textResponse = candidates[0].content?.parts[0]?.text;
-                    if (textResponse) {
-                        const parsedResult = JSON.parse(textResponse);
-                        const nowIST = moment().tz('Asia/Kolkata');
-                        const timestampStr = nowIST.toISOString();
-                        const docId = timestampStr.replace(/[:.]/g, '-');
-                        
-                        const insightData = {
-                            ...parsedResult,
-                            news: newsItems,
-                            priceHistoryAnalyzed: priceHistory,
-                            timestamp: timestampStr,
-                            createdAt: admin.firestore.FieldValue.serverTimestamp()
-                        };
-
-                        await db.collection("gold_ai_insights").doc(docId).set(insightData);
-                        await db.collection("gold_ai_insights").doc("latest").set(insightData);
-                        console.log("Gold AI Insights generated successfully.");
-                    }
-                }
-            } catch (forecastErr) {
+                await runGoldAIPredictionInternal();
+                console.log("onGoldPriceCreated: Gold AI Insights generated successfully.");
+            } catch (forecastErr: any) {
                 console.error("Error in onGoldPriceCreated market forecast generation:", forecastErr);
             }
 
@@ -1898,7 +1815,7 @@ exports.dailyTechEventsFetcher = functions.pubsub.schedule('0 19 * * *').timeZon
     for (const userDoc of usersSnap.docs) {
         const data = userDoc.data();
         const enabledModules = data.enabledModules || [];
-        if (enabledModules.includes("events")) {
+        if (enabledModules.includes("events") || (data && data.eventInterests !== undefined)) {
             try {
                 console.log(`Fetching tech events for user: ${userDoc.id}`);
                 await fetchAndStoreEventsForUserInternal(userDoc.id, true);
@@ -2115,7 +2032,7 @@ exports.dailyWalkInsFetcher = functions.pubsub.schedule('0 20 * * *').timeZone('
     for (const userDoc of usersSnap.docs) {
         const data = userDoc.data();
         const enabledModules = data.enabledModules || [];
-        if (enabledModules.includes("walkin")) {
+        if (enabledModules.includes("walkin") || (data && data.walkinRoles !== undefined)) {
             try {
                 console.log(`Fetching walk-in drives for user: ${userDoc.id}`);
                 await fetchAndStoreWalkInsForUserInternal(userDoc.id, true);

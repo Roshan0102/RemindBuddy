@@ -96,16 +96,9 @@ class MainActivity: FlutterActivity() {
 
     private fun requestSleepUpdates(result: MethodChannel.Result) {
         try {
-            ActivityRecognition.getClient(this)
-                .requestSleepSegmentUpdates(getSleepPendingIntent(), SleepSegmentRequest.getDefaultSleepSegmentRequest())
-                .addOnSuccessListener {
-                    result.success(true)
-                }
-                .addOnFailureListener { e: Exception ->
-                    result.error("SLEEP_API_ERROR", e.message, null)
-                }
-        } catch (e: SecurityException) {
-            result.error("PERMISSION_DENIED", "Activity Recognition permission is required", null)
+            val serviceIntent = Intent(this, SleepTrackingService::class.java)
+            startService(serviceIntent)
+            result.success(true)
         } catch (e: Exception) {
             result.error("UNKNOWN_ERROR", e.message ?: "Failed to start sleep updates", null)
         }
@@ -113,14 +106,9 @@ class MainActivity: FlutterActivity() {
 
     private fun removeSleepUpdates(result: MethodChannel.Result) {
         try {
-            ActivityRecognition.getClient(this)
-                .removeSleepSegmentUpdates(getSleepPendingIntent())
-                .addOnSuccessListener {
-                    result.success(true)
-                }
-                .addOnFailureListener { e: Exception ->
-                    result.error("SLEEP_API_ERROR", e.message, null)
-                }
+            val serviceIntent = Intent(this, SleepTrackingService::class.java)
+            stopService(serviceIntent)
+            result.success(true)
         } catch (e: Exception) {
             result.error("UNKNOWN_ERROR", e.message ?: "Failed to remove sleep updates", null)
         }

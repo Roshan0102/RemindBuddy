@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SleepTrackerScreen extends StatefulWidget {
   const SleepTrackerScreen({super.key});
@@ -42,10 +44,83 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
       }
     }
     
+    // 1. Sync remote Firestore sleep history to local SharedPreferences
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('sleep_history')
+            .get();
+
+        if (snapshot.docs.isNotEmpty) {
+          final localHistory = prefs.getStringList('sleep_tracker_history') ?? [];
+          final localHistorySet = localHistory.toSet();
+          bool updated = false;
+
+          for (var doc in snapshot.docs) {
+            final data = doc.data();
+            final date = data['date'] as String? ?? '';
+            final startTime = data['startTime'] as String? ?? '';
+            final endTime = data['endTime'] as String? ?? '';
+            final duration = (data['duration'] as num?)?.toDouble() ?? 0.0;
+
+            if (date.isNotEmpty && startTime.isNotEmpty && endTime.isNotEmpty) {
+              final recordStr = '$date|$startTime|$endTime|$duration';
+              if (!localHistorySet.contains(recordStr)) {
+                localHistorySet.add(recordStr);
+                updated = true;
+              }
+            }
+          }
+
+          if (updated) {
+            await prefs.setStringList('sleep_tracker_history', localHistorySet.toList());
+          }
+        }
+      } catch (e) {
+        debugPrint("Error fetching sleep history from Firestore: $e");
+      }
+    }
+
     // Load local history list
     final historyStrings = prefs.getStringList('sleep_tracker_history') ?? [];
+
+    // 2. Sync local SharedPreferences sleep history to Firestore (push any missing local logs to remote)
+    if (user != null && historyStrings.isNotEmpty) {
+      try {
+        final sleepCol = FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('sleep_history');
+
+        for (var str in historyStrings) {
+          final parts = str.split('|');
+          if (parts.length >= 4) {
+            final date = parts[0];
+            final startTime = parts[1];
+            final endTime = parts[2];
+            final duration = double.tryParse(parts[3]) ?? 0.0;
+
+            // Deterministic document ID prevents duplication
+            final docId = '${date}_${startTime.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '')}';
+            
+            await sleepCol.doc(docId).set({
+              'date': date,
+              'startTime': startTime,
+              'endTime': endTime,
+              'duration': duration,
+              'syncedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          }
+        }
+      } catch (e) {
+        debugPrint("Error pushing sleep history to Firestore: $e");
+      }
+    }
+
     List<Map<String, dynamic>> history = [];
-    
     for (var str in historyStrings) {
       final parts = str.split('|');
       if (parts.length >= 4) {

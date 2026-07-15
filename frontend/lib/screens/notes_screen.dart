@@ -680,9 +680,21 @@ class _NotesScreenState extends State<NotesScreen> {
                   final subtitleColor = isDarkTheme ? Colors.white.withValues(alpha: 0.7) : Colors.black54;
                   final hintIconColor = isDarkTheme ? Colors.white.withValues(alpha: 0.5) : Colors.black38;
                   
-                  Widget? dragHandle;
+                  final isDragging = _draggedIndex == index;
+                  final cardContent = _buildNoteCard(
+                    note: note,
+                    currentUser: currentUser,
+                    noteColor: noteColor,
+                    isShared: isShared,
+                    titleColor: titleColor,
+                    subtitleColor: subtitleColor,
+                    hintIconColor: hintIconColor,
+                    dragHandle: !note.isStarred ? Icon(Icons.drag_indicator, size: 18, color: hintIconColor) : null,
+                  );
+
+                  Widget draggableWidget;
                   if (!note.isStarred) {
-                    dragHandle = Draggable<int>(
+                    draggableWidget = LongPressDraggable<int>(
                       data: index,
                       feedback: SizedBox(
                         width: cardWidth,
@@ -703,6 +715,10 @@ class _NotesScreenState extends State<NotesScreen> {
                           ),
                         ),
                       ),
+                      childWhenDragging: Opacity(
+                        opacity: 0.2,
+                        child: cardContent,
+                      ),
                       onDragStarted: () {
                         setState(() {
                           _draggedIndex = index;
@@ -718,24 +734,14 @@ class _NotesScreenState extends State<NotesScreen> {
                           _draggedIndex = null;
                         });
                       },
-                      child: Icon(Icons.drag_indicator, size: 18, color: hintIconColor),
+                      child: Opacity(
+                        opacity: isDragging ? 0.4 : 1.0,
+                        child: cardContent,
+                      ),
                     );
+                  } else {
+                    draggableWidget = cardContent;
                   }
-
-                  final isDragging = _draggedIndex == index;
-                  final card = Opacity(
-                    opacity: isDragging ? 0.4 : 1.0,
-                    child: _buildNoteCard(
-                      note: note,
-                      currentUser: currentUser,
-                      noteColor: noteColor,
-                      isShared: isShared,
-                      titleColor: titleColor,
-                      subtitleColor: subtitleColor,
-                      hintIconColor: hintIconColor,
-                      dragHandle: dragHandle,
-                    ),
-                  );
 
                   return DragTarget<int>(
                     onWillAcceptWithDetails: (details) => details.data != index,
@@ -750,7 +756,7 @@ class _NotesScreenState extends State<NotesScreen> {
                       });
                     },
                     builder: (context, candidateData, rejectedData) {
-                      return card;
+                      return draggableWidget;
                     },
                   );
                 },

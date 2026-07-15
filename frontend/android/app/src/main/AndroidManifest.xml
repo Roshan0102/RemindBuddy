@@ -54,6 +54,20 @@
         <receiver
             android:name=".SleepReceiver"
             android:exported="true" />
+
+        <service
+            android:name=".SleepTrackingService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
         
         <meta-data
             android:name="flutterEmbedding"

@@ -40,6 +40,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   String get _selectedRosterMonth => DateFormat('yyyy-MM').format(_currentDate);
 
   late int _selectedTab; // 0 for Schedule, 1 for Events, 2 for Walk-In
+  bool _showPastEvents = false;
+  bool _showPastWalkIns = false;
   bool _isEventsEnabled = false;
   bool _isWalkInEnabled = false;
   bool _isFetchingEvents = false;
@@ -1779,13 +1781,18 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
         final allDocs = snapshot.data?.docs ?? [];
         
-        // Filter events that match the currently selected month and year (_selectedRosterMonth format: yyyy-MM)
-        // and filter out those marked as not interested
+        final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
         final monthEvents = allDocs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final dateStr = data['date'] as String? ?? '';
           final notInterested = data['notInterested'] as bool? ?? false;
-          return dateStr.startsWith(_selectedRosterMonth) && !notInterested;
+          final matchesMonth = dateStr.startsWith(_selectedRosterMonth);
+          if (!matchesMonth || notInterested) return false;
+          
+          if (!_showPastEvents) {
+            return dateStr.compareTo(todayStr) >= 0;
+          }
+          return true;
         }).toList();
 
         Widget mainContent;
@@ -1853,7 +1860,16 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               final location = data['location'] ?? 'No location';
               final regLink = data['registrationLink'] ?? '';
               final sourcePlatform = data['sourcePlatform'] ?? '';
-              final isNewEvent = data['isNew'] as bool? ?? false;
+              final isNewEventRaw = data['isNew'] as bool? ?? false;
+              final createdAtVal = data['createdAt'];
+              bool isNewEvent = isNewEventRaw;
+              if (createdAtVal is Timestamp) {
+                final createdTime = createdAtVal.toDate();
+                final diff = DateTime.now().difference(createdTime);
+                if (diff.inHours >= 24) {
+                  isNewEvent = false;
+                }
+              }
               final isInterested = data['interested'] as bool? ?? false;
 
               // Format date nicely: YYYY-MM-DD to "EEE, MMM d"
@@ -2010,8 +2026,11 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            alignment: WrapAlignment.end,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               TextButton.icon(
                                 onPressed: () => _toggleEventInterest(docId, isInterested),
@@ -2022,7 +2041,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                 ),
                               ),
-                              const SizedBox(width: 8),
                               TextButton.icon(
                                 onPressed: () => _markNotInterested(docId),
                                 icon: const Icon(Icons.block, size: 16, color: Colors.red),
@@ -2033,7 +2051,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                 ),
                               ),
                               if (regLink.isNotEmpty) ...[
-                                const SizedBox(width: 8),
                                 TextButton.icon(
                                   onPressed: () => _launchURL(regLink),
                                   icon: const Icon(Icons.open_in_new, size: 16),
@@ -2051,7 +2068,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     ),
                     if (isNewEvent)
                       Positioned(
-                        top: 12,
+                        top: 45,
                         right: 12,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -2087,24 +2104,47 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_eventsLastUpdated != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 4),
-                child: Row(
-                  children: [
-                    const Icon(Icons.history, size: 14, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_eventsLastUpdated!)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                        fontWeight: FontWeight.w500,
-                      ),
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (_eventsLastUpdated != null)
+                    Row(
+                      children: [
+                        const Icon(Icons.history, size: 14, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_eventsLastUpdated!)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    const SizedBox.shrink(),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                  ],
-                ),
+                    onPressed: () {
+                      setState(() {
+                        _showPastEvents = !_showPastEvents;
+                      });
+                    },
+                    child: Text(
+                      _showPastEvents ? 'Hide Past Events' : 'View Past Events',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
+                    ),
+                  ),
+                ],
               ),
+            ),
             Expanded(child: mainContent),
           ],
         );
@@ -2138,13 +2178,18 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
         final allDocs = snapshot.data?.docs ?? [];
         
-        // Filter walk-ins that match the currently selected month and year (_selectedRosterMonth format: yyyy-MM)
-        // and filter out those marked as not interested
+        final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
         final monthWalkIns = allDocs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final dateStr = data['date'] as String? ?? '';
           final notInterested = data['notInterested'] as bool? ?? false;
-          return dateStr.startsWith(_selectedRosterMonth) && !notInterested;
+          final matchesMonth = dateStr.startsWith(_selectedRosterMonth);
+          if (!matchesMonth || notInterested) return false;
+          
+          if (!_showPastWalkIns) {
+            return dateStr.compareTo(todayStr) >= 0;
+          }
+          return true;
         }).toList();
 
         Widget mainContent;
@@ -2212,7 +2257,16 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               final location = data['location'] ?? 'No location';
               final regLink = data['registrationLink'] ?? '';
               final company = data['company'] ?? '';
-              final isNewWalkIn = data['isNew'] as bool? ?? false;
+              final isNewWalkInRaw = data['isNew'] as bool? ?? false;
+              final createdAtVal = data['createdAt'];
+              bool isNewWalkIn = isNewWalkInRaw;
+              if (createdAtVal is Timestamp) {
+                final createdTime = createdAtVal.toDate();
+                final diff = DateTime.now().difference(createdTime);
+                if (diff.inHours >= 24) {
+                  isNewWalkIn = false;
+                }
+              }
               final isInterested = data['interested'] as bool? ?? false;
 
               // Format date nicely: YYYY-MM-DD to "EEE, MMM d"
@@ -2361,8 +2415,11 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            alignment: WrapAlignment.end,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               TextButton.icon(
                                 onPressed: () => _toggleWalkInInterest(docId, isInterested),
@@ -2373,7 +2430,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                 ),
                               ),
-                              const SizedBox(width: 8),
                               TextButton.icon(
                                 onPressed: () => _markWalkInNotInterested(docId),
                                 icon: const Icon(Icons.block, size: 16, color: Colors.red),
@@ -2384,7 +2440,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                 ),
                               ),
                               if (regLink.isNotEmpty) ...[
-                                const SizedBox(width: 8),
                                 TextButton.icon(
                                   onPressed: () => _launchURL(regLink),
                                   icon: const Icon(Icons.open_in_new, size: 16),
@@ -2402,7 +2457,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     ),
                     if (isNewWalkIn)
                       Positioned(
-                        top: 12,
+                        top: 45,
                         right: 12,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -2438,24 +2493,47 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_walkinsLastUpdated != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 4),
-                child: Row(
-                  children: [
-                    const Icon(Icons.history, size: 14, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_walkinsLastUpdated!)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                        fontWeight: FontWeight.w500,
-                      ),
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (_walkinsLastUpdated != null)
+                    Row(
+                      children: [
+                        const Icon(Icons.history, size: 14, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_walkinsLastUpdated!)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    const SizedBox.shrink(),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                  ],
-                ),
+                    onPressed: () {
+                      setState(() {
+                        _showPastWalkIns = !_showPastWalkIns;
+                      });
+                    },
+                    child: Text(
+                      _showPastWalkIns ? 'Hide Past Walk-Ins' : 'View Past Walk-Ins',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.lightBlue),
+                    ),
+                  ),
+                ],
               ),
+            ),
             Expanded(child: mainContent),
           ],
         );

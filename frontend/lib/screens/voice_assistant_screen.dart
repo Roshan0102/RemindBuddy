@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'dart:async';
 
 class VoiceAssistantScreen extends StatefulWidget {
   const VoiceAssistantScreen({super.key});
@@ -24,6 +25,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
   bool _textMode = false;
   bool _isMuted = false;
   String _currentTranscribedText = "";
+  Timer? _speechTimeoutTimer;
   
   final List<Map<String, String>> _messages = [
     {
@@ -54,6 +56,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
 
   @override
   void dispose() {
+    _speechTimeoutTimer?.cancel();
     _speechToText.stop();
     _flutterTts.stop();
     _textController.dispose();
@@ -153,18 +156,32 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
       });
       _pulseController.repeat();
 
+      _speechTimeoutTimer?.cancel();
       await _speechToText.listen(
         onResult: (result) {
           setState(() {
             _currentTranscribedText = result.recognizedWords;
           });
+          
+          _speechTimeoutTimer?.cancel();
+          if (result.recognizedWords.trim().isNotEmpty) {
+            _speechTimeoutTimer = Timer(const Duration(milliseconds: 1500), () {
+              debugPrint("STT: Inactivity timeout reached. Sending: $_currentTranscribedText");
+              _stopListeningAndSend(_currentTranscribedText);
+            });
+          }
+
           if (result.finalResult) {
+            _speechTimeoutTimer?.cancel();
             _stopListeningAndSend(result.recognizedWords);
           }
         },
-        listenFor: const Duration(seconds: 20),
-        pauseFor: const Duration(seconds: 4),
-        cancelOnError: true,
+        listenOptions: SpeechListenOptions(
+          listenFor: const Duration(seconds: 20),
+          pauseFor: const Duration(milliseconds: 1500),
+          cancelOnError: true,
+          partialResults: true,
+        ),
       );
     } else {
       _showErrorSnackBar("Microphone access or Speech recognition not available.");
@@ -172,6 +189,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
   }
 
   Future<void> _stopListening() async {
+    _speechTimeoutTimer?.cancel();
     await _speechToText.stop();
     setState(() {
       _isListening = false;
@@ -180,6 +198,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
   }
 
   void _stopListeningAndSend(String words) {
+    _speechTimeoutTimer?.cancel();
     _stopListening();
     if (words.trim().isNotEmpty) {
       _sendMessage(words);
