@@ -25,6 +25,9 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
           )
         : TimeOfDay.now();
     bool isAnnoying = existingReminder?.isAnnoying ?? false;
+    bool snoozeEnabled = existingReminder?.snoozeEnabled ?? false;
+    int snoozeIntervalMinutes = existingReminder?.snoozeIntervalMinutes ?? 15;
+    int maxSnoozeCount = existingReminder?.maxSnoozeCount ?? 3;
     bool isSaving = false;
 
     await showDialog(
@@ -107,6 +110,70 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                     );
                   },
                 ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  title: const Text('Enable Snooze'),
+                  subtitle: const Text('Remind again if not marked done'),
+                  value: snoozeEnabled,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (val) {
+                    setDialogState(() {
+                      snoozeEnabled = val;
+                    });
+                  },
+                ),
+                if (snoozeEnabled) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          decoration: const InputDecoration(
+                            labelText: 'Interval',
+                            border: OutlineInputBorder(),
+                          ),
+                          value: snoozeIntervalMinutes,
+                          items: [5, 10, 15, 30, 45, 60].map((mins) {
+                            return DropdownMenuItem<int>(
+                              value: mins,
+                              child: Text('$mins mins'),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setDialogState(() {
+                                snoozeIntervalMinutes = val;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          decoration: const InputDecoration(
+                            labelText: 'Max Repeats',
+                            border: OutlineInputBorder(),
+                          ),
+                          value: maxSnoozeCount,
+                          items: [1, 2, 3, 5, 10].map((count) {
+                            return DropdownMenuItem<int>(
+                              value: count,
+                              child: Text('$count times'),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setDialogState(() {
+                                maxSnoozeCount = val;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -139,6 +206,9 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                               description: descriptionController.text,
                               time: timeStr,
                               isAnnoying: isAnnoying,
+                              snoozeEnabled: snoozeEnabled,
+                              snoozeIntervalMinutes: snoozeIntervalMinutes,
+                              maxSnoozeCount: maxSnoozeCount,
                             )
                           : DailyReminder(
                               title: titleController.text,
@@ -146,6 +216,9 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                               time: timeStr,
                               isActive: true,
                               isAnnoying: isAnnoying,
+                              snoozeEnabled: snoozeEnabled,
+                              snoozeIntervalMinutes: snoozeIntervalMinutes,
+                              maxSnoozeCount: maxSnoozeCount,
                             );
 
                       if (existingReminder == null) {
@@ -257,16 +330,22 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
             itemCount: reminders.length,
             itemBuilder: (context, index) {
               final reminder = reminders[index];
+              final now = DateTime.now();
+              final todayDateStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+              final isCompletedToday = reminder.lastCompletedDate == todayDateStr;
+
               return Card(
                 elevation: 2,
                 margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: reminder.isActive
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.grey,
-                    child: const Icon(
-                      Icons.alarm,
+                    backgroundColor: isCompletedToday
+                        ? Colors.green
+                        : (reminder.isActive
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.grey),
+                    child: Icon(
+                      isCompletedToday ? Icons.check : Icons.alarm,
                       color: Colors.white,
                     ),
                   ),
@@ -294,54 +373,100 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                               fontWeight: FontWeight.w500,
                             ),
                           ),
+                          if (reminder.snoozeEnabled) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'Snooze: ${reminder.snoozeIntervalMinutes}m, Max ${reminder.maxSnoozeCount}x',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (isCompletedToday) ...[
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Completed for today',
+                          style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ],
+                    ],
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (reminder.isActive)
+                        IconButton(
+                          icon: Icon(
+                            isCompletedToday ? Icons.check_box : Icons.check_box_outline_blank,
+                            color: isCompletedToday ? Colors.green : null,
+                          ),
+                          tooltip: isCompletedToday ? 'Mark incomplete for today' : 'Mark done for today',
+                          onPressed: () async {
+                            if (isCompletedToday) {
+                              await _storageService.updateDailyReminder(reminder.copyWith(
+                                lastCompletedDate: '',
+                                currentSnoozeCount: 0,
+                              ));
+                            } else {
+                              await _storageService.updateDailyReminder(reminder.copyWith(
+                                lastCompletedDate: todayDateStr,
+                                currentSnoozeCount: 0,
+                              ));
+                            }
+                          },
+                        ),
+                      Switch(
+                        value: reminder.isActive,
+                        onChanged: (_) => _toggleReminder(reminder),
+                      ),
+                      PopupMenuButton(
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            _showAddReminderDialog(reminder);
+                          } else if (value == 'delete') {
+                            _deleteReminder(reminder);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit),
+                                SizedBox(width: 8),
+                                Text('Edit'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text('Delete', style: TextStyle(color: Colors.red)),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ],
                   ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Switch(
-                          value: reminder.isActive,
-                          onChanged: (_) => _toggleReminder(reminder),
-                        ),
-                        PopupMenuButton(
-                          onSelected: (value) {
-                            if (value == 'edit') {
-                              _showAddReminderDialog(reminder);
-                            } else if (value == 'delete') {
-                              _deleteReminder(reminder);
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'edit',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.edit),
-                                  SizedBox(width: 8),
-                                  Text('Edit'),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.delete, color: Colors.red),
-                                  SizedBox(width: 8),
-                                  Text('Delete', style: TextStyle(color: Colors.red)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            );
+                ),
+              );
+            },
+          );
           },
         ),
         floatingActionButton: FloatingActionButton.extended(

@@ -97,9 +97,15 @@ class MainActivity: FlutterActivity() {
     private fun requestSleepUpdates(result: MethodChannel.Result) {
         try {
             val serviceIntent = Intent(this, SleepTrackingService::class.java)
-            startService(serviceIntent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+            SleepTrackingService.logToPrefs(this, "requestSleepUpdates called: service start intent sent.")
             result.success(true)
         } catch (e: Exception) {
+            SleepTrackingService.logToPrefs(this, "requestSleepUpdates failed to start service: ${e.message}")
             result.error("UNKNOWN_ERROR", e.message ?: "Failed to start sleep updates", null)
         }
     }
@@ -108,8 +114,10 @@ class MainActivity: FlutterActivity() {
         try {
             val serviceIntent = Intent(this, SleepTrackingService::class.java)
             stopService(serviceIntent)
+            SleepTrackingService.logToPrefs(this, "removeSleepUpdates called: service stop intent sent.")
             result.success(true)
         } catch (e: Exception) {
+            SleepTrackingService.logToPrefs(this, "removeSleepUpdates failed to stop service: ${e.message}")
             result.error("UNKNOWN_ERROR", e.message ?: "Failed to remove sleep updates", null)
         }
     }

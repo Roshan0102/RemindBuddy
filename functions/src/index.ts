@@ -4,10 +4,12 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import * as moment from "moment-timezone";
 import { CloudTasksClient } from "@google-cloud/tasks";
+import { PubSub } from "@google-cloud/pubsub";
 
 admin.initializeApp();
 const db = admin.firestore();
 const tasksClient = new CloudTasksClient();
+const pubsubClient = new PubSub();
 
 async function logNotification(uid: string, title: string, body: string, type: string) {
     try {
@@ -715,11 +717,9 @@ async function runGoldAIPredictionInternal(): Promise<any> {
 Analyze the following recent historical 22K gold prices (per 2 grams or current units) and the latest gold market news headlines.
 
 CRITICAL INSTRUCTIONS:
-- You must carefully analyze major macroeconomic events, indicators, and releases that directly impact the price of gold globally and in India.
-- Specifically consider US inflation data (such as Consumer Price Index / CPI, Core CPI, PCE), Federal Reserve policy decisions (interest rates, rate cuts/hikes), US Dollar Index movements, Treasury yields, and statements/reports from major financial institutions (like JPMorgan, Goldman Sachs, etc.).
-- Analyze the correlation of these events. For example, explain how a lower US CPI/inflation rate signals potential Fed rate cuts, which weakens the US Dollar and consequently drives gold prices up.
-- Highlight upcoming or recently released key economic reports (like CPI releases or Fed meetings) and detail their predicted direction and specific impact on gold prices.
-- Geopolitical tensions/wars (which boost gold's appeal as a safe haven) and local Indian demand, taxes, or import/export duties must also be factored in.
+- You must carefully analyze only active real-time events and occurrences reported in the provided latest gold news headlines and price history.
+- Specifically mention US economic data (like CPI/inflation), Federal Reserve decisions, statements from major banks (like JPMorgan, Goldman Sachs), or geopolitical tensions/wars ONLY if they are actually present and reported in the provided news headlines. Do not write generic template sentences about them, and do not mention them if they are not actively happening (do not say "no CPI data was released" or "no war tensions exist").
+- Ensure your predictionRationale is a concise, summarized explanation containing all key aspects, but it MUST be strictly under 1000 characters in total (including spaces). 
 
 Your output must be written in very simple, plain, and easy-to-understand English. 
 CRITICAL: Do NOT use difficult financial jargon (like 'bearish', 'bullish', 'consolidation', 'correction') without immediately explaining them in extremely simple terms. For example, instead of 'market is bearish', write 'prices are likely to fall (bearish)'. Keep explanations very simple.
@@ -730,7 +730,7 @@ Provide:
 3. Sentiment Summary: A concise, 1-2 sentence summary of what is driving this sentiment using simple English.
 4. Predicted Trend: "upward", "downward", or "stable" for the next 1-3 days.
 5. Predicted Price Range: A realistic price range (e.g. "13,100 - 13,300") in the same format/currency unit as the input price (the current latest price is ${currentPriceInfo ? currentPriceInfo.price : 'unknown'}).
-6. Prediction Rationale: A detailed bullet-pointed explanation of why you predict this trend. You must explicitly reference specific recent economic data releases (e.g. CPI/inflation releases, Federal Reserve rate expectations, JPMorgan or major bank reports) and explain exactly how they affect the gold price in simple, logical terms.
+6. Prediction Rationale: A summarized explanation of why you predict this trend. Keep it concise, containing every important driver (referencing specific news events, inflation, or geopolitical factors only if they are actively reported in the news), but strictly under 1000 characters (including spaces).
 
 Input Data:
 Recent Price History (latest first):
@@ -768,7 +768,7 @@ Respond ONLY with a JSON object matching this schema:
                     sentimentSummary: { type: "STRING" },
                     predictedTrend: { type: "STRING", description: "upward, downward, or stable" },
                     predictedPriceRange: { type: "STRING" },
-                    predictionRationale: { type: "STRING", description: "Clear, detailed reasoning text" }
+                    predictionRationale: { type: "STRING", description: "Summarized rationale, strictly under 1000 characters" }
                 },
                 required: ["sentiment", "sentimentScore", "sentimentSummary", "predictedTrend", "predictedPriceRange", "predictionRationale"]
             }
@@ -1020,26 +1020,89 @@ exports.checkDailyReminders = functions.pubsub.schedule('* * * * *').timeZone('A
                 continue;
             }
 
-            const rs = await db.collection('users').doc(userData.uid).collection('daily_reminders').where('time', '==', timeStr).where('isActive', '==', true).get();
-            if (!rs.empty) {
-                console.log(`Found ${rs.size} daily reminders for user ${userData.uid} at ${timeStr}`);
-            }
+            const rs = await db.collection('users').doc(userData.uid).collection('daily_reminders').where('isActive', '==', true).get();
+            const todayDateStr = nowKolkata.format('YYYY-MM-DD');
+            const currentTimeStr = nowKolkata.format('HH:mm');
+
             for (const r of rs.docs) {
-                const title = r.data().title;
-                const body = r.data().description || "Reminder";
-                console.log(`Sending daily reminder: ${title} to ${userData.uid}`);
-                await admin.messaging().send({
-                    token: userData.fcmToken,
-                    notification: { title, body },
-                    android: { 
-                        notification: { 
-                            channelId: 'daily_reminder_channel',
-                            tag: `daily_reminder_${r.id}`
-                        } 
-                    },
-                    data: { type: "daily_reminder" }
-                });
-                await logNotification(userData.uid, title, body, "DAILY_REMINDER");
+                const rData = r.data();
+                const reminderId = r.id;
+                const scheduledTime = rData.time; // HH:mm format
+                const lastCompletedDate = rData.lastCompletedDate;
+                const lastTriggeredDate = rData.lastTriggeredDate;
+                const lastTriggeredTime = rData.lastTriggeredTime;
+                const snoozeEnabled = rData.snoozeEnabled === true;
+                const snoozeIntervalMinutes = rData.snoozeIntervalMinutes || 15;
+                const maxSnoozeCount = rData.maxSnoozeCount || 3;
+                const currentSnoozeCount = rData.currentSnoozeCount || 0;
+
+                // 1. Skip if completed today
+                if (lastCompletedDate === todayDateStr) {
+                    continue;
+                }
+
+                let shouldTrigger = false;
+                let nextSnoozeCount = currentSnoozeCount;
+                let markCompleted = false;
+
+                if (lastTriggeredDate !== todayDateStr) {
+                    // Has not triggered today yet
+                    if (currentTimeStr === scheduledTime) {
+                        shouldTrigger = true;
+                        nextSnoozeCount = 1;
+                        if (!snoozeEnabled || maxSnoozeCount <= 1) {
+                            markCompleted = true;
+                        }
+                    }
+                } else {
+                    // Has triggered today already, check if we need to snooze
+                    if (snoozeEnabled && lastTriggeredTime) {
+                        const lastTriggeredDateTime = moment.tz(`${todayDateStr} ${lastTriggeredTime}`, 'YYYY-MM-DD HH:mm', 'Asia/Kolkata');
+                        const diffMinutes = nowKolkata.diff(lastTriggeredDateTime, 'minutes');
+                        if (diffMinutes >= snoozeIntervalMinutes) {
+                            shouldTrigger = true;
+                            nextSnoozeCount = currentSnoozeCount + 1;
+                            if (nextSnoozeCount >= maxSnoozeCount) {
+                                markCompleted = true;
+                            }
+                        }
+                    }
+                }
+
+                if (shouldTrigger) {
+                    const title = rData.title;
+                    const body = rData.description || "Reminder";
+                    console.log(`Sending daily reminder: ${title} to ${userData.uid}. Snooze count: ${nextSnoozeCount}/${maxSnoozeCount}`);
+
+                    await admin.messaging().send({
+                        token: userData.fcmToken,
+                        notification: { title, body },
+                        android: { 
+                            notification: { 
+                                channelId: 'daily_reminder_channel',
+                                tag: `daily_reminder_${reminderId}`
+                            } 
+                        },
+                        data: { 
+                            type: "daily_reminder",
+                            reminderId: reminderId,
+                            uid: userData.uid
+                        }
+                    });
+
+                    await logNotification(userData.uid, title, body, "DAILY_REMINDER");
+
+                    // Update Firestore status
+                    const updateData: any = {
+                        lastTriggeredDate: todayDateStr,
+                        lastTriggeredTime: currentTimeStr,
+                        currentSnoozeCount: nextSnoozeCount
+                    };
+                    if (markCompleted) {
+                        updateData.lastCompletedDate = todayDateStr;
+                    }
+                    await r.ref.update(updateData);
+                }
             }
         } catch (error) {
             console.error(`Failed to send daily reminders for user ${userData.uid}:`, error);
@@ -1759,9 +1822,13 @@ Respond ONLY with a JSON array matching this schema:
     await writeBatch.commit();
 
     // Update last updated timestamp on user doc
-    await db.collection("users").doc(uid).update({
-        eventsLastUpdated: admin.firestore.FieldValue.serverTimestamp()
-    });
+    const updateData: any = {
+        eventsLastRan: admin.firestore.FieldValue.serverTimestamp()
+    };
+    if (newCount > 0) {
+        updateData.eventsLastUpdated = admin.firestore.FieldValue.serverTimestamp();
+    }
+    await db.collection("users").doc(uid).update(updateData);
 
     // Send push notification if automatic scheduling triggered it and new items were added
     if (triggerNotification && newCount > 0 && userDoc.exists) {
@@ -1809,20 +1876,37 @@ exports.fetchUserTechEvents = functions.runWith({ timeoutSeconds: 120, memory: "
     }
 });
 
-exports.dailyTechEventsFetcher = functions.pubsub.schedule('0 19 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+exports.dailyTechEventsFetcher = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.schedule('0 19 * * *').timeZone('Asia/Kolkata').onRun(async () => {
     console.log("Starting dailyTechEventsFetcher at 7 PM IST");
     const usersSnap = await db.collection("users").get();
+    const topic = pubsubClient.topic("fetch-user-tech-events");
     for (const userDoc of usersSnap.docs) {
         const data = userDoc.data();
         const enabledModules = data.enabledModules || [];
         if (enabledModules.includes("events") || (data && data.eventInterests !== undefined)) {
             try {
-                console.log(`Fetching tech events for user: ${userDoc.id}`);
-                await fetchAndStoreEventsForUserInternal(userDoc.id, true);
+                console.log(`Publishing tech events fetch job for user: ${userDoc.id}`);
+                const messageBuffer = Buffer.from(JSON.stringify({ uid: userDoc.id }));
+                await topic.publishMessage({ data: messageBuffer });
             } catch (err: any) {
-                console.error(`Error fetching events for user ${userDoc.id}:`, err.message);
+                console.error(`Error publishing events fetch job for user ${userDoc.id}:`, err.message);
             }
         }
+    }
+});
+
+exports.fetchUserTechEventsTrigger = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.topic('fetch-user-tech-events').onPublish(async (message) => {
+    const data = message.json;
+    const uid = data.uid;
+    if (!uid) {
+        console.error("No uid in PubSub message");
+        return;
+    }
+    console.log(`Processing tech events for user via PubSub: ${uid}`);
+    try {
+        await fetchAndStoreEventsForUserInternal(uid, true);
+    } catch (err: any) {
+        console.error(`Error processing tech events for user ${uid}:`, err.message);
     }
 });
 
@@ -1976,9 +2060,13 @@ Respond ONLY with a JSON array matching this schema:
     await writeBatch.commit();
 
     // Update last updated timestamp on user doc
-    await db.collection("users").doc(uid).update({
-        walkinsLastUpdated: admin.firestore.FieldValue.serverTimestamp()
-    });
+    const updateData: any = {
+        walkinsLastRan: admin.firestore.FieldValue.serverTimestamp()
+    };
+    if (newCount > 0) {
+        updateData.walkinsLastUpdated = admin.firestore.FieldValue.serverTimestamp();
+    }
+    await db.collection("users").doc(uid).update(updateData);
 
     // Send push notification if automatic scheduling triggered it and new items were added
     if (triggerNotification && newCount > 0 && userDoc.exists) {
@@ -2026,20 +2114,37 @@ exports.fetchUserWalkIns = functions.runWith({ timeoutSeconds: 120, memory: "256
     }
 });
 
-exports.dailyWalkInsFetcher = functions.pubsub.schedule('0 20 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+exports.dailyWalkInsFetcher = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.schedule('0 20 * * *').timeZone('Asia/Kolkata').onRun(async () => {
     console.log("Starting dailyWalkInsFetcher at 8 PM IST");
     const usersSnap = await db.collection("users").get();
+    const topic = pubsubClient.topic("fetch-user-walkins");
     for (const userDoc of usersSnap.docs) {
         const data = userDoc.data();
         const enabledModules = data.enabledModules || [];
         if (enabledModules.includes("walkin") || (data && data.walkinRoles !== undefined)) {
             try {
-                console.log(`Fetching walk-in drives for user: ${userDoc.id}`);
-                await fetchAndStoreWalkInsForUserInternal(userDoc.id, true);
+                console.log(`Publishing walk-in drives fetch job for user: ${userDoc.id}`);
+                const messageBuffer = Buffer.from(JSON.stringify({ uid: userDoc.id }));
+                await topic.publishMessage({ data: messageBuffer });
             } catch (err: any) {
-                console.error(`Error fetching walk-ins for user ${userDoc.id}:`, err.message);
+                console.error(`Error publishing walk-in fetch job for user ${userDoc.id}:`, err.message);
             }
         }
+    }
+});
+
+exports.fetchUserWalkInsTrigger = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.topic('fetch-user-walkins').onPublish(async (message) => {
+    const data = message.json;
+    const uid = data.uid;
+    if (!uid) {
+        console.error("No uid in PubSub message");
+        return;
+    }
+    console.log(`Processing walk-ins for user via PubSub: ${uid}`);
+    try {
+        await fetchAndStoreWalkInsForUserInternal(uid, true);
+    } catch (err: any) {
+        console.error(`Error processing walk-ins for user ${uid}:`, err.message);
     }
 });
 

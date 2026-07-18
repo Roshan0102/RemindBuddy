@@ -50,6 +50,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   List<String> _walkinRoles = ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer'];
   DateTime? _eventsLastUpdated;
   DateTime? _walkinsLastUpdated;
+  DateTime? _eventsLastRan;
+  DateTime? _walkinsLastRan;
   StreamSubscription<DocumentSnapshot>? _userSubscription;
   Map<String, int> _eventCounts = {};
   Map<String, int> _walkinCounts = {};
@@ -124,6 +126,22 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
           walkinsLastUpdated = DateTime.tryParse(walkinsLastUpdatedVal);
         }
 
+        final eventsLastRanVal = data['eventsLastRan'];
+        DateTime? eventsLastRan;
+        if (eventsLastRanVal is Timestamp) {
+          eventsLastRan = eventsLastRanVal.toDate();
+        } else if (eventsLastRanVal is String) {
+          eventsLastRan = DateTime.tryParse(eventsLastRanVal);
+        }
+
+        final walkinsLastRanVal = data['walkinsLastRan'];
+        DateTime? walkinsLastRan;
+        if (walkinsLastRanVal is Timestamp) {
+          walkinsLastRan = walkinsLastRanVal.toDate();
+        } else if (walkinsLastRanVal is String) {
+          walkinsLastRan = DateTime.tryParse(walkinsLastRanVal);
+        }
+
         if (mounted) {
           setState(() {
             _isEventsEnabled = enabledModules.contains('events') || _selectedTab == 1;
@@ -132,6 +150,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
             _walkinRoles = walkinRoles;
             _eventsLastUpdated = lastUpdated;
             _walkinsLastUpdated = walkinsLastUpdated;
+            _eventsLastRan = eventsLastRan;
+            _walkinsLastRan = walkinsLastRan;
           });
         }
       } else {
@@ -2109,19 +2129,42 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  if (_eventsLastUpdated != null)
-                    Row(
+                  if (_eventsLastUpdated != null || _eventsLastRan != null)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.history, size: 14, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_eventsLastUpdated!)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                            fontWeight: FontWeight.w500,
+                        if (_eventsLastUpdated != null)
+                          Row(
+                            children: [
+                              const Icon(Icons.update, size: 14, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_eventsLastUpdated!)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
+                        if (_eventsLastRan != null) ...[
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Icon(Icons.history, size: 14, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Last Ran: ${DateFormat('MMMM d, yyyy h:mm a').format(_eventsLastRan!)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     )
                   else
@@ -2498,19 +2541,42 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  if (_walkinsLastUpdated != null)
-                    Row(
+                  if (_walkinsLastUpdated != null || _walkinsLastRan != null)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.history, size: 14, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_walkinsLastUpdated!)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                            fontWeight: FontWeight.w500,
+                        if (_walkinsLastUpdated != null)
+                          Row(
+                            children: [
+                              const Icon(Icons.update, size: 14, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_walkinsLastUpdated!)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
+                        if (_walkinsLastRan != null) ...[
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Icon(Icons.history, size: 14, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Last Ran: ${DateFormat('MMMM d, yyyy h:mm a').format(_walkinsLastRan!)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     )
                   else

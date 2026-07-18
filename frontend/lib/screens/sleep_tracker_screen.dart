@@ -221,44 +221,7 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
     );
   }
 
-  Future<void> _simulateSleepEvent(double hours) async {
-    final now = DateTime.now();
-    final dateStr = DateFormat('yyyy-MM-dd').format(now);
-    
-    // Choose start/end times depending on simulated hours
-    String start = '11:00 PM';
-    String end = '07:00 AM';
-    if (hours < 6) {
-      start = '01:00 AM';
-      end = '06:30 AM';
-    } else if (hours < 7) {
-      start = '11:30 PM';
-      end = '06:00 AM';
-    } else {
-      start = '10:30 PM';
-      end = '07:00 AM';
-    }
 
-    final newRecord = '$dateStr|$start|$end|$hours';
-    
-    final prefs = await SharedPreferences.getInstance();
-    final currentHistory = prefs.getStringList('sleep_tracker_history') ?? [];
-    
-    // Remove if there's already an entry for today
-    currentHistory.removeWhere((item) => item.startsWith(dateStr));
-    currentHistory.insert(0, newRecord);
-    
-    await prefs.setStringList('sleep_tracker_history', currentHistory);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Simulated a sleep event of $hours hours!'),
-        backgroundColor: _getStatusColor(hours),
-      ),
-    );
-    
-    _loadSleepData();
-  }
 
   Future<void> _clearAllData() async {
     final prefs = await SharedPreferences.getInstance();
@@ -555,7 +518,7 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
                     ),
                   ] else ...[
                     Text(
-                      'No sleep cycles logged yet. Use the simulation tools below to test the dashboard.',
+                      'No sleep cycles logged yet. The app will automatically log your sleep based on device lock inactivity.',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.outfit(
                         fontSize: 13,
@@ -563,83 +526,6 @@ class _SleepTrackerScreenState extends State<SleepTrackerScreen> {
                       ),
                     ),
                   ]
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Simulation Controls Card
-            Text(
-              'Simulation Tools',
-              style: GoogleFonts.outfit(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: textColor,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBgColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.grey.withOpacity(0.15)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Simulate a Sleep API Callback:',
-                    style: GoogleFonts.outfit(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: subtextColor,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () => _simulateSleepEvent(8.5),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0D9488).withOpacity(0.1),
-                            foregroundColor: const Color(0xFF0D9488),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: const Text('8.5h (Good)'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () => _simulateSleepEvent(6.5),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFD97706).withOpacity(0.1),
-                            foregroundColor: const Color(0xFFD97706),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: const Text('6.5h (OK)'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () => _simulateSleepEvent(5.0),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFDC2626).withOpacity(0.1),
-                            foregroundColor: const Color(0xFFDC2626),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: const Text('5.0h (Bad)'),
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),

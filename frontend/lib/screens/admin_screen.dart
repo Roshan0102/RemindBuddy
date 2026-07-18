@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -971,7 +972,9 @@ class _AdminScreenState extends State<AdminScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             subtitle: Text(email.isNotEmpty ? email : 'No email associated'),
-                            children: _availableModules.map((mod) {
+                            children: _availableModules
+                                .where((mod) => !kIsWeb || mod['id'] != 'checklist')
+                                .map((mod) {
                               final modId = mod['id']!;
                               final modLabel = mod['label']!;
                               final isEnabled = enabledModules.contains(modId);

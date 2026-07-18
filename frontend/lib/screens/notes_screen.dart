@@ -42,9 +42,18 @@ class _NotesScreenState extends State<NotesScreen> {
     final starredNotes = notes.where((n) => n.isStarred).toList();
     final unstarredNotes = notes.where((n) => !n.isStarred).toList();
 
-    starredNotes.sort((a, b) => b.date.compareTo(a.date));
-
     if (_customOrderIds.isNotEmpty) {
+      starredNotes.sort((a, b) {
+        final aIndex = _customOrderIds.indexOf(a.id ?? '');
+        final bIndex = _customOrderIds.indexOf(b.id ?? '');
+        if (aIndex != -1 && bIndex != -1) {
+          return aIndex.compareTo(bIndex);
+        }
+        if (aIndex != -1) return 1;
+        if (bIndex != -1) return -1;
+        return b.date.compareTo(a.date);
+      });
+
       unstarredNotes.sort((a, b) {
         final aIndex = _customOrderIds.indexOf(a.id ?? '');
         final bIndex = _customOrderIds.indexOf(b.id ?? '');
@@ -56,6 +65,7 @@ class _NotesScreenState extends State<NotesScreen> {
         return b.date.compareTo(a.date);
       });
     } else {
+      starredNotes.sort((a, b) => b.date.compareTo(a.date));
       unstarredNotes.sort((a, b) => b.date.compareTo(a.date));
     }
 
@@ -126,6 +136,24 @@ class _NotesScreenState extends State<NotesScreen> {
                   for (int i = 0; i < checklistItems.length; i++) {
                     checklistItems[i]['text'] = itemControllers[i].text;
                   }
+                }
+
+                final currentUser = FirebaseAuth.instance.currentUser;
+                final isShared = note != null && (
+                  note.sharedWith.isNotEmpty || 
+                  (note.ownerUid != null && note.ownerUid != currentUser?.uid)
+                );
+
+                if (isShared) {
+                  final currentUsername = currentUser?.displayName ?? currentUser?.email?.split('@').first ?? 'User';
+                  if (isChecklist) {
+                    checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername);
+                  } else {
+                    contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername);
+                  }
+                }
+
+                if (isChecklist) {
                   contentController.text = checklistItems.map((item) => (item['isChecked'] == true ? '[x] ' : '[ ] ') + (item['text'] as String)).join('\n');
                 }
                 final content = contentController.text;
@@ -267,6 +295,24 @@ class _NotesScreenState extends State<NotesScreen> {
                             for (int i = 0; i < checklistItems.length; i++) {
                               checklistItems[i]['text'] = itemControllers[i].text;
                             }
+                          }
+
+                          final currentUser = FirebaseAuth.instance.currentUser;
+                          final isShared = note != null && (
+                            note.sharedWith.isNotEmpty || 
+                            (note.ownerUid != null && note.ownerUid != currentUser?.uid)
+                          );
+
+                          if (isShared) {
+                            final currentUsername = currentUser?.displayName ?? currentUser?.email?.split('@').first ?? 'User';
+                            if (isChecklist) {
+                              checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername);
+                            } else {
+                              contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername);
+                            }
+                          }
+
+                          if (isChecklist) {
                             contentController.text = checklistItems.map((item) => (item['isChecked'] == true ? '[x] ' : '[ ] ') + (item['text'] as String)).join('\n');
                           }
                           final content = contentController.text;
@@ -336,19 +382,16 @@ class _NotesScreenState extends State<NotesScreen> {
                                     itemBuilder: (context, index) {
                                       final item = checklistItems[index];
                                       return Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.center,
                                         children: [
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: 12.0),
-                                            child: Checkbox(
-                                              value: item['isChecked'] == true,
-                                              onChanged: (val) {
-                                                setDialogState(() {
-                                                  item['isChecked'] = val ?? false;
-                                                });
-                                                reorderChecklist(setDialogState);
-                                              },
-                                            ),
+                                          Checkbox(
+                                            value: item['isChecked'] == true,
+                                            onChanged: (val) {
+                                              setDialogState(() {
+                                                item['isChecked'] = val ?? false;
+                                              });
+                                              reorderChecklist(setDialogState);
+                                            },
                                           ),
                                           Expanded(
                                             child: Padding(
@@ -689,62 +732,63 @@ class _NotesScreenState extends State<NotesScreen> {
                     titleColor: titleColor,
                     subtitleColor: subtitleColor,
                     hintIconColor: hintIconColor,
-                    dragHandle: !note.isStarred ? Icon(Icons.drag_indicator, size: 18, color: hintIconColor) : null,
+                    dragHandle: Icon(Icons.drag_indicator, size: 18, color: hintIconColor),
                   );
 
-                  Widget draggableWidget;
-                  if (!note.isStarred) {
-                    draggableWidget = LongPressDraggable<int>(
-                      data: index,
-                      feedback: SizedBox(
-                        width: cardWidth,
-                        height: 180.0,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: Transform.scale(
-                            scale: 1.05,
-                            child: _buildNoteCard(
-                              note: note,
-                              currentUser: currentUser,
-                              noteColor: noteColor,
-                              isShared: isShared,
-                              titleColor: titleColor,
-                              subtitleColor: subtitleColor,
-                              hintIconColor: hintIconColor,
-                            ),
+                  Widget draggableWidget = LongPressDraggable<int>(
+                    data: index,
+                    feedback: SizedBox(
+                      width: cardWidth,
+                      height: 180.0,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: Transform.scale(
+                          scale: 1.05,
+                          child: _buildNoteCard(
+                            note: note,
+                            currentUser: currentUser,
+                            noteColor: noteColor,
+                            isShared: isShared,
+                            titleColor: titleColor,
+                            subtitleColor: subtitleColor,
+                            hintIconColor: hintIconColor,
                           ),
                         ),
                       ),
-                      childWhenDragging: Opacity(
-                        opacity: 0.2,
-                        child: cardContent,
-                      ),
-                      onDragStarted: () {
-                        setState(() {
-                          _draggedIndex = index;
-                        });
-                      },
-                      onDraggableCanceled: (_, __) {
-                        setState(() {
-                          _draggedIndex = null;
-                        });
-                      },
-                      onDragCompleted: () {
-                        setState(() {
-                          _draggedIndex = null;
-                        });
-                      },
-                      child: Opacity(
-                        opacity: isDragging ? 0.4 : 1.0,
-                        child: cardContent,
-                      ),
-                    );
-                  } else {
-                    draggableWidget = cardContent;
-                  }
+                    ),
+                    childWhenDragging: Opacity(
+                      opacity: 0.2,
+                      child: cardContent,
+                    ),
+                    onDragStarted: () {
+                      setState(() {
+                        _draggedIndex = index;
+                      });
+                    },
+                    onDraggableCanceled: (_, __) {
+                      setState(() {
+                        _draggedIndex = null;
+                      });
+                    },
+                    onDragCompleted: () {
+                      setState(() {
+                        _draggedIndex = null;
+                      });
+                    },
+                    child: Opacity(
+                      opacity: isDragging ? 0.4 : 1.0,
+                      child: cardContent,
+                    ),
+                  );
 
                   return DragTarget<int>(
-                    onWillAcceptWithDetails: (details) => details.data != index,
+                    onWillAcceptWithDetails: (details) {
+                      final fromIndex = details.data;
+                      if (fromIndex == index) return false;
+                      final fromNote = orderedNotes[fromIndex];
+                      final toNote = orderedNotes[index];
+                      return fromNote.isStarred == toNote.isStarred;
+                    },
                     onAcceptWithDetails: (details) {
                       final fromIndex = details.data;
                       setState(() {
@@ -971,5 +1015,57 @@ class _NotesScreenState extends State<NotesScreen> {
         ),
       ),
     );
+  }
+
+  String _processContentWithSignatures(String newContent, String? originalContent, String currentUsername) {
+    if (originalContent == null || originalContent.isEmpty) {
+      return newContent.split('\n').map((line) {
+        if (line.trim().isEmpty) return line;
+        final cleaned = line.replaceAll(RegExp(r'\s*\(by\s+[^\)]+\)$'), '');
+        return '$cleaned (by $currentUsername)';
+      }).join('\n');
+    }
+
+    final originalLines = originalContent.split('\n').toSet();
+    return newContent.split('\n').map((line) {
+      if (line.trim().isEmpty) return line;
+      if (originalLines.contains(line)) {
+        return line;
+      }
+      final cleaned = line.replaceAll(RegExp(r'\s*\(by\s+[^\)]+\)$'), '');
+      return '$cleaned (by $currentUsername)';
+    }).join('\n');
+  }
+
+  List<Map<String, dynamic>> _processChecklistWithSignatures(
+      List<Map<String, dynamic>> newItems,
+      List<Map<String, dynamic>>? originalItems,
+      String currentUsername) {
+    
+    if (originalItems == null || originalItems.isEmpty) {
+      return newItems.map((item) {
+        final text = item['text'] as String;
+        if (text.trim().isEmpty) return item;
+        final cleaned = text.replaceAll(RegExp(r'\s*\(by\s+[^\)]+\)$'), '');
+        return {
+          ...item,
+          'text': '$cleaned (by $currentUsername)',
+        };
+      }).toList();
+    }
+
+    final originalTexts = originalItems.map((item) => item['text'] as String).toSet();
+    return newItems.map((item) {
+      final text = item['text'] as String;
+      if (text.trim().isEmpty) return item;
+      if (originalTexts.contains(text)) {
+        return item;
+      }
+      final cleaned = text.replaceAll(RegExp(r'\s*\(by\s+[^\)]+\)$'), '');
+      return {
+        ...item,
+        'text': '$cleaned (by $currentUsername)',
+      };
+    }).toList();
   }
 }

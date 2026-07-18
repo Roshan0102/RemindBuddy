@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'home_screen.dart';
@@ -390,7 +391,7 @@ class _MainScreenState extends State<MainScreen> {
 
   List<String> get _activeFeatures {
     final adminEnabled = _enabledModules
-        .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled))
+        .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled) && (!kIsWeb || id != 'checklist'))
         .toList();
 
     final activeUserSelected = _userSelectedBottomModules
@@ -528,7 +529,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _showCustomizeBottomBarDialog() async {
-    final adminEnabled = _enabledModules.where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled)).toList();
+    final adminEnabled = _enabledModules.where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled) && (!kIsWeb || id != 'checklist')).toList();
     List<String> tempSelected = List<String>.from(_activeFeatures);
 
     showDialog(

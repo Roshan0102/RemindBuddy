@@ -68,6 +68,30 @@ void notificationTapBackground(NotificationResponse notificationResponse) async 
           }
         }
       }
+    } else if (payload.startsWith("DAILY_REMINDER|")) {
+      final parts = payload.split('|');
+      final reminderId = parts[1];
+      final uid = parts[2];
+      
+      try {
+        await Firebase.initializeApp();
+      } catch (_) {}
+      
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('daily_reminders')
+          .doc(reminderId);
+          
+      if (actionId == 'action_done') {
+        final now = DateTime.now();
+        final todayDateStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+        await docRef.update({
+          'lastCompletedDate': todayDateStr,
+          'currentSnoozeCount': 0,
+        });
+        LogService.staticLog("BG Handler: Marked daily reminder $reminderId as completed.");
+      }
     }
   }
 }
@@ -162,6 +186,26 @@ class NotificationService {
                     LogService.staticLog("FG Handler: Max snooze limit reached for $reminderId.");
                   }
                 }
+              }
+            } else if (payload.startsWith("DAILY_REMINDER|")) {
+              final parts = payload.split('|');
+              final reminderId = parts[1];
+              final uid = parts[2];
+              
+              final docRef = FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(uid)
+                  .collection('daily_reminders')
+                  .doc(reminderId);
+                  
+              if (actionId == 'action_done') {
+                final now = DateTime.now();
+                final todayDateStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+                await docRef.update({
+                  'lastCompletedDate': todayDateStr,
+                  'currentSnoozeCount': 0,
+                });
+                LogService.staticLog("FG Handler: Marked daily reminder $reminderId as completed.");
               }
             }
           }
@@ -283,6 +327,11 @@ class NotificationService {
           final user = FirebaseAuth.instance.currentUser;
           final uid = user?.uid ?? '';
           payload = "CALENDAR_REMINDER|$reminderId|$uid";
+        } else if (payload == 'daily_reminder') {
+          final reminderId = message.data['reminderId'] ?? '';
+          final user = FirebaseAuth.instance.currentUser;
+          final uid = user?.uid ?? '';
+          payload = "DAILY_REMINDER|$reminderId|$uid";
         }
 
         _localNotifications.show(
@@ -296,6 +345,28 @@ class NotificationService {
               importance: Importance.max,
               priority: Priority.high,
               icon: android.smallIcon,
+              actions: (payload != null && payload.startsWith("DAILY_REMINDER|"))
+                  ? <AndroidNotificationAction>[
+                      const AndroidNotificationAction(
+                        'action_done',
+                        'Mark Done',
+                        showsUserInterface: true,
+                      ),
+                    ]
+                  : (payload != null && payload.startsWith("CALENDAR_REMINDER|"))
+                      ? <AndroidNotificationAction>[
+                          const AndroidNotificationAction(
+                            'action_yes',
+                            'Done',
+                            showsUserInterface: true,
+                          ),
+                          const AndroidNotificationAction(
+                            'action_no',
+                            'Snooze',
+                            showsUserInterface: true,
+                          ),
+                        ]
+                      : null,
             ),
           ),
           payload: payload,
