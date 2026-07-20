@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/storage_service.dart';
 import '../widgets/collaboration_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -636,8 +637,18 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
           sortedItems.sort((a, b) {
             final aChecked = a['isChecked'] == true || a['isChecked'] == 1;
             final bChecked = b['isChecked'] == true || b['isChecked'] == 1;
-            if (aChecked == bChecked) return 0;
-            return aChecked ? 1 : -1;
+            if (aChecked != bChecked) {
+              return aChecked ? 1 : -1;
+            }
+            final aTime = a['createdAt'];
+            final bTime = b['createdAt'];
+            if (aTime == null && bTime == null) return 0;
+            if (aTime == null) return 1;
+            if (bTime == null) return -1;
+            if (aTime is Timestamp && bTime is Timestamp) {
+              return bTime.compareTo(aTime);
+            }
+            return bTime.toString().compareTo(aTime.toString());
           });
 
           final total = sortedItems.length;

@@ -26,14 +26,19 @@ class UpdateService {
       if (configDoc.exists && configDoc.data() != null) {
         final data = configDoc.data()!;
         final stableVersion = data['latest_stable_version'] as String? ?? currentVersion;
+        final staticVersion = data['latest_static_version'] as String? ?? currentVersion;
         List<dynamic> betaUids = data['beta_tester_uids'] ?? [];
+        List<dynamic> staticUids = data['static_user_uids'] ?? [];
         
-        // Find if current user is a beta tester
+        // Find if current user is a beta tester or static user
         final user = FirebaseAuth.instance.currentUser;
         bool isBetaTester = false;
+        bool isStaticUser = false;
         if (user != null) {
           if (betaUids.contains(user.uid)) {
             isBetaTester = true;
+          } else if (staticUids.contains(user.uid)) {
+            isStaticUser = true;
           }
         }
         
@@ -48,6 +53,8 @@ class UpdateService {
               'latest_beta_version': latestGitTag,
             }).catchError((_) {});
           }
+        } else if (isStaticUser) {
+          targetVersion = staticVersion;
         } else {
           targetVersion = stableVersion;
         }

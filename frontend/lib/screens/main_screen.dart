@@ -24,6 +24,7 @@ import '../services/update_service.dart';
 import 'voice_assistant_screen.dart';
 import 'sleep_tracker_screen.dart';
 import 'astro_calendar_screen.dart';
+import 'gcp_cost_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../main.dart';
 
@@ -385,6 +386,15 @@ class _MainScreenState extends State<MainScreen> {
         icon: Icon(Icons.sunny, color: Colors.orange),
         selectedIcon: Icon(Icons.wb_sunny, color: Colors.orange),
         label: 'Astro',
+      ),
+    },
+    'gcp_cost': {
+      'screen': const GcpCostScreen(),
+      'name': 'GCP Cost Tracker',
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.attach_money_outlined, color: Colors.green),
+        selectedIcon: Icon(Icons.attach_money, color: Colors.green),
+        label: 'GCP Cost',
       ),
     },
   };
@@ -750,6 +760,14 @@ class _MainScreenState extends State<MainScreen> {
                   'icon': Icons.sunny,
                   'color': Colors.orange,
                   'action': () => _selectTabOrPush('astro_calendar'),
+                },
+              if (_enabledModules.contains('gcp_cost'))
+                {
+                  'id': 'gcp_cost',
+                  'name': 'GCP Cost Tracker',
+                  'icon': Icons.account_balance_wallet,
+                  'color': Colors.green,
+                  'action': () => _selectTabOrPush('gcp_cost'),
                 },
               if (_enabledModules.contains('voice_assistant'))
                 {
@@ -1245,7 +1263,9 @@ class _MainScreenState extends State<MainScreen> {
     final bool isLargeScreen = screenWidth >= 768;
 
     final activeModules = isLargeScreen
-        ? _moduleRegistry.keys.toList()
+        ? _enabledModules
+            .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled) && (!kIsWeb || id != 'checklist'))
+            .toList()
         : _activeFeatures;
 
     if (_selectedIndex >= activeModules.length) {

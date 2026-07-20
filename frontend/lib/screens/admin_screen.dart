@@ -21,9 +21,11 @@ class _AdminScreenState extends State<AdminScreen> {
   final _adminUserUsernameController = TextEditingController();
   final _adminUserPasswordController = TextEditingController();
   final _latestStableVersionController = TextEditingController();
+  final _latestStaticVersionController = TextEditingController();
   
   List<Map<String, String>> _allUsers = [];
   List<String> _selectedBetaTesterUids = [];
+  List<String> _selectedStaticUserUids = [];
   String _latestGitHubBetaVersion = '';
   bool _isFetchingGithub = false;
   
@@ -50,6 +52,7 @@ class _AdminScreenState extends State<AdminScreen> {
     {'id': 'walkin', 'label': 'Walk-In Drives'},
     {'id': 'voice_assistant', 'label': 'Voice Assistant'},
     {'id': 'ask_gemini', 'label': 'Ask Gemini Buttons'},
+    {'id': 'gcp_cost', 'label': 'GCP Cost Tracker'},
   ];
 
   @override
@@ -67,6 +70,7 @@ class _AdminScreenState extends State<AdminScreen> {
     _adminUserUsernameController.dispose();
     _adminUserPasswordController.dispose();
     _latestStableVersionController.dispose();
+    _latestStaticVersionController.dispose();
     super.dispose();
   }
 
@@ -185,18 +189,24 @@ class _AdminScreenState extends State<AdminScreen> {
           .get();
 
       String stableVersion = '';
+      String staticVersion = '';
       List<dynamic> uids = [];
+      List<dynamic> staticUids = [];
 
       if (doc.exists && doc.data() != null) {
         stableVersion = doc.data()!['latest_stable_version'] ?? '';
+        staticVersion = doc.data()!['latest_static_version'] ?? '';
         uids = doc.data()!['beta_tester_uids'] ?? [];
+        staticUids = doc.data()!['static_user_uids'] ?? [];
       }
 
       setState(() {
         _allUsers = usersList;
         _selectedBetaTesterUids = List<String>.from(uids);
+        _selectedStaticUserUids = List<String>.from(staticUids);
         _latestGitHubBetaVersion = latestGitTag;
         _latestStableVersionController.text = stableVersion;
+        _latestStaticVersionController.text = staticVersion;
         _isLoading = false;
         _isFetchingGithub = false;
       });
@@ -256,15 +266,26 @@ class _AdminScreenState extends State<AdminScreen> {
       }
     }
 
+    final List<String> staticUsernames = [];
+    for (var uid in _selectedStaticUserUids) {
+      final userMap = _allUsers.firstWhere((u) => u['uid'] == uid, orElse: () => {});
+      if (userMap.isNotEmpty && userMap['username'] != null) {
+        staticUsernames.add(userMap['username']!);
+      }
+    }
+
     try {
       await FirebaseFirestore.instance
           .collection('admin_creds')
           .doc('app_updates')
           .set({
         'latest_stable_version': _latestStableVersionController.text.trim(),
-        'latest_beta_version': _latestGitHubBetaVersion.isNotEmpty ? _latestGitHubBetaVersion : '1.6.1', // fallback
+        'latest_static_version': _latestStaticVersionController.text.trim(),
+        'latest_beta_version': _latestGitHubBetaVersion.isNotEmpty ? _latestGitHubBetaVersion : '1.6.9', // fallback
         'beta_tester_uids': _selectedBetaTesterUids,
         'beta_tester_usernames': betaUsernames,
+        'static_user_uids': _selectedStaticUserUids,
+        'static_user_usernames': staticUsernames,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -754,6 +775,17 @@ class _AdminScreenState extends State<AdminScreen> {
                         prefixIcon: Icon(Icons.verified),
                       ),
                     ),
+                    const SizedBox(height: 16),
+
+                    // Static version input
+                    TextField(
+                      controller: _latestStaticVersionController,
+                      decoration: const InputDecoration(
+                        labelText: 'Latest Static Version (e.g. 1.5.0)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.push_pin_outlined),
+                      ),
+                    ),
                     const SizedBox(height: 20),
 
                     // Checkbox list of Beta Testers
@@ -798,6 +830,8 @@ class _AdminScreenState extends State<AdminScreen> {
                                   setState(() {
                                     if (val == true) {
                                       _selectedBetaTesterUids.add(uid);
+                                      // Remove from static if added to beta
+                                      _selectedStaticUserUids.remove(uid);
                                     } else {
                                       _selectedBetaTesterUids.remove(uid);
                                     }
@@ -806,6 +840,64 @@ class _AdminScreenState extends State<AdminScreen> {
                               );
                             },
                           ),
+                    const SizedBox(height: 20),
+
+                    // Checkbox list of Static Users (Excluding Beta Testers)
+                    const Text(
+                      '📌 Select Static Users',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Users selected here receive ONLY updates when Latest Static Version is updated.',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                    const SizedBox(height: 8),
+                    Builder(
+                      builder: (context) {
+                        final staticEligibleUsers = _allUsers.where((u) => !_selectedBetaTesterUids.contains(u['uid'])).toList();
+                        if (staticEligibleUsers.isEmpty) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8.0),
+                            child: Text(
+                              'No non-beta users available for static tier.',
+                              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                            ),
+                          );
+                        }
+                        return ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: staticEligibleUsers.length,
+                          itemBuilder: (context, idx) {
+                            final user = staticEligibleUsers[idx];
+                            final username = user['username']!;
+                            final uid = user['uid']!;
+                            final isChecked = _selectedStaticUserUids.contains(uid);
+                            return CheckboxListTile(
+                              title: Text(username),
+                              subtitle: Text(
+                                uid,
+                                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                              ),
+                              value: isChecked,
+                              dense: true,
+                              controlAffinity: ListTileControlAffinity.leading,
+                              contentPadding: EdgeInsets.zero,
+                              onChanged: (val) {
+                                setState(() {
+                                  if (val == true) {
+                                    _selectedStaticUserUids.add(uid);
+                                  } else {
+                                    _selectedStaticUserUids.remove(uid);
+                                  }
+                                });
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
                     const SizedBox(height: 16),
                     ElevatedButton.icon(
                       onPressed: _updateAppUpdatesConfig,

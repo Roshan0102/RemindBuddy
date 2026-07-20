@@ -446,10 +446,11 @@ class _NotesScreenState extends State<NotesScreen> {
                                     label: const Text('Add Item'),
                                     onPressed: () {
                                       setDialogState(() {
-                                        checklistItems.add({'text': '', 'isChecked': false});
-                                        itemControllers.add(TextEditingController(text: ''));
+                                        checklistItems.insert(0, {'text': '', 'isChecked': false});
+                                        itemControllers.insert(0, TextEditingController(text: ''));
                                         final newFocusNode = FocusNode();
-                                        itemFocusNodes.add(newFocusNode);
+                                        itemFocusNodes.insert(0, newFocusNode);
+                                        reorderChecklist(setDialogState);
                                         WidgetsBinding.instance.addPostFrameCallback((_) {
                                           newFocusNode.requestFocus();
                                         });

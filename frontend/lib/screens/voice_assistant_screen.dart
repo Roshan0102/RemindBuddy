@@ -165,7 +165,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
           
           _speechTimeoutTimer?.cancel();
           if (result.recognizedWords.trim().isNotEmpty) {
-            _speechTimeoutTimer = Timer(const Duration(milliseconds: 1500), () {
+            _speechTimeoutTimer = Timer(const Duration(milliseconds: 3500), () {
               debugPrint("STT: Inactivity timeout reached. Sending: $_currentTranscribedText");
               _stopListeningAndSend(_currentTranscribedText);
             });
@@ -177,8 +177,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
           }
         },
         listenOptions: SpeechListenOptions(
-          listenFor: const Duration(seconds: 20),
-          pauseFor: const Duration(milliseconds: 1500),
+          listenFor: const Duration(seconds: 30),
+          pauseFor: const Duration(milliseconds: 3500),
           cancelOnError: true,
           partialResults: true,
         ),
