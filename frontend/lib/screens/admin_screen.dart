@@ -41,7 +41,6 @@ class _AdminScreenState extends State<AdminScreen> {
   final List<Map<String, String>> _availableModules = [
     {'id': 'gold', 'label': 'Gold Rates'},
     {'id': 'gold_chit', 'label': 'Gold Chit Tracker'},
-    {'id': 'sleep_tracker', 'label': 'Sleep Tracker'},
     {'id': 'reminders', 'label': 'Calendar Reminders'},
     {'id': 'daily_reminders', 'label': 'Daily Reminders'},
     {'id': 'notes', 'label': 'Aesthetic Notes'},
@@ -487,6 +486,30 @@ class _AdminScreenState extends State<AdminScreen> {
         _adminUserErrorMessage = 'Failed to delete user: ${e.toString().replaceAll("Exception:", "")}';
         _isAdminUserActionLoading = false;
       });
+    }
+  }
+
+  Future<void> _toggleAllowedCollaborator(String userId, String targetUsername, bool allow, List<String> currentAllowed) async {
+    final updatedList = List<String>.from(currentAllowed);
+    if (allow) {
+      if (!updatedList.contains(targetUsername)) updatedList.add(targetUsername);
+    } else {
+      updatedList.remove(targetUsername);
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .set({
+        'allowedCollaborators': updatedList,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating allowed collaborators: $e')),
+        );
+      }
     }
   }
 
@@ -1064,19 +1087,92 @@ class _AdminScreenState extends State<AdminScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             subtitle: Text(email.isNotEmpty ? email : 'No email associated'),
-                            children: _availableModules
-                                .where((mod) => !kIsWeb || mod['id'] != 'checklist')
-                                .map((mod) {
-                              final modId = mod['id']!;
-                              final modLabel = mod['label']!;
-                              final isEnabled = enabledModules.contains(modId);
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.extension, size: 18, color: Colors.blueAccent),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Feature Permissions',
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueAccent),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ..._availableModules
+                                  .where((mod) => !kIsWeb || mod['id'] != 'checklist')
+                                  .map((mod) {
+                                final modId = mod['id']!;
+                                final modLabel = mod['label']!;
+                                final isEnabled = enabledModules.contains(modId);
 
-                              return SwitchListTile(
-                                title: Text(modLabel),
-                                value: isEnabled,
-                                onChanged: (val) => _toggleModule(userId, modId, val, enabledModules),
-                              );
-                            }).toList(),
+                                return SwitchListTile(
+                                  title: Text(modLabel),
+                                  value: isEnabled,
+                                  onChanged: (val) => _toggleModule(userId, modId, val, enabledModules),
+                                );
+                              }).toList(),
+                              const Divider(),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.people_alt, size: 18, color: Colors.purple),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Allowed Collaboration Partners (Admin Authorized)',
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.purple),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                                child: Text(
+                                  'Select which users this user can send collaboration requests to across all features (Vault, Notes, Checklists, Calendar).',
+                                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                                ),
+                              ),
+                              Builder(
+                                builder: (context) {
+                                  final allowedCollaborators = List<String>.from(userData?['allowedCollaborators'] ?? []);
+                                  final otherUsers = docs.where((d) => d.id.toLowerCase() != username.toLowerCase()).toList();
+
+                                  if (otherUsers.isEmpty) {
+                                    return const Padding(
+                                      padding: EdgeInsets.all(12.0),
+                                      child: Text('No other registered users to authorize.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                    );
+                                  }
+
+                                  return Column(
+                                    children: otherUsers.map((otherDoc) {
+                                      final otherUsername = otherDoc.id;
+                                      final otherData = otherDoc.data() as Map<String, dynamic>;
+                                      final otherUid = (otherData['uid'] ?? '').toString();
+                                      final isAllowed = allowedCollaborators.contains(otherUsername) || allowedCollaborators.contains(otherUid);
+
+                                      return CheckboxListTile(
+                                        title: Text('@$otherUsername'),
+                                        subtitle: Text(otherData['email'] ?? ''),
+                                        value: isAllowed,
+                                        dense: true,
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                                        onChanged: (val) => _toggleAllowedCollaborator(
+                                          userId,
+                                          otherUsername,
+                                          val ?? false,
+                                          allowedCollaborators,
+                                        ),
+                                      );
+                                    }).toList(),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                           ),
                         );
                       },

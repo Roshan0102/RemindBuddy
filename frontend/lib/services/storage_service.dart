@@ -831,14 +831,32 @@ class StorageService {
   Future<List<Map<String, String>>> getAllUsers() async {
     final snap = await FirebaseFirestore.instance.collection('usernames').get();
     final user = FirebaseAuth.instance.currentUser;
-    return snap.docs.map((doc) {
+    if (user == null) return [];
+
+    List<String>? allowed;
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (userDoc.exists && userDoc.data() != null && userDoc.data()!.containsKey('allowedCollaborators')) {
+        allowed = List<String>.from(userDoc.data()!['allowedCollaborators'] ?? []);
+      }
+    } catch (_) {}
+
+    final allUsers = snap.docs.map((doc) {
       final data = doc.data();
       return {
         'username': doc.id,
         'email': (data['email'] ?? '').toString(),
         'uid': (data['uid'] ?? '').toString(),
       };
-    }).where((u) => u['uid'] != user?.uid && u['uid']!.isNotEmpty).toList(); // exclude self
+    }).where((u) => u['uid'] != user.uid && u['uid']!.isNotEmpty).toList();
+
+    if (allowed != null) {
+      return allUsers.where((u) =>
+        allowed!.contains(u['username']) || allowed.contains(u['uid'])
+      ).toList();
+    }
+
+    return allUsers;
   }
 
   Future<void> sendCollaborationRequest({
@@ -850,6 +868,20 @@ class StorageService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     
+    // Check admin allowedCollaborators permission
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (userDoc.exists && userDoc.data() != null && userDoc.data()!.containsKey('allowedCollaborators')) {
+        final allowed = List<String>.from(userDoc.data()!['allowedCollaborators'] ?? []);
+        final receiverUsername = await getUsernameFromUid(receiverUid);
+        if (!allowed.contains(receiverUid) && !allowed.contains(receiverUsername)) {
+          throw Exception("Admin permission required: Collaboration with user is not authorized.");
+        }
+      }
+    } catch (e) {
+      if (e.toString().contains("Admin permission required")) rethrow;
+    }
+
     final senderUsername = await getCurrentUsername();
     
     // First, initialize ownerUid on the original item if not already set

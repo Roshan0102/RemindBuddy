@@ -939,24 +939,77 @@ exports.checkGoldSources = functions.https.onCall(async () => {
     return { timestamp: moment().tz('Asia/Kolkata').format('hh:mm:ss A'), live_chennai: r[0], bank_bazaar: r[1] };
 });
 
-exports.scheduledGoldFetch = functions.pubsub.schedule('0 11,19 * * *').timeZone('Asia/Kolkata').onRun(() => internalPerformGoldFetch());
 exports.forceGoldFetch = functions.https.onCall(() => internalPerformGoldFetch(true));
 
-exports.scheduledMarketForecast = functions.runWith({ timeoutSeconds: 300, memory: "1GB" }).pubsub.schedule('2 11 * * *')
+// --- CONSOLIDATED MASTER SCHEDULERS (2 Schedulers total for 100% Free GCP Tier) ---
+
+// 1. Minute Master Runner (Replaces checkDailyReminders & checkPendingGoldChitNotifications)
+exports.masterMinuteRunner = functions.pubsub.schedule('* * * * *')
     .timeZone('Asia/Kolkata')
     .onRun(async () => {
-        try {
-            console.log("Running scheduled market forecast at 11:02 AM IST...");
-            await runGoldAIPredictionInternal();
-            console.log("Scheduled market forecast finished successfully.");
-        } catch (error: any) {
-            console.error("Error in scheduledMarketForecast:", error);
+        await internalCheckDailyReminders();
+        await internalCheckPendingGoldChitNotifications();
+    });
+
+// 2. Periodic Master Runner (Runs every 30 minutes at :00 and :30, supporting any hourly or half-hour scheduled task)
+exports.masterHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory: "1GB" })
+    .pubsub.schedule('0,30 * * * *')
+    .timeZone('Asia/Kolkata')
+    .onRun(async () => {
+        const nowKolkata = moment().tz('Asia/Kolkata');
+        const hour = nowKolkata.hour();
+        const minute = nowKolkata.minute();
+        const timeStr = nowKolkata.format('HH:mm');
+
+        console.log(`[masterHourlyRunner] Triggered check at ${timeStr} IST`);
+
+        // Check if running near the top of the hour (:00)
+        if (minute < 15) {
+            // 11:00 AM IST (Hour 11): Gold Fetch & Market Forecast
+            if (hour === 11) {
+                console.log("[masterHourlyRunner] Executing 11:00 AM tasks: Gold Fetch & AI Market Forecast...");
+                await internalPerformGoldFetch();
+                try {
+                    await runGoldAIPredictionInternal();
+                } catch (err) {
+                    console.error("Error in scheduledMarketForecast inside masterHourlyRunner:", err);
+                }
+            }
+
+            // 06:00 PM IST (Hour 18): Interested Events Notifications
+            if (hour === 18) {
+                console.log("[masterHourlyRunner] Executing 06:00 PM tasks: Interested Events Notifications...");
+                await internalCheckInterestedEventsNotifications();
+            }
+
+            // 07:00 PM IST (Hour 19): Tech Events Fetcher & Evening Gold Fetch
+            if (hour === 19) {
+                console.log("[masterHourlyRunner] Executing 07:00 PM tasks: Tech Events Fetcher & Evening Gold Fetch...");
+                await internalPerformGoldFetch();
+                await internalDailyTechEventsFetcher();
+            }
+
+            // 08:00 PM IST (Hour 20): Walk-Ins Fetcher
+            if (hour === 20) {
+                console.log("[masterHourlyRunner] Executing 08:00 PM tasks: Walk-In Drives Fetcher...");
+                await internalDailyWalkInsFetcher();
+            }
+
+            // 10:00 PM IST (Hour 22): Daily Shift Reminder
+            if (hour === 22) {
+                console.log("[masterHourlyRunner] Executing 10:00 PM tasks: Daily Shift Reminders...");
+                await internalDailyShiftReminder();
+            }
+        }
+        
+        // Check if running near the half hour (:30)
+        if (minute >= 15 && minute < 45) {
+            // Future 30-minute scheduled tasks can be placed here effortlessly!
+            console.log(`[masterHourlyRunner] Half-hour check completed for ${timeStr} IST.`);
         }
     });
 
-
-
-exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+async function internalDailyShiftReminder() {
     const nowKolkata = moment().tz('Asia/Kolkata');
     const tom = nowKolkata.clone().add(1, 'day');
     console.log(`Running dailyShiftReminder at ${nowKolkata.format()}. Target date: ${tom.format('YYYY-MM-DD')}`);
@@ -1010,9 +1063,9 @@ exports.dailyShiftReminder = functions.pubsub.schedule('0 22 * * *').timeZone('A
             console.error(`Failed to send shift reminder for user ${userData.uid}:`, error);
         }
     }
-});
+}
 
-exports.checkDailyReminders = functions.pubsub.schedule('* * * * *').timeZone('Asia/Kolkata').onRun(async () => {
+async function internalCheckDailyReminders() {
     const nowKolkata = moment().tz('Asia/Kolkata');
     const timeStr = nowKolkata.format('HH:mm');
     console.log(`Running checkDailyReminders at ${nowKolkata.format()} (Search Time: ${timeStr})`);
@@ -1126,7 +1179,7 @@ exports.checkDailyReminders = functions.pubsub.schedule('* * * * *').timeZone('A
             console.error(`Failed to send daily reminders for user ${userData.uid}:`, error);
         }
     }
-});
+}
 
 exports.analyzeRosterImage = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
     // Ensure user is authenticated
@@ -1943,7 +1996,7 @@ exports.fetchUserTechEvents = functions.runWith({ timeoutSeconds: 120, memory: "
     }
 });
 
-exports.dailyTechEventsFetcher = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.schedule('0 19 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+async function internalDailyTechEventsFetcher() {
     console.log("Starting dailyTechEventsFetcher at 7 PM IST");
     const usersSnap = await db.collection("users").get();
     const topic = pubsubClient.topic("fetch-user-tech-events");
@@ -1960,7 +2013,7 @@ exports.dailyTechEventsFetcher = functions.runWith({ timeoutSeconds: 300, memory
             }
         }
     }
-});
+}
 
 exports.fetchUserTechEventsTrigger = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.topic('fetch-user-tech-events').onPublish(async (message) => {
     const data = message.json;
@@ -2181,7 +2234,7 @@ exports.fetchUserWalkIns = functions.runWith({ timeoutSeconds: 120, memory: "256
     }
 });
 
-exports.dailyWalkInsFetcher = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.schedule('0 20 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+async function internalDailyWalkInsFetcher() {
     console.log("Starting dailyWalkInsFetcher at 8 PM IST");
     const usersSnap = await db.collection("users").get();
     const topic = pubsubClient.topic("fetch-user-walkins");
@@ -2198,7 +2251,7 @@ exports.dailyWalkInsFetcher = functions.runWith({ timeoutSeconds: 300, memory: "
             }
         }
     }
-});
+}
 
 exports.fetchUserWalkInsTrigger = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.topic('fetch-user-walkins').onPublish(async (message) => {
     const data = message.json;
@@ -2708,9 +2761,7 @@ exports.onInstallmentUpdated = functions.firestore
         }
     });
 
-exports.checkPendingGoldChitNotifications = functions.pubsub.schedule('* * * * *')
-    .timeZone('Asia/Kolkata')
-    .onRun(async (context) => {
+async function internalCheckPendingGoldChitNotifications() {
         const now = admin.firestore.Timestamp.now();
         const pendingSnap = await db.collection('pending_gold_chit_notifications')
             .where('status', '==', 'pending')
@@ -2755,14 +2806,6 @@ exports.checkPendingGoldChitNotifications = functions.pubsub.schedule('* * * * *
                     continue;
                 }
 
-                // Get updater username
-                let updaterUsername = 'A user';
-                if (updatedBy) {
-                    const updaterSnap = await db.collection('usernames').where('uid', '==', updatedBy).limit(1).get();
-                    if (!updaterSnap.empty) {
-                        updaterUsername = updaterSnap.docs[0].id;
-                    }
-                }
 
                 // Format month name (e.g. "2026-07" -> "July 2026")
                 let formattedMonth = monthKey;
@@ -2788,8 +2831,25 @@ exports.checkPendingGoldChitNotifications = functions.pubsub.schedule('* * * * *
                 }
 
                 if (tokens.length > 0) {
-                    const title = `💰 Gold Chit Updated`;
-                    const body = `${updaterUsername} updated the payment for ${formattedMonth} in plan "${planName}".`;
+                    // Calculate total accumulated grams across paid installments for this plan
+                    let totalGrams = 0;
+                    try {
+                        const instSnap = await db.collection('gold_chits').doc(planId).collection('installments').get();
+                        instSnap.docs.forEach(iDoc => {
+                            const iData = iDoc.data();
+                            if (iData.status === 'paid') {
+                                const grams = parseFloat(iData.gramsAccumulated || iData.goldGrams || '0') || 0;
+                                totalGrams += grams;
+                            }
+                        });
+                    } catch (gErr) {
+                        console.error(`Error calculating total grams for plan ${planId}:`, gErr);
+                    }
+
+                    const gramsFormatted = totalGrams > 0 ? `${totalGrams.toFixed(3)} grams` : '0 grams';
+
+                    const title = `💰 Gold Chit Payment Confirmed`;
+                    const body = `You have paid the ${formattedMonth} gold installment. Currently, you have ${gramsFormatted} of gold in plan "${planName}".`;
 
                     await admin.messaging().sendEachForMulticast({
                         tokens,
@@ -2819,10 +2879,10 @@ exports.checkPendingGoldChitNotifications = functions.pubsub.schedule('* * * * *
                 await doc.ref.update({ status: 'failed', error: err.message || err.toString() });
             }
         }
-    });
+}
 
 
-exports.checkInterestedEventsNotifications = functions.pubsub.schedule('0 18 * * *').timeZone('Asia/Kolkata').onRun(async () => {
+async function internalCheckInterestedEventsNotifications() {
     const tomorrowStr = moment().tz('Asia/Kolkata').add(1, 'days').format('YYYY-MM-DD');
     console.log(`Running checkInterestedEventsNotifications at ${moment().tz('Asia/Kolkata').format()} (Target Date: ${tomorrowStr})`);
 
@@ -2912,5 +2972,5 @@ exports.checkInterestedEventsNotifications = functions.pubsub.schedule('0 18 * *
             console.error(`Failed to check/send interested notifications for user ${uid}:`, error);
         }
     }
-});
+}
 

@@ -22,7 +22,6 @@ import 'admin_screen.dart';
 import 'notification_history_screen.dart';
 import '../services/update_service.dart';
 import 'voice_assistant_screen.dart';
-import 'sleep_tracker_screen.dart';
 import 'astro_calendar_screen.dart';
 import 'gcp_cost_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -368,15 +367,6 @@ class _MainScreenState extends State<MainScreen> {
         icon: Icon(Icons.shield_outlined, color: Colors.blueAccent),
         selectedIcon: Icon(Icons.shield, color: Colors.blueAccent),
         label: 'Vault',
-      ),
-    },
-    'sleep_tracker': {
-      'screen': const SleepTrackerScreen(),
-      'name': 'Sleep Tracker',
-      'destination': const NavigationDestination(
-        icon: Icon(Icons.bedtime_outlined, color: Colors.indigo),
-        selectedIcon: Icon(Icons.bedtime, color: Colors.indigo),
-        label: 'Sleep',
       ),
     },
     'astro_calendar': {
@@ -744,14 +734,6 @@ class _MainScreenState extends State<MainScreen> {
                       MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
                     );
                   },
-                },
-              if (_enabledModules.contains('sleep_tracker'))
-                {
-                  'id': 'sleep_tracker',
-                  'name': 'Sleep Tracker',
-                  'icon': Icons.bedtime,
-                  'color': Colors.indigo,
-                  'action': () => _selectTabOrPush('sleep_tracker'),
                 },
               if (_enabledModules.contains('astro_calendar'))
                 {
@@ -1385,16 +1367,6 @@ class _MainScreenState extends State<MainScreen> {
                 onTap: () {
                   Navigator.pop(context);
                   _selectTabOrPush('gold');
-                },
-              ),
-            if (_enabledModules.contains('sleep_tracker'))
-              ListTile(
-                leading: const Icon(Icons.bedtime, color: Colors.indigo),
-                title: const Text('Sleep Tracker'),
-                selected: _isModuleSelected('sleep_tracker'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('sleep_tracker');
                 },
               ),
             if (_enabledModules.contains('astro_calendar'))

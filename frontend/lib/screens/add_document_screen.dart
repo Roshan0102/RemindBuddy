@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/family_member.dart';
+import '../models/vault_collaborator.dart';
 import '../models/secure_document.dart';
 import '../services/vault_service.dart';
 
@@ -28,20 +27,9 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
-  
-  String? _selectedMemberId;
-  String _selectedCategory = 'Identity Cards';
-  
-  final List<String> _categories = [
-    'Identity Cards',
-    'Financial',
-    'Health & Medical',
-    'Insurance',
-    'Others'
-  ];
+  final _categoryController = TextEditingController();
 
-  final _customCategoryController = TextEditingController();
-  bool _isCustomCategory = false;
+  String? _selectedMemberId;
 
   // List of custom field controllers
   final List<Map<String, TextEditingController>> _fieldControllers = [];
@@ -62,20 +50,11 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     if (widget.documentToEdit != null && widget.decryptedDocToEdit != null) {
       final doc = widget.documentToEdit!;
       final decDoc = widget.decryptedDocToEdit!;
-      
+
       _titleController.text = decDoc.title;
+      _categoryController.text = doc.category;
       _selectedMemberId = doc.memberId;
       _existingAttachmentPaths = List.from(doc.encryptedAttachmentPaths);
-
-      final defaultCategories = ['Identity Cards', 'Financial', 'Health & Medical', 'Insurance'];
-      if (!defaultCategories.contains(doc.category) && doc.category.isNotEmpty) {
-        _selectedCategory = 'Others';
-        _isCustomCategory = true;
-        _customCategoryController.text = doc.category;
-      } else {
-        _selectedCategory = doc.category.isNotEmpty ? doc.category : 'Identity Cards';
-        _isCustomCategory = _selectedCategory == 'Others';
-      }
 
       // Populating custom fields
       decDoc.fields.forEach((key, val) {
@@ -85,15 +64,15 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         });
       });
     } else {
-      // Add one default custom field empty
       _addCustomField();
+      _selectedMemberId = FirebaseAuth.instance.currentUser?.uid;
     }
   }
 
   @override
   void dispose() {
     _titleController.dispose();
-    _customCategoryController.dispose();
+    _categoryController.dispose();
     for (var controllerMap in _fieldControllers) {
       controllerMap['key']?.dispose();
       controllerMap['value']?.dispose();
@@ -180,9 +159,10 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedMemberId == null) {
+    final targetMemberId = _selectedMemberId ?? FirebaseAuth.instance.currentUser?.uid;
+    if (targetMemberId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a family member.')),
+        const SnackBar(content: Text('Please select a member owner.')),
       );
       return;
     }
@@ -193,20 +173,21 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     });
 
     try {
-      // Look up family member's name
-      String ownerName = 'Unknown';
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null) {
-        final memberDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .collection('family_members')
-            .doc(_selectedMemberId)
-            .get();
-        if (memberDoc.exists) {
-          ownerName = memberDoc.data()?['name'] ?? 'Unknown';
-        }
-      }
+      // Look up member username
+      String ownerName = 'Me';
+      final collaborators = await _vaultService.getVaultCollaborators().first;
+      final matchedCollab = collaborators.firstWhere(
+        (c) => c.uid == targetMemberId,
+        orElse: () => VaultCollaborator(
+          uid: targetMemberId,
+          username: 'Me',
+          email: '',
+          collaborationId: '',
+          isSelf: true,
+          avatarColorValue: 0xFF3F51B5,
+        ),
+      );
+      ownerName = matchedCollab.username;
 
       // Build custom fields map
       final Map<String, String> fields = {};
@@ -224,15 +205,13 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
             : 'Saving document record...';
       });
 
-      final categoryToSave = _selectedCategory == 'Others'
-          ? _customCategoryController.text.trim()
-          : _selectedCategory;
+      final categoryToSave = _categoryController.text.trim();
 
       await _vaultService.saveDocument(
         id: widget.documentToEdit?.id,
-        memberId: _selectedMemberId!,
+        memberId: targetMemberId,
         ownerName: ownerName,
-        category: categoryToSave,
+        category: categoryToSave.isNotEmpty ? categoryToSave : 'General',
         title: _titleController.text.trim(),
         fields: fields,
         rawImagesToUpload: _newAttachmentsBytes,
@@ -301,29 +280,31 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            // 1. Family Member Selection Card
-            StreamBuilder<List<FamilyMember>>(
-              stream: _vaultService.getFamilyMembers(),
+            // 1. Vault Collaborator / Owner Selection Card
+            StreamBuilder<List<VaultCollaborator>>(
+              stream: _vaultService.getVaultCollaborators(),
               builder: (context, snapshot) {
                 final members = snapshot.data ?? [];
-                
+                final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                final activeValue = _selectedMemberId ?? currentUid;
+
                 return Card(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButtonFormField<String>(
-                        value: _selectedMemberId,
+                        value: members.any((m) => m.uid == activeValue) ? activeValue : null,
                         decoration: const InputDecoration(
                           labelText: 'Belongs to Member',
                           border: InputBorder.none,
                           icon: Icon(Icons.person),
                         ),
-                        validator: (val) => val == null ? 'Please select a member' : null,
+                        validator: (val) => val == null ? 'Please select a member owner' : null,
                         items: members.map((m) {
                           return DropdownMenuItem(
-                            value: m.id,
-                            child: Text(m.name),
+                            value: m.uid,
+                            child: Text(m.isSelf ? 'Myself (@${m.username})' : '@${m.username}'),
                           );
                         }).toList(),
                         onChanged: (val) {
@@ -337,7 +318,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
             ),
             const SizedBox(height: 12),
 
-            // 2. Document Identity Information Card
+            // 2. Document Identity & Dynamic Category Card
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Padding(
@@ -356,41 +337,57 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                           (val == null || val.trim().isEmpty) ? 'Please enter a name' : null,
                     ),
                     const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: _selectedCategory,
+                    TextFormField(
+                      controller: _categoryController,
                       decoration: InputDecoration(
-                        labelText: 'Category',
+                        labelText: 'Category Name',
+                        hintText: 'e.g. Identity Cards, Financial, Medical...',
+                        suffixIcon: const Icon(Icons.category_outlined),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      items: _categories.map((c) {
-                        return DropdownMenuItem(value: c, child: Text(c));
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() {
-                            _selectedCategory = val;
-                            _isCustomCategory = val == 'Others';
-                          });
-                        }
+                      validator: (val) => (val == null || val.trim().isEmpty)
+                          ? 'Please enter or select a category'
+                          : null,
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Choice chips of existing user/collaborator categories
+                    StreamBuilder<List<String>>(
+                      stream: _vaultService.getExistingCategories(),
+                      builder: (context, catSnapshot) {
+                        final existingCategories = catSnapshot.data ?? [];
+                        if (existingCategories.isEmpty) return const SizedBox.shrink();
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Existing Categories (Tap to Select):',
+                              style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: existingCategories.map((cat) {
+                                final isSelected =
+                                    _categoryController.text.trim().toLowerCase() == cat.toLowerCase();
+                                return ChoiceChip(
+                                  label: Text(cat),
+                                  selected: isSelected,
+                                  selectedColor: Colors.blue.shade100,
+                                  onSelected: (selected) {
+                                    setState(() {
+                                      _categoryController.text = cat;
+                                    });
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        );
                       },
                     ),
-                    if (_isCustomCategory) ...[
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _customCategoryController,
-                        decoration: InputDecoration(
-                          labelText: 'Custom Category Name',
-                          hintText: 'e.g. Vehicle, Work, Education',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        validator: (val) {
-                          if (_isCustomCategory && (val == null || val.trim().isEmpty)) {
-                            return 'Please enter a custom category';
-                          }
-                          return null;
-                        },
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -413,11 +410,16 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.add_circle, color: Colors.blue),
+                          icon: const Icon(Icons.add_circle, color: Colors.blue, size: 28),
                           onPressed: () => _addCustomField(),
                           tooltip: 'Add custom field',
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Add confidential numbers, passwords, IDs, or account details. All values are client-side encrypted.',
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                     ),
                     const Divider(height: 24),
                     _fieldControllers.isEmpty
@@ -425,8 +427,8 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                             padding: EdgeInsets.symmetric(vertical: 16.0),
                             child: Center(
                               child: Text(
-                                'No fields added. Click + to add details like Card number, account password, etc.',
-                                style: TextStyle(color: Colors.grey, fontSize: 12),
+                                'No fields added yet. Tap "+ Add Field" below to add details.',
+                                style: TextStyle(color: Colors.grey, fontSize: 13),
                                 textAlign: TextAlign.center,
                               ),
                             ),
@@ -437,46 +439,85 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                             itemCount: _fieldControllers.length,
                             itemBuilder: (context, index) {
                               final controllers = _fieldControllers[index];
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 12.0),
-                                child: Row(
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 16.0),
+                                padding: const EdgeInsets.all(14.0),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade50,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: Colors.grey.shade300),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      flex: 3,
-                                      child: TextField(
-                                        controller: controllers['key'],
-                                        decoration: InputDecoration(
-                                          labelText: 'Label',
-                                          hintText: 'e.g. Account Number',
-                                          isDense: true,
-                                          border: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(10)),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'Field #${index + 1}',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: Colors.blueGrey.shade700,
+                                          ),
                                         ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                          onPressed: () => _removeCustomField(index),
+                                          tooltip: 'Remove Field',
+                                          constraints: const BoxConstraints(),
+                                          padding: EdgeInsets.zero,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    // 1. Label Field (Full Width)
+                                    TextField(
+                                      controller: controllers['key'],
+                                      decoration: InputDecoration(
+                                        labelText: 'Field Label / Name',
+                                        hintText: 'e.g. Account Number, Password, Policy ID',
+                                        prefixIcon: const Icon(Icons.label_outlined, size: 20),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        isDense: true,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      flex: 4,
-                                      child: TextField(
-                                        controller: controllers['value'],
-                                        decoration: InputDecoration(
-                                          labelText: 'Value',
-                                          hintText: 'Secret value',
-                                          isDense: true,
-                                          border: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(10)),
-                                        ),
+                                    const SizedBox(height: 12),
+                                    // 2. Value Field (Full Width & Multi-line)
+                                    TextField(
+                                      controller: controllers['value'],
+                                      maxLines: null,
+                                      minLines: 2,
+                                      keyboardType: TextInputType.multiline,
+                                      decoration: InputDecoration(
+                                        labelText: 'Field Value / Secret Content',
+                                        hintText: 'Enter secret value or details...',
+                                        prefixIcon: const Icon(Icons.key_outlined, size: 20),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                        filled: true,
+                                        fillColor: Colors.white,
                                       ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.remove_circle, color: Colors.red),
-                                      onPressed: () => _removeCustomField(index),
                                     ),
                                   ],
                                 ),
                               );
                             },
                           ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _addCustomField(),
+                        icon: const Icon(Icons.add_circle_outline, color: Colors.blueAccent),
+                        label: const Text('Add Another Important Field'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -518,7 +559,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                       ],
                     ),
                     const Divider(height: 24),
-                    
+
                     // Existing attachment paths (If editing)
                     if (_existingAttachmentPaths.isNotEmpty) ...[
                       const Text(

@@ -205,11 +205,6 @@ class _GoldScreenState extends State<GoldScreen> {
                 onPressed: _showSourceChecker,
                 tooltip: 'Check Sources',
               ),
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: _fetchPrice,
-                tooltip: 'Refresh',
-              ),
             ],
           ),
           body: snapshot.connectionState == ConnectionState.waiting && history.isEmpty

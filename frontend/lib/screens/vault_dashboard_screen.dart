@@ -7,10 +7,13 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../models/family_member.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/encryption_service.dart';
 import '../models/secure_document.dart';
+import '../models/vault_collaborator.dart';
 import '../services/vault_service.dart';
-import 'family_management_screen.dart';
+import 'vault_collaboration_screen.dart';
 import 'add_document_screen.dart';
 import 'document_detail_screen.dart';
 
@@ -23,7 +26,7 @@ class VaultDashboardScreen extends StatefulWidget {
 
 class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   final VaultService _vaultService = VaultService();
-  StreamSubscription? _familySubscription;
+  StreamSubscription? _collaboratorSubscription;
   final TextEditingController _searchController = TextEditingController();
   List<SecureDocument>? _previousRawDocs;
   Future<List<DecryptedDocument>>? _decryptionFuture;
@@ -32,12 +35,12 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   String? _selectedMemberId; // null means "All Members"
   String _selectedCategory = 'All'; // "All" or a specific category
 
-  Map<String, FamilyMember> _familyMembersMap = {};
+  Map<String, VaultCollaborator> _collaboratorsMap = {};
 
   @override
   void initState() {
     super.initState();
-    _loadFamilyMembers();
+    _loadCollaborators();
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.toLowerCase().trim();
@@ -47,17 +50,17 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
 
   @override
   void dispose() {
-    _familySubscription?.cancel();
+    _collaboratorSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  void _loadFamilyMembers() {
-    _familySubscription?.cancel();
-    _familySubscription = _vaultService.getFamilyMembers().listen((list) {
+  void _loadCollaborators() {
+    _collaboratorSubscription?.cancel();
+    _collaboratorSubscription = _vaultService.getVaultCollaborators().listen((list) {
       if (mounted) {
         setState(() {
-          _familyMembersMap = {for (var m in list) m.id: m};
+          _collaboratorsMap = {for (var c in list) c.uid: c};
         });
       }
     });
@@ -79,6 +82,170 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
     Share.share('$label: $value', subject: 'Document Details');
   }
 
+  void _showChangePinDialog() {
+    final currentPinController = TextEditingController();
+    final newPinController = TextEditingController();
+    final confirmPinController = TextEditingController();
+    String errorMsg = '';
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.password_rounded, color: Colors.blueAccent),
+                  SizedBox(width: 8),
+                  Text('Change Vault PIN'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: currentPinController,
+                    obscureText: true,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: const InputDecoration(
+                      labelText: 'Current PIN',
+                      counterText: '',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: newPinController,
+                    obscureText: true,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: const InputDecoration(
+                      labelText: 'New 4-Digit PIN',
+                      counterText: '',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: confirmPinController,
+                    obscureText: true,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm New PIN',
+                      counterText: '',
+                    ),
+                  ),
+                  if (errorMsg.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      errorMsg,
+                      style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final curr = currentPinController.text.trim();
+                          final nPin = newPinController.text.trim();
+                          final cPin = confirmPinController.text.trim();
+
+                          if (curr.length < 4 || nPin.length < 4) {
+                            setDialogState(() => errorMsg = 'PINs must be at least 4 digits.');
+                            return;
+                          }
+
+                          if (nPin != cPin) {
+                            setDialogState(() => errorMsg = 'New PIN and Confirm PIN do not match.');
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isSaving = true;
+                            errorMsg = '';
+                          });
+
+                          try {
+                            final uid = FirebaseAuth.instance.currentUser?.uid;
+                            if (uid == null) throw Exception("User not authenticated.");
+
+                            final doc = await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(uid)
+                                .collection('vault_config')
+                                .doc('pin')
+                                .get();
+
+                            String? salt;
+                            String? verifier;
+
+                            if (doc.exists && doc.data() != null) {
+                              salt = doc.data()!['salt'];
+                              verifier = doc.data()!['verifier'];
+                            }
+
+                            final encryptionService = EncryptionService();
+                            if (salt == null || verifier == null || !encryptionService.verifyDecryption(verifier, curr, salt)) {
+                              setDialogState(() {
+                                isSaving = false;
+                                errorMsg = 'Current PIN is incorrect.';
+                              });
+                              return;
+                            }
+
+                            final newSalt = encryptionService.generateSalt();
+                            encryptionService.setKeyFromPIN(nPin, newSalt);
+                            final newVerifier = encryptionService.encryptVerifier();
+
+                            await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(uid)
+                                .collection('vault_config')
+                                .doc('pin')
+                                .set({
+                              'salt': newSalt,
+                              'verifier': newVerifier,
+                              'updatedAt': FieldValue.serverTimestamp(),
+                            });
+
+                            if (mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('🔑 Vault PIN changed successfully!'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            setDialogState(() {
+                              isSaving = false;
+                              errorMsg = 'Error changing PIN: $e';
+                            });
+                          }
+                        },
+                  child: isSaving
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Change PIN'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -86,14 +253,19 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
         title: const Text('🔒 Secure Document Vault'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.people_outline),
+            icon: const Icon(Icons.person_add_alt_1_rounded),
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const FamilyManagementScreen()),
+                MaterialPageRoute(builder: (context) => const VaultCollaborationScreen()),
               );
             },
-            tooltip: 'Manage Family Members',
+            tooltip: 'Vault Collaboration',
+          ),
+          IconButton(
+            icon: const Icon(Icons.password_rounded),
+            onPressed: _showChangePinDialog,
+            tooltip: 'Change Vault PIN',
           ),
         ],
       ),
@@ -160,11 +332,11 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
 
                     final decDocs = decryptSnapshot.data ?? [];
 
-                    // Compute categories list dynamically based on the decrypted documents!
-                    final Set<String> uniqueCategories = {'All', 'Identity Cards', 'Financial', 'Health & Medical', 'Insurance'};
+                    // Compute categories list purely dynamically based on user and collaborator documents!
+                    final Set<String> uniqueCategories = {'All'};
                     for (var doc in decDocs) {
-                      if (doc.original.category.isNotEmpty) {
-                        uniqueCategories.add(doc.original.category);
+                      if (doc.original.category.trim().isNotEmpty) {
+                        uniqueCategories.add(doc.original.category.trim());
                       }
                     }
                     final dynamicCategories = uniqueCategories.toList();
@@ -209,16 +381,16 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                 // Member Filter
                                 DropdownButton<String>(
                                   value: _selectedMemberId,
-                                  hint: const Text('All Members'),
+                                  hint: const Text('All Vault Members'),
                                   items: [
                                     const DropdownMenuItem<String>(
                                       value: null,
-                                      child: Text('All Family Members'),
+                                      child: Text('All Vault Members'),
                                     ),
-                                    ..._familyMembersMap.values.map((m) {
+                                    ..._collaboratorsMap.values.map((c) {
                                       return DropdownMenuItem<String>(
-                                        value: m.id,
-                                        child: Text(m.name),
+                                        value: c.uid,
+                                        child: Text(c.isSelf ? 'Myself (@${c.username})' : '@${c.username}'),
                                       );
                                     }),
                                   ],
@@ -266,7 +438,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                   itemCount: filteredDocs.length,
                                   itemBuilder: (context, index) {
                                     final decDoc = filteredDocs[index];
-                                    final owner = _familyMembersMap[decDoc.original.memberId];
+                                    final owner = _collaboratorsMap[decDoc.original.memberId];
                                     return _buildDocumentCard(decDoc, owner);
                                   },
                                 ),
@@ -293,8 +465,10 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
     );
   }
 
-  Widget _buildDocumentCard(DecryptedDocument decDoc, FamilyMember? owner) {
-    final ownerName = owner?.name ?? 'Unknown';
+  Widget _buildDocumentCard(DecryptedDocument decDoc, VaultCollaborator? owner) {
+    final ownerName = owner != null
+        ? (owner.isSelf ? 'Myself (@${owner.username})' : '@${owner.username}')
+        : 'Unknown';
     final avatarColor = owner?.avatarColorValue ?? 0xFF9E9E9E;
 
     return Card(
@@ -327,7 +501,9 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                     radius: 24,
                     backgroundColor: Color(avatarColor).withAlpha(38),
                     child: Text(
-                      ownerName.isNotEmpty ? ownerName.substring(0, 1).toUpperCase() : '?',
+                      owner != null && owner.username.isNotEmpty
+                          ? owner.username.substring(0, 1).toUpperCase()
+                          : '?',
                       style: TextStyle(
                         color: Color(avatarColor),
                         fontWeight: FontWeight.bold,
@@ -421,7 +597,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                   SelectableText(
                                     fVal,
                                     style: const TextStyle(
-                                      fontSize: 18, // Large text size for readability by elderly parents
+                                      fontSize: 18,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.black87,
                                     ),
