@@ -94,6 +94,9 @@ class VaultService {
 
     controller = StreamController<List<VaultCollaborator>>.broadcast(
       onListen: () {
+        // Emit initial self user immediately so StreamBuilder connectionState becomes active without waiting!
+        emitCollaborators();
+
         // Query 1: Requests sent by me that were approved
         sub1 = _firestore
             .collection('vault_collaborations')
@@ -115,7 +118,10 @@ class VaultService {
             );
           }).toList();
           emitCollaborators();
-        }, onError: (e) => print("VaultService: Error listening to sent collabs: $e"));
+        }, onError: (e) {
+          print("VaultService: Error listening to sent collabs: $e");
+          emitCollaborators();
+        });
 
         // Query 2: Requests received by me that were approved
         sub2 = _firestore
@@ -138,7 +144,10 @@ class VaultService {
             );
           }).toList();
           emitCollaborators();
-        }, onError: (e) => print("VaultService: Error listening to received collabs: $e"));
+        }, onError: (e) {
+          print("VaultService: Error listening to received collabs: $e");
+          emitCollaborators();
+        });
       },
       onCancel: () {
         sub1?.cancel();
@@ -231,24 +240,29 @@ class VaultService {
       if (e.toString().contains("Admin restriction")) rethrow;
     }
 
-    // Check if collaboration or request already exists
-    final existingSnap = await _firestore
+    // Check if collaboration or request already exists (2 separate queries for Security Rules compliance)
+    final sentSnap = await _firestore
         .collection('vault_collaborations')
-        .where('senderUid', whereIn: [uid, receiverUid])
+        .where('senderUid', isEqualTo: uid)
+        .where('receiverUid', isEqualTo: receiverUid)
         .get();
 
-    for (var doc in existingSnap.docs) {
+    final receivedSnap = await _firestore
+        .collection('vault_collaborations')
+        .where('senderUid', isEqualTo: receiverUid)
+        .where('receiverUid', isEqualTo: uid)
+        .get();
+
+    final existingDocs = [...sentSnap.docs, ...receivedSnap.docs];
+
+    for (var doc in existingDocs) {
       final data = doc.data();
-      final sUid = data['senderUid'];
-      final rUid = data['receiverUid'];
       final status = data['status'];
 
-      if ((sUid == uid && rUid == receiverUid) || (sUid == receiverUid && rUid == uid)) {
-        if (status == 'approved') {
-          throw Exception("You are already collaborating with @$receiverUsername.");
-        } else if (status == 'pending') {
-          throw Exception("A collaboration request with @$receiverUsername is already pending.");
-        }
+      if (status == 'approved') {
+        throw Exception("You are already collaborating with @$receiverUsername.");
+      } else if (status == 'pending') {
+        throw Exception("A collaboration request with @$receiverUsername is already pending.");
       }
     }
 
@@ -310,6 +324,7 @@ class VaultService {
 
     controller = StreamController<List<SecureDocument>>.broadcast(
       onListen: () {
+        emitMerged();
         collabSub = getVaultCollaborators().listen((collaborators) {
           final Set<String> targetUids = {uid, ...collaborators.map((c) => c.uid)};
 

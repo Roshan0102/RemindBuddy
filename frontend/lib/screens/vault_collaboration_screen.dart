@@ -16,18 +16,60 @@ class _VaultCollaborationScreenState extends State<VaultCollaborationScreen> {
 
   final TextEditingController _usernameController = TextEditingController();
   bool _isSending = false;
+  List<Map<String, String>> _allRegisteredUsers = [];
+  List<Map<String, String>> _suggestedUsers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRegisteredUsers();
+    _usernameController.addListener(_onUsernameChanged);
+  }
 
   @override
   void dispose() {
+    _usernameController.removeListener(_onUsernameChanged);
     _usernameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRegisteredUsers() async {
+    try {
+      final users = await _storageService.getAllUsers();
+      if (mounted) {
+        setState(() {
+          _allRegisteredUsers = users;
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _onUsernameChanged() {
+    final text = _usernameController.text.trim().toLowerCase();
+    if (text.isEmpty) {
+      setState(() => _suggestedUsers = []);
+      return;
+    }
+
+    final matches = _allRegisteredUsers.where((u) {
+      final uname = (u['username'] ?? '').toLowerCase();
+      final email = (u['email'] ?? '').toLowerCase();
+      return uname.startsWith(text) || uname.contains(text) || email.startsWith(text);
+    }).toList();
+
+    setState(() {
+      _suggestedUsers = matches;
+    });
   }
 
   void _sendRequest(String targetUsername) async {
     final cleanUsername = targetUsername.trim();
     if (cleanUsername.isEmpty) return;
 
-    setState(() => _isSending = true);
+    setState(() {
+      _isSending = true;
+      _suggestedUsers = [];
+    });
 
     try {
       await _vaultService.sendVaultCollaborationRequest(cleanUsername);
@@ -53,6 +95,8 @@ class _VaultCollaborationScreenState extends State<VaultCollaborationScreen> {
   }
 
   void _showUserPickerModal() async {
+    final modalSearchController = TextEditingController();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -60,24 +104,21 @@ class _VaultCollaborationScreenState extends State<VaultCollaborationScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.6,
-          maxChildSize: 0.9,
-          builder: (context, scrollController) {
-            return FutureBuilder<List<Map<String, String>>>(
-              future: _storageService.getAllUsers(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final users = snapshot.data ?? [];
-                if (users.isEmpty) {
-                  return const Center(
-                    child: Text('No other registered users found.'),
-                  );
-                }
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final query = modalSearchController.text.trim().toLowerCase();
+            final filteredUsers = _allRegisteredUsers.where((u) {
+              if (query.isEmpty) return true;
+              final uname = (u['username'] ?? '').toLowerCase();
+              final email = (u['email'] ?? '').toLowerCase();
+              return uname.contains(query) || email.contains(query);
+            }).toList();
 
+            return DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.7,
+              maxChildSize: 0.9,
+              builder: (context, scrollController) {
                 return Column(
                   children: [
                     const Padding(
@@ -87,34 +128,55 @@ class _VaultCollaborationScreenState extends State<VaultCollaborationScreen> {
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                      child: TextField(
+                        controller: modalSearchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search by username or email...',
+                          prefixIcon: const Icon(Icons.search),
+                          isDense: true,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onChanged: (_) => setModalState(() {}),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     const Divider(height: 1),
                     Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: users.length,
-                        itemBuilder: (context, index) {
-                          final u = users[index];
-                          final uname = u['username'] ?? '';
-                          final colorVal = VaultCollaborator.generateColorForUser(uname);
-
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Color(colorVal),
-                              child: Text(
-                                uname.isNotEmpty ? uname[0].toUpperCase() : 'U',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      child: filteredUsers.isEmpty
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(24.0),
+                                child: Text('No users match search query.', style: TextStyle(color: Colors.grey)),
                               ),
+                            )
+                          : ListView.builder(
+                              controller: scrollController,
+                              itemCount: filteredUsers.length,
+                              itemBuilder: (context, index) {
+                                final u = filteredUsers[index];
+                                final uname = u['username'] ?? '';
+                                final colorVal = VaultCollaborator.generateColorForUser(uname);
+
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: Color(colorVal),
+                                    child: Text(
+                                      uname.isNotEmpty ? uname[0].toUpperCase() : 'U',
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  title: Text('@$uname', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Text(u['email'] ?? ''),
+                                  trailing: const Icon(Icons.send_rounded, color: Colors.blueAccent),
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                    _sendRequest(uname);
+                                  },
+                                );
+                              },
                             ),
-                            title: Text('@$uname', style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text(u['email'] ?? ''),
-                            trailing: const Icon(Icons.send_rounded, color: Colors.blueAccent),
-                            onTap: () {
-                              Navigator.pop(context);
-                              _sendRequest(uname);
-                            },
-                          );
-                        },
-                      ),
                     ),
                   ],
                 );
@@ -214,6 +276,32 @@ class _VaultCollaborationScreenState extends State<VaultCollaborationScreen> {
                       ),
                     ],
                   ),
+                  if (_suggestedUsers.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    const Text('Suggestions:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: _suggestedUsers.take(5).map((u) {
+                        final uname = u['username'] ?? '';
+                        return ActionChip(
+                          avatar: CircleAvatar(
+                            backgroundColor: Colors.blueAccent,
+                            child: Text(
+                              uname.isNotEmpty ? uname[0].toUpperCase() : 'U',
+                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          label: Text('@$uname', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          onPressed: () {
+                            _usernameController.text = uname;
+                            setState(() => _suggestedUsers = []);
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
