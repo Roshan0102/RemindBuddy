@@ -4,12 +4,10 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import * as moment from "moment-timezone";
 import { CloudTasksClient } from "@google-cloud/tasks";
-import { PubSub } from "@google-cloud/pubsub";
 
 admin.initializeApp();
 const db = admin.firestore();
 const tasksClient = new CloudTasksClient();
-const pubsubClient = new PubSub();
 
 async function logNotification(uid: string, title: string, body: string, type: string) {
     try {
@@ -1998,20 +1996,21 @@ exports.fetchUserTechEvents = functions.runWith({ timeoutSeconds: 120, memory: "
 
 async function internalDailyTechEventsFetcher() {
     console.log("Starting dailyTechEventsFetcher at 7 PM IST");
-    const usersSnap = await db.collection("users").get();
-    const topic = pubsubClient.topic("fetch-user-tech-events");
-    for (const userDoc of usersSnap.docs) {
-        const data = userDoc.data();
-        const enabledModules = data.enabledModules || [];
-        if (enabledModules.includes("events") || (data && data.eventInterests !== undefined)) {
+    try {
+        const usersSnap = await db.collection("users").get();
+        console.log(`[internalDailyTechEventsFetcher] Found ${usersSnap.size} user documents.`);
+        for (const userDoc of usersSnap.docs) {
+            const uid = userDoc.id;
+            console.log(`Processing tech events fetch for user: ${uid}`);
             try {
-                console.log(`Publishing tech events fetch job for user: ${userDoc.id}`);
-                const messageBuffer = Buffer.from(JSON.stringify({ uid: userDoc.id }));
-                await topic.publishMessage({ data: messageBuffer });
+                const res = await fetchAndStoreEventsForUserInternal(uid, true);
+                console.log(`Tech events fetch completed for user ${uid}:`, res);
             } catch (err: any) {
-                console.error(`Error publishing events fetch job for user ${userDoc.id}:`, err.message);
+                console.error(`Error fetching tech events for user ${uid}:`, err.message || err);
             }
         }
+    } catch (e: any) {
+        console.error("Error in internalDailyTechEventsFetcher:", e.message || e);
     }
 }
 
@@ -2236,20 +2235,21 @@ exports.fetchUserWalkIns = functions.runWith({ timeoutSeconds: 120, memory: "256
 
 async function internalDailyWalkInsFetcher() {
     console.log("Starting dailyWalkInsFetcher at 8 PM IST");
-    const usersSnap = await db.collection("users").get();
-    const topic = pubsubClient.topic("fetch-user-walkins");
-    for (const userDoc of usersSnap.docs) {
-        const data = userDoc.data();
-        const enabledModules = data.enabledModules || [];
-        if (enabledModules.includes("walkin") || (data && data.walkinRoles !== undefined)) {
+    try {
+        const usersSnap = await db.collection("users").get();
+        console.log(`[internalDailyWalkInsFetcher] Found ${usersSnap.size} user documents.`);
+        for (const userDoc of usersSnap.docs) {
+            const uid = userDoc.id;
+            console.log(`Processing walk-in drives fetch for user: ${uid}`);
             try {
-                console.log(`Publishing walk-in drives fetch job for user: ${userDoc.id}`);
-                const messageBuffer = Buffer.from(JSON.stringify({ uid: userDoc.id }));
-                await topic.publishMessage({ data: messageBuffer });
+                const res = await fetchAndStoreWalkInsForUserInternal(uid, true);
+                console.log(`Walk-in drives fetch completed for user ${uid}:`, res);
             } catch (err: any) {
-                console.error(`Error publishing walk-in fetch job for user ${userDoc.id}:`, err.message);
+                console.error(`Error fetching walk-in drives for user ${uid}:`, err.message || err);
             }
         }
+    } catch (e: any) {
+        console.error("Error in internalDailyWalkInsFetcher:", e.message || e);
     }
 }
 
