@@ -800,14 +800,16 @@ class StorageService {
     required String itemId,
     required String type,
     required String collaboratorUid,
+    String? ownerUid,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    final targetOwnerUid = ownerUid ?? user.uid;
     final subcollection = type == 'note' ? 'notes' : 'checklists';
     final docRef = FirebaseFirestore.instance
         .collection('users')
-        .doc(user.uid)
+        .doc(targetOwnerUid)
         .collection(subcollection)
         .doc(itemId);
 
@@ -817,14 +819,16 @@ class StorageService {
 
     final requestsSnap = await FirebaseFirestore.instance
         .collection('collaboration_requests')
-        .where('senderUid', isEqualTo: user.uid)
-        .where('receiverUid', isEqualTo: collaboratorUid)
         .where('itemId', isEqualTo: itemId)
         .where('type', isEqualTo: type)
         .get();
 
     for (final doc in requestsSnap.docs) {
-      await doc.reference.delete();
+      final data = doc.data();
+      if ((data['senderUid'] == targetOwnerUid && data['receiverUid'] == collaboratorUid) ||
+          (data['senderUid'] == collaboratorUid && data['receiverUid'] == targetOwnerUid)) {
+        await doc.reference.delete();
+      }
     }
   }
 
@@ -1019,26 +1023,89 @@ class StorageService {
             }).toList());
   }
 
+  Future<void> removeBuddyLink(String linkId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await FirebaseFirestore.instance.collection('buddy_links').doc(linkId).delete();
+  }
+
   Stream<List<Map<String, dynamic>>> getApprovedBuddiesStream() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Stream.empty();
 
-    return FirebaseFirestore.instance
-        .collection('buddy_links')
-        .where('senderUid', isEqualTo: user.uid)
-        .where('status', isEqualTo: 'approved')
-        .snapshots()
-        .map((snap) => snap.docs.map((doc) {
-              final val = doc.data();
-              final buddyUid = val['receiverUid'] as String;
-              final buddyUsername = val['receiverUsername'] as String? ?? 'User';
-              return {
-                'uid': buddyUid,
-                'username': buddyUsername,
-                'receiverUid': buddyUid,
-                'receiverUsername': buddyUsername,
-              };
-            }).toList());
+    late StreamController<List<Map<String, dynamic>>> controller;
+    StreamSubscription? sub1;
+    StreamSubscription? sub2;
+
+    List<Map<String, dynamic>> list1 = [];
+    List<Map<String, dynamic>> list2 = [];
+
+    void emitBuddies() {
+      final Map<String, Map<String, dynamic>> map = {};
+      for (var b in list1) {
+        map[b['linkId']] = b;
+      }
+      for (var b in list2) {
+        map[b['linkId']] = b;
+      }
+      if (!controller.isClosed) {
+        controller.add(map.values.toList());
+      }
+    }
+
+    controller = StreamController<List<Map<String, dynamic>>>.broadcast(
+      onListen: () {
+        emitBuddies();
+
+        sub1 = FirebaseFirestore.instance
+            .collection('buddy_links')
+            .where('senderUid', isEqualTo: user.uid)
+            .where('status', isEqualTo: 'approved')
+            .snapshots()
+            .listen((snap) {
+          list1 = snap.docs.map((doc) {
+            final val = doc.data();
+            final buddyUid = (val['receiverUid'] ?? '').toString();
+            final buddyUsername = (val['receiverUsername'] ?? 'User').toString();
+            return {
+              'linkId': doc.id,
+              'uid': buddyUid,
+              'username': buddyUsername,
+              'receiverUid': buddyUid,
+              'receiverUsername': buddyUsername,
+            };
+          }).toList();
+          emitBuddies();
+        }, onError: (_) => emitBuddies());
+
+        sub2 = FirebaseFirestore.instance
+            .collection('buddy_links')
+            .where('receiverUid', isEqualTo: user.uid)
+            .where('status', isEqualTo: 'approved')
+            .snapshots()
+            .listen((snap) {
+          list2 = snap.docs.map((doc) {
+            final val = doc.data();
+            final buddyUid = (val['senderUid'] ?? '').toString();
+            final buddyUsername = (val['senderUsername'] ?? 'User').toString();
+            return {
+              'linkId': doc.id,
+              'uid': buddyUid,
+              'username': buddyUsername,
+              'receiverUid': buddyUid,
+              'receiverUsername': buddyUsername,
+            };
+          }).toList();
+          emitBuddies();
+        }, onError: (_) => emitBuddies());
+      },
+      onCancel: () {
+        sub1?.cancel();
+        sub2?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   Stream<List<NotificationHistory>> getNotificationHistoryStream() {

@@ -21,6 +21,7 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
     'daily_reminders': true,
     'walkin': true,
     'events': true,
+    'astro_calendar': true,
   };
 
   @override
@@ -52,6 +53,7 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
             'daily_reminders': prefs['daily_reminders'] ?? prefs['reminders'] ?? true,
             'walkin': prefs['walkin'] ?? true,
             'events': prefs['events'] ?? true,
+            'astro_calendar': prefs['astro_calendar'] ?? true,
           };
           _isLoading = false;
         });
@@ -182,12 +184,23 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                       iconColor: Colors.green,
                     ),
 
+                  // Astro Calendar (New Moon & Full Moon)
+                  if (_enabledModules.contains('astro_calendar'))
+                    _buildPreferenceTile(
+                      key: 'astro_calendar',
+                      title: 'Astro Calendar Alerts',
+                      subtitle: 'Alerts for New Moon (Amavasai) and Full Moon (Pournami) (7:00 AM)',
+                      icon: Icons.nightlight_round,
+                      iconColor: Colors.deepOrange,
+                    ),
+
                   if (!_enabledModules.contains('gold') &&
                       !_enabledModules.contains('shifts') &&
                       !_enabledModules.contains('reminders') &&
                       !_enabledModules.contains('daily_reminders') &&
                       !_enabledModules.contains('walkin') &&
-                      !_enabledModules.contains('events'))
+                      !_enabledModules.contains('events') &&
+                      !_enabledModules.contains('astro_calendar'))
                     const Center(
                       child: Padding(
                         padding: EdgeInsets.all(32.0),

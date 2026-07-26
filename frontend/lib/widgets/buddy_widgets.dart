@@ -189,6 +189,39 @@ class BuddyRequestsSheet extends StatelessWidget {
 
   BuddyRequestsSheet({super.key});
 
+  void _confirmRemoveBuddy(BuildContext context, Map<String, dynamic> buddy) async {
+    final linkId = buddy['linkId'] as String?;
+    final username = buddy['username'] as String? ?? 'User';
+    if (linkId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Unlink @$username?'),
+        content: Text('This will remove scheduling permissions between you and @$username.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Unlink', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _storage.removeBuddyLink(linkId);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unlinked @$username.')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -200,10 +233,11 @@ class BuddyRequestsSheet extends StatelessWidget {
           topRight: Radius.circular(20),
         ),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
           Center(
             child: Container(
               width: 40,
@@ -216,11 +250,70 @@ class BuddyRequestsSheet extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Buddy Scheduling Requests',
+            'Manage Buddy Connections',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
+
+          // Active Buddies Section
+          const Text(
+            'ACTIVE LINKED BUDDIES',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey, letterSpacing: 0.5),
+          ),
+          const SizedBox(height: 8),
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _storage.getApprovedBuddiesStream(),
+            builder: (context, snapshot) {
+              final approved = snapshot.data ?? [];
+              if (approved.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text('No active linked buddies.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                );
+              }
+
+              return ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: approved.length,
+                itemBuilder: (context, index) {
+                  final b = approved[index];
+                  final username = b['username'] as String? ?? 'User';
+
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 1,
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.blue.shade100,
+                        child: Text(
+                          username.isNotEmpty ? username[0].toUpperCase() : 'B',
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                        ),
+                      ),
+                      title: Text('@$username', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: const Text('Linked for reminder scheduling', style: TextStyle(fontSize: 12)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.person_remove_outlined, color: Colors.redAccent),
+                        onPressed: () => _confirmRemoveBuddy(context, b),
+                        tooltip: 'Unlink Buddy',
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // Pending Requests Section
+          const Text(
+            'PENDING INCOMING REQUESTS',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey, letterSpacing: 0.5),
+          ),
+          const SizedBox(height: 8),
           StreamBuilder<List<Map<String, dynamic>>>(
             stream: _storage.getIncomingBuddyRequestsStream(),
             builder: (context, snapshot) {
@@ -323,6 +416,7 @@ class BuddyRequestsSheet extends StatelessWidget {
           const SizedBox(height: 8),
         ],
       ),
+    ),
     );
   }
 }

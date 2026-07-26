@@ -887,10 +887,25 @@ exports.masterHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory: "1
     console.log(`[masterHourlyRunner] Triggered check at ${timeStr} IST`);
     // Check if running near the top of the hour (:00)
     if (minute < 15) {
+        // 07:00 AM IST (Hour 7): Astro Calendar (New Moon / Full Moon) Alerts
+        if (hour === 7) {
+            console.log("[masterHourlyRunner] Executing 07:00 AM tasks: Astro Calendar Lunar Phase Check...");
+            try {
+                await internalDailyAstroNotifier();
+            }
+            catch (err) {
+                console.error("Error in internalDailyAstroNotifier inside masterHourlyRunner:", err);
+            }
+        }
         // 11:00 AM IST (Hour 11): Gold Fetch & Market Forecast
         if (hour === 11) {
             console.log("[masterHourlyRunner] Executing 11:00 AM tasks: Gold Fetch & AI Market Forecast...");
-            await internalPerformGoldFetch();
+            try {
+                await internalPerformGoldFetch();
+            }
+            catch (err) {
+                console.error("Error in internalPerformGoldFetch inside masterHourlyRunner:", err);
+            }
             try {
                 await runGoldAIPredictionInternal();
             }
@@ -901,23 +916,48 @@ exports.masterHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory: "1
         // 06:00 PM IST (Hour 18): Interested Events Notifications
         if (hour === 18) {
             console.log("[masterHourlyRunner] Executing 06:00 PM tasks: Interested Events Notifications...");
-            await internalCheckInterestedEventsNotifications();
+            try {
+                await internalCheckInterestedEventsNotifications();
+            }
+            catch (err) {
+                console.error("Error in internalCheckInterestedEventsNotifications inside masterHourlyRunner:", err);
+            }
         }
         // 07:00 PM IST (Hour 19): Tech Events Fetcher & Evening Gold Fetch
         if (hour === 19) {
             console.log("[masterHourlyRunner] Executing 07:00 PM tasks: Tech Events Fetcher & Evening Gold Fetch...");
-            await internalPerformGoldFetch();
-            await internalDailyTechEventsFetcher();
+            try {
+                await internalPerformGoldFetch();
+            }
+            catch (err) {
+                console.error("Error in internalPerformGoldFetch inside masterHourlyRunner:", err);
+            }
+            try {
+                await internalDailyTechEventsFetcher();
+            }
+            catch (err) {
+                console.error("Error in internalDailyTechEventsFetcher inside masterHourlyRunner:", err);
+            }
         }
         // 08:00 PM IST (Hour 20): Walk-Ins Fetcher
         if (hour === 20) {
             console.log("[masterHourlyRunner] Executing 08:00 PM tasks: Walk-In Drives Fetcher...");
-            await internalDailyWalkInsFetcher();
+            try {
+                await internalDailyWalkInsFetcher();
+            }
+            catch (err) {
+                console.error("Error in internalDailyWalkInsFetcher inside masterHourlyRunner:", err);
+            }
         }
         // 10:00 PM IST (Hour 22): Daily Shift Reminder
         if (hour === 22) {
             console.log("[masterHourlyRunner] Executing 10:00 PM tasks: Daily Shift Reminders...");
-            await internalDailyShiftReminder();
+            try {
+                await internalDailyShiftReminder();
+            }
+            catch (err) {
+                console.error("Error in internalDailyShiftReminder inside masterHourlyRunner:", err);
+            }
         }
     }
     // Check if running near the half hour (:30)
@@ -1588,6 +1628,26 @@ exports.adminUpdateUserModules = functions.runWith({ timeoutSeconds: 60, memory:
         throw new functions.https.HttpsError('internal', error.message || 'Failed to update modules.');
     }
 });
+exports.adminUpdateAllowedCollaborators = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    }
+    const targetUid = data.userId;
+    const allowedCollaborators = data.allowedCollaborators;
+    if (!targetUid || !Array.isArray(allowedCollaborators)) {
+        throw new functions.https.HttpsError('invalid-argument', 'userId and allowedCollaborators array are required.');
+    }
+    try {
+        await db.collection('users').doc(targetUid).set({
+            allowedCollaborators: allowedCollaborators
+        }, { merge: true });
+        return { success: true };
+    }
+    catch (error) {
+        console.error("Error updating allowed collaborators:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Failed to update allowed collaborators.');
+    }
+});
 exports.getGcpMonthlyCost = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
@@ -1837,6 +1897,13 @@ async function internalDailyTechEventsFetcher() {
         console.error("Error in internalDailyTechEventsFetcher:", e.message || e);
     }
 }
+exports.scheduledTechEventsFetcher = functions.runWith({ timeoutSeconds: 300, memory: "256MB" })
+    .pubsub.schedule('0 19 * * *')
+    .timeZone('Asia/Kolkata')
+    .onRun(async () => {
+    console.log("[scheduledTechEventsFetcher] Triggering daily tech events fetcher at 7:00 PM IST");
+    await internalDailyTechEventsFetcher();
+});
 exports.fetchUserTechEventsTrigger = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.topic('fetch-user-tech-events').onPublish(async (message) => {
     const data = message.json;
     const uid = data.uid;
@@ -2058,6 +2125,95 @@ async function internalDailyWalkInsFetcher() {
         console.error("Error in internalDailyWalkInsFetcher:", e.message || e);
     }
 }
+exports.scheduledWalkInsFetcher = functions.runWith({ timeoutSeconds: 300, memory: "256MB" })
+    .pubsub.schedule('0 20 * * *')
+    .timeZone('Asia/Kolkata')
+    .onRun(async () => {
+    console.log("[scheduledWalkInsFetcher] Triggering daily walk-in drives fetcher at 8:00 PM IST");
+    await internalDailyWalkInsFetcher();
+});
+function getTodayLunarPhase(targetMoment) {
+    // Epoch: Known New Moon on Jan 6, 2000 18:14 UTC
+    const epochUtcMs = Date.UTC(2000, 0, 6, 18, 14, 0);
+    const synodicMs = 29.530588853 * 86400 * 1000;
+    // Check target date in IST (start of day to end of day in IST)
+    const startOfDayIst = targetMoment.clone().startOf('day');
+    const endOfDayIst = targetMoment.clone().endOf('day');
+    const diffMsStart = startOfDayIst.valueOf() - epochUtcMs;
+    const diffMsEnd = endOfDayIst.valueOf() - epochUtcMs;
+    const startCycle = diffMsStart / synodicMs;
+    const endCycle = diffMsEnd / synodicMs;
+    for (let k = Math.floor(startCycle) - 1; k <= Math.ceil(endCycle) + 1; k++) {
+        const newMoonMs = epochUtcMs + k * synodicMs;
+        if (newMoonMs >= startOfDayIst.valueOf() && newMoonMs <= endOfDayIst.valueOf()) {
+            return "new_moon";
+        }
+        const fullMoonMs = epochUtcMs + (k + 0.5) * synodicMs;
+        if (fullMoonMs >= startOfDayIst.valueOf() && fullMoonMs <= endOfDayIst.valueOf()) {
+            return "full_moon";
+        }
+    }
+    return null;
+}
+async function internalDailyAstroNotifier() {
+    const nowKolkata = moment().tz('Asia/Kolkata');
+    console.log(`Starting internalDailyAstroNotifier at ${nowKolkata.format()} IST`);
+    const phase = getTodayLunarPhase(nowKolkata);
+    if (!phase) {
+        console.log("[internalDailyAstroNotifier] Today is neither New Moon nor Full Moon. Skipping notifications.");
+        return;
+    }
+    const isNewMoon = phase === "new_moon";
+    const title = isNewMoon ? "🌑 New Moon Today (Amavasai)" : "🌕 Full Moon Today (Pournami)";
+    const body = `Today (${nowKolkata.format('MMM D, YYYY')}) is ${isNewMoon ? "Amavasai (New Moon)" : "Pournami (Full Moon)"}. Check auspicious timings in your Astro Calendar.`;
+    console.log(`[internalDailyAstroNotifier] Phase detected: ${phase}. Preparing to notify users...`);
+    try {
+        const usersSnap = await db.collection("users").get();
+        console.log(`[internalDailyAstroNotifier] Found ${usersSnap.size} total user documents.`);
+        for (const userDoc of usersSnap.docs) {
+            const uid = userDoc.id;
+            const uData = userDoc.data();
+            const enabledModules = (uData === null || uData === void 0 ? void 0 : uData.enabledModules) || [];
+            const notifPrefs = (uData === null || uData === void 0 ? void 0 : uData.notificationPreferences) || {};
+            if (enabledModules.includes("astro_calendar") && notifPrefs.astro_calendar !== false) {
+                const usernameDoc = await db.collection("usernames").where("uid", "==", uid).limit(1).get();
+                if (!usernameDoc.empty) {
+                    const token = usernameDoc.docs[0].data().fcmToken;
+                    if (token) {
+                        try {
+                            await admin.messaging().send({
+                                token,
+                                notification: { title, body },
+                                android: {
+                                    notification: {
+                                        channelId: "astro_reminder_channel",
+                                        tag: "astro_lunar_phase"
+                                    }
+                                },
+                                data: { type: "astro_reminder" }
+                            });
+                            await logNotification(uid, title, body, "ASTRO_CALENDAR");
+                            console.log(`Sent Astro notification to user ${uid}`);
+                        }
+                        catch (err) {
+                            console.error(`Failed to send Astro notification to user ${uid}:`, err.message || err);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    catch (e) {
+        console.error("Error in internalDailyAstroNotifier:", e.message || e);
+    }
+}
+exports.scheduledAstroNotifier = functions.runWith({ timeoutSeconds: 300, memory: "256MB" })
+    .pubsub.schedule('0 7 * * *')
+    .timeZone('Asia/Kolkata')
+    .onRun(async () => {
+    console.log("[scheduledAstroNotifier] Triggering daily Astro Calendar notifier at 7:00 AM IST");
+    await internalDailyAstroNotifier();
+});
 exports.fetchUserWalkInsTrigger = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.topic('fetch-user-walkins').onPublish(async (message) => {
     const data = message.json;
     const uid = data.uid;

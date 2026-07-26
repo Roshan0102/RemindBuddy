@@ -16,7 +16,6 @@ class AdminScreen extends StatefulWidget {
 class _AdminScreenState extends State<AdminScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _vaultPinController = TextEditingController();
   final _geminiApiKeyController = TextEditingController();
   final _adminUserUsernameController = TextEditingController();
   final _adminUserPasswordController = TextEditingController();
@@ -32,7 +31,6 @@ class _AdminScreenState extends State<AdminScreen> {
   bool _isAuthenticated = false;
   bool _isLoading = true;
   String _errorMessage = '';
-  String _vaultPinSuccessMessage = '';
   String _geminiApiKeySuccessMessage = '';
   bool _isAdminUserActionLoading = false;
   String _adminUserSuccessMessage = '';
@@ -64,7 +62,6 @@ class _AdminScreenState extends State<AdminScreen> {
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
-    _vaultPinController.dispose();
     _geminiApiKeyController.dispose();
     _adminUserUsernameController.dispose();
     _adminUserPasswordController.dispose();
@@ -304,55 +301,6 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
-  Future<void> _updateVaultMasterPin() async {
-    final pin = _vaultPinController.text.trim();
-    if (pin.length < 4 || pin.length > 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PIN must be between 4 and 6 digits.')),
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      final encryptionService = EncryptionService();
-      final salt = encryptionService.generateSalt();
-      
-      // Temporarily set key to encrypt verifier
-      encryptionService.setKeyFromPIN(pin, salt);
-      final verifierCiphertext = encryptionService.encryptVerifier();
-      encryptionService.clearKey(); // Clear the derived session key from RAM
-
-      await FirebaseFirestore.instance
-          .collection('admin_creds')
-          .doc('vault_config')
-          .set({
-        'salt': salt,
-        'verifier': verifierCiphertext,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      _vaultPinController.clear();
-      setState(() {
-        _vaultPinSuccessMessage = 'Master PIN updated successfully!';
-        _isLoading = false;
-      });
-
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) {
-          setState(() {
-            _vaultPinSuccessMessage = '';
-          });
-        }
-      });
-    } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update Master PIN: $e')),
-      );
-    }
-  }
 
   Future<void> _toggleModule(String userId, String moduleId, bool enable, List<String> enabledModules) async {
     final newModules = List<String>.from(enabledModules);
@@ -498,12 +446,20 @@ class _AdminScreenState extends State<AdminScreen> {
     }
 
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .set({
-        'allowedCollaborators': updatedList,
-      }, SetOptions(merge: true));
+      try {
+        final callable = FirebaseFunctions.instance.httpsCallable('adminUpdateAllowedCollaborators');
+        await callable.call({
+          'userId': userId,
+          'allowedCollaborators': updatedList,
+        });
+      } catch (_) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .set({
+          'allowedCollaborators': updatedList,
+        }, SetOptions(merge: true));
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -612,58 +568,6 @@ class _AdminScreenState extends State<AdminScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Section 1: Master PIN setup
-            Card(
-              margin: const EdgeInsets.all(16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      '🔑 Vault Master PIN',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Set the single global Master PIN that users must enter to decrypt the secure vault.',
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _vaultPinController,
-                            obscureText: true,
-                            keyboardType: TextInputType.number,
-                            maxLength: 6,
-                            decoration: const InputDecoration(
-                              labelText: 'New Master PIN',
-                              counterText: '',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        ElevatedButton(
-                          onPressed: _updateVaultMasterPin,
-                          child: const Text('Set PIN'),
-                        ),
-                      ],
-                    ),
-                    if (_vaultPinSuccessMessage.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        _vaultPinSuccessMessage,
-                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
 
             // Section 1.5: Gemini API Configuration
             Card(

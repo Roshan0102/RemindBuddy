@@ -28,6 +28,11 @@ class _GoldScreenState extends State<GoldScreen> {
   bool _goldChitEnabled = false;
   StreamSubscription? _userSubscription;
   late Stream<List<GoldPrice>> _goldPricesStream;
+  Set<String> _paidChitDateKeys = {};
+  List<QueryDocumentSnapshot> _ownedChitDocs = [];
+  List<QueryDocumentSnapshot> _sharedChitDocs = [];
+  StreamSubscription? _ownedChitsSub;
+  StreamSubscription? _sharedChitsSub;
 
   @override
   void initState() {
@@ -51,12 +56,69 @@ class _GoldScreenState extends State<GoldScreen> {
           }
         }
       });
+      _initChitPaymentsListener();
     }
+  }
+
+  void _initChitPaymentsListener() {
+    if (_uid == null) return;
+
+    void updateAllPaidDates() async {
+      final allDocs = [..._ownedChitDocs, ..._sharedChitDocs];
+      final uniqueDocs = {for (var d in allDocs) d.id: d}.values;
+
+      Set<String> dateKeys = {};
+      for (var doc in uniqueDocs) {
+        try {
+          final instSnap = await doc.reference
+              .collection('installments')
+              .where('status', isEqualTo: 'paid')
+              .get();
+          for (var instDoc in instSnap.docs) {
+            final pDateStr = instDoc.data()['paymentDate'] as String?;
+            if (pDateStr != null) {
+              final pDate = DateTime.tryParse(pDateStr);
+              if (pDate != null) {
+                final dateKey = DateFormat('yyyy-MM-dd').format(pDate.toLocal());
+                dateKeys.add(dateKey);
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('Error fetching installments for chit: $e');
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _paidChitDateKeys = dateKeys;
+        });
+      }
+    }
+
+    _ownedChitsSub = FirebaseFirestore.instance
+        .collection('gold_chits')
+        .where('ownerId', isEqualTo: _uid)
+        .snapshots()
+        .listen((snap) {
+      _ownedChitDocs = snap.docs;
+      updateAllPaidDates();
+    });
+
+    _sharedChitsSub = FirebaseFirestore.instance
+        .collection('gold_chits')
+        .where('sharedWith', arrayContains: _uid)
+        .snapshots()
+        .listen((snap) {
+      _sharedChitDocs = snap.docs;
+      updateAllPaidDates();
+    });
   }
 
   @override
   void dispose() {
     _userSubscription?.cancel();
+    _ownedChitsSub?.cancel();
+    _sharedChitsSub?.cancel();
     super.dispose();
   }
 
@@ -542,6 +604,17 @@ class _GoldScreenState extends State<GoldScreen> {
     // Chart needs chronological order
     final sortedHistory = List<GoldPrice>.from(filteredHistory).reversed.toList();
 
+    // Identify data points that coincide with a Gold Chit installment payment date
+    final paidPoints = sortedHistory.where((p) {
+      try {
+        final dt = DateTime.parse(p.timestamp).toLocal();
+        final key = DateFormat('yyyy-MM-dd').format(dt);
+        return _paidChitDateKeys.contains(key);
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+
     return Card(
       elevation: 2,
       child: Padding(
@@ -563,6 +636,7 @@ class _GoldScreenState extends State<GoldScreen> {
                 tooltipBehavior: TooltipBehavior(enable: true),
                 series: <CartesianSeries>[
                   AreaSeries<GoldPrice, String>(
+                    name: 'Gold Rate (22K)',
                     dataSource: sortedHistory,
                     xValueMapper: (GoldPrice p, _) => _formatDate(p.timestamp),
                     yValueMapper: (GoldPrice p, _) => p.price,
@@ -571,9 +645,47 @@ class _GoldScreenState extends State<GoldScreen> {
                     borderWidth: 2,
                     markerSettings: const MarkerSettings(isVisible: true),
                   ),
+                  if (paidPoints.isNotEmpty)
+                    ScatterSeries<GoldPrice, String>(
+                      name: 'Gold Chit Paid',
+                      dataSource: paidPoints,
+                      xValueMapper: (GoldPrice p, _) => _formatDate(p.timestamp),
+                      yValueMapper: (GoldPrice p, _) => p.price,
+                      markerSettings: const MarkerSettings(
+                        isVisible: true,
+                        shape: DataMarkerType.diamond,
+                        width: 13,
+                        height: 13,
+                        color: Colors.amberAccent,
+                        borderColor: Colors.deepOrange,
+                        borderWidth: 2,
+                      ),
+                    ),
                 ],
               ),
             ),
+            if (_paidChitDateKeys.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: Colors.amberAccent,
+                      shape: BoxShape.rectangle,
+                      border: Border.all(color: Colors.deepOrange, width: 2),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Glowing Diamond = Gold Chit Installment Paid Date',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange[900]),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

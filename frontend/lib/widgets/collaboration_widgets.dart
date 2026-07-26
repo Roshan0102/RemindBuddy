@@ -217,10 +217,11 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
                       dense: true,
                       leading: const Icon(Icons.person, color: Colors.blue),
                       title: Text(username, style: const TextStyle(fontWeight: FontWeight.w500)),
-                      trailing: _isOwner
+                      trailing: (_isOwner || uid == FirebaseAuth.instance.currentUser?.uid)
                           ? IconButton(
                               icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
                               onPressed: () => _removeCollaborator(uid),
+                              tooltip: _isOwner ? 'Remove Collaborator' : 'Leave Collaboration',
                             )
                           : null,
                     );
