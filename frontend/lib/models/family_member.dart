@@ -20,9 +20,9 @@ class FamilyMember {
     };
   }
 
-  factory FamilyMember.fromMap(Map<String, dynamic> map) {
+  factory FamilyMember.fromMap(Map<String, dynamic> map, [String? id]) {
     return FamilyMember(
-      id: map['id'] ?? '',
+      id: id ?? map['id'] ?? '',
       name: map['name'] ?? '',
       relationship: map['relationship'] ?? '',
       avatarColorValue: map['avatarColorValue'] ?? 0xFF4CAF50,

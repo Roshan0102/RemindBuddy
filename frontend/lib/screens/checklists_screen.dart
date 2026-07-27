@@ -786,13 +786,14 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
                               onChanged: (val) => _toggleItem(item['id'], val ?? false),
                               activeColor: Colors.green,
                               checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                              title: Text(
-                                item['text'],
-                                style: TextStyle(
+                              title: _buildFormattedTextWithSignature(
+                                text: item['text'] ?? '',
+                                baseStyle: TextStyle(
                                   decoration: isChecked ? TextDecoration.lineThrough : null,
                                   color: isChecked ? Colors.grey : Colors.black87,
                                   fontWeight: isChecked ? FontWeight.normal : FontWeight.w500,
                                 ),
+                                isDarkTheme: Theme.of(context).brightness == Brightness.dark,
                               ),
                             ),
                           ),
@@ -811,6 +812,84 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
         onPressed: _showAddItemDialog,
         backgroundColor: widget.color,
         child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+
+  static String _stripSignature(String text) {
+    return text.replaceAll(RegExp(r'\s*\(by\s+[^\)]+\)$'), '').trimRight();
+  }
+
+  static String? _extractUsername(String text) {
+    final match = RegExp(r'\s*\(by\s+([^\)]+)\)$').firstMatch(text);
+    return match?.group(1);
+  }
+
+  static Color _getSignatureColor(String username, bool isDarkTheme) {
+    if (username.isEmpty) return isDarkTheme ? Colors.grey.shade400 : Colors.grey.shade600;
+
+    final List<Color> lightColors = [
+      const Color(0xFFC05621),
+      const Color(0xFF2B6CB0),
+      const Color(0xFF2F855A),
+      const Color(0xFF805AD5),
+      const Color(0xFFD69E2E),
+      const Color(0xFFB83280),
+      const Color(0xFF319795),
+      const Color(0xFFDD6B20),
+    ];
+
+    final List<Color> darkColors = [
+      const Color(0xFFFBD38D),
+      const Color(0xFF90CDF4),
+      const Color(0xFF9AE6B4),
+      const Color(0xFFD6BCFA),
+      const Color(0xFFFBB6CE),
+      const Color(0xFF81E6D9),
+      const Color(0xFFFEEBC8),
+      const Color(0xFFE9D8FD),
+    ];
+
+    int hash = 0;
+    for (int i = 0; i < username.length; i++) {
+      hash = username.codeUnitAt(i) + ((hash << 5) - hash);
+    }
+
+    final colors = isDarkTheme ? darkColors : lightColors;
+    final baseColor = colors[hash.abs() % colors.length];
+    return baseColor.withValues(alpha: 0.85);
+  }
+
+  Widget _buildFormattedTextWithSignature({
+    required String text,
+    required TextStyle baseStyle,
+    required bool isDarkTheme,
+    String? defaultAuthor,
+  }) {
+    final username = _extractUsername(text) ?? defaultAuthor;
+    if (username == null || username.isEmpty) {
+      return Text(text, style: baseStyle);
+    }
+
+    final cleanedText = _stripSignature(text);
+    final sigColor = _getSignatureColor(username, isDarkTheme);
+
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: cleanedText, style: baseStyle),
+          const TextSpan(text: ' '),
+          TextSpan(
+            text: '(by $username)',
+            style: baseStyle.copyWith(
+              color: sigColor,
+              fontSize: ((baseStyle.fontSize ?? 14) * 0.88).clamp(9.0, 14.0),
+              fontWeight: FontWeight.w500,
+              fontStyle: FontStyle.italic,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ],
       ),
     );
   }

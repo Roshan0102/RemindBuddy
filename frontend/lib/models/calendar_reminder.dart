@@ -137,3 +137,84 @@ class CalendarReminder {
     );
   }
 }
+
+class GroupedCalendarReminder {
+  final CalendarReminder primaryReminder;
+  final List<CalendarReminder> originalReminders;
+  final String title;
+  final String description;
+  final String date;
+  final String time;
+  final String status;
+  final List<String> recipientUsernames;
+
+  GroupedCalendarReminder({
+    required this.primaryReminder,
+    required this.originalReminders,
+    required this.title,
+    required this.description,
+    required this.date,
+    required this.time,
+    required this.status,
+    required this.recipientUsernames,
+  });
+
+  static List<GroupedCalendarReminder> groupList(List<CalendarReminder> reminders) {
+    if (reminders.isEmpty) return [];
+
+    final Map<String, List<CalendarReminder>> groupMap = {};
+
+    for (final r in reminders) {
+      final key = '${r.title.trim().toLowerCase()}_${r.date}_${r.time}_${r.description.trim().toLowerCase()}';
+      if (!groupMap.containsKey(key)) {
+        groupMap[key] = [];
+      }
+      groupMap[key]!.add(r);
+    }
+
+    final List<GroupedCalendarReminder> result = [];
+
+    for (final entry in groupMap.entries) {
+      final list = entry.value;
+      final first = list.first;
+
+      final Set<String> recipientsSet = {};
+      bool anyCompleted = false;
+      bool allCompleted = true;
+
+      for (final item in list) {
+        if (item.scheduledForUsername != null && item.scheduledForUsername!.isNotEmpty) {
+          recipientsSet.add('@${item.scheduledForUsername}');
+        } else if (item.scheduledByUsername != null && item.scheduledByUsername!.isNotEmpty) {
+          recipientsSet.add('from @${item.scheduledByUsername}');
+        } else {
+          recipientsSet.add('Myself');
+        }
+
+        if (item.status == 'completed') {
+          anyCompleted = true;
+        } else {
+          allCompleted = false;
+        }
+      }
+
+      String aggregateStatus = first.status;
+      if (allCompleted || anyCompleted) {
+        aggregateStatus = 'completed';
+      }
+
+      result.add(GroupedCalendarReminder(
+        primaryReminder: first,
+        originalReminders: list,
+        title: first.title,
+        description: first.description,
+        date: first.date,
+        time: first.time,
+        status: aggregateStatus,
+        recipientUsernames: recipientsSet.toList(),
+      ));
+    }
+
+    return result;
+  }
+}

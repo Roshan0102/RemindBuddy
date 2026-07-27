@@ -252,15 +252,27 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
       appBar: AppBar(
         title: const Text('🔒 Secure Document Vault'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.person_add_alt_1_rounded),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const VaultCollaborationScreen()),
+          StreamBuilder<List<VaultCollaborationRequest>>(
+            stream: _vaultService.getIncomingRequestsStream(),
+            builder: (context, snapshot) {
+              final requests = snapshot.data ?? [];
+              final hasRequests = requests.isNotEmpty;
+              return IconButton(
+                icon: hasRequests
+                    ? Badge(
+                        label: Text(requests.length.toString()),
+                        child: const Icon(Icons.person_add_alt_1_rounded),
+                      )
+                    : const Icon(Icons.person_add_alt_1_rounded),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const VaultCollaborationScreen()),
+                  );
+                },
+                tooltip: 'Vault Collaboration',
               );
             },
-            tooltip: 'Vault Collaboration',
           ),
           IconButton(
             icon: const Icon(Icons.password_rounded),
@@ -869,11 +881,11 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   }
 
   Future<List<DecryptedDocument>> _decryptAllDocuments(List<SecureDocument> docs) async {
-    final List<Future<DecryptedDocument>> futures = docs.map((doc) {
-      return _vaultService.decryptDocument(doc);
-    }).toList();
+    final List<DecryptedDocument?> decryptedList = await Future.wait(
+      docs.map((doc) => _vaultService.decryptDocument(doc)),
+    );
 
-    return Future.wait(futures);
+    return decryptedList.whereType<DecryptedDocument>().toList();
   }
 
   bool _areRawDocsEqual(List<SecureDocument> a, List<SecureDocument> b) {

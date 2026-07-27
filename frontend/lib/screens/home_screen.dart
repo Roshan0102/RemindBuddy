@@ -94,7 +94,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
                   eventLoader: (day) {
                     final dateStr = DateFormat('yyyy-MM-dd').format(day);
-                    return allReminders.where((r) => r.date == dateStr && r.status == 'scheduled').toList();
+                    final dayReminders = allReminders.where((r) => r.date == dateStr && r.status == 'scheduled').toList();
+                    return GroupedCalendarReminder.groupList(dayReminders);
                   },
                   onDaySelected: (selectedDay, focusedDay) {
                     setState(() {
@@ -110,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     markerSize: 6,
                     markersAlignment: Alignment.bottomCenter,
                     todayDecoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor.withOpacity(0.3),
+                      color: Theme.of(context).primaryColor.withValues(alpha: 0.3),
                       shape: BoxShape.circle,
                     ),
                     selectedDecoration: BoxDecoration(
@@ -167,13 +168,14 @@ class _HomeScreenState extends State<HomeScreen> {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
         
-        final reminders = snapshot.data ?? [];
-        if (reminders.isEmpty) {
+        final rawReminders = snapshot.data ?? [];
+        final groupedReminders = GroupedCalendarReminder.groupList(rawReminders);
+        if (groupedReminders.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.event_available, size: 64, color: Colors.grey.withOpacity(0.5)),
+                Icon(Icons.event_available, size: 64, color: Colors.grey.withValues(alpha: 0.5)),
                 const SizedBox(height: 16),
                 const Text('No reminders for this day', style: TextStyle(color: Colors.grey)),
               ],
@@ -181,13 +183,18 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
 
+        final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
         return ListView.builder(
           padding: const EdgeInsets.only(bottom: 80),
-          itemCount: reminders.length,
+          itemCount: groupedReminders.length,
           itemBuilder: (context, index) {
-            final reminder = reminders[index];
+            final grouped = groupedReminders[index];
+            final isCompleted = (grouped.status == 'completed');
+            final primaryId = grouped.primaryReminder.id ?? index.toString();
+
             return Dismissible(
-              key: Key(reminder.id!),
+              key: Key(primaryId),
               direction: DismissDirection.horizontal,
               background: Container(
                 alignment: Alignment.centerLeft,
@@ -202,52 +209,51 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: const Icon(Icons.delete, color: Colors.white),
               ),
               confirmDismiss: (direction) async {
-                return await _confirmDelete(reminder.id!, silent: true);
-              },
-              onDismissed: (direction) {
-                // Already handled in confirmDismiss with the actual delete call
+                return await _confirmDeleteGroup(grouped, silent: true);
               },
               child: Card(
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                color: isCompleted
+                    ? (isDarkMode ? Colors.green.withValues(alpha: 0.15) : Colors.green.shade50)
+                    : null,
                 child: ListTile(
-                  leading: _buildStatusIcon(reminder.status),
-                  title: Text(reminder.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  leading: InkWell(
+                    onTap: () => _toggleGroupStatus(grouped),
+                    child: _buildStatusIcon(grouped.status),
+                  ),
+                  title: Text(
+                    grouped.title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      decoration: isCompleted ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(reminder.description),
+                      if (grouped.description.isNotEmpty) Text(grouped.description),
                       const SizedBox(height: 4),
-                      Row(
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Text('Time: ${reminder.time}', style: TextStyle(color: Colors.blue.shade700, fontSize: 12)),
-                          if (reminder.scheduledByUsername != null) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.shade50,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                'by @${reminder.scheduledByUsername}',
-                                style: TextStyle(color: Colors.blue.shade800, fontSize: 10, fontWeight: FontWeight.w600),
+                          Text('Time: ${grouped.time}', style: TextStyle(color: Colors.blue.shade700, fontSize: 12)),
+                          ...grouped.recipientUsernames.map((userLabel) => Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: userLabel.startsWith('from') ? Colors.purple.shade50 : (userLabel == 'Myself' ? Colors.blue.shade50 : Colors.orange.shade50),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              userLabel,
+                              style: TextStyle(
+                                color: userLabel.startsWith('from') ? Colors.purple.shade800 : (userLabel == 'Myself' ? Colors.blue.shade800 : Colors.orange.shade800),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          ],
-                          if (reminder.scheduledForUsername != null) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade50,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                'for @${reminder.scheduledForUsername}',
-                                style: TextStyle(color: Colors.orange.shade800, fontSize: 10, fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ],
+                          )),
                         ],
                       ),
                     ],
@@ -264,7 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             MaterialPageRoute(
                               builder: (context) => AddTaskScreen(
                                 selectedDate: _selectedDay,
-                                existingReminder: reminder,
+                                existingReminder: grouped.primaryReminder,
                               ),
                             ),
                           );
@@ -276,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       IconButton(
                         icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                         tooltip: 'Delete Reminder',
-                        onPressed: () => _confirmDelete(reminder.id!, silent: false),
+                        onPressed: () => _confirmDeleteGroup(grouped, silent: false),
                       ),
                     ],
                   ),
@@ -305,7 +311,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<bool> _confirmDelete(String id, {bool silent = false}) async {
+  Future<void> _toggleGroupStatus(GroupedCalendarReminder grouped) async {
+    final newStatus = (grouped.status == 'completed') ? 'scheduled' : 'completed';
+    for (final r in grouped.originalReminders) {
+      final updated = r.copyWith(status: newStatus);
+      await _storage.updateCalendarReminder(updated);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<bool> _confirmDeleteGroup(GroupedCalendarReminder grouped, {bool silent = false}) async {
     bool? result = silent;
     
     if (!silent) {
@@ -313,7 +328,7 @@ class _HomeScreenState extends State<HomeScreen> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Delete Reminder?'),
-          content: const Text('This will also cancel any scheduled notifications.'),
+          content: const Text('This will delete the reminder for all associated recipients.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
             TextButton(
@@ -327,7 +342,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (result == true) {
       try {
-        await _storage.deleteCalendarReminder(id);
+        for (final r in grouped.originalReminders) {
+          if (r.id != null) {
+            await _storage.deleteCalendarReminder(r.id!);
+          }
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Reminder deleted')),

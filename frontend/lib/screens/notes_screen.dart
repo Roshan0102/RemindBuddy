@@ -74,10 +74,22 @@ class _NotesScreenState extends State<NotesScreen> {
 
   Future<void> _addOrEditNote({Note? note}) async {
     final titleController = TextEditingController(text: note?.title ?? '');
-    final contentController = TextEditingController(text: note?.content ?? '');
+    final String rawContent = note?.content ?? '';
+    final String editableContent = rawContent.isNotEmpty
+        ? rawContent.split('\n').map((line) => _stripSignature(line)).join('\n')
+        : '';
+    final contentController = TextEditingController(text: editableContent);
     bool isLocked = note?.isLocked ?? false;
     bool isChecklist = note?.isChecklist ?? false;
-    List<Map<String, dynamic>> checklistItems = List<Map<String, dynamic>>.from(note?.checklistItems ?? []);
+    List<Map<String, dynamic>> checklistItems = List<Map<String, dynamic>>.from(
+      (note?.checklistItems ?? []).map((item) {
+        final String text = item['text'] as String? ?? '';
+        return {
+          ...item,
+          'text': _stripSignature(text),
+        };
+      })
+    );
     final List<TextEditingController> itemControllers = checklistItems.map((item) => TextEditingController(text: item['text'] as String)).toList();
     final List<FocusNode> itemFocusNodes = checklistItems.map((_) => FocusNode()).toList();
 
@@ -147,9 +159,9 @@ class _NotesScreenState extends State<NotesScreen> {
                 if (isShared) {
                   final currentUsername = currentUser?.displayName ?? currentUser?.email?.split('@').first ?? 'User';
                   if (isChecklist) {
-                    checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername);
+                    checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername, ownerUsername: note.ownerUsername);
                   } else {
-                    contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername);
+                    contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername, ownerUsername: note.ownerUsername);
                   }
                 }
 
@@ -306,9 +318,9 @@ class _NotesScreenState extends State<NotesScreen> {
                           if (isShared) {
                             final currentUsername = currentUser?.displayName ?? currentUser?.email?.split('@').first ?? 'User';
                             if (isChecklist) {
-                              checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername);
+                              checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername, ownerUsername: note.ownerUsername);
                             } else {
-                              contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername);
+                              contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername, ownerUsername: note.ownerUsername);
                             }
                           }
 
@@ -422,6 +434,31 @@ class _NotesScreenState extends State<NotesScreen> {
                                               ),
                                             ),
                                           ),
+                                          if (note != null && index < note.checklistItems.length) ...[
+                                            Builder(
+                                              builder: (ctx) {
+                                                final origText = note.checklistItems[index]['text'] as String? ?? '';
+                                                final origUser = _extractUsername(origText);
+                                                if (origUser != null && origUser.isNotEmpty) {
+                                                  final isDark = Theme.of(ctx).brightness == Brightness.dark;
+                                                  final color = _getSignatureColor(origUser, isDark);
+                                                  return Padding(
+                                                    padding: const EdgeInsets.only(right: 4.0),
+                                                    child: Text(
+                                                      '(by $origUser)',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontStyle: FontStyle.italic,
+                                                        fontWeight: FontWeight.w500,
+                                                        color: color,
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+                                                return const SizedBox.shrink();
+                                              },
+                                            ),
+                                          ],
                                           IconButton(
                                             icon: const Icon(Icons.close, color: Colors.grey),
                                             onPressed: () {
@@ -827,6 +864,7 @@ class _NotesScreenState extends State<NotesScreen> {
     required Color hintIconColor,
     Widget? dragHandle,
   }) {
+    final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     return Card(
       elevation: 0,
       color: noteColor,
@@ -884,6 +922,7 @@ class _NotesScreenState extends State<NotesScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: note.checklistItems.take(3).map<Widget>((item) {
                               final checked = item['isChecked'] == true;
+                              final String itemText = item['text'] ?? '';
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 2.0),
                                 child: Row(
@@ -892,17 +931,18 @@ class _NotesScreenState extends State<NotesScreen> {
                                     Icon(
                                       checked ? Icons.check_box_outlined : Icons.check_box_outline_blank,
                                       size: 14,
-                                      color: subtitleColor.withOpacity(0.7),
+                                      color: subtitleColor.withValues(alpha: 0.7),
                                     ),
                                     const SizedBox(width: 4),
                                     Expanded(
-                                      child: Text(
-                                        item['text'] ?? '',
-                                        style: TextStyle(
+                                      child: _buildFormattedTextWithSignature(
+                                        text: itemText,
+                                        baseStyle: TextStyle(
                                           color: subtitleColor,
                                           fontSize: 12,
                                           decoration: checked ? TextDecoration.lineThrough : null,
                                         ),
+                                        isDarkTheme: isDarkTheme,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -912,13 +952,23 @@ class _NotesScreenState extends State<NotesScreen> {
                               );
                             }).toList(),
                           )
-                        : Text(
-                            note.content,
-                            overflow: TextOverflow.fade,
-                            style: TextStyle(
-                              color: subtitleColor,
-                              fontSize: 13,
-                            ),
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: note.content
+                                .split('\n')
+                                .take(4)
+                                .map((line) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 2.0),
+                                      child: _buildFormattedTextWithSignature(
+                                        text: line,
+                                        baseStyle: TextStyle(color: subtitleColor, fontSize: 13),
+                                        isDarkTheme: isDarkTheme,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ))
+                                .toList(),
                           ),
               ),
               const SizedBox(height: 8),
@@ -1018,36 +1068,144 @@ class _NotesScreenState extends State<NotesScreen> {
     );
   }
 
-  String _processContentWithSignatures(String newContent, String? originalContent, String currentUsername) {
+  static String _stripSignature(String text) {
+    return text.replaceAll(RegExp(r'\s*\(by\s+[^\)]+\)$'), '').trimRight();
+  }
+
+  static String? _extractUsername(String text) {
+    final match = RegExp(r'\s*\(by\s+([^\)]+)\)$').firstMatch(text);
+    return match?.group(1);
+  }
+
+  static Color _getSignatureColor(String username, bool isDarkTheme) {
+    if (username.isEmpty) return isDarkTheme ? Colors.grey.shade400 : Colors.grey.shade600;
+
+    final List<Color> lightColors = [
+      const Color(0xFFC05621), // Muted Dark Orange
+      const Color(0xFF2B6CB0), // Muted Soft Blue
+      const Color(0xFF2F855A), // Muted Forest Green
+      const Color(0xFF805AD5), // Muted Purple
+      const Color(0xFFD69E2E), // Muted Deep Gold
+      const Color(0xFFB83280), // Muted Magenta
+      const Color(0xFF319795), // Muted Teal
+      const Color(0xFFDD6B20), // Muted Warm Coral
+    ];
+
+    final List<Color> darkColors = [
+      const Color(0xFFFBD38D), // Soft Amber
+      const Color(0xFF90CDF4), // Soft Light Blue
+      const Color(0xFF9AE6B4), // Soft Light Green
+      const Color(0xFFD6BCFA), // Soft Light Lavender
+      const Color(0xFFFBB6CE), // Soft Soft Pink
+      const Color(0xFF81E6D9), // Soft Soft Teal
+      const Color(0xFFFEEBC8), // Soft Light Peach
+      const Color(0xFFE9D8FD), // Soft Light Purple
+    ];
+
+    int hash = 0;
+    for (int i = 0; i < username.length; i++) {
+      hash = username.codeUnitAt(i) + ((hash << 5) - hash);
+    }
+
+    final colors = isDarkTheme ? darkColors : lightColors;
+    final baseColor = colors[hash.abs() % colors.length];
+    return baseColor.withValues(alpha: 0.85);
+  }
+
+  Widget _buildFormattedTextWithSignature({
+    required String text,
+    required TextStyle baseStyle,
+    required bool isDarkTheme,
+    String? defaultAuthor,
+    int? maxLines,
+    TextOverflow overflow = TextOverflow.clip,
+  }) {
+    final username = _extractUsername(text) ?? defaultAuthor;
+    if (username == null || username.isEmpty) {
+      return Text(text, style: baseStyle, maxLines: maxLines, overflow: overflow);
+    }
+
+    final cleanedText = _stripSignature(text);
+    final sigColor = _getSignatureColor(username, isDarkTheme);
+
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: cleanedText, style: baseStyle),
+          const TextSpan(text: ' '),
+          TextSpan(
+            text: '(by $username)',
+            style: baseStyle.copyWith(
+              color: sigColor,
+              fontSize: ((baseStyle.fontSize ?? 13) * 0.88).clamp(9.0, 14.0),
+              fontWeight: FontWeight.w500,
+              fontStyle: FontStyle.italic,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ],
+      ),
+      maxLines: maxLines,
+      overflow: overflow,
+    );
+  }
+
+  bool _hasSignature(String text) {
+    return RegExp(r'\s*\(by\s+[^\)]+\)$').hasMatch(text);
+  }
+
+  String _processContentWithSignatures(
+    String newContent,
+    String? originalContent,
+    String currentUsername, {
+    String? ownerUsername,
+  }) {
+    final defaultAuthor = (ownerUsername != null && ownerUsername.isNotEmpty) ? ownerUsername : currentUsername;
+
     if (originalContent == null || originalContent.isEmpty) {
       return newContent.split('\n').map((line) {
         if (line.trim().isEmpty) return line;
-        final cleaned = line.replaceAll(RegExp(r'\s*\(by\s+[^\)]+\)$'), '');
+        final cleaned = _stripSignature(line);
         return '$cleaned (by $currentUsername)';
       }).join('\n');
     }
 
-    final originalLines = originalContent.split('\n').toSet();
-    return newContent.split('\n').map((line) {
-      if (line.trim().isEmpty) return line;
-      if (originalLines.contains(line)) {
-        return line;
+    final List<String> originalLines = originalContent.split('\n');
+    final Map<String, String> originalStrippedMap = {};
+    for (var orig in originalLines) {
+      final stripped = _stripSignature(orig);
+      if (stripped.isNotEmpty && !originalStrippedMap.containsKey(stripped)) {
+        if (_hasSignature(orig)) {
+          originalStrippedMap[stripped] = orig;
+        } else {
+          originalStrippedMap[stripped] = '$stripped (by $defaultAuthor)';
+        }
       }
-      final cleaned = line.replaceAll(RegExp(r'\s*\(by\s+[^\)]+\)$'), '');
-      return '$cleaned (by $currentUsername)';
+    }
+
+    return newContent.split('\n').map((line) {
+      final stripped = _stripSignature(line);
+      if (stripped.trim().isEmpty) return line;
+      if (originalStrippedMap.containsKey(stripped)) {
+        return originalStrippedMap[stripped]!;
+      }
+      return '$stripped (by $currentUsername)';
     }).join('\n');
   }
 
   List<Map<String, dynamic>> _processChecklistWithSignatures(
-      List<Map<String, dynamic>> newItems,
-      List<Map<String, dynamic>>? originalItems,
-      String currentUsername) {
-    
+    List<Map<String, dynamic>> newItems,
+    List<Map<String, dynamic>>? originalItems,
+    String currentUsername, {
+    String? ownerUsername,
+  }) {
+    final defaultAuthor = (ownerUsername != null && ownerUsername.isNotEmpty) ? ownerUsername : currentUsername;
+
     if (originalItems == null || originalItems.isEmpty) {
       return newItems.map((item) {
         final text = item['text'] as String;
         if (text.trim().isEmpty) return item;
-        final cleaned = text.replaceAll(RegExp(r'\s*\(by\s+[^\)]+\)$'), '');
+        final cleaned = _stripSignature(text);
         return {
           ...item,
           'text': '$cleaned (by $currentUsername)',
@@ -1055,17 +1213,32 @@ class _NotesScreenState extends State<NotesScreen> {
       }).toList();
     }
 
-    final originalTexts = originalItems.map((item) => item['text'] as String).toSet();
+    final Map<String, String> originalStrippedMap = {};
+    for (var orig in originalItems) {
+      final text = orig['text'] as String? ?? '';
+      final stripped = _stripSignature(text);
+      if (stripped.isNotEmpty && !originalStrippedMap.containsKey(stripped)) {
+        if (_hasSignature(text)) {
+          originalStrippedMap[stripped] = text;
+        } else {
+          originalStrippedMap[stripped] = '$stripped (by $defaultAuthor)';
+        }
+      }
+    }
+
     return newItems.map((item) {
       final text = item['text'] as String;
-      if (text.trim().isEmpty) return item;
-      if (originalTexts.contains(text)) {
-        return item;
+      final stripped = _stripSignature(text);
+      if (stripped.trim().isEmpty) return item;
+      if (originalStrippedMap.containsKey(stripped)) {
+        return {
+          ...item,
+          'text': originalStrippedMap[stripped]!,
+        };
       }
-      final cleaned = text.replaceAll(RegExp(r'\s*\(by\s+[^\)]+\)$'), '');
       return {
         ...item,
-        'text': '$cleaned (by $currentUsername)',
+        'text': '$stripped (by $currentUsername)',
       };
     }).toList();
   }

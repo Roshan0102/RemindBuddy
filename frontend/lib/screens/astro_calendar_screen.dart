@@ -7,6 +7,37 @@ import 'dart:math' as math;
 class AstroCalendarScreen extends StatefulWidget {
   const AstroCalendarScreen({super.key});
 
+  static Map<String, String>? getTodayLunarEvent(DateTime date) {
+    final epoch = DateTime.utc(2000, 1, 6, 18, 14);
+    final cycle = 29.530588853;
+    final startDiffDays = date.difference(epoch).inSeconds / 86400.0;
+    final double startMonth = startDiffDays / cycle;
+    final int monthIndex = startMonth.floor();
+
+    for (int i = monthIndex - 1; i <= monthIndex + 1; i++) {
+      // Check New Moon (0.0)
+      final newMoonDays = (i + 0.0) * cycle;
+      final newMoonDate = epoch.add(Duration(minutes: (newMoonDays * 1440).round())).toLocal();
+      if (newMoonDate.year == date.year && newMoonDate.month == date.month && newMoonDate.day == date.day) {
+        return {
+          'title': '🌑 New Moon (Amavasya) Today',
+          'body': 'Today is Amavasya (New Moon). A meaningful day for introspection, peace, and new beginnings.',
+        };
+      }
+
+      // Check Full Moon (0.5)
+      final fullMoonDays = (i + 0.5) * cycle;
+      final fullMoonDate = epoch.add(Duration(minutes: (fullMoonDays * 1440).round())).toLocal();
+      if (fullMoonDate.year == date.year && fullMoonDate.month == date.month && fullMoonDate.day == date.day) {
+        return {
+          'title': '🌕 Full Moon (Pournami) Today',
+          'body': 'Today is Pournami (Full Moon). An auspicious day for clarity, meditation, and positive energy.',
+        };
+      }
+    }
+    return null;
+  }
+
   @override
   State<AstroCalendarScreen> createState() => _AstroCalendarScreenState();
 }

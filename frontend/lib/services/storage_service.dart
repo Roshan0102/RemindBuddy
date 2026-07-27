@@ -65,27 +65,33 @@ class StorageService {
         data['scheduledByUsername'] = myUsername;
       }
       
-      // Save for destination user (User B)
-      final docRef = await FirebaseFirestore.instance
+      final targetDocRef = FirebaseFirestore.instance
           .collection('users')
           .doc(destinationUid)
           .collection('calendar_reminders')
-          .add(data);
+          .doc();
 
-      // Save a copy for creator (User A)
+      final myDocRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('calendar_reminders')
+          .doc();
+
+      data['pairedDocId'] = myDocRef.id;
+      data['pairedUid'] = user.uid;
+
       final Map<String, dynamic> myCopy = Map<String, dynamic>.from(data);
       myCopy['scheduledForUid'] = destinationUid;
       if (targetUsername != null) {
         myCopy['scheduledForUsername'] = targetUsername;
       }
-      
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('calendar_reminders')
-          .add(myCopy);
+      myCopy['pairedDocId'] = targetDocRef.id;
+      myCopy['pairedUid'] = destinationUid;
 
-      return docRef.id;
+      await targetDocRef.set(data);
+      await myDocRef.set(myCopy);
+
+      return targetDocRef.id;
     }
 
     final docRef = await FirebaseFirestore.instance
@@ -116,13 +122,63 @@ class StorageService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     
-    final destinationUid = targetUid ?? user.uid;
-    await FirebaseFirestore.instance
+    final currentOwnerUid = targetUid ?? user.uid;
+    final docRef = FirebaseFirestore.instance
         .collection('users')
-        .doc(destinationUid)
+        .doc(currentOwnerUid)
         .collection('calendar_reminders')
-        .doc(id)
-        .delete();
+        .doc(id);
+
+    try {
+      final snap = await docRef.get();
+      if (snap.exists) {
+        final data = snap.data();
+        final pairedDocId = data?['pairedDocId'] as String?;
+        final pairedUid = data?['pairedUid'] as String?;
+        final scheduledByUid = data?['scheduledByUid'] as String?;
+        final scheduledForUid = data?['scheduledForUid'] as String?;
+        final title = data?['title'] as String?;
+        final dateStr = data?['date'] as String?;
+
+        // 1. Delete direct paired document if present
+        if (pairedDocId != null && pairedDocId.isNotEmpty && pairedUid != null && pairedUid.isNotEmpty) {
+          try {
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(pairedUid)
+                .collection('calendar_reminders')
+                .doc(pairedDocId)
+                .delete();
+          } catch (e) {
+            print("Error deleting paired reminder: $e");
+          }
+        }
+
+        // 2. Fallback query deletion for older reminders without pairedDocId
+        final otherUid = (currentOwnerUid == user.uid) ? (scheduledForUid ?? scheduledByUid) : user.uid;
+        if (otherUid != null && otherUid.isNotEmpty && otherUid != currentOwnerUid && title != null && dateStr != null) {
+          try {
+            final otherSnap = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(otherUid)
+                .collection('calendar_reminders')
+                .where('title', isEqualTo: title)
+                .where('date', isEqualTo: dateStr)
+                .get();
+
+            for (var otherDoc in otherSnap.docs) {
+              await otherDoc.reference.delete();
+            }
+          } catch (e) {
+            print("Error deleting matching paired reminder via fallback: $e");
+          }
+        }
+      }
+    } catch (e) {
+      print("Error looking up reminder before delete: $e");
+    }
+
+    await docRef.delete();
   }
 
   Future<void> updateCalendarReminder(CalendarReminder reminder, {String? targetUid}) async {
@@ -130,12 +186,37 @@ class StorageService {
     if (user == null || reminder.id == null) return;
     
     final destinationUid = targetUid ?? user.uid;
-    await FirebaseFirestore.instance
+    final docRef = FirebaseFirestore.instance
         .collection('users')
         .doc(destinationUid)
         .collection('calendar_reminders')
-        .doc(reminder.id)
-        .update(reminder.toMap());
+        .doc(reminder.id);
+
+    try {
+      final snap = await docRef.get();
+      if (snap.exists) {
+        final data = snap.data();
+        final pairedDocId = data?['pairedDocId'] as String?;
+        final pairedUid = data?['pairedUid'] as String?;
+
+        if (pairedDocId != null && pairedUid != null) {
+          try {
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(pairedUid)
+                .collection('calendar_reminders')
+                .doc(pairedDocId)
+                .update(reminder.toMap());
+          } catch (e) {
+            print("Error updating paired reminder: $e");
+          }
+        }
+      }
+    } catch (e) {
+      print("Error looking up reminder before update: $e");
+    }
+
+    await docRef.update(reminder.toMap());
   }
 
   Stream<List<CalendarReminder>> getAllCalendarRemindersStream() {
@@ -209,10 +290,19 @@ class StorageService {
     
     final controller = StreamController<List<Note>>();
     List<Note> ownNotes = [];
-    List<Note> sharedNotes = [];
+    final Map<String, Note> sharedNotesMap = {};
+    final Map<String, StreamSubscription> approvedItemSubscriptions = {};
 
     void emitMerged() {
-      final merged = [...ownNotes, ...sharedNotes];
+      final Map<String, Note> allNotesMap = {};
+      for (var note in ownNotes) {
+        if (note.id != null) allNotesMap[note.id!] = note;
+      }
+      for (var note in sharedNotesMap.values) {
+        if (note.id != null) allNotesMap[note.id!] = note;
+      }
+
+      final merged = allNotesMap.values.toList();
       merged.sort((a, b) {
         if (a.isStarred && !b.isStarred) return -1;
         if (!a.isStarred && b.isStarred) return 1;
@@ -223,6 +313,7 @@ class StorageService {
       }
     }
 
+    // 1. Listen to own notes
     final ownSub = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
@@ -236,24 +327,88 @@ class StorageService {
           print("Error reading own notes: $err");
         });
 
-    final sharedSub = FirebaseFirestore.instance
+    // 2. Listen to notes via collectionGroup where sharedWith contains user.uid
+    final sharedGroupSub = FirebaseFirestore.instance
         .collectionGroup('notes')
         .where('sharedWith', arrayContains: user.uid)
         .snapshots()
-        .map((snap) => snap.docs.map((doc) {
-          final data = doc.data();
-          return Note.fromMap(data, doc.id, ownerUid: data['ownerUid']);
-        }).toList())
-        .listen((notes) {
-          sharedNotes = notes;
+        .listen((snap) {
+          for (var doc in snap.docs) {
+            final data = doc.data();
+            final note = Note.fromMap(data, doc.id, ownerUid: data['ownerUid']);
+            if (note.id != null) {
+              sharedNotesMap[note.id!] = note;
+            }
+          }
           emitMerged();
         }, onError: (err) {
-          print("Error reading shared notes: $err");
+          print("Error reading shared notes group: $err");
+        });
+
+    // 3. Listen live to approved collaboration requests for notes
+    final approvedReqsSub = FirebaseFirestore.instance
+        .collection('collaboration_requests')
+        .where('receiverUid', isEqualTo: user.uid)
+        .where('type', isEqualTo: 'note')
+        .where('status', isEqualTo: 'approved')
+        .snapshots()
+        .listen((snap) {
+          final activeNoteIds = <String>{};
+
+          for (var doc in snap.docs) {
+            final data = doc.data();
+            final senderUid = data['senderUid'] as String?;
+            final itemId = data['itemId'] as String?;
+
+            if (senderUid != null && itemId != null) {
+              activeNoteIds.add(itemId);
+
+              if (!approvedItemSubscriptions.containsKey(itemId)) {
+                final sub = FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(senderUid)
+                    .collection('notes')
+                    .doc(itemId)
+                    .snapshots()
+                    .listen((noteSnap) {
+                      if (noteSnap.exists && noteSnap.data() != null) {
+                        final noteData = noteSnap.data()!;
+                        final note = Note.fromMap(noteData, noteSnap.id, ownerUid: senderUid);
+                        if (note.id != null) {
+                          sharedNotesMap[note.id!] = note;
+                          emitMerged();
+                        }
+                      } else {
+                        sharedNotesMap.remove(itemId);
+                        emitMerged();
+                      }
+                    }, onError: (err) {
+                      print("Error listening to shared note $itemId: $err");
+                    });
+                approvedItemSubscriptions[itemId] = sub;
+              }
+            }
+          }
+
+          final keysToRemove = approvedItemSubscriptions.keys.where((k) => !activeNoteIds.contains(k)).toList();
+          for (var key in keysToRemove) {
+            approvedItemSubscriptions[key]?.cancel();
+            approvedItemSubscriptions.remove(key);
+            sharedNotesMap.remove(key);
+          }
+          emitMerged();
+        }, onError: (err) {
+          print("Error reading approved collaboration requests: $err");
         });
 
     controller.onCancel = () {
       ownSub.cancel();
-      sharedSub.cancel();
+      sharedGroupSub.cancel();
+      approvedReqsSub.cancel();
+      for (var sub in approvedItemSubscriptions.values) {
+        sub.cancel();
+      }
+      approvedItemSubscriptions.clear();
     };
 
     return controller.stream;
@@ -555,8 +710,17 @@ class StorageService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     final targetUid = ownerUid ?? user.uid;
+    final myUsername = await getCurrentUsername();
+
+    String itemText = text;
+    if (myUsername != null && myUsername.isNotEmpty) {
+      if (!RegExp(r'\s*\(by\s+[^\)]+\)$').hasMatch(itemText)) {
+        itemText = '${itemText.trim()} (by $myUsername)';
+      }
+    }
+
     await FirebaseFirestore.instance.collection('users').doc(targetUid).collection('checklists').doc(listId).collection('items').add({
-      'text': text,
+      'text': itemText,
       'isChecked': false,
       'createdAt': FieldValue.serverTimestamp(),
     });
@@ -937,7 +1101,8 @@ class StorageService {
       final senderUid = data['senderUid'];
       final itemId = data['itemId'];
       final type = data['type'];
-      
+      final senderUsername = data['senderUsername'] as String?;
+
       final itemRef = FirebaseFirestore.instance
           .collection('users')
           .doc(senderUid)
@@ -950,6 +1115,50 @@ class StorageService {
           'sharedWith': FieldValue.arrayUnion([user.uid]),
           'ownerUid': senderUid,
         });
+
+        if (senderUsername != null && senderUsername.isNotEmpty) {
+          final itemSnap = await itemRef.get();
+          if (itemSnap.exists && itemSnap.data() != null) {
+            final itemData = itemSnap.data()!;
+            final Map<String, dynamic> updates = {};
+
+            if (type == 'note') {
+              final content = itemData['content'] as String? ?? '';
+              if (content.isNotEmpty) {
+                final signedContent = content.split('\n').map((line) {
+                  if (line.trim().isEmpty) return line;
+                  if (RegExp(r'\s*\(by\s+[^\)]+\)$').hasMatch(line)) return line;
+                  return '$line (by $senderUsername)';
+                }).join('\n');
+                updates['content'] = signedContent;
+              }
+
+              final checklistItems = itemData['checklistItems'] as List<dynamic>?;
+              if (checklistItems != null && checklistItems.isNotEmpty) {
+                final signedChecklist = checklistItems.map((item) {
+                  final text = item['text'] as String? ?? '';
+                  if (text.trim().isEmpty || RegExp(r'\s*\(by\s+[^\)]+\)$').hasMatch(text)) {
+                    return item;
+                  }
+                  return {...Map<String, dynamic>.from(item), 'text': '$text (by $senderUsername)'};
+                }).toList();
+                updates['checklistItems'] = signedChecklist;
+              }
+            } else if (type == 'checklist') {
+              final itemsSnap = await itemRef.collection('items').get();
+              for (var doc in itemsSnap.docs) {
+                final text = doc.data()['text'] as String? ?? '';
+                if (text.isNotEmpty && !RegExp(r'\s*\(by\s+[^\)]+\)$').hasMatch(text)) {
+                  await doc.reference.update({'text': '$text (by $senderUsername)'});
+                }
+              }
+            }
+
+            if (updates.isNotEmpty) {
+              await itemRef.update(updates);
+            }
+          }
+        }
       } catch (e) {
         print("Direct item update failed (expected due to security rules): $e");
       }

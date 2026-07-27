@@ -21,7 +21,7 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
     'daily_reminders': true,
     'walkin': true,
     'events': true,
-    'astro_calendar': true,
+    'astro_calendar': false,
   };
 
   @override
@@ -53,7 +53,7 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
             'daily_reminders': prefs['daily_reminders'] ?? prefs['reminders'] ?? true,
             'walkin': prefs['walkin'] ?? true,
             'events': prefs['events'] ?? true,
-            'astro_calendar': prefs['astro_calendar'] ?? true,
+            'astro_calendar': prefs['astro_calendar'] ?? false,
           };
           _isLoading = false;
         });

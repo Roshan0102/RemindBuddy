@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import 'home_screen.dart';
 import 'notes_screen.dart';
 import 'daily_reminders_screen.dart';
@@ -15,6 +16,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
+import '../services/vault_service.dart';
 import 'vault_tab_wrapper.dart';
 import 'settings_screen.dart';
 import 'notification_control_screen.dart';
@@ -62,6 +64,7 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _loadInitialData() async {
     await _loadPreferences();
     _listenToUserPreferences();
+    _checkAstroNotification();
     if (mounted) {
       UpdateService.checkForUpdates(context);
     }
@@ -80,9 +83,6 @@ class _MainScreenState extends State<MainScreen> {
       if (snapshot.exists && snapshot.data() != null) {
         final data = snapshot.data()!;
         final firestoreModules = List<String>.from(data['enabledModules'] ?? ['gold']);
-        if (!firestoreModules.contains('astro_calendar')) {
-          firestoreModules.add('astro_calendar');
-        }
         
         final localPrefs = await SharedPreferences.getInstance();
         await localPrefs.setStringList('cached_enabled_modules', firestoreModules);
@@ -111,9 +111,6 @@ class _MainScreenState extends State<MainScreen> {
         if (cachedModulesStr != null) {
           _enabledModules = cachedModulesStr;
         }
-        if (!_enabledModules.contains('astro_calendar')) {
-          _enabledModules.add('astro_calendar');
-        }
         _userSelectedBottomModules = cachedBottom;
         _userMenuOrder = cachedMenuOrder;
         _isLoading = false;
@@ -123,9 +120,6 @@ class _MainScreenState extends State<MainScreen> {
     try {
       final prefs = await StorageService().getUserPreferences();
       final firestoreModules = List<String>.from(prefs['enabledModules'] ?? ['gold']);
-      if (!firestoreModules.contains('astro_calendar')) {
-        firestoreModules.add('astro_calendar');
-      }
       await localPrefs.setStringList('cached_enabled_modules', firestoreModules);
       if (mounted) {
         setState(() {
@@ -165,9 +159,47 @@ class _MainScreenState extends State<MainScreen> {
               MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
             );
             break;
+          case 'astro_calendar':
+            _selectTabOrPush('astro_calendar');
+            break;
         }
       }
     });
+  }
+
+  Future<void> _checkAstroNotification() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    if (!_enabledModules.contains('astro_calendar')) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (!doc.exists || doc.data() == null) return;
+      final prefs = Map<String, dynamic>.from(doc.data()!['notificationPreferences'] ?? {});
+      final bool astroNotifEnabled = prefs['astro_calendar'] ?? false;
+      if (!astroNotifEnabled) return;
+
+      final now = DateTime.now();
+      final todayStr = DateFormat('yyyy-MM-dd').format(now);
+      final sp = await SharedPreferences.getInstance();
+      final lastNotified = sp.getString('last_astro_notif_date_${user.uid}');
+      if (lastNotified == todayStr) return;
+
+      final lunarEvent = AstroCalendarScreen.getTodayLunarEvent(now);
+      if (lunarEvent != null) {
+        await NotificationService().showNotification(
+          id: 88899,
+          title: lunarEvent['title']!,
+          body: lunarEvent['body']!,
+          channelId: 'calendar_reminder_channel',
+          channelName: 'Astro Calendar Alerts',
+          payload: 'astro_calendar',
+        );
+        await sp.setString('last_astro_notif_date_${user.uid}', todayStr);
+      }
+    } catch (e) {
+      LogService().error("Error checking astro notification", e);
+    }
   }
 
   Future<void> _showReminderActionDialog(String reminderId, String uid) async {
@@ -486,6 +518,17 @@ class _MainScreenState extends State<MainScreen> {
         selectedIcon = NavigationIconWithBadge(
           icon: selectedIcon,
           stream: StorageService().getIncomingRequestsStream('checklist'),
+        );
+      }
+    } else if (id == 'vault') {
+      icon = NavigationIconWithBadge(
+        icon: icon,
+        stream: VaultService().getIncomingRequestsStream(),
+      );
+      if (selectedIcon != null) {
+        selectedIcon = NavigationIconWithBadge(
+          icon: selectedIcon,
+          stream: VaultService().getIncomingRequestsStream(),
         );
       }
     }
@@ -1552,6 +1595,11 @@ class _MainScreenState extends State<MainScreen> {
         icon: icon,
         stream: StorageService().getIncomingRequestsStream('checklist'),
       );
+    } else if (id == 'vault') {
+      return NavigationIconWithBadge(
+        icon: icon,
+        stream: VaultService().getIncomingRequestsStream(),
+      );
     }
     return icon;
   }
@@ -1559,7 +1607,7 @@ class _MainScreenState extends State<MainScreen> {
 
 class NavigationIconWithBadge extends StatelessWidget {
   final Widget icon;
-  final Stream<List<Map<String, dynamic>>> stream;
+  final Stream<dynamic> stream;
 
   const NavigationIconWithBadge({
     super.key,
@@ -1569,13 +1617,15 @@ class NavigationIconWithBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Map<String, dynamic>>>(
+    return StreamBuilder<dynamic>(
       stream: stream,
       builder: (context, snapshot) {
-        final hasRequests = snapshot.hasData && snapshot.data!.isNotEmpty;
-        if (hasRequests) {
+        final List items = snapshot.hasData && snapshot.data is List ? (snapshot.data as List) : [];
+        final count = items.length;
+        if (count > 0) {
           return Badge(
             backgroundColor: Colors.red,
+            label: Text('$count'),
             child: icon,
           );
         }

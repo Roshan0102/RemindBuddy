@@ -5,6 +5,7 @@ class Note {
   final String date;
   final bool isLocked;
   final String? ownerUid;
+  final String? ownerUsername;
   final List<String> sharedWith;
   final bool isChecklist;
   final List<Map<String, dynamic>> checklistItems;
@@ -17,6 +18,7 @@ class Note {
     required this.date,
     this.isLocked = false,
     this.ownerUid,
+    this.ownerUsername,
     this.sharedWith = const [],
     this.isChecklist = false,
     this.checklistItems = const [],
@@ -30,6 +32,7 @@ class Note {
       'date': date,
       'isLocked': isLocked,
       'ownerUid': ownerUid,
+      'ownerUsername': ownerUsername,
       'sharedWith': sharedWith,
       'isChecklist': isChecklist,
       'checklistItems': checklistItems,
@@ -37,7 +40,7 @@ class Note {
     };
   }
 
-  factory Note.fromMap(Map<String, dynamic> map, String docId, {String? ownerUid}) {
+  factory Note.fromMap(Map<String, dynamic> map, String docId, {String? ownerUid, String? ownerUsername}) {
     return Note(
       id: docId,
       title: map['title'] ?? '',
@@ -45,6 +48,7 @@ class Note {
       date: map['date'] ?? '',
       isLocked: map['isLocked'] == true,
       ownerUid: ownerUid ?? map['ownerUid'],
+      ownerUsername: ownerUsername ?? map['ownerUsername'],
       sharedWith: List<String>.from(map['sharedWith'] ?? []),
       isChecklist: map['isChecklist'] == true,
       checklistItems: List<Map<String, dynamic>>.from(

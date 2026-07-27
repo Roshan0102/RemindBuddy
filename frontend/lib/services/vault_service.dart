@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../models/secure_document.dart';
 import '../models/vault_collaborator.dart';
+import '../models/family_member.dart';
 import 'encryption_service.dart';
 
 class DecryptedDocument {
@@ -301,75 +302,20 @@ class VaultService {
   // SECURE DOCUMENT METHODS
   // ==========================================
 
-  /// Stream of raw (encrypted) secure documents from current user AND all approved collaborators
+  /// Stream of raw (encrypted) secure documents for current user
   Stream<List<SecureDocument>> getSecureDocuments() {
     final uid = _currentUserId;
     if (uid == null) return Stream.value([]);
 
-    late StreamController<List<SecureDocument>> controller;
-    StreamSubscription? collabSub;
-    final Map<String, StreamSubscription> docSubs = {};
-    final Map<String, List<SecureDocument>> docsPerUser = {};
-
-    void emitMerged() {
-      final List<SecureDocument> combined = [];
-      for (var list in docsPerUser.values) {
-        combined.addAll(list);
-      }
-      combined.sort((a, b) => b.lastUpdated.compareTo(a.lastUpdated));
-      if (!controller.isClosed) {
-        controller.add(combined);
-      }
-    }
-
-    controller = StreamController<List<SecureDocument>>.broadcast(
-      onListen: () {
-        emitMerged();
-        collabSub = getVaultCollaborators().listen((collaborators) {
-          final Set<String> targetUids = {uid, ...collaborators.map((c) => c.uid)};
-
-          // Cancel subscriptions for users no longer in target list
-          docSubs.keys.toList().forEach((userUid) {
-            if (!targetUids.contains(userUid)) {
-              docSubs[userUid]?.cancel();
-              docSubs.remove(userUid);
-              docsPerUser.remove(userUid);
-            }
-          });
-
-          // Subscribe to document streams for new users
-          for (final userUid in targetUids) {
-            if (!docSubs.containsKey(userUid)) {
-              docSubs[userUid] = _firestore
-                  .collection('users')
-                  .doc(userUid)
-                  .collection('secure_documents')
-                  .snapshots()
-                  .listen((snap) {
-                docsPerUser[userUid] = snap.docs.map((d) => SecureDocument.fromMap(d.data())).toList();
-                emitMerged();
-              }, onError: (e) {
-                print("VaultService: Error listening to secure_documents for $userUid: $e");
-              });
-            }
-          }
-          emitMerged();
-        });
-      },
-      onCancel: () {
-        collabSub?.cancel();
-        for (var sub in docSubs.values) {
-          sub.cancel();
-        }
-        docSubs.clear();
-        docsPerUser.clear();
-      },
-    );
-
-    return controller.stream;
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('secure_documents')
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => SecureDocument.fromMap(d.data())).toList());
   }
 
-  /// Stream of unique category names from existing documents across user and collaborators
+  /// Stream of unique category names from existing documents across user's vault
   Stream<List<String>> getExistingCategories() {
     return getSecureDocuments().map((docs) {
       final Set<String> categories = {};
@@ -382,23 +328,27 @@ class VaultService {
     });
   }
 
-  /// Decrypt a single document into memory
-  Future<DecryptedDocument> decryptDocument(SecureDocument doc) async {
+  /// Decrypt a single document into memory safely
+  Future<DecryptedDocument?> decryptDocument(SecureDocument doc) async {
     final encryptionService = EncryptionService();
-    
-    final decryptedTitle = await encryptionService.decryptText(doc.encryptedTitle);
-    
-    final Map<String, String> decryptedFields = {};
-    for (var entry in doc.encryptedFields.entries) {
-      final decryptedValue = await encryptionService.decryptText(entry.value);
-      decryptedFields[entry.key] = decryptedValue;
-    }
+    try {
+      final decryptedTitle = await encryptionService.decryptText(doc.encryptedTitle);
+      
+      final Map<String, String> decryptedFields = {};
+      for (var entry in doc.encryptedFields.entries) {
+        final decryptedValue = await encryptionService.decryptText(entry.value);
+        decryptedFields[entry.key] = decryptedValue;
+      }
 
-    return DecryptedDocument(
-      original: doc,
-      title: decryptedTitle,
-      fields: decryptedFields,
-    );
+      return DecryptedDocument(
+        original: doc,
+        title: decryptedTitle,
+        fields: decryptedFields,
+      );
+    } catch (e) {
+      print("VaultService: Error decrypting document ${doc.id}: $e");
+      return null;
+    }
   }
 
   /// Save or update a document locally encrypted
@@ -427,11 +377,9 @@ class VaultService {
       }
     }
 
-    final targetUid = memberId.isNotEmpty ? memberId : uid;
-
     final docId = id ?? _firestore
         .collection('users')
-        .doc(targetUid)
+        .doc(uid)
         .collection('secure_documents')
         .doc()
         .id;
@@ -448,7 +396,7 @@ class VaultService {
       final safeTitle = title.replaceAll(RegExp(r'[^\w\-_]'), '_');
       
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final storagePath = 'users/$targetUid/vault_attachments/$docId/${safeOwner}_-_${safeTitle}_${timestamp}_$i.$ext';
+      final storagePath = 'users/$uid/vault_attachments/$docId/${safeOwner}_-_${safeTitle}_${timestamp}_$i.$ext';
       
       final ref = _storage.ref().child(storagePath);
       await ref.putData(
@@ -461,7 +409,7 @@ class VaultService {
 
     final doc = SecureDocument(
       id: docId,
-      memberId: targetUid,
+      memberId: memberId.isNotEmpty ? memberId : uid,
       category: category,
       encryptedTitle: encryptedTitle,
       encryptedFields: encryptedFields,
@@ -471,7 +419,7 @@ class VaultService {
 
     await _firestore
         .collection('users')
-        .doc(targetUid)
+        .doc(uid)
         .collection('secure_documents')
         .doc(docId)
         .set(doc.toMap());
@@ -481,8 +429,6 @@ class VaultService {
   Future<void> deleteDocument(SecureDocument doc) async {
     final uid = _currentUserId;
     if (uid == null) throw Exception("User not authenticated.");
-
-    final targetUid = doc.memberId.isNotEmpty ? doc.memberId : uid;
 
     for (var path in doc.encryptedAttachmentPaths) {
       try {
@@ -494,7 +440,7 @@ class VaultService {
 
     await _firestore
         .collection('users')
-        .doc(targetUid)
+        .doc(uid)
         .collection('secure_documents')
         .doc(doc.id)
         .delete();
@@ -514,5 +460,61 @@ class VaultService {
       print("VaultService: Error downloading/decrypting attachment: $e");
       return null;
     }
+  }
+
+  // ==========================================
+  // FAMILY MEMBER PROFILES METHODS
+  // ==========================================
+
+  Stream<List<FamilyMember>> getFamilyMembers() {
+    final uid = _currentUserId;
+    if (uid == null) return Stream.value([]);
+
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('family_members')
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => FamilyMember.fromMap(d.data(), d.id)).toList());
+  }
+
+  Future<void> addFamilyMember(String name, String relationship, int avatarColorValue) async {
+    final uid = _currentUserId;
+    if (uid == null) throw Exception("User not authenticated.");
+
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('family_members')
+        .add({
+      'name': name,
+      'relationship': relationship,
+      'avatarColorValue': avatarColorValue,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> updateFamilyMember(FamilyMember member) async {
+    final uid = _currentUserId;
+    if (uid == null) throw Exception("User not authenticated.");
+
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('family_members')
+        .doc(member.id)
+        .update(member.toMap());
+  }
+
+  Future<void> deleteFamilyMember(String id) async {
+    final uid = _currentUserId;
+    if (uid == null) throw Exception("User not authenticated.");
+
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('family_members')
+        .doc(id)
+        .delete();
   }
 }

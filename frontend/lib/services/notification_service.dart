@@ -374,4 +374,30 @@ class NotificationService {
       }
     });
   }
+
+  Future<void> showNotification({
+    required int id,
+    required String title,
+    required String body,
+    String channelId = 'calendar_reminder_channel',
+    String channelName = 'Calendar Reminders',
+    String? payload,
+  }) async {
+    if (kIsWeb) return;
+    await _localNotifications.show(
+      id,
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          channelId,
+          channelName,
+          importance: Importance.max,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+      ),
+      payload: payload,
+    );
+  }
 }

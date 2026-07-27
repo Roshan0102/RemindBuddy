@@ -50,6 +50,7 @@ class _AdminScreenState extends State<AdminScreen> {
     {'id': 'voice_assistant', 'label': 'Voice Assistant'},
     {'id': 'ask_gemini', 'label': 'Ask Gemini Buttons'},
     {'id': 'gcp_cost', 'label': 'GCP Cost Tracker'},
+    {'id': 'astro_calendar', 'label': 'Astro Calendar'},
   ];
 
   @override
