@@ -1897,13 +1897,6 @@ async function internalDailyTechEventsFetcher() {
         console.error("Error in internalDailyTechEventsFetcher:", e.message || e);
     }
 }
-exports.scheduledTechEventsFetcher = functions.runWith({ timeoutSeconds: 300, memory: "256MB" })
-    .pubsub.schedule('0 19 * * *')
-    .timeZone('Asia/Kolkata')
-    .onRun(async () => {
-    console.log("[scheduledTechEventsFetcher] Triggering daily tech events fetcher at 7:00 PM IST");
-    await internalDailyTechEventsFetcher();
-});
 exports.fetchUserTechEventsTrigger = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.topic('fetch-user-tech-events').onPublish(async (message) => {
     const data = message.json;
     const uid = data.uid;
@@ -2125,13 +2118,6 @@ async function internalDailyWalkInsFetcher() {
         console.error("Error in internalDailyWalkInsFetcher:", e.message || e);
     }
 }
-exports.scheduledWalkInsFetcher = functions.runWith({ timeoutSeconds: 300, memory: "256MB" })
-    .pubsub.schedule('0 20 * * *')
-    .timeZone('Asia/Kolkata')
-    .onRun(async () => {
-    console.log("[scheduledWalkInsFetcher] Triggering daily walk-in drives fetcher at 8:00 PM IST");
-    await internalDailyWalkInsFetcher();
-});
 function getTodayLunarPhase(targetMoment) {
     // Epoch: Known New Moon on Jan 6, 2000 18:14 UTC
     const epochUtcMs = Date.UTC(2000, 0, 6, 18, 14, 0);
@@ -2207,13 +2193,6 @@ async function internalDailyAstroNotifier() {
         console.error("Error in internalDailyAstroNotifier:", e.message || e);
     }
 }
-exports.scheduledAstroNotifier = functions.runWith({ timeoutSeconds: 300, memory: "256MB" })
-    .pubsub.schedule('0 7 * * *')
-    .timeZone('Asia/Kolkata')
-    .onRun(async () => {
-    console.log("[scheduledAstroNotifier] Triggering daily Astro Calendar notifier at 7:00 AM IST");
-    await internalDailyAstroNotifier();
-});
 exports.fetchUserWalkInsTrigger = functions.runWith({ timeoutSeconds: 300, memory: "256MB" }).pubsub.topic('fetch-user-walkins').onPublish(async (message) => {
     const data = message.json;
     const uid = data.uid;

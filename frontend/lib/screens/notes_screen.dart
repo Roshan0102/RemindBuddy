@@ -5,6 +5,9 @@ import '../models/note.dart';
 import '../services/storage_service.dart';
 import '../widgets/collaboration_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
@@ -78,7 +81,7 @@ class _NotesScreenState extends State<NotesScreen> {
     final String editableContent = rawContent.isNotEmpty
         ? rawContent.split('\n').map((line) => _stripSignature(line)).join('\n')
         : '';
-    final contentController = TextEditingController(text: editableContent);
+    final contentController = LinkTextEditingController(text: editableContent);
     bool isLocked = note?.isLocked ?? false;
     bool isChecklist = note?.isChecklist ?? false;
     List<Map<String, dynamic>> checklistItems = List<Map<String, dynamic>>.from(
@@ -90,7 +93,7 @@ class _NotesScreenState extends State<NotesScreen> {
         };
       })
     );
-    final List<TextEditingController> itemControllers = checklistItems.map((item) => TextEditingController(text: item['text'] as String)).toList();
+    final List<TextEditingController> itemControllers = checklistItems.map((item) => LinkTextEditingController(text: item['text'] as String)).toList();
     final List<FocusNode> itemFocusNodes = checklistItems.map((_) => FocusNode()).toList();
 
     void reorderChecklist(void Function(void Function()) setDialogState) {
@@ -145,9 +148,15 @@ class _NotesScreenState extends State<NotesScreen> {
               if (didPop && !hasSaved) {
                 final title = titleController.text;
                 if (isChecklist) {
+                  final List<Map<String, dynamic>> filteredItems = [];
                   for (int i = 0; i < checklistItems.length; i++) {
-                    checklistItems[i]['text'] = itemControllers[i].text;
+                    final text = itemControllers[i].text;
+                    if (text.isNotEmpty) {
+                      checklistItems[i]['text'] = text;
+                      filteredItems.add(checklistItems[i]);
+                    }
                   }
+                  checklistItems = filteredItems;
                 }
 
                 final currentUser = FirebaseAuth.instance.currentUser;
@@ -272,7 +281,7 @@ class _NotesScreenState extends State<NotesScreen> {
                           itemFocusNodes.forEach((node) => node.dispose());
                           itemFocusNodes.clear();
                           for (var item in checklistItems) {
-                            itemControllers.add(TextEditingController(text: item['text'] as String));
+                            itemControllers.add(LinkTextEditingController(text: item['text'] as String));
                             itemFocusNodes.add(FocusNode());
                           }
                           isChecklist = true;
@@ -304,9 +313,15 @@ class _NotesScreenState extends State<NotesScreen> {
                         onPressed: () async {
                           final title = titleController.text;
                           if (isChecklist) {
+                            final List<Map<String, dynamic>> filteredItems = [];
                             for (int i = 0; i < checklistItems.length; i++) {
-                              checklistItems[i]['text'] = itemControllers[i].text;
+                              final text = itemControllers[i].text;
+                              if (text.isNotEmpty) {
+                                checklistItems[i]['text'] = text;
+                                filteredItems.add(checklistItems[i]);
+                              }
                             }
+                            checklistItems = filteredItems;
                           }
 
                           final currentUser = FirebaseAuth.instance.currentUser;
@@ -408,29 +423,50 @@ class _NotesScreenState extends State<NotesScreen> {
                                           Expanded(
                                             child: Padding(
                                               padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                              child: TextField(
-                                                controller: itemControllers[index],
-                                                focusNode: itemFocusNodes[index],
-                                                style: TextStyle(
-                                                  decoration: item['isChecked'] == true
-                                                      ? TextDecoration.lineThrough
-                                                      : null,
-                                                  color: item['isChecked'] == true
-                                                      ? Colors.grey
-                                                      : null,
-                                                ),
-                                                decoration: const InputDecoration(
-                                                  hintText: 'Add item...',
-                                                  border: InputBorder.none,
-                                                  isDense: true,
-                                                  contentPadding: EdgeInsets.symmetric(vertical: 4.0),
-                                                ),
-                                                textCapitalization: TextCapitalization.sentences,
-                                                maxLines: null,
-                                                keyboardType: TextInputType.multiline,
-                                                onChanged: (val) {
-                                                  item['text'] = val;
+                                              child: Focus(
+                                                onKeyEvent: (node, event) {
+                                                  if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
+                                                    final bool isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
+                                                    if (!isShiftPressed) {
+                                                      setDialogState(() {
+                                                        checklistItems.insert(index + 1, {'text': '', 'isChecked': false});
+                                                        itemControllers.insert(index + 1, LinkTextEditingController(text: ''));
+                                                        final newFocusNode = FocusNode();
+                                                        itemFocusNodes.insert(index + 1, newFocusNode);
+                                                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                          newFocusNode.requestFocus();
+                                                        });
+                                                      });
+                                                      return KeyEventResult.handled;
+                                                    }
+                                                  }
+                                                  return KeyEventResult.ignored;
                                                 },
+                                                child: TextField(
+                                                  controller: itemControllers[index],
+                                                  focusNode: itemFocusNodes[index],
+                                                  style: TextStyle(
+                                                    decoration: item['isChecked'] == true
+                                                        ? TextDecoration.lineThrough
+                                                        : null,
+                                                    color: item['isChecked'] == true
+                                                        ? Colors.grey
+                                                        : null,
+                                                  ),
+                                                  decoration: const InputDecoration(
+                                                    hintText: 'Add item...',
+                                                    border: InputBorder.none,
+                                                    isDense: true,
+                                                    contentPadding: EdgeInsets.symmetric(vertical: 4.0),
+                                                  ),
+                                                  textCapitalization: TextCapitalization.sentences,
+                                                  maxLines: null,
+                                                  keyboardType: TextInputType.multiline,
+                                                  onChanged: (val) {
+                                                    item['text'] = val;
+                                                    setDialogState(() {});
+                                                  },
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -484,7 +520,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                     onPressed: () {
                                       setDialogState(() {
                                         checklistItems.insert(0, {'text': '', 'isChecked': false});
-                                        itemControllers.insert(0, TextEditingController(text: ''));
+                                        itemControllers.insert(0, LinkTextEditingController(text: ''));
                                         final newFocusNode = FocusNode();
                                         itemFocusNodes.insert(0, newFocusNode);
                                         reorderChecklist(setDialogState);
@@ -508,7 +544,51 @@ class _NotesScreenState extends State<NotesScreen> {
                               textAlignVertical: TextAlignVertical.top,
                               keyboardType: TextInputType.multiline,
                               textCapitalization: TextCapitalization.sentences,
+                              onChanged: (val) => setDialogState(() {}),
                             ),
+                    ),
+                    Builder(
+                      builder: (context) {
+                        final detectedLinks = _extractAllLinks(
+                          titleController.text,
+                          isChecklist ? '' : contentController.text,
+                          isChecklist,
+                          isChecklist ? checklistItems.map((item) => {'text': item['text']}).toList() : [],
+                        );
+                        if (detectedLinks.isEmpty) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Divider(),
+                              const Text(
+                                'Links in Note:',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
+                              ),
+                              const SizedBox(height: 4),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: detectedLinks.map((url) => ActionChip(
+                                  avatar: const Icon(Icons.open_in_new, size: 12, color: Colors.blue),
+                                  label: Text(
+                                    url.length > 30 ? '${url.substring(0, 27)}...' : url,
+                                    style: const TextStyle(fontSize: 11, color: Colors.blue),
+                                  ),
+                                  onPressed: () async {
+                                    final Uri uri = Uri.parse(url);
+                                    if (await canLaunchUrl(uri)) {
+                                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                    }
+                                  },
+                                )).toList(),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -1112,6 +1192,54 @@ class _NotesScreenState extends State<NotesScreen> {
     return baseColor.withValues(alpha: 0.85);
   }
 
+  List<InlineSpan> _buildTextSpansWithUrls(String text, TextStyle baseStyle) {
+    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+)');
+    final Iterable<RegExpMatch> matches = urlRegExp.allMatches(text);
+    
+    if (matches.isEmpty) {
+      return [TextSpan(text: text, style: baseStyle)];
+    }
+    
+    final List<InlineSpan> spans = [];
+    int lastMatchEnd = 0;
+    
+    for (final RegExpMatch match in matches) {
+      if (match.start > lastMatchEnd) {
+        spans.add(TextSpan(
+          text: text.substring(lastMatchEnd, match.start),
+          style: baseStyle,
+        ));
+      }
+      
+      final String url = match.group(0)!;
+      spans.add(TextSpan(
+        text: url,
+        style: baseStyle.copyWith(
+          color: Colors.blue,
+          decoration: TextDecoration.underline,
+        ),
+        recognizer: TapGestureRecognizer()
+          ..onTap = () async {
+            final Uri uri = Uri.parse(url);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+      ));
+      
+      lastMatchEnd = match.end;
+    }
+    
+    if (lastMatchEnd < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(lastMatchEnd),
+        style: baseStyle,
+      ));
+    }
+    
+    return spans;
+  }
+
   Widget _buildFormattedTextWithSignature({
     required String text,
     required TextStyle baseStyle,
@@ -1121,17 +1249,24 @@ class _NotesScreenState extends State<NotesScreen> {
     TextOverflow overflow = TextOverflow.clip,
   }) {
     final username = _extractUsername(text) ?? defaultAuthor;
+    final cleanedText = _stripSignature(text);
+    
+    final textSpans = _buildTextSpansWithUrls(cleanedText, baseStyle);
+
     if (username == null || username.isEmpty) {
-      return Text(text, style: baseStyle, maxLines: maxLines, overflow: overflow);
+      return Text.rich(
+        TextSpan(children: textSpans),
+        maxLines: maxLines,
+        overflow: overflow,
+      );
     }
 
-    final cleanedText = _stripSignature(text);
     final sigColor = _getSignatureColor(username, isDarkTheme);
 
     return Text.rich(
       TextSpan(
         children: [
-          TextSpan(text: cleanedText, style: baseStyle),
+          ...textSpans,
           const TextSpan(text: ' '),
           TextSpan(
             text: '(by $username)',
@@ -1241,5 +1376,88 @@ class _NotesScreenState extends State<NotesScreen> {
         'text': '$stripped (by $currentUsername)',
       };
     }).toList();
+  }
+
+  List<String> _extractAllLinks(
+    String title,
+    String content,
+    bool isChecklist,
+    List<Map<String, dynamic>> checklistItems,
+  ) {
+    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+)');
+    final Set<String> links = {};
+    
+    final cleanTitle = _stripSignature(title);
+    final cleanContent = _stripSignature(content);
+    
+    for (final match in urlRegExp.allMatches(cleanTitle)) {
+      links.add(match.group(0)!);
+    }
+    for (final match in urlRegExp.allMatches(cleanContent)) {
+      links.add(match.group(0)!);
+    }
+    
+    if (isChecklist) {
+      for (var item in checklistItems) {
+        final text = item['text'] as String? ?? '';
+        final cleanText = _stripSignature(text);
+        for (final match in urlRegExp.allMatches(cleanText)) {
+          links.add(match.group(0)!);
+        }
+      }
+    }
+    
+    return links.toList();
+  }
+}
+
+class LinkTextEditingController extends TextEditingController {
+  LinkTextEditingController({super.text});
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+)');
+    final String textStr = text;
+    
+    if (textStr.isEmpty) {
+      return TextSpan(text: textStr, style: style);
+    }
+
+    final List<TextSpan> children = [];
+    final matches = urlRegExp.allMatches(textStr);
+    int lastMatchEnd = 0;
+
+    for (final match in matches) {
+      if (match.start > lastMatchEnd) {
+        children.add(TextSpan(
+          text: textStr.substring(lastMatchEnd, match.start),
+          style: style,
+        ));
+      }
+
+      final url = match.group(0)!;
+      children.add(TextSpan(
+        text: url,
+        style: (style ?? const TextStyle()).copyWith(
+          color: Colors.blue,
+          decoration: TextDecoration.underline,
+        ),
+      ));
+
+      lastMatchEnd = match.end;
+    }
+
+    if (lastMatchEnd < textStr.length) {
+      children.add(TextSpan(
+        text: textStr.substring(lastMatchEnd),
+        style: style,
+      ));
+    }
+
+    return TextSpan(children: children, style: style);
   }
 }
