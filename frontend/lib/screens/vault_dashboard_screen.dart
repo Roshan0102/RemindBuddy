@@ -12,8 +12,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/encryption_service.dart';
 import '../models/secure_document.dart';
 import '../models/vault_collaborator.dart';
+import '../models/vault_member_profile.dart';
 import '../services/vault_service.dart';
 import 'vault_collaboration_screen.dart';
+import 'family_management_screen.dart';
 import 'add_document_screen.dart';
 import 'document_detail_screen.dart';
 
@@ -27,6 +29,7 @@ class VaultDashboardScreen extends StatefulWidget {
 class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   final VaultService _vaultService = VaultService();
   StreamSubscription? _collaboratorSubscription;
+  StreamSubscription? _profilesSubscription;
   final TextEditingController _searchController = TextEditingController();
   List<SecureDocument>? _previousRawDocs;
   Future<List<DecryptedDocument>>? _decryptionFuture;
@@ -36,11 +39,13 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   String _selectedCategory = 'All'; // "All" or a specific category
 
   Map<String, VaultCollaborator> _collaboratorsMap = {};
+  Map<String, VaultMemberProfile> _profilesMap = {};
 
   @override
   void initState() {
     super.initState();
     _loadCollaborators();
+    _loadProfiles();
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.toLowerCase().trim();
@@ -51,6 +56,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   @override
   void dispose() {
     _collaboratorSubscription?.cancel();
+    _profilesSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -61,6 +67,17 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
       if (mounted) {
         setState(() {
           _collaboratorsMap = {for (var c in list) c.uid: c};
+        });
+      }
+    });
+  }
+
+  void _loadProfiles() {
+    _profilesSubscription?.cancel();
+    _profilesSubscription = _vaultService.getUnifiedMemberProfiles().listen((list) {
+      if (mounted) {
+        setState(() {
+          _profilesMap = {for (var p in list) p.id: p};
         });
       }
     });
@@ -252,6 +269,16 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
       appBar: AppBar(
         title: const Text('🔒 Secure Document Vault'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.family_restroom_rounded),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const FamilyManagementScreen()),
+              );
+            },
+            tooltip: 'Family Profiles',
+          ),
           StreamBuilder<List<VaultCollaborationRequest>>(
             stream: _vaultService.getIncomingRequestsStream(),
             builder: (context, snapshot) {
@@ -390,43 +417,79 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                             scrollDirection: Axis.horizontal,
                             child: Row(
                               children: [
-                                // Member Filter
-                                DropdownButton<String>(
-                                  value: _selectedMemberId,
-                                  hint: const Text('All Vault Members'),
-                                  items: [
-                                    const DropdownMenuItem<String>(
-                                      value: null,
-                                      child: Text('All Vault Members'),
+                                // Member Filter (Unified Profiles: Myself, Virtual Profiles, Collaborators)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.grey.shade300),
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _profilesMap.containsKey(_selectedMemberId) ? _selectedMemberId : null,
+                                      hint: const Text('All Vault Profiles'),
+                                      icon: const Icon(Icons.arrow_drop_down, color: Colors.indigo),
+                                      items: [
+                                        const DropdownMenuItem<String>(
+                                          value: null,
+                                          child: Text('All Vault Members & Profiles'),
+                                        ),
+                                        ..._profilesMap.values.map((p) {
+                                          return DropdownMenuItem<String>(
+                                            value: p.id,
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                CircleAvatar(
+                                                  radius: 10,
+                                                  backgroundColor: Color(p.avatarColorValue),
+                                                  child: Text(
+                                                    p.rawName.isNotEmpty ? p.rawName[0].toUpperCase() : '?',
+                                                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(p.name),
+                                              ],
+                                            ),
+                                          );
+                                        }),
+                                      ],
+                                      onChanged: (val) {
+                                        setState(() {
+                                          _selectedMemberId = val;
+                                        });
+                                      },
                                     ),
-                                    ..._collaboratorsMap.values.map((c) {
-                                      return DropdownMenuItem<String>(
-                                        value: c.uid,
-                                        child: Text(c.isSelf ? 'Myself (@${c.username})' : '@${c.username}'),
-                                      );
-                                    }),
-                                  ],
-                                  onChanged: (val) {
-                                    setState(() {
-                                      _selectedMemberId = val;
-                                    });
-                                  },
+                                  ),
                                 ),
-                                const SizedBox(width: 16),
-                                // Category Filter (Using dynamicCategories!)
-                                DropdownButton<String>(
-                                  value: _selectedCategory,
-                                  items: dynamicCategories.map((c) {
-                                    return DropdownMenuItem<String>(
-                                      value: c,
-                                      child: Text(c),
-                                    );
-                                  }).toList(),
-                                  onChanged: (val) {
-                                    setState(() {
-                                      _selectedCategory = val ?? 'All';
-                                    });
-                                  },
+                                const SizedBox(width: 12),
+                                // Category Filter
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.grey.shade300),
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _selectedCategory,
+                                      icon: const Icon(Icons.arrow_drop_down, color: Colors.indigo),
+                                      items: dynamicCategories.map((c) {
+                                        return DropdownMenuItem<String>(
+                                          value: c,
+                                          child: Text('Category: $c'),
+                                        );
+                                      }).toList(),
+                                      onChanged: (val) {
+                                        setState(() {
+                                          _selectedCategory = val ?? 'All';
+                                        });
+                                      },
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
@@ -450,8 +513,8 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                   itemCount: filteredDocs.length,
                                   itemBuilder: (context, index) {
                                     final decDoc = filteredDocs[index];
-                                    final owner = _collaboratorsMap[decDoc.original.memberId];
-                                    return _buildDocumentCard(decDoc, owner);
+                                    final profile = _profilesMap[decDoc.original.memberId];
+                                    return _buildDocumentCard(decDoc, profile);
                                   },
                                 ),
                         ),
@@ -477,11 +540,9 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
     );
   }
 
-  Widget _buildDocumentCard(DecryptedDocument decDoc, VaultCollaborator? owner) {
-    final ownerName = owner != null
-        ? (owner.isSelf ? 'Myself (@${owner.username})' : '@${owner.username}')
-        : 'Unknown';
-    final avatarColor = owner?.avatarColorValue ?? 0xFF9E9E9E;
+  Widget _buildDocumentCard(DecryptedDocument decDoc, VaultMemberProfile? profile) {
+    final ownerName = profile != null ? profile.name : 'Myself';
+    final avatarColor = profile?.avatarColorValue ?? 0xFF3F51B5;
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -513,9 +574,9 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                     radius: 24,
                     backgroundColor: Color(avatarColor).withAlpha(38),
                     child: Text(
-                      owner != null && owner.username.isNotEmpty
-                          ? owner.username.substring(0, 1).toUpperCase()
-                          : '?',
+                      profile != null && profile.rawName.isNotEmpty
+                          ? profile.rawName.substring(0, 1).toUpperCase()
+                          : 'M',
                       style: TextStyle(
                         color: Color(avatarColor),
                         fontWeight: FontWeight.bold,

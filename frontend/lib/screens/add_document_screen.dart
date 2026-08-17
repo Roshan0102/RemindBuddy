@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/vault_collaborator.dart';
 import '../models/secure_document.dart';
+import '../models/vault_member_profile.dart';
 import '../services/vault_service.dart';
 
 class AddDocumentScreen extends StatefulWidget {
@@ -173,21 +174,26 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     });
 
     try {
-      // Look up member username
+      // Look up member profile details
       String ownerName = 'Me';
-      final collaborators = await _vaultService.getVaultCollaborators().first;
-      final matchedCollab = collaborators.firstWhere(
-        (c) => c.uid == targetMemberId,
-        orElse: () => VaultCollaborator(
-          uid: targetMemberId,
-          username: 'Me',
-          email: '',
-          collaborationId: '',
-          isSelf: true,
+      String? targetOwnerUid;
+
+      final profiles = await _vaultService.getUnifiedMemberProfiles().first;
+      final matchedProfile = profiles.firstWhere(
+        (p) => p.id == targetMemberId,
+        orElse: () => VaultMemberProfile(
+          id: targetMemberId,
+          name: 'Myself',
+          rawName: 'Myself',
+          subtext: 'Account Owner',
           avatarColorValue: 0xFF3F51B5,
+          isSelf: true,
         ),
       );
-      ownerName = matchedCollab.username;
+      ownerName = matchedProfile.rawName;
+      if (matchedProfile.isCollaborator) {
+        targetOwnerUid = matchedProfile.id;
+      }
 
       // Build custom fields map
       final Map<String, String> fields = {};
@@ -217,6 +223,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         rawImagesToUpload: _newAttachmentsBytes,
         newAttachmentsNames: _newAttachmentsNames,
         existingAttachmentPaths: _existingAttachmentPaths,
+        targetOwnerUid: targetOwnerUid,
       );
 
       if (mounted) {
@@ -280,11 +287,11 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            // 1. Vault Collaborator / Owner Selection Card
-            StreamBuilder<List<VaultCollaborator>>(
-              stream: _vaultService.getVaultCollaborators(),
+            // 1. Vault Member / Owner Selection Card
+            StreamBuilder<List<VaultMemberProfile>>(
+              stream: _vaultService.getUnifiedMemberProfiles(),
               builder: (context, snapshot) {
-                final members = snapshot.data ?? [];
+                final profiles = snapshot.data ?? [];
                 final currentUid = FirebaseAuth.instance.currentUser?.uid;
                 final activeValue = _selectedMemberId ?? currentUid;
 
@@ -294,17 +301,33 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButtonFormField<String>(
-                        value: members.any((m) => m.uid == activeValue) ? activeValue : null,
+                        value: profiles.any((p) => p.id == activeValue) ? activeValue : null,
                         decoration: const InputDecoration(
-                          labelText: 'Belongs to Member',
+                          labelText: 'Belongs to Vault Profile / Member',
                           border: InputBorder.none,
-                          icon: Icon(Icons.person),
+                          icon: Icon(Icons.family_restroom),
                         ),
                         validator: (val) => val == null ? 'Please select a member owner' : null,
-                        items: members.map((m) {
+                        items: profiles.map((p) {
                           return DropdownMenuItem(
-                            value: m.uid,
-                            child: Text(m.isSelf ? 'Myself (@${m.username})' : '@${m.username}'),
+                            value: p.id,
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 12,
+                                  backgroundColor: Color(p.avatarColorValue),
+                                  child: Text(
+                                    p.rawName.isNotEmpty ? p.rawName[0].toUpperCase() : '?',
+                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  p.name,
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
                           );
                         }).toList(),
                         onChanged: (val) {

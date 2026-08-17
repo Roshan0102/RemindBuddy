@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../models/secure_document.dart';
 import '../models/vault_collaborator.dart';
 import '../models/family_member.dart';
+import '../models/vault_member_profile.dart';
 import 'encryption_service.dart';
 
 class DecryptedDocument {
@@ -302,17 +303,77 @@ class VaultService {
   // SECURE DOCUMENT METHODS
   // ==========================================
 
-  /// Stream of raw (encrypted) secure documents for current user
+  /// Stream of raw (encrypted) secure documents for current user and all approved collaborators
   Stream<List<SecureDocument>> getSecureDocuments() {
     final uid = _currentUserId;
     if (uid == null) return Stream.value([]);
 
-    return _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('secure_documents')
-        .snapshots()
-        .map((snap) => snap.docs.map((d) => SecureDocument.fromMap(d.data())).toList());
+    late StreamController<List<SecureDocument>> controller;
+    StreamSubscription? collabSub;
+    final Map<String, StreamSubscription> docSubs = {};
+    final Map<String, List<SecureDocument>> docsPerUser = {};
+
+    void updateCombinedDocs() {
+      if (controller.isClosed) return;
+      final List<SecureDocument> allDocs = [];
+      for (var list in docsPerUser.values) {
+        allDocs.addAll(list);
+      }
+      allDocs.sort((a, b) => b.lastUpdated.compareTo(a.lastUpdated));
+      controller.add(allDocs);
+    }
+
+    controller = StreamController<List<SecureDocument>>.broadcast(
+      onListen: () {
+        collabSub = getVaultCollaborators().listen((collaborators) {
+          final Set<String> activeUids = collaborators.map((c) => c.uid).toSet();
+          activeUids.add(uid);
+
+          // Cancel subscriptions for UIDs no longer active
+          final existingUids = docSubs.keys.toList();
+          for (var userUid in existingUids) {
+            if (!activeUids.contains(userUid)) {
+              docSubs[userUid]?.cancel();
+              docSubs.remove(userUid);
+              docsPerUser.remove(userUid);
+            }
+          }
+
+          // Subscribe to snapshot stream for any new active UIDs
+          for (var userUid in activeUids) {
+            if (!docSubs.containsKey(userUid)) {
+              docSubs[userUid] = _firestore
+                  .collection('users')
+                  .doc(userUid)
+                  .collection('secure_documents')
+                  .snapshots()
+                  .listen((snap) {
+                docsPerUser[userUid] = snap.docs
+                    .map((d) => SecureDocument.fromMap(d.data()))
+                    .toList();
+                updateCombinedDocs();
+              }, onError: (e) {
+                print("VaultService: Error listening to docs for user $userUid: $e");
+              });
+            }
+          }
+
+          updateCombinedDocs();
+        }, onError: (e) {
+          print("VaultService: Error listening to collaborators: $e");
+        });
+      },
+      onCancel: () {
+        collabSub?.cancel();
+        for (var sub in docSubs.values) {
+          sub.cancel();
+        }
+        docSubs.clear();
+        docsPerUser.clear();
+      },
+    );
+
+    return controller.stream;
   }
 
   /// Stream of unique category names from existing documents across user's vault
@@ -354,7 +415,7 @@ class VaultService {
   /// Save or update a document locally encrypted
   Future<void> saveDocument({
     String? id,
-    required String memberId, // Owner UID
+    required String memberId, // Owner UID or Virtual Family Member ID
     required String ownerName,
     required String category,
     required String title,
@@ -362,6 +423,7 @@ class VaultService {
     required List<Uint8List> rawImagesToUpload,
     required List<String> newAttachmentsNames,
     required List<String> existingAttachmentPaths,
+    String? targetOwnerUid,
   }) async {
     final uid = _currentUserId;
     if (uid == null) throw Exception("User not authenticated.");
@@ -377,9 +439,26 @@ class VaultService {
       }
     }
 
+    // Determine target owner collection path in Firestore:
+    // If targetOwnerUid is provided and non-empty, use it.
+    // Otherwise, check if memberId is an approved collaborator UID.
+    // Default to current user's UID (for self and virtual family members).
+    String effectiveTargetUid = uid;
+    if (targetOwnerUid != null && targetOwnerUid.isNotEmpty) {
+      effectiveTargetUid = targetOwnerUid;
+    } else if (memberId.isNotEmpty) {
+      try {
+        final collaborators = await getVaultCollaborators().first;
+        final isCollab = collaborators.any((c) => c.uid == memberId && !c.isSelf);
+        if (isCollab) {
+          effectiveTargetUid = memberId;
+        }
+      } catch (_) {}
+    }
+
     final docId = id ?? _firestore
         .collection('users')
-        .doc(uid)
+        .doc(effectiveTargetUid)
         .collection('secure_documents')
         .doc()
         .id;
@@ -419,7 +498,7 @@ class VaultService {
 
     await _firestore
         .collection('users')
-        .doc(uid)
+        .doc(effectiveTargetUid)
         .collection('secure_documents')
         .doc(docId)
         .set(doc.toMap());
@@ -429,6 +508,16 @@ class VaultService {
   Future<void> deleteDocument(SecureDocument doc) async {
     final uid = _currentUserId;
     if (uid == null) throw Exception("User not authenticated.");
+
+    String effectiveTargetUid = uid;
+    if (doc.memberId.isNotEmpty && doc.memberId != uid) {
+      try {
+        final collaborators = await getVaultCollaborators().first;
+        if (collaborators.any((c) => c.uid == doc.memberId && !c.isSelf)) {
+          effectiveTargetUid = doc.memberId;
+        }
+      } catch (_) {}
+    }
 
     for (var path in doc.encryptedAttachmentPaths) {
       try {
@@ -440,7 +529,7 @@ class VaultService {
 
     await _firestore
         .collection('users')
-        .doc(uid)
+        .doc(effectiveTargetUid)
         .collection('secure_documents')
         .doc(doc.id)
         .delete();
@@ -476,6 +565,87 @@ class VaultService {
         .collection('family_members')
         .snapshots()
         .map((snap) => snap.docs.map((d) => FamilyMember.fromMap(d.data(), d.id)).toList());
+  }
+
+  /// Stream of unified member profiles (Myself, Virtual Family Members, and App Collaborators)
+  Stream<List<VaultMemberProfile>> getUnifiedMemberProfiles() {
+    final uid = _currentUserId;
+    if (uid == null) return Stream.value([]);
+
+    late StreamController<List<VaultMemberProfile>> controller;
+    StreamSubscription? collabSub;
+    StreamSubscription? familySub;
+
+    List<VaultCollaborator> collabs = [];
+    List<FamilyMember> familyMembers = [];
+
+    void emitProfiles() {
+      final List<VaultMemberProfile> profiles = [];
+
+      // 1. Add Myself & Collaborators from collabs stream
+      for (var c in collabs) {
+        if (c.isSelf) {
+          profiles.add(VaultMemberProfile(
+            id: c.uid,
+            name: 'Myself (@${c.username})',
+            rawName: '@${c.username}',
+            subtext: 'Account Owner',
+            avatarColorValue: c.avatarColorValue,
+            isSelf: true,
+          ));
+        }
+      }
+
+      // 2. Add Virtual Family Members
+      for (var fm in familyMembers) {
+        profiles.add(VaultMemberProfile(
+          id: fm.id,
+          name: '${fm.name} (${fm.relationship})',
+          rawName: fm.name,
+          subtext: 'Virtual • ${fm.relationship}',
+          avatarColorValue: fm.avatarColorValue,
+          isVirtual: true,
+        ));
+      }
+
+      // 3. Add Real App Collaborators
+      for (var c in collabs) {
+        if (!c.isSelf) {
+          profiles.add(VaultMemberProfile(
+            id: c.uid,
+            name: '@${c.username}',
+            rawName: '@${c.username}',
+            subtext: 'App Collaborator',
+            avatarColorValue: c.avatarColorValue,
+            isCollaborator: true,
+          ));
+        }
+      }
+
+      if (!controller.isClosed) {
+        controller.add(profiles);
+      }
+    }
+
+    controller = StreamController<List<VaultMemberProfile>>.broadcast(
+      onListen: () {
+        collabSub = getVaultCollaborators().listen((list) {
+          collabs = list;
+          emitProfiles();
+        });
+
+        familySub = getFamilyMembers().listen((list) {
+          familyMembers = list;
+          emitProfiles();
+        });
+      },
+      onCancel: () {
+        collabSub?.cancel();
+        familySub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   Future<void> addFamilyMember(String name, String relationship, int avatarColorValue) async {
