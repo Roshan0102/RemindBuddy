@@ -248,15 +248,22 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   }
 
   Future<void> _markNotInterested(String eventDocId) async {
+    await _markGroupNotInterested([eventDocId]);
+  }
+
+  Future<void> _markGroupNotInterested(List<String> eventDocIds) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null || eventDocIds.isEmpty) return;
     try {
-      await FirebaseFirestore.instance
+      final batch = FirebaseFirestore.instance.batch();
+      final collection = FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .collection('events')
-          .doc(eventDocId)
-          .update({'notInterested': true});
+          .collection('events');
+      for (final id in eventDocIds) {
+        batch.update(collection.doc(id), {'notInterested': true});
+      }
+      await batch.commit();
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -273,15 +280,22 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   }
 
   Future<void> _toggleEventInterest(String eventDocId, bool currentInterest) async {
+    await _toggleGroupEventInterest([eventDocId], currentInterest);
+  }
+
+  Future<void> _toggleGroupEventInterest(List<String> eventDocIds, bool currentInterest) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null || eventDocIds.isEmpty) return;
     try {
-      await FirebaseFirestore.instance
+      final batch = FirebaseFirestore.instance.batch();
+      final collection = FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .collection('events')
-          .doc(eventDocId)
-          .update({'interested': !currentInterest});
+          .collection('events');
+      for (final id in eventDocIds) {
+        batch.update(collection.doc(id), {'interested': !currentInterest});
+      }
+      await batch.commit();
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1775,6 +1789,58 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     );
   }
 
+  Widget _buildDateShiftBadge(String dateStr) {
+    String shiftLabel = 'no data';
+    Color shiftBadgeColor = Colors.grey;
+
+    if (_hasData) {
+      final shiftOnDay = _shifts.firstWhere(
+        (s) => s.date == dateStr,
+        orElse: () => Shift(date: dateStr, shiftType: 'week_off', isWeekOff: true),
+      );
+
+      if (shiftOnDay.shiftType == 'morning') {
+        shiftLabel = 'Morning';
+        shiftBadgeColor = Colors.orange;
+      } else if (shiftOnDay.shiftType == 'afternoon') {
+        shiftLabel = 'Afternoon';
+        shiftBadgeColor = Colors.blue;
+      } else if (shiftOnDay.shiftType == 'night') {
+        shiftLabel = 'Night';
+        shiftBadgeColor = Colors.indigo;
+      } else if (shiftOnDay.shiftType == 'week_off' || shiftOnDay.isWeekOff || shiftOnDay.shiftType == 'none') {
+        shiftLabel = 'Week Off';
+        shiftBadgeColor = Colors.green;
+      } else {
+        shiftLabel = shiftOnDay.getDisplayName();
+        shiftBadgeColor = _getShiftColor(shiftOnDay.shiftType);
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: shiftLabel == 'no data'
+            ? Colors.grey.withOpacity(0.1)
+            : shiftBadgeColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: shiftLabel == 'no data'
+              ? Colors.grey.withOpacity(0.3)
+              : shiftBadgeColor.withOpacity(0.3),
+        ),
+      ),
+      child: Text(
+        shiftLabel == 'no data' ? 'Shift: No Data' : 'Shift: $shiftLabel',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: shiftLabel == 'no data' ? Colors.grey : shiftBadgeColor,
+        ),
+      ),
+    );
+  }
+
   Widget _buildEventsView() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -1800,24 +1866,129 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         }
 
         final allDocs = snapshot.data?.docs ?? [];
-        
         final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-        final monthEvents = allDocs.where((doc) {
+
+        // Group documents by normalized title, excluding conferences and not-interested items
+        final Map<String, List<QueryDocumentSnapshot>> groupsMap = {};
+
+        for (final doc in allDocs) {
           final data = doc.data() as Map<String, dynamic>;
-          final dateStr = data['date'] as String? ?? '';
+          final title = (data['title'] ?? 'No Title').toString().trim();
+          final dateStr = (data['date'] ?? '').toString().trim();
           final notInterested = data['notInterested'] as bool? ?? false;
-          final matchesMonth = dateStr.startsWith(_selectedRosterMonth);
-          if (!matchesMonth || notInterested) return false;
-          
-          if (!_showPastEvents) {
-            return dateStr.compareTo(todayStr) >= 0;
+
+          // 1. Exclude conferences
+          final lowerTitle = title.toLowerCase();
+          final isConference = lowerTitle.contains('conference') ||
+              RegExp(r'\bconf\b').hasMatch(lowerTitle);
+          if (isConference) continue;
+
+          // 2. Exclude not interested
+          if (notInterested) continue;
+
+          if (dateStr.isEmpty) continue;
+
+          final key = title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+          groupsMap.putIfAbsent(key, () => []).add(doc);
+        }
+
+        final List<Map<String, dynamic>> groupedEvents = [];
+
+        for (final entry in groupsMap.entries) {
+          final docs = entry.value;
+          if (docs.isEmpty) continue;
+
+          final Set<String> dateSet = {};
+          final List<String> docIds = [];
+          bool isNewGroup = false;
+          bool isInterestedGroup = false;
+
+          String repTitle = '';
+          String repTimings = '';
+          String repLocation = '';
+          String repRegLink = '';
+          String repSource = '';
+
+          for (final doc in docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final dateStr = (data['date'] ?? '').toString().trim();
+            if (dateStr.isNotEmpty) {
+              dateSet.add(dateStr);
+            }
+            docIds.add(doc.id);
+
+            if (repTitle.isEmpty && (data['title'] ?? '').toString().isNotEmpty) {
+              repTitle = data['title'].toString();
+            }
+            if (repTimings.isEmpty && (data['timings'] ?? '').toString().isNotEmpty) {
+              repTimings = data['timings'].toString();
+            }
+            if (repLocation.isEmpty && (data['location'] ?? '').toString().isNotEmpty) {
+              repLocation = data['location'].toString();
+            }
+            if (repRegLink.isEmpty && (data['registrationLink'] ?? '').toString().isNotEmpty) {
+              repRegLink = data['registrationLink'].toString();
+            }
+            if (repSource.isEmpty && (data['sourcePlatform'] ?? '').toString().isNotEmpty) {
+              repSource = data['sourcePlatform'].toString();
+            }
+
+            final isNewRaw = data['isNew'] as bool? ?? false;
+            final createdAtVal = data['createdAt'];
+            bool isDocNew = isNewRaw;
+            if (createdAtVal is Timestamp) {
+              final createdTime = createdAtVal.toDate();
+              final diff = DateTime.now().difference(createdTime);
+              if (diff.inHours >= 24) {
+                isDocNew = false;
+              }
+            }
+            if (isDocNew) isNewGroup = true;
+
+            if (data['interested'] as bool? ?? false) {
+              isInterestedGroup = true;
+            }
           }
-          return true;
-        }).toList();
+
+          final sortedDates = dateSet.toList()..sort();
+          if (sortedDates.isEmpty) continue;
+
+          // Keep event on screen until its last date has finished!
+          final lastDate = sortedDates.last;
+          if (!_showPastEvents && lastDate.compareTo(todayStr) < 0) {
+            continue;
+          }
+
+          // Filter by selected month: match if any date is in selected month OR if lastDate is on/after selected month
+          final matchesMonth = sortedDates.any((d) => d.startsWith(_selectedRosterMonth)) ||
+              lastDate.compareTo(_selectedRosterMonth) >= 0;
+          if (!matchesMonth) continue;
+
+          groupedEvents.add({
+            'title': repTitle.isNotEmpty ? repTitle : 'No Title',
+            'timings': repTimings.isNotEmpty ? repTimings : 'No timings',
+            'location': repLocation.isNotEmpty ? repLocation : 'No location',
+            'registrationLink': repRegLink,
+            'sourcePlatform': repSource,
+            'dates': sortedDates,
+            'docIds': docIds,
+            'isNew': isNewGroup,
+            'isInterested': isInterestedGroup,
+          });
+        }
+
+        // Sort groups by earliest upcoming date (or first date)
+        groupedEvents.sort((a, b) {
+          final List<String> aDates = List<String>.from(a['dates']);
+          final List<String> bDates = List<String>.from(b['dates']);
+          final aNext = aDates.firstWhere((d) => d.compareTo(todayStr) >= 0, orElse: () => aDates.first);
+          final bNext = bDates.firstWhere((d) => d.compareTo(todayStr) >= 0, orElse: () => bDates.first);
+          return aNext.compareTo(bNext);
+        });
 
         Widget mainContent;
 
-        if (monthEvents.isEmpty) {
+        if (groupedEvents.isEmpty) {
           mainContent = Center(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
@@ -1870,65 +2041,18 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         } else {
           mainContent = ListView.builder(
             padding: const EdgeInsets.only(bottom: 24),
-            itemCount: monthEvents.length,
+            itemCount: groupedEvents.length,
             itemBuilder: (context, index) {
-              final docId = monthEvents[index].id;
-              final data = monthEvents[index].data() as Map<String, dynamic>;
-              final title = data['title'] ?? 'No Title';
-              final dateStr = data['date'] ?? '';
-              final timings = data['timings'] ?? 'No timings';
-              final location = data['location'] ?? 'No location';
-              final regLink = data['registrationLink'] ?? '';
-              final sourcePlatform = data['sourcePlatform'] ?? '';
-              final isNewEventRaw = data['isNew'] as bool? ?? false;
-              final createdAtVal = data['createdAt'];
-              bool isNewEvent = isNewEventRaw;
-              if (createdAtVal is Timestamp) {
-                final createdTime = createdAtVal.toDate();
-                final diff = DateTime.now().difference(createdTime);
-                if (diff.inHours >= 24) {
-                  isNewEvent = false;
-                }
-              }
-              final isInterested = data['interested'] as bool? ?? false;
-
-              // Format date nicely: YYYY-MM-DD to "EEE, MMM d"
-              String formattedDate = dateStr;
-              try {
-                final parsed = DateTime.parse(dateStr);
-                formattedDate = DateFormat('EEEE, MMMM d').format(parsed);
-              } catch (_) {}
-
-              // Determine user shift for this day
-              String shiftLabel = 'no data';
-              Color shiftBadgeColor = Colors.grey;
-
-              if (_hasData) {
-                final shiftOnDay = _shifts.firstWhere(
-                  (s) => s.date == dateStr,
-                  orElse: () => Shift(date: dateStr, shiftType: 'week_off', isWeekOff: true),
-                );
-
-                if (shiftOnDay.shiftType == 'morning') {
-                  shiftLabel = 'Morning';
-                  shiftBadgeColor = Colors.orange;
-                } else if (shiftOnDay.shiftType == 'afternoon') {
-                  shiftLabel = 'Afternoon';
-                  shiftBadgeColor = Colors.blue;
-                } else if (shiftOnDay.shiftType == 'night') {
-                  shiftLabel = 'Night';
-                  shiftBadgeColor = Colors.indigo;
-                } else if (shiftOnDay.shiftType == 'week_off' || shiftOnDay.isWeekOff) {
-                  shiftLabel = 'Week Off';
-                  shiftBadgeColor = Colors.green;
-                } else if (shiftOnDay.shiftType == 'none') {
-                  shiftLabel = 'Week Off';
-                  shiftBadgeColor = Colors.green;
-                } else {
-                  shiftLabel = shiftOnDay.getDisplayName();
-                  shiftBadgeColor = _getShiftColor(shiftOnDay.shiftType);
-                }
-              }
+              final group = groupedEvents[index];
+              final title = group['title'] as String;
+              final timings = group['timings'] as String;
+              final location = group['location'] as String;
+              final regLink = group['registrationLink'] as String;
+              final sourcePlatform = group['sourcePlatform'] as String;
+              final dates = List<String>.from(group['dates']);
+              final docIds = List<String>.from(group['docIds']);
+              final isNewEvent = group['isNew'] as bool;
+              final isInterested = group['isInterested'] as bool;
 
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1963,7 +2087,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                         ),
                                       ),
                                     ),
-                                    if (sourcePlatform.toString().isNotEmpty) ...[
+                                    if (sourcePlatform.isNotEmpty) ...[
                                       const SizedBox(height: 4),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1984,43 +2108,82 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: shiftLabel == 'no data'
-                                      ? Colors.grey.withOpacity(0.1)
-                                      : shiftBadgeColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: shiftLabel == 'no data'
-                                        ? Colors.grey.withOpacity(0.3)
-                                        : shiftBadgeColor.withOpacity(0.3),
-                                  ),
-                                ),
-                                child: Text(
-                                  shiftLabel == 'no data' ? 'Shift: No Data' : 'Shift: $shiftLabel',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: shiftLabel == 'no data' ? Colors.grey : shiftBadgeColor,
-                                  ),
-                                ),
-                              ),
                             ],
                           ),
                           const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              const Icon(Icons.calendar_month, size: 16, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Text(
-                                formattedDate,
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
+
+                          // Render Dates & Shifts
+                          if (dates.length == 1) ...[
+                            Builder(
+                              builder: (context) {
+                                final d = dates.first;
+                                String formattedDate = d;
+                                try {
+                                  final parsed = DateTime.parse(d);
+                                  formattedDate = DateFormat('EEEE, MMMM d').format(parsed);
+                                } catch (_) {}
+                                return Row(
+                                  children: [
+                                    const Icon(Icons.calendar_month, size: 16, color: Colors.grey),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      formattedDate,
+                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                                    ),
+                                    const Spacer(),
+                                    _buildDateShiftBadge(d),
+                                  ],
+                                );
+                              },
+                            ),
+                          ] else ...[
+                            Row(
+                              children: [
+                                const Icon(Icons.calendar_month, size: 16, color: Colors.green),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Event Dates (${dates.length} Days):',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Column(
+                              children: dates.map((d) {
+                                String formattedDate = d;
+                                try {
+                                  final parsed = DateTime.parse(d);
+                                  formattedDate = DateFormat('EEE, MMM d, yyyy').format(parsed);
+                                } catch (_) {}
+                                return Container(
+                                  margin: const EdgeInsets.symmetric(vertical: 3),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.withOpacity(0.06),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.event_available, size: 14, color: Colors.green),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            formattedDate,
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                          ),
+                                        ],
+                                      ),
+                                      _buildDateShiftBadge(d),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ],
+
+                          const SizedBox(height: 8),
                           Row(
                             children: [
                               const Icon(Icons.access_time, size: 16, color: Colors.grey),
@@ -2053,7 +2216,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               TextButton.icon(
-                                onPressed: () => _toggleEventInterest(docId, isInterested),
+                                onPressed: () => _toggleGroupEventInterest(docIds, isInterested),
                                 icon: Icon(isInterested ? Icons.star : Icons.star_border, size: 16, color: Colors.amber),
                                 label: Text(isInterested ? 'Interested' : 'Mark Interested'),
                                 style: TextButton.styleFrom(
@@ -2062,7 +2225,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                 ),
                               ),
                               TextButton.icon(
-                                onPressed: () => _markNotInterested(docId),
+                                onPressed: () => _markGroupNotInterested(docIds),
                                 icon: const Icon(Icons.block, size: 16, color: Colors.red),
                                 label: const Text('Not Interested'),
                                 style: TextButton.styleFrom(
@@ -2300,6 +2463,10 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               final location = data['location'] ?? 'No location';
               final regLink = data['registrationLink'] ?? '';
               final company = data['company'] ?? '';
+              final expRaw = (data['experience'] as String?)?.trim();
+              final experience = (expRaw != null && expRaw.isNotEmpty && expRaw.toUpperCase() != 'N/A')
+                  ? expRaw
+                  : '-';
               final isNewWalkInRaw = data['isNew'] as bool? ?? false;
               final createdAtVal = data['createdAt'];
               bool isNewWalkIn = isNewWalkInRaw;
@@ -2422,6 +2589,17 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              const Icon(Icons.work_outline, size: 16, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Experience: $experience',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
                           Row(
                             children: [
                               const Icon(Icons.calendar_month, size: 16, color: Colors.grey),

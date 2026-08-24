@@ -1,0 +1,1307 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../models/bank_account.dart';
+import '../models/finance_transaction.dart';
+import '../models/recurring_bill.dart';
+import '../models/debt_record.dart';
+import '../models/group_split.dart';
+import '../services/finance_service.dart';
+
+class FinanceScreen extends StatefulWidget {
+  const FinanceScreen({super.key});
+
+  @override
+  State<FinanceScreen> createState() => _FinanceScreenState();
+}
+
+class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final FinanceService _financeService = FinanceService();
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('FinanceBuddy', style: TextStyle(fontWeight: FontWeight.bold)),
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          tabs: const [
+            Tab(icon: Icon(Icons.account_balance), text: 'Accounts'),
+            Tab(icon: Icon(Icons.receipt_long), text: 'Bills'),
+            Tab(icon: Icon(Icons.people_alt), text: 'Lent / Borrowed'),
+            Tab(icon: Icon(Icons.call_split), text: 'Group Splitter'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildAccountsTab(),
+          _buildBillsTab(),
+          _buildDebtsTab(),
+          _buildGroupSplitterTab(),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================================
+  // TAB 1: ACCOUNTS & TRANSACTIONS
+  // ============================================================================
+
+  Widget _buildAccountsTab() {
+    return StreamBuilder<List<BankAccount>>(
+      stream: _financeService.getAccountsStream(),
+      builder: (context, accountsSnap) {
+        if (accountsSnap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final accounts = accountsSnap.data ?? [];
+        final double totalNetWorth = accounts.fold(0.0, (sum, acc) => sum + acc.currentBalance);
+
+        return StreamBuilder<List<FinanceTransaction>>(
+          stream: _financeService.getTransactionsStream(),
+          builder: (context, txSnap) {
+            final transactions = txSnap.data ?? [];
+
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // Total Net Worth Card
+                Card(
+                  elevation: 3,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  color: Colors.blue.shade800,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Total Combined Net Worth',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '₹${NumberFormat('#,##,##0.00').format(totalNetWorth)}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _showAddAccountDialog(context),
+                                icon: const Icon(Icons.add_card, size: 18),
+                                label: const Text('Add Account'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: Colors.blue.shade900,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: accounts.isEmpty
+                                    ? null
+                                    : () => _showAddTransactionDialog(context, accounts),
+                                icon: const Icon(Icons.add_circle, size: 18),
+                                label: const Text('Add Transaction'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Accounts Section
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Your Accounts',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      '${accounts.length} Accounts',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                if (accounts.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: Text('No bank accounts added yet. Tap "Add Account" to start tracking!'),
+                    ),
+                  )
+                else
+                  SizedBox(
+                    height: 130,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: accounts.length,
+                      itemBuilder: (context, index) {
+                        final acc = accounts[index];
+                        final Color accColor = Color(acc.colorHex);
+
+                        return Container(
+                          width: 200,
+                          margin: const EdgeInsets.only(right: 12),
+                          child: Card(
+                            elevation: 2,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(color: accColor.withOpacity(0.4), width: 1.5),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Icon(_getIconData(acc.iconName), color: accColor),
+                                      PopupMenuButton<String>(
+                                        onSelected: (val) {
+                                          if (val == 'delete') {
+                                            _financeService.deleteAccount(acc.id);
+                                          }
+                                        },
+                                        itemBuilder: (_) => [
+                                          const PopupMenuItem(value: 'delete', child: Text('Delete Account')),
+                                        ],
+                                        icon: const Icon(Icons.more_vert, size: 18, color: Colors.grey),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    acc.name,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    '₹${NumberFormat('#,##,##0.00').format(acc.currentBalance)}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: acc.currentBalance >= 0 ? Colors.green.shade700 : Colors.red,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                const SizedBox(height: 24),
+                const Text(
+                  'Recent Transactions',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+
+                if (transactions.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Center(child: Text('No transactions recorded yet.')),
+                  )
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: transactions.length,
+                    itemBuilder: (context, index) {
+                      final tx = transactions[index];
+                      final isIncome = tx.type == 'income';
+                      final accountName = accounts.firstWhere((a) => a.id == tx.accountId,
+                          orElse: () => BankAccount(
+                                id: '',
+                                name: 'Unknown',
+                                accountType: '',
+                                initialBalance: 0,
+                                currentBalance: 0,
+                                colorHex: 0,
+                                iconName: '',
+                                updatedAt: DateTime.now(),
+                              )).name;
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: isIncome ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                            child: Icon(
+                              isIncome ? Icons.arrow_downward : Icons.arrow_upward,
+                              color: isIncome ? Colors.green : Colors.red,
+                            ),
+                          ),
+                          title: Text(
+                            tx.note.isNotEmpty ? tx.note : tx.category,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text('$accountName • ${DateFormat('MMM d, h:mm a').format(tx.timestamp)}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${isIncome ? '+' : '-'}₹${NumberFormat('#,##,##0.00').format(tx.amount)}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: isIncome ? Colors.green : Colors.red,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
+                                onPressed: () => _financeService.deleteTransaction(tx),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ============================================================================
+  // TAB 2: RECURRING BILLS
+  // ============================================================================
+
+  Widget _buildBillsTab() {
+    return StreamBuilder<List<RecurringBill>>(
+      stream: _financeService.getBillsStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final bills = snapshot.data ?? [];
+
+        return Scaffold(
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _showAddBillDialog(context),
+            icon: const Icon(Icons.add),
+            label: const Text('Add Bill'),
+          ),
+          body: bills.isEmpty
+              ? const Center(
+                  child: Text('No recurring bills added. Tap "Add Bill" to set reminders!'),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: bills.length,
+                  itemBuilder: (context, index) {
+                    final bill = bills[index];
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.purple.withOpacity(0.1),
+                          child: const Icon(Icons.calendar_today, color: Colors.purple),
+                        ),
+                        title: Text(bill.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(
+                          '${bill.category} • Due: ${DateFormat('MMM d, yyyy').format(bill.dueDate)} (${bill.frequency})',
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '₹${NumberFormat('#,##,##0').format(bill.amount)}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.purple),
+                            ),
+                            Switch(
+                              value: bill.isActive,
+                              onChanged: (val) {
+                                _financeService.updateBill(RecurringBill(
+                                  id: bill.id,
+                                  title: bill.title,
+                                  amount: bill.amount,
+                                  category: bill.category,
+                                  dueDate: bill.dueDate,
+                                  frequency: bill.frequency,
+                                  accountId: bill.accountId,
+                                  isActive: val,
+                                  notes: bill.notes,
+                                ));
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.red),
+                              onPressed: () => _financeService.deleteBill(bill.id),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        );
+      },
+    );
+  }
+
+  // ============================================================================
+  // TAB 3: LENT / BORROWED DEBTS
+  // ============================================================================
+
+  Widget _buildDebtsTab() {
+    return StreamBuilder<List<DebtRecord>>(
+      stream: _financeService.getDebtsStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final debts = snapshot.data ?? [];
+        final totalLent = debts
+            .where((d) => d.type == 'lent' && !d.isSettled)
+            .fold(0.0, (sum, d) => sum + d.amount);
+        final totalBorrowed = debts
+            .where((d) => d.type == 'borrowed' && !d.isSettled)
+            .fold(0.0, (sum, d) => sum + d.amount);
+
+        return StreamBuilder<List<BankAccount>>(
+          stream: _financeService.getAccountsStream(),
+          builder: (context, accountsSnap) {
+            final accounts = accountsSnap.data ?? [];
+
+            return Scaffold(
+              floatingActionButton: FloatingActionButton.extended(
+                onPressed: () => _showAddDebtDialog(context, accounts),
+                icon: const Icon(Icons.add),
+                label: const Text('Add Debt / Loan'),
+              ),
+              body: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // Debt Summary Row
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Card(
+                          color: Colors.green.shade50,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('You Lent (They owe you)',
+                                    style: TextStyle(fontSize: 12, color: Colors.green)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '₹${NumberFormat('#,##,##0').format(totalLent)}',
+                                  style: const TextStyle(
+                                      fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Card(
+                          color: Colors.red.shade50,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('You Borrowed (You owe)',
+                                    style: TextStyle(fontSize: 12, color: Colors.red)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '₹${NumberFormat('#,##,##0').format(totalBorrowed)}',
+                                  style: const TextStyle(
+                                      fontSize: 20, fontWeight: FontWeight.bold, color: Colors.red),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  if (debts.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(24.0),
+                      child: Center(child: Text('No debt or loan records added yet.')),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: debts.length,
+                      itemBuilder: (context, index) {
+                        final debt = debts[index];
+                        final isLent = debt.type == 'lent';
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: debt.isSettled
+                                  ? Colors.grey.withOpacity(0.2)
+                                  : (isLent ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1)),
+                              child: Icon(
+                                debt.isSettled
+                                    ? Icons.check
+                                    : (isLent ? Icons.arrow_upward : Icons.arrow_downward),
+                                color: debt.isSettled ? Colors.grey : (isLent ? Colors.green : Colors.red),
+                              ),
+                            ),
+                            title: Text(
+                              debt.personName,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                decoration: debt.isSettled ? TextDecoration.lineThrough : null,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${isLent ? 'Lent' : 'Borrowed'} • ${DateFormat('MMM d, yyyy').format(debt.date)}${debt.note.isNotEmpty ? ' • ${debt.note}' : ''}',
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '₹${NumberFormat('#,##,##0').format(debt.amount)}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: debt.isSettled ? Colors.grey : (isLent ? Colors.green : Colors.red),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                if (!debt.isSettled)
+                                  ElevatedButton(
+                                    onPressed: () => _showSettleDebtDialog(context, debt, accounts),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    ),
+                                    child: const Text('Settle', style: TextStyle(fontSize: 12)),
+                                  )
+                                else
+                                  const Chip(
+                                    label: Text('Settled', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                                    backgroundColor: Colors.transparent,
+                                  ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.grey, size: 20),
+                                  onPressed: () => _financeService.deleteDebt(debt.id),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ============================================================================
+  // TAB 4: GROUP BILL SPLITTER
+  // ============================================================================
+
+  Widget _buildGroupSplitterTab() {
+    return StreamBuilder<List<GroupEvent>>(
+      stream: _financeService.getGroupEventsStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final groupEvents = snapshot.data ?? [];
+
+        return Scaffold(
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _showAddGroupEventDialog(context),
+            icon: const Icon(Icons.group_add),
+            label: const Text('New Trip / Group'),
+          ),
+          body: groupEvents.isEmpty
+              ? const Center(
+                  child: Text('No group events created. Tap "New Trip / Group" to split expenses!'),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: groupEvents.length,
+                  itemBuilder: (context, index) {
+                    final group = groupEvents[index];
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(16),
+                        title: Text(group.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 6),
+                            Text('Members: ${group.members.join(", ")}'),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Created: ${DateFormat('MMM d, yyyy').format(group.createdAt)}',
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.arrow_forward_ios, size: 16),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.red),
+                              onPressed: () => _financeService.deleteGroupEvent(group.id),
+                            ),
+                          ],
+                        ),
+                        onTap: () => _openGroupEventDetailScreen(context, group),
+                      ),
+                    );
+                  },
+                ),
+        );
+      },
+    );
+  }
+
+  // ============================================================================
+  // DIALOGS & HELPER METHODS
+  // ============================================================================
+
+  IconData _getIconData(String name) {
+    switch (name) {
+      case 'account_balance':
+        return Icons.account_balance;
+      case 'credit_card':
+        return Icons.credit_card;
+      case 'savings':
+        return Icons.savings;
+      case 'payments':
+        return Icons.payments;
+      case 'wallet':
+        return Icons.account_balance_wallet;
+      default:
+        return Icons.account_balance;
+    }
+  }
+
+  void _showAddAccountDialog(BuildContext context) {
+    final nameCtrl = TextEditingController();
+    final balanceCtrl = TextEditingController(text: '0');
+    String selectedType = 'savings';
+    int selectedColor = 0xFF2196F3;
+    String selectedIcon = 'account_balance';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Bank Account / Wallet'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Account Name (e.g. HDFC Salary, SBI, Cash)'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: selectedType,
+                decoration: const InputDecoration(labelText: 'Account Type'),
+                items: const [
+                  DropdownMenuItem(value: 'salary', child: Text('Salary Account')),
+                  DropdownMenuItem(value: 'savings', child: Text('Savings Account')),
+                  DropdownMenuItem(value: 'spending', child: Text('Daily Spending Account')),
+                  DropdownMenuItem(value: 'cash', child: Text('Physical Cash / Wallet')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (val) => selectedType = val ?? 'savings',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: balanceCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Starting Balance (₹)'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              if (nameCtrl.text.trim().isEmpty) return;
+              final bal = double.tryParse(balanceCtrl.text.trim()) ?? 0.0;
+
+              _financeService.addAccount(BankAccount(
+                id: '',
+                name: nameCtrl.text.trim(),
+                accountType: selectedType,
+                initialBalance: bal,
+                currentBalance: bal,
+                colorHex: selectedColor,
+                iconName: selectedIcon,
+                updatedAt: DateTime.now(),
+              ));
+              Navigator.pop(context);
+            },
+            child: const Text('Add Account'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddTransactionDialog(BuildContext context, List<BankAccount> accounts) {
+    final amountCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
+    String selectedAccountId = accounts.first.id;
+    String type = 'expense';
+    String category = 'General';
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add Transaction'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Text('Expense (-)', textAlign: TextAlign.center),
+                        selected: type == 'expense',
+                        selectedColor: Colors.red.shade100,
+                        onSelected: (val) => setDialogState(() => type = 'expense'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Text('Income (+)', textAlign: TextAlign.center),
+                        selected: type == 'income',
+                        selectedColor: Colors.green.shade100,
+                        onSelected: (val) => setDialogState(() => type = 'income'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedAccountId,
+                  decoration: const InputDecoration(labelText: 'Select Account'),
+                  items: accounts
+                      .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name)))
+                      .toList(),
+                  onChanged: (val) => selectedAccountId = val!,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Amount (₹)'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteCtrl,
+                  decoration: const InputDecoration(labelText: 'Note / Reason (e.g., Dad gave money, Gas bill)'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+                if (amt <= 0) return;
+
+                _financeService.addTransaction(FinanceTransaction(
+                  id: '',
+                  accountId: selectedAccountId,
+                  type: type,
+                  amount: amt,
+                  category: category,
+                  note: noteCtrl.text.trim(),
+                  timestamp: DateTime.now(),
+                ));
+                Navigator.pop(context);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddBillDialog(BuildContext context) {
+    final titleCtrl = TextEditingController();
+    final amountCtrl = TextEditingController();
+    final notesCtrl = TextEditingController();
+    DateTime dueDate = DateTime.now().add(const Duration(days: 7));
+    String frequency = 'monthly';
+    String category = 'Utilities';
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add Recurring Bill / Subscription'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(labelText: 'Title (e.g. Broadband, Rent, Netflix)'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Amount (₹)'),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  title: Text('Due Date: ${DateFormat('MMM d, yyyy').format(dueDate)}'),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: dueDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+                    );
+                    if (picked != null) {
+                      setDialogState(() => dueDate = picked);
+                    }
+                  },
+                ),
+                DropdownButtonFormField<String>(
+                  initialValue: frequency,
+                  decoration: const InputDecoration(labelText: 'Frequency'),
+                  items: const [
+                    DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
+                    DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
+                    DropdownMenuItem(value: 'yearly', child: Text('Yearly')),
+                  ],
+                  onChanged: (val) => frequency = val ?? 'monthly',
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                if (titleCtrl.text.trim().isEmpty) return;
+                final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+
+                _financeService.addBill(RecurringBill(
+                  id: '',
+                  title: titleCtrl.text.trim(),
+                  amount: amt,
+                  category: category,
+                  dueDate: dueDate,
+                  frequency: frequency,
+                  notes: notesCtrl.text.trim(),
+                ));
+                Navigator.pop(context);
+              },
+              child: const Text('Add Bill'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddDebtDialog(BuildContext context, List<BankAccount> accounts) {
+    final nameCtrl = TextEditingController();
+    final amountCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
+    String type = 'lent'; // 'lent' (they owe me) or 'borrowed' (I owe them)
+    String? selectedAccountId = accounts.isNotEmpty ? accounts.first.id : null;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add Debt / Loan Record'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Text('I Lent Money\n(They owe me)', textAlign: TextAlign.center),
+                        selected: type == 'lent',
+                        selectedColor: Colors.green.shade100,
+                        onSelected: (val) => setDialogState(() => type = 'lent'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Text('I Borrowed\n(I owe them)', textAlign: TextAlign.center),
+                        selected: type == 'borrowed',
+                        selectedColor: Colors.red.shade100,
+                        onSelected: (val) => setDialogState(() => type = 'borrowed'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Person Name (e.g. Rahul, Dad, Friend)'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Amount (₹)'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteCtrl,
+                  decoration: const InputDecoration(labelText: 'Note (e.g., Dinner split, Emergency loan)'),
+                ),
+                const SizedBox(height: 12),
+                if (accounts.isNotEmpty)
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedAccountId,
+                    decoration: const InputDecoration(labelText: 'Deduct/Add to Account (Optional)'),
+                    items: accounts
+                        .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name)))
+                        .toList(),
+                    onChanged: (val) => selectedAccountId = val,
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                if (nameCtrl.text.trim().isEmpty) return;
+                final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+                if (amt <= 0) return;
+
+                _financeService.addDebt(DebtRecord(
+                  id: '',
+                  personName: nameCtrl.text.trim(),
+                  type: type,
+                  amount: amt,
+                  note: noteCtrl.text.trim(),
+                  date: DateTime.now(),
+                  accountId: selectedAccountId,
+                ));
+                Navigator.pop(context);
+              },
+              child: const Text('Save Record'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSettleDebtDialog(BuildContext context, DebtRecord debt, List<BankAccount> accounts) {
+    String? selectedAccountId = accounts.isNotEmpty ? accounts.first.id : null;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Settle Up with ${debt.personName}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              debt.type == 'lent'
+                  ? 'Mark ₹${debt.amount} as paid back by ${debt.personName}?'
+                  : 'Mark ₹${debt.amount} as paid to ${debt.personName}?',
+              style: const TextStyle(fontSize: 15),
+            ),
+            const SizedBox(height: 16),
+            if (accounts.isNotEmpty)
+              DropdownButtonFormField<String>(
+                initialValue: selectedAccountId,
+                decoration: const InputDecoration(labelText: 'Deposit/Deduct Account'),
+                items: accounts
+                    .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name)))
+                    .toList(),
+                onChanged: (val) => selectedAccountId = val,
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              _financeService.settleDebt(debt, selectedAccountId ?? '');
+              Navigator.pop(context);
+            },
+            child: const Text('Confirm Settlement'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddGroupEventDialog(BuildContext context) {
+    final titleCtrl = TextEditingController();
+    final membersCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create New Trip / Group Event'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleCtrl,
+              decoration: const InputDecoration(labelText: 'Event Name (e.g. Goa Trip, Team Dinner)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: membersCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Member Names (comma separated)',
+                hintText: 'e.g. Roshan, Rahul, Vikas, Priya',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              if (titleCtrl.text.trim().isEmpty) return;
+              final rawMembers = membersCtrl.text.split(',');
+              final members = rawMembers.map((m) => m.trim()).where((m) => m.isNotEmpty).toList();
+
+              if (members.isEmpty) return;
+
+              _financeService.addGroupEvent(GroupEvent(
+                id: '',
+                title: titleCtrl.text.trim(),
+                members: members,
+                createdAt: DateTime.now(),
+              ));
+              Navigator.pop(context);
+            },
+            child: const Text('Create Event'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openGroupEventDetailScreen(BuildContext context, GroupEvent group) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => GroupEventDetailScreen(group: group)),
+    );
+  }
+}
+
+// ============================================================================
+// GROUP EVENT DETAIL SCREEN (WHO OWES WHOM & EXPENSES)
+// ============================================================================
+
+class GroupEventDetailScreen extends StatefulWidget {
+  final GroupEvent group;
+  const GroupEventDetailScreen({super.key, required this.group});
+
+  @override
+  State<GroupEventDetailScreen> createState() => _GroupEventDetailScreenState();
+}
+
+class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
+  final FinanceService _financeService = FinanceService();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.group.title),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddExpenseDialog(context),
+        icon: const Icon(Icons.receipt),
+        label: const Text('Add Expense'),
+      ),
+      body: StreamBuilder<List<GroupExpense>>(
+        stream: _financeService.getGroupExpensesStream(widget.group.id),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final expenses = snapshot.data ?? [];
+          final settlements = _financeService.calculateGroupBalances(widget.group.members, expenses);
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // Members list
+              Wrap(
+                spacing: 8,
+                children: widget.group.members
+                    .map((m) => Chip(
+                          avatar: CircleAvatar(child: Text(m[0].toUpperCase())),
+                          label: Text(m),
+                        ))
+                    .toList(),
+              ),
+              const SizedBox(height: 16),
+
+              // Settlement Matrix (Who Owes Whom)
+              Card(
+                color: Colors.orange.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.swap_horiz, color: Colors.orange),
+                          SizedBox(width: 8),
+                          Text('Settlement Matrix (Who Owes Whom)',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (settlements.isEmpty)
+                        const Text('All settled up! No pending balances in this group.')
+                      else
+                        Column(
+                          children: settlements
+                              .map((s) => Container(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          '${s.fromPerson} owes ${s.toPerson}',
+                                          style: const TextStyle(fontWeight: FontWeight.w600),
+                                        ),
+                                        Text(
+                                          '₹${NumberFormat('#,##,##0.00').format(s.amount)}',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold, color: Colors.orange),
+                                        ),
+                                      ],
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              const Text('Expenses Log', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+
+              if (expenses.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(child: Text('No group expenses added yet.')),
+                )
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: expenses.length,
+                  itemBuilder: (context, index) {
+                    final exp = expenses[index];
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        title: Text(exp.description, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(
+                          'Paid by ${exp.payerName} • Split among ${exp.involvedMembers.join(", ")}',
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '₹${NumberFormat('#,##,##0').format(exp.amount)}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                              onPressed: () => _financeService.deleteGroupExpense(exp.id),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showAddExpenseDialog(BuildContext context) {
+    final descCtrl = TextEditingController();
+    final amountCtrl = TextEditingController();
+    String payer = widget.group.members.first;
+    final Set<String> selectedInvolved = Set.from(widget.group.members);
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add Group Expense'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: descCtrl,
+                  decoration: const InputDecoration(labelText: 'Expense Description (e.g. Dinner, Fuel)'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Total Amount (₹)'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: payer,
+                  decoration: const InputDecoration(labelText: 'Paid By'),
+                  items: widget.group.members
+                      .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                      .toList(),
+                  onChanged: (val) => payer = val!,
+                ),
+                const SizedBox(height: 12),
+                const Text('Split Among:', style: TextStyle(fontWeight: FontWeight.bold)),
+                ...widget.group.members.map(
+                  (m) => CheckboxListTile(
+                    title: Text(m),
+                    value: selectedInvolved.contains(m),
+                    onChanged: (checked) {
+                      setDialogState(() {
+                        if (checked == true) {
+                          selectedInvolved.add(m);
+                        } else {
+                          selectedInvolved.remove(m);
+                        }
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                if (descCtrl.text.trim().isEmpty) return;
+                final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+                if (amt <= 0 || selectedInvolved.isEmpty) return;
+
+                _financeService.addGroupExpense(GroupExpense(
+                  id: '',
+                  groupId: widget.group.id,
+                  description: descCtrl.text.trim(),
+                  amount: amt,
+                  payerName: payer,
+                  involvedMembers: selectedInvolved.toList(),
+                  date: DateTime.now(),
+                ));
+                Navigator.pop(context);
+              },
+              child: const Text('Add Expense'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

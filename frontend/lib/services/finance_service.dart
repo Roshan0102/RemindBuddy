@@ -1,0 +1,434 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../models/bank_account.dart';
+import '../models/finance_transaction.dart';
+import '../models/recurring_bill.dart';
+import '../models/debt_record.dart';
+import '../models/group_split.dart';
+
+class FinanceService {
+  static final FinanceService _instance = FinanceService._internal();
+  factory FinanceService() => _instance;
+  FinanceService._internal();
+
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  String? get _uid => FirebaseAuth.instance.currentUser?.uid;
+
+  DocumentReference? get _userDoc {
+    final uid = _uid;
+    if (uid == null) return null;
+    return _db.collection('users').doc(uid);
+  }
+
+  // ============================================================================
+  // BANK ACCOUNTS
+  // ============================================================================
+
+  Stream<List<BankAccount>> getAccountsStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    return doc
+        .collection('finance_accounts')
+        .orderBy('updatedAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => BankAccount.fromMap(d.data(), d.id)).toList());
+  }
+
+  Future<void> addAccount(BankAccount account) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final ref = doc.collection('finance_accounts').doc();
+    final newAccount = BankAccount(
+      id: ref.id,
+      name: account.name,
+      accountType: account.accountType,
+      initialBalance: account.initialBalance,
+      currentBalance: account.initialBalance, // Start with initial balance
+      colorHex: account.colorHex,
+      iconName: account.iconName,
+      updatedAt: DateTime.now(),
+    );
+    await ref.set(newAccount.toMap());
+  }
+
+  Future<void> updateAccount(BankAccount account) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('finance_accounts').doc(account.id).update(account.toMap());
+  }
+
+  Future<void> deleteAccount(String accountId) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('finance_accounts').doc(accountId).delete();
+  }
+
+  // ============================================================================
+  // TRANSACTIONS
+  // ============================================================================
+
+  Stream<List<FinanceTransaction>> getTransactionsStream({String? accountId}) {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    Query query = doc.collection('finance_transactions').orderBy('timestamp', descending: true);
+    if (accountId != null && accountId.isNotEmpty) {
+      query = query.where('accountId', isEqualTo: accountId);
+    }
+
+    return query.snapshots().map(
+        (snap) => snap.docs.map((d) => FinanceTransaction.fromMap(d.data() as Map<String, dynamic>, d.id)).toList());
+  }
+
+  Future<void> addTransaction(FinanceTransaction tx) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final batch = _db.batch();
+    final txRef = doc.collection('finance_transactions').doc();
+    
+    batch.set(txRef, tx.toMap());
+
+    // Update account balance
+    final accountRef = doc.collection('finance_accounts').doc(tx.accountId);
+    final accountSnap = await accountRef.get();
+    if (accountSnap.exists) {
+      final account = BankAccount.fromMap(accountSnap.data() as Map<String, dynamic>, accountSnap.id);
+      final double delta = tx.type == 'income' ? tx.amount : -tx.amount;
+      final double newBal = account.currentBalance + delta;
+
+      batch.update(accountRef, {
+        'currentBalance': newBal,
+        'updatedAt': Timestamp.fromDate(DateTime.now()),
+      });
+    }
+
+    await batch.commit();
+  }
+
+  Future<void> deleteTransaction(FinanceTransaction tx) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final batch = _db.batch();
+    batch.delete(doc.collection('finance_transactions').doc(tx.id));
+
+    // Reverse balance change
+    final accountRef = doc.collection('finance_accounts').doc(tx.accountId);
+    final accountSnap = await accountRef.get();
+    if (accountSnap.exists) {
+      final account = BankAccount.fromMap(accountSnap.data() as Map<String, dynamic>, accountSnap.id);
+      final double delta = tx.type == 'income' ? -tx.amount : tx.amount;
+      final double newBal = account.currentBalance + delta;
+
+      batch.update(accountRef, {
+        'currentBalance': newBal,
+        'updatedAt': Timestamp.fromDate(DateTime.now()),
+      });
+    }
+
+    await batch.commit();
+  }
+
+  // ============================================================================
+  // RECURRING BILLS & SUBSCRIPTIONS
+  // ============================================================================
+
+  Stream<List<RecurringBill>> getBillsStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    return doc
+        .collection('finance_bills')
+        .orderBy('dueDate', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => RecurringBill.fromMap(d.data(), d.id)).toList());
+  }
+
+  Future<void> addBill(RecurringBill bill) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final ref = doc.collection('finance_bills').doc();
+    final newBill = RecurringBill(
+      id: ref.id,
+      title: bill.title,
+      amount: bill.amount,
+      category: bill.category,
+      dueDate: bill.dueDate,
+      frequency: bill.frequency,
+      accountId: bill.accountId,
+      isActive: bill.isActive,
+      notes: bill.notes,
+    );
+    await ref.set(newBill.toMap());
+  }
+
+  Future<void> updateBill(RecurringBill bill) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('finance_bills').doc(bill.id).update(bill.toMap());
+  }
+
+  Future<void> deleteBill(String billId) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('finance_bills').doc(billId).delete();
+  }
+
+  // ============================================================================
+  // LENT & BORROWED DEBTS
+  // ============================================================================
+
+  Stream<List<DebtRecord>> getDebtsStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    return doc
+        .collection('finance_debts')
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => DebtRecord.fromMap(d.data(), d.id)).toList());
+  }
+
+  Future<void> addDebt(DebtRecord debt, {bool updateAccountBalance = true}) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final batch = _db.batch();
+    final debtRef = doc.collection('finance_debts').doc();
+    batch.set(debtRef, debt.toMap());
+
+    // If linked to an account and updateAccountBalance is true:
+    // 'lent' = money left account (-amount, logged as expense/lent)
+    // 'borrowed' = money came into account (+amount, logged as income/borrowed)
+    if (updateAccountBalance && debt.accountId != null && debt.accountId!.isNotEmpty) {
+      final accountRef = doc.collection('finance_accounts').doc(debt.accountId);
+      final accountSnap = await accountRef.get();
+      if (accountSnap.exists) {
+        final account = BankAccount.fromMap(accountSnap.data() as Map<String, dynamic>, accountSnap.id);
+        final double delta = debt.type == 'lent' ? -debt.amount : debt.amount;
+        final double newBal = account.currentBalance + delta;
+        batch.update(accountRef, {
+          'currentBalance': newBal,
+          'updatedAt': Timestamp.fromDate(DateTime.now()),
+        });
+
+        // Also add a transaction record
+        final txRef = doc.collection('finance_transactions').doc();
+        final tx = FinanceTransaction(
+          id: txRef.id,
+          accountId: debt.accountId!,
+          type: debt.type == 'lent' ? 'expense' : 'income',
+          amount: debt.amount,
+          category: 'Debt / Loan',
+          note: debt.type == 'lent'
+              ? 'Lent to ${debt.personName}: ${debt.note}'
+              : 'Borrowed from ${debt.personName}: ${debt.note}',
+          timestamp: debt.date,
+        );
+        batch.set(txRef, tx.toMap());
+      }
+    }
+
+    await batch.commit();
+  }
+
+  Future<void> settleDebt(DebtRecord debt, String targetAccountId) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final batch = _db.batch();
+    final debtRef = doc.collection('finance_debts').doc(debt.id);
+    batch.update(debtRef, {'isSettled': true});
+
+    // If settling:
+    // 'lent' (they owed me, now paid back) = money comes INTO target account (+amount)
+    // 'borrowed' (I owed them, now I paid) = money leaves target account (-amount)
+    if (targetAccountId.isNotEmpty) {
+      final accountRef = doc.collection('finance_accounts').doc(targetAccountId);
+      final accountSnap = await accountRef.get();
+      if (accountSnap.exists) {
+        final account = BankAccount.fromMap(accountSnap.data() as Map<String, dynamic>, accountSnap.id);
+        final double delta = debt.type == 'lent' ? debt.amount : -debt.amount;
+        final double newBal = account.currentBalance + delta;
+        batch.update(accountRef, {
+          'currentBalance': newBal,
+          'updatedAt': Timestamp.fromDate(DateTime.now()),
+        });
+
+        // Log transaction for settlement
+        final txRef = doc.collection('finance_transactions').doc();
+        final tx = FinanceTransaction(
+          id: txRef.id,
+          accountId: targetAccountId,
+          type: debt.type == 'lent' ? 'income' : 'expense',
+          amount: debt.amount,
+          category: 'Debt Settlement',
+          note: debt.type == 'lent'
+              ? 'Settled: ${debt.personName} paid back'
+              : 'Settled: Paid back to ${debt.personName}',
+          timestamp: DateTime.now(),
+        );
+        batch.set(txRef, tx.toMap());
+      }
+    }
+
+    await batch.commit();
+  }
+
+  Future<void> deleteDebt(String debtId) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('finance_debts').doc(debtId).delete();
+  }
+
+  // ============================================================================
+  // GROUP BILL SPLITTING
+  // ============================================================================
+
+  Stream<List<GroupEvent>> getGroupEventsStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    return doc
+        .collection('finance_group_events')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => GroupEvent.fromMap(d.data(), d.id)).toList());
+  }
+
+  Future<void> addGroupEvent(GroupEvent event) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final ref = doc.collection('finance_group_events').doc();
+    final newEvent = GroupEvent(
+      id: ref.id,
+      title: event.title,
+      members: event.members,
+      createdAt: DateTime.now(),
+    );
+    await ref.set(newEvent.toMap());
+  }
+
+  Future<void> deleteGroupEvent(String eventId) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final batch = _db.batch();
+    batch.delete(doc.collection('finance_group_events').doc(eventId));
+
+    // Also delete all expenses in this group
+    final expSnap = await doc.collection('finance_group_expenses').where('groupId', isEqualTo: eventId).get();
+    for (final expDoc in expSnap.docs) {
+      batch.delete(expDoc.reference);
+    }
+
+    await batch.commit();
+  }
+
+  Stream<List<GroupExpense>> getGroupExpensesStream(String groupId) {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    return doc
+        .collection('finance_group_expenses')
+        .where('groupId', isEqualTo: groupId)
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => GroupExpense.fromMap(d.data(), d.id)).toList());
+  }
+
+  Future<void> addGroupExpense(GroupExpense expense) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final ref = doc.collection('finance_group_expenses').doc();
+    final newExp = GroupExpense(
+      id: ref.id,
+      groupId: expense.groupId,
+      description: expense.description,
+      amount: expense.amount,
+      payerName: expense.payerName,
+      involvedMembers: expense.involvedMembers,
+      date: expense.date,
+    );
+    await ref.set(newExp.toMap());
+  }
+
+  Future<void> deleteGroupExpense(String expenseId) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('finance_group_expenses').doc(expenseId).delete();
+  }
+
+  /// Calculates net balances for members in a group and computes optimal settlements.
+  List<GroupSettlement> calculateGroupBalances(List<String> members, List<GroupExpense> expenses) {
+    final Map<String, double> netMap = {};
+    for (final m in members) {
+      netMap[m] = 0.0;
+    }
+
+    for (final exp in expenses) {
+      if (exp.involvedMembers.isEmpty || exp.amount <= 0) continue;
+
+      final double splitAmount = exp.amount / exp.involvedMembers.length;
+      
+      // Each involved member owes splitAmount
+      for (final member in exp.involvedMembers) {
+        netMap[member] = (netMap[member] ?? 0.0) - splitAmount;
+      }
+
+      // Payer is credited the full amount
+      netMap[exp.payerName] = (netMap[exp.payerName] ?? 0.0) + exp.amount;
+    }
+
+    // Separate debtors (< 0) and creditors (> 0)
+    final List<MapEntry<String, double>> debtors = [];
+    final List<MapEntry<String, double>> creditors = [];
+
+    netMap.forEach((person, net) {
+      if (net < -0.01) {
+        debtors.add(MapEntry(person, -net)); // store as positive debt amount
+      } else if (net > 0.01) {
+        creditors.add(MapEntry(person, net));
+      }
+    });
+
+    final List<GroupSettlement> settlements = [];
+
+    int dIdx = 0;
+    int cIdx = 0;
+
+    while (dIdx < debtors.length && cIdx < creditors.length) {
+      final debtor = debtors[dIdx];
+      final creditor = creditors[cIdx];
+
+      final double settleAmt = debtor.value < creditor.value ? debtor.value : creditor.value;
+
+      settlements.add(GroupSettlement(
+        fromPerson: debtor.key,
+        toPerson: creditor.key,
+        amount: settleAmt,
+      ));
+
+      debtors[dIdx] = MapEntry(debtor.key, debtor.value - settleAmt);
+      creditors[cIdx] = MapEntry(creditor.key, creditor.value - settleAmt);
+
+      if (debtors[dIdx].value < 0.01) dIdx++;
+      if (creditors[cIdx].value < 0.01) cIdx++;
+    }
+
+    return settlements;
+  }
+}

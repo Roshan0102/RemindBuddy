@@ -26,6 +26,7 @@ import '../services/update_service.dart';
 import 'voice_assistant_screen.dart';
 import 'astro_calendar_screen.dart';
 import 'gcp_cost_screen.dart';
+import 'finance_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../main.dart';
 
@@ -419,6 +420,15 @@ class _MainScreenState extends State<MainScreen> {
         label: 'GCP Cost',
       ),
     },
+    'finance': {
+      'screen': const FinanceScreen(),
+      'name': 'Finance',
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.account_balance_wallet_outlined, color: Colors.teal),
+        selectedIcon: Icon(Icons.account_balance_wallet, color: Colors.teal),
+        label: 'Finance',
+      ),
+    },
   };
 
   List<String> get _activeFeatures {
@@ -794,6 +804,13 @@ class _MainScreenState extends State<MainScreen> {
                   'color': Colors.green,
                   'action': () => _selectTabOrPush('gcp_cost'),
                 },
+              {
+                'id': 'finance',
+                'name': 'Finance',
+                'icon': Icons.account_balance_wallet_outlined,
+                'color': Colors.teal,
+                'action': () => _selectTabOrPush('finance'),
+              },
               if (_enabledModules.contains('voice_assistant'))
                 {
                   'id': 'voice_assistant',
