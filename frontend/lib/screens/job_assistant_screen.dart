@@ -141,13 +141,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     try {
       FilePickerResult? result;
       try {
-        result = await FilePicker.platform.pickFiles(
+        result = await FilePicker.pickFiles(
           type: FileType.custom,
           allowedExtensions: ['pdf'],
           withData: true,
         );
       } catch (_) {
-        result = await FilePicker.platform.pickFiles(
+        result = await FilePicker.pickFiles(
           type: FileType.any,
           withData: true,
         );
@@ -194,7 +194,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     try {
       FilePickerResult? result;
       try {
-        result = await FilePicker.platform.pickFiles(
+        result = await FilePicker.pickFiles(
           type: FileType.image,
           allowMultiple: true,
           withData: true,
@@ -216,7 +216,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             return;
           }
         } catch (_) {
-          result = await FilePicker.platform.pickFiles(
+          result = await FilePicker.pickFiles(
             type: FileType.any,
             allowMultiple: true,
             withData: true,

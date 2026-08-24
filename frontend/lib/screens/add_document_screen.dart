@@ -125,13 +125,13 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     try {
       FilePickerResult? result;
       try {
-        result = await FilePicker.platform.pickFiles(
+        result = await FilePicker.pickFiles(
           type: FileType.custom,
           allowedExtensions: ['pdf'],
           withData: true,
         );
       } catch (_) {
-        result = await FilePicker.platform.pickFiles(
+        result = await FilePicker.pickFiles(
           type: FileType.any,
           withData: true,
         );
