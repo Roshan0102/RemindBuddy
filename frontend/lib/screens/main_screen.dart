@@ -28,6 +28,7 @@ import 'astro_calendar_screen.dart';
 import 'gcp_cost_screen.dart';
 import 'finance_screen.dart';
 import 'job_assistant_screen.dart';
+import 'all_features_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../main.dart';
 
@@ -41,7 +42,21 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   bool _isDarkMode = false;
-  List<String> _enabledModules = ['gold'];
+  List<String> _enabledModules = [
+    'gold',
+    'reminders',
+    'notes',
+    'shifts',
+    'vault',
+    'astro_calendar',
+    'gcp_cost',
+    'finance',
+    'job_assistant',
+    'daily_reminders',
+    'events',
+    'walkins',
+    'voice_assistant',
+  ];
   List<String> _userSelectedBottomModules = [];
   List<String> _userMenuOrder = [];
   bool _isLoading = true;
@@ -348,7 +363,18 @@ class _MainScreenState extends State<MainScreen> {
     themeNotifier.value = _isDarkMode ? ThemeMode.dark : ThemeMode.light;
   }
 
+
+
   final Map<String, Map<String, dynamic>> _moduleRegistry = {
+    'menu': {
+      'screen': const SizedBox(),
+      'name': 'Menu (All Apps)',
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.grid_view_outlined, color: Colors.blueAccent),
+        selectedIcon: Icon(Icons.grid_view, color: Colors.blueAccent),
+        label: 'Menu',
+      ),
+    },
     'gold': {
       'screen': const GoldScreen(),
       'name': 'Gold Rates',
@@ -446,15 +472,8 @@ class _MainScreenState extends State<MainScreen> {
         .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled) && (!kIsWeb || id != 'checklist'))
         .toList();
 
-    final activeUserSelected = _userSelectedBottomModules
-        .where((id) => adminEnabled.contains(id))
-        .toList();
-
-    final List<String> result = [];
-    result.addAll(activeUserSelected);
-
+    final List<String> result = ['menu'];
     for (var id in adminEnabled) {
-      if (result.length >= 4) break;
       if (!result.contains(id)) {
         result.add(id);
       }
@@ -576,6 +595,26 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _selectTabOrPush(String id) {
+    if (id == 'daily_reminders') {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const DailyRemindersScreen()));
+      return;
+    } else if (id == 'events') {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)));
+      return;
+    } else if (id == 'walkins') {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)));
+      return;
+    } else if (id == 'voice_assistant') {
+      _openVoiceAssistant();
+      return;
+    } else if (id == 'notifications') {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationHistoryScreen()));
+      return;
+    } else if (id == 'settings') {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+      return;
+    }
+
     final active = _activeFeatures;
     final idx = active.indexOf(id);
     if (idx != -1) {
@@ -1314,11 +1353,7 @@ class _MainScreenState extends State<MainScreen> {
     final double screenWidth = MediaQuery.of(context).size.width;
     final bool isLargeScreen = screenWidth >= 768;
 
-    final activeModules = isLargeScreen
-        ? _enabledModules
-            .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled) && (!kIsWeb || id != 'checklist'))
-            .toList()
-        : _activeFeatures;
+    final activeModules = _activeFeatures;
 
     if (_selectedIndex >= activeModules.length) {
       _selectedIndex = 0;
@@ -1328,7 +1363,12 @@ class _MainScreenState extends State<MainScreen> {
     final mainBody = IndexedStack(
       index: displayIndex,
       children: activeModules
-          .map((id) => _moduleRegistry[id]!['screen'] as Widget)
+          .map((id) {
+            if (id == 'menu') {
+              return AllFeaturesScreen(onSelectFeature: (featureId) => _selectTabOrPush(featureId));
+            }
+            return _moduleRegistry[id]!['screen'] as Widget;
+          })
           .toList(),
     );
 
