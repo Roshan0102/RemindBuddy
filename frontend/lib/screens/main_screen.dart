@@ -366,15 +366,6 @@ class _MainScreenState extends State<MainScreen> {
 
 
   final Map<String, Map<String, dynamic>> _moduleRegistry = {
-    'menu': {
-      'screen': const SizedBox(),
-      'name': 'Menu (All Apps)',
-      'destination': const NavigationDestination(
-        icon: Icon(Icons.grid_view_outlined, color: Colors.blueAccent),
-        selectedIcon: Icon(Icons.grid_view, color: Colors.blueAccent),
-        label: 'Menu',
-      ),
-    },
     'gold': {
       'screen': const GoldScreen(),
       'name': 'Gold Rates',
@@ -472,8 +463,15 @@ class _MainScreenState extends State<MainScreen> {
         .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled) && (!kIsWeb || id != 'checklist'))
         .toList();
 
-    final List<String> result = ['menu'];
+    final activeUserSelected = _userSelectedBottomModules
+        .where((id) => adminEnabled.contains(id))
+        .toList();
+
+    final List<String> result = [];
+    result.addAll(activeUserSelected);
+
     for (var id in adminEnabled) {
+      if (result.length >= 4) break;
       if (!result.contains(id)) {
         result.add(id);
       }
@@ -852,6 +850,14 @@ class _MainScreenState extends State<MainScreen> {
                   'icon': Icons.account_balance_wallet,
                   'color': Colors.green,
                   'action': () => _selectTabOrPush('gcp_cost'),
+                },
+              if (_enabledModules.contains('job_assistant'))
+                {
+                  'id': 'job_assistant',
+                  'name': 'AI Job Assistant',
+                  'icon': Icons.work_outline,
+                  'color': Colors.blueAccent,
+                  'action': () => _selectTabOrPush('job_assistant'),
                 },
               {
                 'id': 'finance',
@@ -1363,12 +1369,7 @@ class _MainScreenState extends State<MainScreen> {
     final mainBody = IndexedStack(
       index: displayIndex,
       children: activeModules
-          .map((id) {
-            if (id == 'menu') {
-              return AllFeaturesScreen(onSelectFeature: (featureId) => _selectTabOrPush(featureId));
-            }
-            return _moduleRegistry[id]!['screen'] as Widget;
-          })
+          .map((id) => _moduleRegistry[id]!['screen'] as Widget)
           .toList(),
     );
 
