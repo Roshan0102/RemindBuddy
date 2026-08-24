@@ -24,6 +24,18 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   bool _isAnalyzing = false;
   List<JobApplication> _extractedJobs = [];
 
+  // Screenshot Custom Prompt
+  final TextEditingController _customScreenshotPromptController = TextEditingController();
+
+  // Manual Job Application Entry State & Controllers
+  final TextEditingController _manualCompanyNameController = TextEditingController();
+  final TextEditingController _manualJobTitleController = TextEditingController();
+  final TextEditingController _manualCompanyUrlController = TextEditingController();
+  final TextEditingController _manualRecipientEmailsController = TextEditingController();
+  final TextEditingController _manualCompanyNotesController = TextEditingController();
+  final TextEditingController _manualCustomPromptController = TextEditingController();
+  bool _isGeneratingManual = false;
+
   // Controllers & AI Refinement state per job card
   final Map<int, TextEditingController> _emailControllers = {};
   final Map<int, TextEditingController> _subjectControllers = {};
@@ -58,6 +70,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     _tabController.dispose();
     _newAppScrollController.dispose();
     _historyScrollController.dispose();
+    _customScreenshotPromptController.dispose();
+    _manualCompanyNameController.dispose();
+    _manualJobTitleController.dispose();
+    _manualCompanyUrlController.dispose();
+    _manualRecipientEmailsController.dispose();
+    _manualCompanyNotesController.dispose();
+    _manualCustomPromptController.dispose();
     for (var c in _emailControllers.values) { c.dispose(); }
     for (var c in _subjectControllers.values) { c.dispose(); }
     for (var c in _bodyControllers.values) { c.dispose(); }
@@ -300,7 +319,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     });
 
     try {
-      final jobs = await _service.parseJobPostersWithAI(_selectedImagesBase64, _uploadMode);
+      final customPrompt = _customScreenshotPromptController.text.trim();
+      final jobs = await _service.parseJobPostersWithAI(
+        _selectedImagesBase64,
+        _uploadMode,
+        customPrompt: customPrompt.isEmpty ? null : customPrompt,
+      );
       setState(() {
         _extractedJobs = jobs;
         _isAnalyzing = false;
@@ -320,6 +344,57 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error analyzing posters: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _generateManualJobApplicationWithAI() async {
+    final companyName = _manualCompanyNameController.text.trim();
+    final jobTitle = _manualJobTitleController.text.trim();
+    final companyUrl = _manualCompanyUrlController.text.trim();
+    final recipientEmails = _manualRecipientEmailsController.text.trim();
+    final companyNotes = _manualCompanyNotesController.text.trim();
+    final customPrompt = _manualCustomPromptController.text.trim();
+
+    if (companyName.isEmpty || jobTitle.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter Company Name and Job Role Title.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isGeneratingManual = true;
+    });
+
+    try {
+      final newJob = await _service.generateManualJobApplicationWithAI(
+        companyName: companyName,
+        jobTitle: jobTitle,
+        companyUrl: companyUrl.isEmpty ? null : companyUrl,
+        recipientEmails: recipientEmails.isEmpty ? null : recipientEmails,
+        companyNotes: companyNotes.isEmpty ? null : companyNotes,
+        customPrompt: customPrompt.isEmpty ? null : customPrompt,
+      );
+
+      setState(() {
+        _extractedJobs.insert(0, newJob);
+        _isGeneratingManual = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Generated application for $jobTitle at $companyName with Gemini AI!')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isGeneratingManual = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating application: $e')),
         );
       }
     }
@@ -582,107 +657,133 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             // Upload Mode Choice
             const Text('Upload Mode Strategy:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
             const SizedBox(height: 8),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Expanded(
-                  child: ChoiceChip(
-                    label: const Text('📄 1 Job (Multi-page)'),
-                    selected: _uploadMode == 'single_job',
-                    selectedColor: Colors.blue.shade100,
-                    onSelected: (val) {
-                      if (val) setState(() => _uploadMode = 'single_job');
-                    },
-                  ),
+                ChoiceChip(
+                  label: const Text('📄 1 Job (Multi-page Screenshot)'),
+                  selected: _uploadMode == 'single_job',
+                  selectedColor: Colors.blue.shade100,
+                  onSelected: (val) {
+                    if (val) setState(() => _uploadMode = 'single_job');
+                  },
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ChoiceChip(
-                    label: const Text('📁 Multiple Separate Jobs'),
-                    selected: _uploadMode == 'multiple_jobs',
-                    selectedColor: Colors.blue.shade100,
-                    onSelected: (val) {
-                      if (val) setState(() => _uploadMode = 'multiple_jobs');
-                    },
-                  ),
+                ChoiceChip(
+                  label: const Text('📁 Multiple Separate Screenshots'),
+                  selected: _uploadMode == 'multiple_jobs',
+                  selectedColor: Colors.blue.shade100,
+                  onSelected: (val) {
+                    if (val) setState(() => _uploadMode = 'multiple_jobs');
+                  },
+                ),
+                ChoiceChip(
+                  label: const Text('✍️ Manual / Website URL (No Screenshot)'),
+                  selected: _uploadMode == 'manual_url',
+                  selectedColor: Colors.purple.shade100,
+                  onSelected: (val) {
+                    if (val) setState(() => _uploadMode = 'manual_url');
+                  },
                 ),
               ],
             ),
             const SizedBox(height: 14),
 
-            // Pick Poster Screenshots Button
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: Colors.grey.shade300),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    if (_selectedImageFiles.isEmpty) ...[
-                      const Icon(Icons.add_a_photo_outlined, size: 48, color: Colors.grey),
-                      const SizedBox(height: 8),
-                      const Text('Select 1 or more Job Poster Screenshots from LinkedIn/Gallery'),
+            // Mode View Content
+            if (_uploadMode == 'manual_url') ...[
+              _buildManualJobEntryForm(),
+            ] else ...[
+              // Pick Poster Screenshots Button
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey.shade300),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      if (_selectedImageFiles.isEmpty) ...[
+                        const Icon(Icons.add_a_photo_outlined, size: 48, color: Colors.grey),
+                        const SizedBox(height: 8),
+                        const Text('Select 1 or more Job Poster Screenshots from LinkedIn/Gallery'),
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: _pickJobPosters,
+                          icon: const Icon(Icons.photo_library),
+                          label: const Text('Select Screenshots'),
+                        ),
+                      ] else ...[
+                        Text('${_selectedImageFiles.length} Screenshot(s) Selected',
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _selectedImageFiles
+                              .map((f) => Chip(
+                                    avatar: const Icon(Icons.image, size: 18),
+                                    label: Text(f.name.length > 15 ? '${f.name.substring(0, 12)}...' : f.name),
+                                    onDeleted: () {
+                                      setState(() {
+                                        final idx = _selectedImageFiles.indexOf(f);
+                                        _selectedImageFiles.removeAt(idx);
+                                        _selectedImagesBase64.removeAt(idx);
+                                      });
+                                    },
+                                  ))
+                              .toList(),
+                        ),
+                      ],
                       const SizedBox(height: 12),
-                      ElevatedButton.icon(
-                        onPressed: _pickJobPosters,
-                        icon: const Icon(Icons.photo_library),
-                        label: const Text('Select Screenshots'),
-                      ),
-                    ] else ...[
-                      Text('${_selectedImageFiles.length} Screenshot(s) Selected',
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _selectedImageFiles
-                            .map((f) => Chip(
-                                  avatar: const Icon(Icons.image, size: 18),
-                                  label: Text(f.name.length > 15 ? '${f.name.substring(0, 12)}...' : f.name),
-                                  onDeleted: () {
-                                    setState(() {
-                                      final idx = _selectedImageFiles.indexOf(f);
-                                      _selectedImageFiles.removeAt(idx);
-                                      _selectedImagesBase64.removeAt(idx);
-                                    });
-                                  },
-                                ))
-                            .toList(),
+
+                      // Optional Custom AI Prompt for Screenshots
+                      TextFormField(
+                        controller: _customScreenshotPromptController,
+                        decoration: const InputDecoration(
+                          labelText: 'Custom AI Instruction for Screenshots (Optional)',
+                          hintText: "e.g., 'Focus only on the DevOps role in image 2', 'Ignore junior roles'",
+                          prefixIcon: Icon(Icons.tune, size: 20),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        style: const TextStyle(fontSize: 12.5),
                       ),
                       const SizedBox(height: 14),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: _pickJobPosters,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add More'),
-                          ),
-                          const SizedBox(width: 12),
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.amber.shade700,
-                              foregroundColor: Colors.white,
+
+                      if (_selectedImageFiles.isNotEmpty)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: _pickJobPosters,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Add More'),
                             ),
-                            onPressed: _isAnalyzing ? null : _analyzePostersWithAI,
-                            icon: _isAnalyzing
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.psychology),
-                            label: Text(_isAnalyzing ? 'Analyzing...' : 'Analyze with Gemini AI'),
-                          ),
-                        ],
-                      ),
+                            const SizedBox(width: 12),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.amber.shade700,
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: _isAnalyzing ? null : _analyzePostersWithAI,
+                              icon: _isAnalyzing
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.psychology),
+                              label: Text(_isAnalyzing ? 'Analyzing...' : 'Analyze with Gemini AI'),
+                            ),
+                          ],
+                        ),
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
+            ],
             const SizedBox(height: 20),
 
             // Extracted Job Application Cards
@@ -708,6 +809,161 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildManualJobEntryForm() {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.purple.shade200),
+      ),
+      color: Colors.purple.shade50.withValues(alpha: 0.3),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.language, color: Colors.purple.shade800),
+                const SizedBox(width: 8),
+                Text(
+                  'Manual / Website URL Job Application Entry',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.purple.shade900),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'No screenshot required. Enter company details, website URL, and role to auto-generate a tailored cover letter with Gemini AI.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const Divider(height: 24),
+
+            // Company Name & Job Title
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _manualCompanyNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Company Name *',
+                      prefixIcon: Icon(Icons.business, size: 20),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: _manualJobTitleController,
+                    decoration: const InputDecoration(
+                      labelText: 'Job Role / Title *',
+                      prefixIcon: Icon(Icons.work_outline, size: 20),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Company URL & Recipient HR Email(s)
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _manualCompanyUrlController,
+                    decoration: const InputDecoration(
+                      labelText: 'Company Website URL (Optional)',
+                      hintText: 'https://company.com',
+                      prefixIcon: Icon(Icons.link, size: 20),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: _manualRecipientEmailsController,
+                    decoration: const InputDecoration(
+                      labelText: 'HR Email ID(s) (Optional)',
+                      hintText: 'careers@company.com, hr@company.com',
+                      prefixIcon: Icon(Icons.email_outlined, size: 20),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Company Context / Notes
+            TextFormField(
+              controller: _manualCompanyNotesController,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Company / Job Notes & Context (Optional)',
+                hintText: "e.g., 'Cloud Infrastructure consultancy looking for AWS DevOps Lead'",
+                border: OutlineInputBorder(),
+                alignLabelWithHint: true,
+                isDense: true,
+              ),
+              style: const TextStyle(fontSize: 12.5),
+            ),
+            const SizedBox(height: 12),
+
+            // Custom AI Instructions
+            TextFormField(
+              controller: _manualCustomPromptController,
+              decoration: const InputDecoration(
+                labelText: 'Custom AI Instructions (Optional)',
+                hintText: "e.g., 'Emphasize my AWS certification & Kubernetes experience'",
+                prefixIcon: Icon(Icons.tune, size: 20),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              style: const TextStyle(fontSize: 12.5),
+            ),
+            const SizedBox(height: 16),
+
+            // Generate Button
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple.shade800,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _isGeneratingManual ? null : _generateManualJobApplicationWithAI,
+                icon: _isGeneratingManual
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Icon(Icons.auto_awesome),
+                label: Text(
+                  _isGeneratingManual ? 'Generating Application with AI...' : 'Generate Application with Gemini AI',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+              ),
+            ),
           ],
         ),
       ),

@@ -132,7 +132,7 @@ class JobAssistantService {
   // AI PARSING & EMAIL DISPATCH
   // ============================================================================
 
-  Future<List<JobApplication>> parseJobPostersWithAI(List<String> imagesBase64, String mode) async {
+  Future<List<JobApplication>> parseJobPostersWithAI(List<String> imagesBase64, String mode, {String? customPrompt}) async {
     final masterResume = await getMasterResume();
 
     final callable = _functions.httpsCallable('parseJobPostersWithAI');
@@ -141,6 +141,7 @@ class JobAssistantService {
       'mode': mode, // 'single_job' or 'multiple_jobs'
       'resumeBase64': masterResume['base64'],
       'applicantName': 'Roshan J',
+      'customPrompt': customPrompt ?? '',
     });
 
     final resData = response.data;
@@ -159,7 +160,7 @@ class JobAssistantService {
         companyName: map['companyName'] ?? 'Company',
         recipientEmail: map['recipientEmail'] ?? '',
         extractedSkills: List<String>.from(map['extractedSkills'] ?? []),
-        generatedSubject: map['generatedSubject'] ?? 'Job Application',
+        generatedSubject: map['generatedSubject'] ?? 'Roshan J - Job Application',
         generatedCoverLetter: map['generatedCoverLetter'] ?? '',
         status: 'extracted',
         appliedAt: DateTime.now(),
@@ -167,6 +168,47 @@ class JobAssistantService {
     }
 
     return parsedJobs;
+  }
+
+  Future<JobApplication> generateManualJobApplicationWithAI({
+    required String companyName,
+    required String jobTitle,
+    String? companyUrl,
+    String? recipientEmails,
+    String? companyNotes,
+    String? customPrompt,
+  }) async {
+    final masterResume = await getMasterResume();
+
+    final callable = _functions.httpsCallable('generateManualJobApplicationWithAI');
+    final response = await callable.call({
+      'companyName': companyName,
+      'jobTitle': jobTitle,
+      'companyUrl': companyUrl ?? '',
+      'recipientEmails': recipientEmails ?? '',
+      'companyNotes': companyNotes ?? '',
+      'customPrompt': customPrompt ?? '',
+      'resumeBase64': masterResume['base64'],
+      'applicantName': 'Roshan J',
+    });
+
+    final resData = response.data;
+    if (resData == null || resData['success'] != true) {
+      throw Exception('Failed to generate manual job application with AI.');
+    }
+
+    final rawJob = Map<String, dynamic>.from(resData['job'] ?? {});
+    return JobApplication(
+      id: '',
+      jobTitle: rawJob['jobTitle'] ?? jobTitle,
+      companyName: rawJob['companyName'] ?? companyName,
+      recipientEmail: rawJob['recipientEmail'] ?? recipientEmails ?? '',
+      extractedSkills: List<String>.from(rawJob['extractedSkills'] ?? []),
+      generatedSubject: rawJob['generatedSubject'] ?? 'Roshan J - $jobTitle',
+      generatedCoverLetter: rawJob['generatedCoverLetter'] ?? '',
+      status: 'extracted',
+      appliedAt: DateTime.now(),
+    );
   }
 
   Future<Map<String, String>> refineCoverLetterWithAI({
