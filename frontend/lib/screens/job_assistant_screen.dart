@@ -480,6 +480,233 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
+  // ============================================================================
+  // BUILD METHOD
+  // ============================================================================
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI Job Assistant'),
+        backgroundColor: Colors.blue.shade900,
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.amber,
+          tabs: const [
+            Tab(icon: Icon(Icons.add_photo_alternate), text: 'New Applications'),
+            Tab(icon: Icon(Icons.history), text: 'Applied History'),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Email Credentials Settings',
+            onPressed: _showEmailConfigDialog,
+          ),
+        ],
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildNewApplicationTab(),
+          _buildHistoryTab(),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================================
+  // TAB 1: NEW APPLICATION TAB
+  // ============================================================================
+
+  Widget _buildNewApplicationTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Banner: Resume Status & Upload Button
+          Card(
+            color: Colors.blue.shade50,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(14.0),
+              child: Row(
+                children: [
+                  Icon(
+                    _hasResume ? Icons.picture_as_pdf : Icons.upload_file,
+                    color: _hasResume ? Colors.red.shade800 : Colors.blueAccent,
+                    size: 32,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _hasResume ? 'Master Resume: $_resumeFileName' : 'No Resume Uploaded Yet',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        Text(
+                          _hasResume
+                              ? 'This PDF will be attached & analyzed by Gemini for applications.'
+                              : 'Upload your standard Resume (PDF) to auto-attach & analyze.',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: _pickMasterResume,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade900,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text(_hasResume ? 'Change' : 'Upload'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Upload Mode Choice
+          const Text('Upload Mode Strategy:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: ChoiceChip(
+                  label: const Text('📄 1 Job (Multi-page)'),
+                  selected: _uploadMode == 'single_job',
+                  selectedColor: Colors.blue.shade100,
+                  onSelected: (val) {
+                    if (val) setState(() => _uploadMode = 'single_job');
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ChoiceChip(
+                  label: const Text('📁 Multiple Separate Jobs'),
+                  selected: _uploadMode == 'multiple_jobs',
+                  selectedColor: Colors.blue.shade100,
+                  onSelected: (val) {
+                    if (val) setState(() => _uploadMode = 'multiple_jobs');
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Pick Poster Screenshots Button
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.grey.shade300),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  if (_selectedImageFiles.isEmpty) ...[
+                    const Icon(Icons.add_a_photo_outlined, size: 48, color: Colors.grey),
+                    const SizedBox(height: 8),
+                    const Text('Select 1 or more Job Poster Screenshots from LinkedIn/Gallery'),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: _pickJobPosters,
+                      icon: const Icon(Icons.photo_library),
+                      label: const Text('Select Screenshots'),
+                    ),
+                  ] else ...[
+                    Text('${_selectedImageFiles.length} Screenshot(s) Selected',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _selectedImageFiles
+                          .map((f) => Chip(
+                                avatar: const Icon(Icons.image, size: 18),
+                                label: Text(f.name.length > 15 ? '${f.name.substring(0, 12)}...' : f.name),
+                                onDeleted: () {
+                                  setState(() {
+                                    final idx = _selectedImageFiles.indexOf(f);
+                                    _selectedImageFiles.removeAt(idx);
+                                    _selectedImagesBase64.removeAt(idx);
+                                  });
+                                },
+                              ))
+                          .toList(),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _pickJobPosters,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add More'),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amber.shade700,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: _isAnalyzing ? null : _analyzePostersWithAI,
+                          icon: _isAnalyzing
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                )
+                              : const Icon(Icons.psychology),
+                          label: Text(_isAnalyzing ? 'Analyzing...' : 'Analyze with Gemini AI'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Extracted Job Application Cards
+          if (_extractedJobs.isNotEmpty) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Extracted Applications (${_extractedJobs.length})',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _extractedJobs.clear()),
+                  child: const Text('Clear All'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _extractedJobs.length,
+              itemBuilder: (context, index) {
+                return _buildExtractedJobCard(_extractedJobs[index], index);
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildExtractedJobCard(JobApplication app, int index) {
     final emailCtrl = _getController(_emailControllers, index, app.recipientEmail);
     final subjectCtrl = _getController(_subjectControllers, index, app.generatedSubject);
