@@ -123,18 +123,37 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
   Future<void> _pickPDF() async {
     try {
-      final result = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf'],
-        withData: true,
-      );
+      FilePickerResult? result;
+      try {
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['pdf'],
+          withData: true,
+        );
+      } catch (_) {
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.any,
+          withData: true,
+        );
+      }
 
-      if (result != null && result.files.single.bytes != null) {
-        final file = result.files.single;
-        setState(() {
-          _newAttachmentsBytes.add(file.bytes!);
-          _newAttachmentsNames.add(file.name);
-        });
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Please select a valid PDF file.')),
+            );
+          }
+          return;
+        }
+
+        if (file.bytes != null) {
+          setState(() {
+            _newAttachmentsBytes.add(file.bytes!);
+            _newAttachmentsNames.add(file.name);
+          });
+        }
       }
     } catch (e) {
       if (mounted) {

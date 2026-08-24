@@ -139,14 +139,31 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
   Future<void> _pickMasterResume() async {
     try {
-      final result = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf'],
-        withData: true,
-      );
+      FilePickerResult? result;
+      try {
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['pdf'],
+          withData: true,
+        );
+      } catch (_) {
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.any,
+          withData: true,
+        );
+      }
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Please select a valid PDF file for your resume.')),
+            );
+          }
+          return;
+        }
+
         final bytes = file.bytes;
         final fileName = file.name;
 
@@ -174,20 +191,77 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Future<void> _pickJobPosters() async {
-    final picker = ImagePicker();
-    final List<XFile> images = await picker.pickMultiImage();
-
-    if (images.isNotEmpty) {
-      final List<String> base64List = [];
-      for (final img in images) {
-        final bytes = await img.readAsBytes();
-        base64List.add(base64Encode(bytes));
+    try {
+      FilePickerResult? result;
+      try {
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.image,
+          allowMultiple: true,
+          withData: true,
+        );
+      } catch (_) {
+        try {
+          final picker = ImagePicker();
+          final List<XFile> images = await picker.pickMultiImage();
+          if (images.isNotEmpty) {
+            final List<String> base64List = [];
+            for (final img in images) {
+              final bytes = await img.readAsBytes();
+              base64List.add(base64Encode(bytes));
+            }
+            setState(() {
+              _selectedImageFiles.addAll(images);
+              _selectedImagesBase64.addAll(base64List);
+            });
+            return;
+          }
+        } catch (_) {
+          result = await FilePicker.platform.pickFiles(
+            type: FileType.any,
+            allowMultiple: true,
+            withData: true,
+          );
+        }
       }
 
-      setState(() {
-        _selectedImageFiles.addAll(images);
-        _selectedImagesBase64.addAll(base64List);
-      });
+      if (result != null && result.files.isNotEmpty) {
+        final List<XFile> images = [];
+        final List<String> base64List = [];
+
+        for (final file in result.files) {
+          final nameLower = file.name.toLowerCase();
+          final isImage = nameLower.endsWith('.png') ||
+              nameLower.endsWith('.jpg') ||
+              nameLower.endsWith('.jpeg') ||
+              nameLower.endsWith('.webp') ||
+              nameLower.endsWith('.bmp');
+
+          if (isImage && file.bytes != null) {
+            images.add(XFile.fromData(file.bytes!, name: file.name));
+            base64List.add(base64Encode(file.bytes!));
+          }
+        }
+
+        if (images.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Please select valid image files (.png, .jpg, .jpeg, .webp).')),
+            );
+          }
+          return;
+        }
+
+        setState(() {
+          _selectedImageFiles.addAll(images);
+          _selectedImagesBase64.addAll(base64List);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking screenshots: $e')),
+        );
+      }
     }
   }
 
