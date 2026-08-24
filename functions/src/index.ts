@@ -3,6 +3,7 @@ import * as admin from "firebase-admin";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import * as moment from "moment-timezone";
+import * as nodemailer from "nodemailer";
 import { CloudTasksClient } from "@google-cloud/tasks";
 
 admin.initializeApp();
@@ -3213,4 +3214,182 @@ async function internalCheckInterestedEventsNotifications() {
         }
     }
 }
+
+exports.parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
+    }
+
+    try {
+        const { imagesBase64, mode } = data;
+        if (!imagesBase64 || !Array.isArray(imagesBase64) || imagesBase64.length === 0) {
+            throw new functions.https.HttpsError('invalid-argument', 'No image data provided.');
+        }
+
+        const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
+        let apiKey = "";
+        if (configDoc.exists) {
+            apiKey = configDoc.data()?.apiKey || "";
+        }
+        if (!apiKey) {
+            throw new functions.https.HttpsError('internal', 'Gemini API key is not configured.');
+        }
+
+        const isSingleJob = (mode === 'single_job');
+
+        const prompt = isSingleJob
+            ? `Analyze the provided screenshot(s). These screenshot(s) belong to the SAME SINGLE job posting (sequential pages/screenshots).
+Stitch the text and context together. Extract the structured details and generate a highly tailored, professional job application cover letter.
+
+Respond ONLY with a JSON object matching this schema:
+{
+  "jobs": [
+    {
+      "jobTitle": "string",
+      "companyName": "string",
+      "recipientEmail": "string",
+      "extractedSkills": ["string"],
+      "generatedSubject": "Application for [jobTitle]",
+      "generatedCoverLetter": "Dear Hiring Manager,\n\nI am writing to express my strong interest in the [jobTitle] position..."
+    }
+  ]
+}`
+            : `Analyze the provided screenshots. Each screenshot represents a SEPARATE, DIFFERENT job posting.
+Extract the structured details for EACH job posting separately and generate a tailored cover letter for each.
+
+Respond ONLY with a JSON object matching this schema:
+{
+  "jobs": [
+    {
+      "jobTitle": "string",
+      "companyName": "string",
+      "recipientEmail": "string",
+      "extractedSkills": ["string"],
+      "generatedSubject": "Application for [jobTitle]",
+      "generatedCoverLetter": "Dear Hiring Manager,\n\nI am writing to express my strong interest in the [jobTitle] position..."
+    }
+  ]
+}`;
+
+        const inlineParts = imagesBase64.map((b64: string) => {
+            const cleanB64 = b64.replace(/^data:image\/\w+;base64,/, '');
+            return {
+                inlineData: {
+                    mimeType: "image/jpeg",
+                    data: cleanB64
+                }
+            };
+        });
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+        const payload = {
+            contents: [
+                {
+                    parts: [
+                        { text: prompt },
+                        ...inlineParts
+                    ]
+                }
+            ],
+            generationConfig: {
+                responseMimeType: "application/json"
+            }
+        };
+
+        const response = await axios.post(url, payload, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 90000
+        });
+
+        const candidates = response.data?.candidates;
+        if (!candidates || candidates.length === 0) {
+            throw new Error('No candidates returned from Gemini API.');
+        }
+
+        const textResponse = candidates[0].content?.parts[0]?.text;
+        if (!textResponse) {
+            throw new Error('Empty response from Gemini API.');
+        }
+
+        const parsed = JSON.parse(textResponse);
+        return {
+            success: true,
+            jobs: parsed.jobs || []
+        };
+    } catch (error: any) {
+        console.error("Error in parseJobPostersWithAI:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Failed to analyze job poster image(s).');
+    }
+});
+
+exports.sendJobApplicationEmail = functions.runWith({ timeoutSeconds: 60, memory: "512MB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
+    }
+
+    const uid = context.auth.uid;
+    const { recipientEmail, subject, body, resumeBase64, resumeFileName } = data;
+
+    if (!recipientEmail || !subject || !body) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing recipientEmail, subject, or body.');
+    }
+
+    try {
+        const userDoc = await db.collection("users").doc(uid).get();
+        if (!userDoc.exists) {
+            throw new functions.https.HttpsError('not-found', 'User profile not found.');
+        }
+
+        const userData = userDoc.data() || {};
+        const emailConfig = userData.emailConfig || {};
+        const userEmail = emailConfig.email;
+        const appPassword = emailConfig.appPassword;
+
+        if (!userEmail || !appPassword) {
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'Your Gmail App Password is not configured. Please enter your Gmail & App Password in Job Assistant Settings.'
+            );
+        }
+
+        const cleanPassword = appPassword.replace(/\s+/g, '');
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: userEmail,
+                pass: cleanPassword
+            }
+        });
+
+        const attachments: any[] = [];
+        if (resumeBase64) {
+            const cleanB64 = resumeBase64.replace(/^data:application\/pdf;base64,/, '');
+            attachments.push({
+                filename: resumeFileName || 'Resume.pdf',
+                content: Buffer.from(cleanB64, 'base64'),
+                contentType: 'application/pdf'
+            });
+        }
+
+        const mailOptions = {
+            from: `"${userData.displayName || 'Job Applicant'}" <${userEmail}>`,
+            to: recipientEmail,
+            subject: subject,
+            text: body,
+            attachments: attachments
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`Job application email sent by ${uid} to ${recipientEmail}:`, info.messageId);
+
+        return {
+            success: true,
+            messageId: info.messageId
+        };
+    } catch (error: any) {
+        console.error(`Failed to send job application email for user ${uid}:`, error);
+        throw new functions.https.HttpsError('internal', error.message || 'Failed to send email.');
+    }
+});
 

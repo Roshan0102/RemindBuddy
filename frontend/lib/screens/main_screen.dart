@@ -27,6 +27,7 @@ import 'voice_assistant_screen.dart';
 import 'astro_calendar_screen.dart';
 import 'gcp_cost_screen.dart';
 import 'finance_screen.dart';
+import 'job_assistant_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../main.dart';
 
@@ -427,6 +428,15 @@ class _MainScreenState extends State<MainScreen> {
         icon: Icon(Icons.account_balance_wallet_outlined, color: Colors.teal),
         selectedIcon: Icon(Icons.account_balance_wallet, color: Colors.teal),
         label: 'Finance',
+      ),
+    },
+    'job_assistant': {
+      'screen': const JobAssistantScreen(),
+      'name': 'AI Job Assistant',
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.work_outline, color: Colors.blueAccent),
+        selectedIcon: Icon(Icons.work, color: Colors.blueAccent),
+        label: 'Job Assistant',
       ),
     },
   };

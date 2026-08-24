@@ -1,0 +1,199 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../models/job_application.dart';
+
+class JobAssistantService {
+  static final JobAssistantService _instance = JobAssistantService._internal();
+  factory JobAssistantService() => _instance;
+  JobAssistantService._internal();
+
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+
+  String? get _uid => FirebaseAuth.instance.currentUser?.uid;
+
+  DocumentReference? get _userDoc {
+    final uid = _uid;
+    if (uid == null) return null;
+    return _db.collection('users').doc(uid);
+  }
+
+  // ============================================================================
+  // USER EMAIL CONFIG & MASTER RESUME
+  // ============================================================================
+
+  Future<Map<String, String>> getUserEmailConfig() async {
+    final doc = _userDoc;
+    if (doc == null) return {'email': '', 'appPassword': ''};
+
+    final snap = await doc.get();
+    if (!snap.exists || snap.data() == null) return {'email': '', 'appPassword': ''};
+
+    final data = snap.data() as Map<String, dynamic>;
+    final emailConfig = Map<String, dynamic>.from(data['emailConfig'] ?? {});
+
+    return {
+      'email': (emailConfig['email'] ?? '').toString(),
+      'appPassword': (emailConfig['appPassword'] ?? '').toString(),
+    };
+  }
+
+  Future<void> saveUserEmailConfig(String email, String appPassword) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.set({
+      'emailConfig': {
+        'email': email.trim(),
+        'appPassword': appPassword.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Future<Map<String, String>> getMasterResume() async {
+    final doc = _userDoc;
+    if (doc == null) return {'base64': '', 'fileName': ''};
+
+    final snap = await doc.get();
+    if (!snap.exists || snap.data() == null) return {'base64': '', 'fileName': ''};
+
+    final data = snap.data() as Map<String, dynamic>;
+    final resume = Map<String, dynamic>.from(data['masterResume'] ?? {});
+
+    return {
+      'base64': (resume['base64'] ?? '').toString(),
+      'fileName': (resume['fileName'] ?? 'Resume.pdf').toString(),
+    };
+  }
+
+  Future<void> saveMasterResume(String base64Content, String fileName) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.set({
+      'masterResume': {
+        'base64': base64Content,
+        'fileName': fileName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }
+    }, SetOptions(merge: true));
+  }
+
+  // ============================================================================
+  // JOB APPLICATIONS CRUD
+  // ============================================================================
+
+  Stream<List<JobApplication>> getJobApplicationsStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    return doc
+        .collection('job_applications')
+        .orderBy('appliedAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => JobApplication.fromMap(d.data(), d.id)).toList());
+  }
+
+  Future<void> saveJobApplication(JobApplication app) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final ref = app.id.isNotEmpty
+        ? doc.collection('job_applications').doc(app.id)
+        : doc.collection('job_applications').doc();
+
+    final newApp = JobApplication(
+      id: ref.id,
+      jobTitle: app.jobTitle,
+      companyName: app.companyName,
+      recipientEmail: app.recipientEmail,
+      extractedSkills: app.extractedSkills,
+      generatedSubject: app.generatedSubject,
+      generatedCoverLetter: app.generatedCoverLetter,
+      status: app.status,
+      appliedAt: app.appliedAt,
+      posterImageUrls: app.posterImageUrls,
+      errorMessage: app.errorMessage,
+    );
+
+    await ref.set(newApp.toMap(), SetOptions(merge: true));
+  }
+
+  Future<void> deleteJobApplication(String appId) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('job_applications').doc(appId).delete();
+  }
+
+  // ============================================================================
+  // AI PARSING & EMAIL DISPATCH
+  // ============================================================================
+
+  Future<List<JobApplication>> parseJobPostersWithAI(List<String> imagesBase64, String mode) async {
+    final callable = _functions.httpsCallable('parseJobPostersWithAI');
+    final response = await callable.call({
+      'imagesBase64': imagesBase64,
+      'mode': mode, // 'single_job' or 'multiple_jobs'
+    });
+
+    final resData = response.data;
+    if (resData == null || resData['success'] != true) {
+      throw Exception('Failed to analyze job poster(s) with AI.');
+    }
+
+    final rawJobs = resData['jobs'] as List? ?? [];
+    final List<JobApplication> parsedJobs = [];
+
+    for (final raw in rawJobs) {
+      final map = Map<String, dynamic>.from(raw);
+      parsedJobs.add(JobApplication(
+        id: '',
+        jobTitle: map['jobTitle'] ?? 'Job Position',
+        companyName: map['companyName'] ?? 'Company',
+        recipientEmail: map['recipientEmail'] ?? '',
+        extractedSkills: List<String>.from(map['extractedSkills'] ?? []),
+        generatedSubject: map['generatedSubject'] ?? 'Job Application',
+        generatedCoverLetter: map['generatedCoverLetter'] ?? '',
+        status: 'extracted',
+        appliedAt: DateTime.now(),
+      ));
+    }
+
+    return parsedJobs;
+  }
+
+  Future<void> sendJobApplicationEmail(JobApplication app) async {
+    final masterResume = await getMasterResume();
+
+    final callable = _functions.httpsCallable('sendJobApplicationEmail');
+    final response = await callable.call({
+      'recipientEmail': app.recipientEmail,
+      'subject': app.generatedSubject,
+      'body': app.generatedCoverLetter,
+      'resumeBase64': masterResume['base64'],
+      'resumeFileName': masterResume['fileName'],
+    });
+
+    final resData = response.data;
+    if (resData == null || resData['success'] != true) {
+      throw Exception('Failed to send application email.');
+    }
+
+    // Mark application as sent in Firestore
+    await saveJobApplication(JobApplication(
+      id: app.id,
+      jobTitle: app.jobTitle,
+      companyName: app.companyName,
+      recipientEmail: app.recipientEmail,
+      extractedSkills: app.extractedSkills,
+      generatedSubject: app.generatedSubject,
+      generatedCoverLetter: app.generatedCoverLetter,
+      status: 'sent',
+      appliedAt: DateTime.now(),
+      posterImageUrls: app.posterImageUrls,
+    ));
+  }
+}
