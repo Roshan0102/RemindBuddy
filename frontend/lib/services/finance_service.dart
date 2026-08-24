@@ -343,9 +343,12 @@ class FinanceService {
     return doc
         .collection('finance_group_expenses')
         .where('groupId', isEqualTo: groupId)
-        .orderBy('date', descending: true)
         .snapshots()
-        .map((snap) => snap.docs.map((d) => GroupExpense.fromMap(d.data(), d.id)).toList());
+        .map((snap) {
+          final list = snap.docs.map((d) => GroupExpense.fromMap(d.data(), d.id)).toList();
+          list.sort((a, b) => b.date.compareTo(a.date));
+          return list;
+        });
   }
 
   Future<void> addGroupExpense(GroupExpense expense) async {

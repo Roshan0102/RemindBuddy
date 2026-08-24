@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
@@ -231,39 +234,37 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
-  Future<void> _pickJobPosters() async {
+  Future<void> _pickFromGallery() async {
     try {
-      FilePickerResult? result;
-      try {
-        result = await FilePicker.pickFiles(
-          type: FileType.image,
-          allowMultiple: true,
-          withData: true,
-        );
-      } catch (_) {
-        try {
-          final picker = ImagePicker();
-          final List<XFile> images = await picker.pickMultiImage();
-          if (images.isNotEmpty) {
-            final List<String> base64List = [];
-            for (final img in images) {
-              final bytes = await img.readAsBytes();
-              base64List.add(base64Encode(bytes));
-            }
-            setState(() {
-              _selectedImageFiles.addAll(images);
-              _selectedImagesBase64.addAll(base64List);
-            });
-            return;
-          }
-        } catch (_) {
-          result = await FilePicker.pickFiles(
-            type: FileType.any,
-            allowMultiple: true,
-            withData: true,
-          );
+      final picker = ImagePicker();
+      final List<XFile> images = await picker.pickMultiImage();
+      if (images.isNotEmpty) {
+        final List<String> base64List = [];
+        for (final img in images) {
+          final bytes = await img.readAsBytes();
+          base64List.add(base64Encode(bytes));
         }
+        setState(() {
+          _selectedImageFiles.addAll(images);
+          _selectedImagesBase64.addAll(base64List);
+        });
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking from gallery: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickFromFiles() async {
+    try {
+      FilePickerResult? result = await FilePicker.pickFiles(
+        type: FileType.any,
+        allowMultiple: true,
+        withData: true,
+      );
 
       if (result != null && result.files.isNotEmpty) {
         final List<XFile> images = [];
@@ -277,9 +278,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               nameLower.endsWith('.webp') ||
               nameLower.endsWith('.bmp');
 
-          if (isImage && file.bytes != null) {
-            images.add(XFile.fromData(file.bytes!, name: file.name));
-            base64List.add(base64Encode(file.bytes!));
+          if (isImage) {
+            Uint8List? bytes = file.bytes;
+            if (bytes == null && file.path != null && !kIsWeb) {
+              final ioFile = File(file.path!);
+              bytes = await ioFile.readAsBytes();
+            }
+            if (bytes != null) {
+              images.add(XFile.fromData(bytes, name: file.name));
+              base64List.add(base64Encode(bytes));
+            }
           }
         }
 
@@ -300,8 +308,71 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking screenshots: $e')),
+          SnackBar(content: Text('Error picking files: $e')),
         );
+      }
+    }
+  }
+
+  Future<void> _pickJobPosters() async {
+    final bool isMobile = !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
+
+    if (isMobile) {
+      showModalBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Upload Job Poster Screenshots',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: const Icon(Icons.photo_library, color: Colors.blue),
+                  title: const Text('Pick Screenshots from Gallery / Photos'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickFromGallery();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.folder, color: Colors.amber),
+                  title: const Text('Browse Files Application'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickFromFiles();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else {
+      try {
+        final picker = ImagePicker();
+        final List<XFile> images = await picker.pickMultiImage();
+        if (images.isNotEmpty) {
+          final List<String> base64List = [];
+          for (final img in images) {
+            final bytes = await img.readAsBytes();
+            base64List.add(base64Encode(bytes));
+          }
+          setState(() {
+            _selectedImageFiles.addAll(images);
+            _selectedImagesBase64.addAll(base64List);
+          });
+          return;
+        }
+      } catch (_) {
+        await _pickFromFiles();
       }
     }
   }
@@ -816,40 +887,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Widget _buildManualJobEntryForm() {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.purple.shade200),
-      ),
-      color: Colors.purple.shade50.withValues(alpha: 0.3),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.language, color: Colors.purple.shade800),
-                const SizedBox(width: 8),
-                Text(
-                  'Manual / Website URL Job Application Entry',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.purple.shade900),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'No screenshot required. Enter company details, website URL, and role to auto-generate a tailored cover letter with Gemini AI.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const Divider(height: 24),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isMobile = constraints.maxWidth < 600;
 
-            // Company Name & Job Title
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
+        Widget companyAndRoleRow = isMobile
+            ? Column(
+                children: [
+                  TextFormField(
                     controller: _manualCompanyNameController,
                     decoration: const InputDecoration(
                       labelText: 'Company Name *',
@@ -859,10 +904,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ),
                     style: const TextStyle(fontSize: 13),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
+                  const SizedBox(height: 12),
+                  TextFormField(
                     controller: _manualJobTitleController,
                     decoration: const InputDecoration(
                       labelText: 'Job Role / Title *',
@@ -872,16 +915,42 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ),
                     style: const TextStyle(fontSize: 13),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _manualCompanyNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Company Name *',
+                        prefixIcon: Icon(Icons.business, size: 20),
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _manualJobTitleController,
+                      decoration: const InputDecoration(
+                        labelText: 'Job Role / Title *',
+                        prefixIcon: Icon(Icons.work_outline, size: 20),
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              );
 
-            // Company URL & Recipient HR Email(s)
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
+        Widget urlAndEmailRow = isMobile
+            ? Column(
+                children: [
+                  TextFormField(
                     controller: _manualCompanyUrlController,
                     decoration: const InputDecoration(
                       labelText: 'Company Website URL (Optional)',
@@ -892,10 +961,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ),
                     style: const TextStyle(fontSize: 13),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
+                  const SizedBox(height: 12),
+                  TextFormField(
                     controller: _manualRecipientEmailsController,
                     decoration: const InputDecoration(
                       labelText: 'HR Email ID(s) (Optional)',
@@ -906,67 +973,133 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ),
                     style: const TextStyle(fontSize: 13),
                   ),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _manualCompanyUrlController,
+                      decoration: const InputDecoration(
+                        labelText: 'Company Website URL (Optional)',
+                        hintText: 'https://company.com',
+                        prefixIcon: Icon(Icons.link, size: 20),
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _manualRecipientEmailsController,
+                      decoration: const InputDecoration(
+                        labelText: 'HR Email ID(s) (Optional)',
+                        hintText: 'careers@company.com, hr@company.com',
+                        prefixIcon: Icon(Icons.email_outlined, size: 20),
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              );
+
+        return Card(
+          elevation: 1,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.purple.shade200),
+          ),
+          color: Colors.purple.shade50.withValues(alpha: 0.3),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.language, color: Colors.purple.shade800),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Manual / Website URL Job Application Entry',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.purple.shade900),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'No screenshot required. Enter company details, website URL, and role to auto-generate a tailored cover letter with Gemini AI.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const Divider(height: 24),
+                companyAndRoleRow,
+                const SizedBox(height: 12),
+                urlAndEmailRow,
+                const SizedBox(height: 12),
+
+                // Company Context / Notes
+                TextFormField(
+                  controller: _manualCompanyNotesController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Company / Job Notes & Context (Optional)',
+                    hintText: "e.g., 'Cloud Infrastructure consultancy looking for AWS DevOps Lead'",
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                    isDense: true,
+                  ),
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+                const SizedBox(height: 12),
+
+                // Custom AI Instructions
+                TextFormField(
+                  controller: _manualCustomPromptController,
+                  decoration: const InputDecoration(
+                    labelText: 'Custom AI Instructions (Optional)',
+                    hintText: "e.g., 'Emphasize my AWS certification & Kubernetes experience'",
+                    prefixIcon: Icon(Icons.tune, size: 20),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+                const SizedBox(height: 16),
+
+                // Generate Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple.shade800,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: _isGeneratingManual ? null : _generateManualJobApplicationWithAI,
+                    icon: _isGeneratingManual
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_awesome),
+                    label: Text(
+                      _isGeneratingManual ? 'Generating Application with AI...' : 'Generate Application with Gemini AI',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-
-            // Company Context / Notes
-            TextFormField(
-              controller: _manualCompanyNotesController,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'Company / Job Notes & Context (Optional)',
-                hintText: "e.g., 'Cloud Infrastructure consultancy looking for AWS DevOps Lead'",
-                border: OutlineInputBorder(),
-                alignLabelWithHint: true,
-                isDense: true,
-              ),
-              style: const TextStyle(fontSize: 12.5),
-            ),
-            const SizedBox(height: 12),
-
-            // Custom AI Instructions
-            TextFormField(
-              controller: _manualCustomPromptController,
-              decoration: const InputDecoration(
-                labelText: 'Custom AI Instructions (Optional)',
-                hintText: "e.g., 'Emphasize my AWS certification & Kubernetes experience'",
-                prefixIcon: Icon(Icons.tune, size: 20),
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              style: const TextStyle(fontSize: 12.5),
-            ),
-            const SizedBox(height: 16),
-
-            // Generate Button
-            SizedBox(
-              width: double.infinity,
-              height: 44,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple.shade800,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: _isGeneratingManual ? null : _generateManualJobApplicationWithAI,
-                icon: _isGeneratingManual
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                      )
-                    : const Icon(Icons.auto_awesome),
-                label: Text(
-                  _isGeneratingManual ? 'Generating Application with AI...' : 'Generate Application with Gemini AI',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

@@ -577,12 +577,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                     url.length > 30 ? '${url.substring(0, 27)}...' : url,
                                     style: const TextStyle(fontSize: 11, color: Colors.blue),
                                   ),
-                                  onPressed: () async {
-                                    final Uri uri = Uri.parse(url);
-                                    if (await canLaunchUrl(uri)) {
-                                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                    }
-                                  },
+                                  onPressed: () => _openExternalUrl(url),
                                 )).toList(),
                               ),
                             ],
@@ -1192,8 +1187,26 @@ class _NotesScreenState extends State<NotesScreen> {
     return baseColor.withValues(alpha: 0.85);
   }
 
+  Future<void> _openExternalUrl(String rawUrl) async {
+    String cleanUrl = rawUrl.trim();
+    if (cleanUrl.endsWith(')')) cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
+    if (!cleanUrl.toLowerCase().startsWith('http://') && !cleanUrl.toLowerCase().startsWith('https://')) {
+      cleanUrl = 'https://$cleanUrl';
+    }
+    try {
+      final Uri uri = Uri.parse(cleanUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(uri);
+      }
+    } catch (e) {
+      debugPrint('Error launching URL ($cleanUrl): $e');
+    }
+  }
+
   List<InlineSpan> _buildTextSpansWithUrls(String text, TextStyle baseStyle) {
-    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+)');
+    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+|www\.[^\s]+)', caseSensitive: false);
     final Iterable<RegExpMatch> matches = urlRegExp.allMatches(text);
     
     if (matches.isEmpty) {
@@ -1219,12 +1232,7 @@ class _NotesScreenState extends State<NotesScreen> {
           decoration: TextDecoration.underline,
         ),
         recognizer: TapGestureRecognizer()
-          ..onTap = () async {
-            final Uri uri = Uri.parse(url);
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            }
-          },
+          ..onTap = () => _openExternalUrl(url),
       ));
       
       lastMatchEnd = match.end;
@@ -1384,7 +1392,7 @@ class _NotesScreenState extends State<NotesScreen> {
     bool isChecklist,
     List<Map<String, dynamic>> checklistItems,
   ) {
-    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+)');
+    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+|www\.[^\s]+)', caseSensitive: false);
     final Set<String> links = {};
     
     final cleanTitle = _stripSignature(title);
@@ -1420,7 +1428,7 @@ class LinkTextEditingController extends TextEditingController {
     TextStyle? style,
     required bool withComposing,
   }) {
-    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+)');
+    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+|www\.[^\s]+)', caseSensitive: false);
     final String textStr = text;
     
     if (textStr.isEmpty) {
