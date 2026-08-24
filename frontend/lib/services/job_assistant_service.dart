@@ -133,10 +133,14 @@ class JobAssistantService {
   // ============================================================================
 
   Future<List<JobApplication>> parseJobPostersWithAI(List<String> imagesBase64, String mode) async {
+    final masterResume = await getMasterResume();
+
     final callable = _functions.httpsCallable('parseJobPostersWithAI');
     final response = await callable.call({
       'imagesBase64': imagesBase64,
       'mode': mode, // 'single_job' or 'multiple_jobs'
+      'resumeBase64': masterResume['base64'],
+      'applicantName': 'Roshan J',
     });
 
     final resData = response.data;
@@ -163,6 +167,37 @@ class JobAssistantService {
     }
 
     return parsedJobs;
+  }
+
+  Future<Map<String, String>> refineCoverLetterWithAI({
+    required String currentSubject,
+    required String currentCoverLetter,
+    required String userPrompt,
+    required String jobTitle,
+    required String companyName,
+  }) async {
+    final masterResume = await getMasterResume();
+
+    final callable = _functions.httpsCallable('refineCoverLetterWithAI');
+    final response = await callable.call({
+      'currentSubject': currentSubject,
+      'currentCoverLetter': currentCoverLetter,
+      'userPrompt': userPrompt,
+      'jobTitle': jobTitle,
+      'companyName': companyName,
+      'resumeBase64': masterResume['base64'],
+      'applicantName': 'Roshan J',
+    });
+
+    final resData = response.data;
+    if (resData == null || resData['success'] != true) {
+      throw Exception('Failed to refine cover letter with AI.');
+    }
+
+    return {
+      'generatedSubject': (resData['generatedSubject'] ?? currentSubject).toString(),
+      'generatedCoverLetter': (resData['generatedCoverLetter'] ?? currentCoverLetter).toString(),
+    };
   }
 
   Future<void> sendJobApplicationEmail(JobApplication app) async {

@@ -24,6 +24,20 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   bool _isAnalyzing = false;
   List<JobApplication> _extractedJobs = [];
 
+  // Controllers & AI Refinement state per job card
+  final Map<int, TextEditingController> _emailControllers = {};
+  final Map<int, TextEditingController> _subjectControllers = {};
+  final Map<int, TextEditingController> _bodyControllers = {};
+  final Map<int, TextEditingController> _refinePromptControllers = {};
+  final Map<int, bool> _refiningMap = {};
+
+  TextEditingController _getController(Map<int, TextEditingController> map, int index, String initialText) {
+    if (!map.containsKey(index)) {
+      map[index] = TextEditingController(text: initialText);
+    }
+    return map[index]!;
+  }
+
   // Resume & Email Config
   String _resumeFileName = '';
   bool _hasResume = false;
@@ -40,6 +54,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   @override
   void dispose() {
     _tabController.dispose();
+    for (var c in _emailControllers.values) { c.dispose(); }
+    for (var c in _subjectControllers.values) { c.dispose(); }
+    for (var c in _bodyControllers.values) { c.dispose(); }
+    for (var c in _refinePromptControllers.values) { c.dispose(); }
     super.dispose();
   }
 
@@ -303,26 +321,129 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
-  Future<void> _sendApplicationEmail(JobApplication app, int index) async {
+  Future<void> _refineJobWithAI(int index) async {
+    final app = _extractedJobs[index];
+    final promptCtrl = _refinePromptControllers[index];
+    final userPrompt = promptCtrl?.text.trim() ?? '';
+
+    if (userPrompt.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter an instruction for AI refinement (e.g., "Make it more concise").')),
+      );
+      return;
+    }
+
+    setState(() {
+      _refiningMap[index] = true;
+    });
+
+    try {
+      final currentSubject = _subjectControllers[index]?.text ?? app.generatedSubject;
+      final currentCoverLetter = _bodyControllers[index]?.text ?? app.generatedCoverLetter;
+
+      final res = await _service.refineCoverLetterWithAI(
+        currentSubject: currentSubject,
+        currentCoverLetter: currentCoverLetter,
+        userPrompt: userPrompt,
+        jobTitle: app.jobTitle,
+        companyName: app.companyName,
+      );
+
+      final newSubject = res['generatedSubject'] ?? currentSubject;
+      final newBody = res['generatedCoverLetter'] ?? currentCoverLetter;
+
+      setState(() {
+        _extractedJobs[index] = JobApplication(
+          id: app.id,
+          jobTitle: app.jobTitle,
+          companyName: app.companyName,
+          recipientEmail: _emailControllers[index]?.text ?? app.recipientEmail,
+          extractedSkills: app.extractedSkills,
+          generatedSubject: newSubject,
+          generatedCoverLetter: newBody,
+          status: app.status,
+          appliedAt: app.appliedAt,
+          posterImageUrls: app.posterImageUrls,
+          errorMessage: app.errorMessage,
+        );
+
+        if (_subjectControllers.containsKey(index)) {
+          _subjectControllers[index]!.text = newSubject;
+        }
+        if (_bodyControllers.containsKey(index)) {
+          _bodyControllers[index]!.text = newBody;
+        }
+        promptCtrl?.clear();
+        _refiningMap[index] = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cover letter refined successfully with AI!')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _refiningMap[index] = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error refining cover letter: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _sendApplicationEmail(JobApplication originalApp, int index) async {
     if (_userEmail.isEmpty || _userAppPassword.isEmpty) {
       _showEmailConfigDialog();
       return;
     }
+
+    final recipient = (_emailControllers[index]?.text ?? originalApp.recipientEmail).trim();
+    final subject = (_subjectControllers[index]?.text ?? originalApp.generatedSubject).trim();
+    final body = (_bodyControllers[index]?.text ?? originalApp.generatedCoverLetter).trim();
+
+    if (recipient.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a recipient HR email address.')),
+      );
+      return;
+    }
+
+    final appToSend = JobApplication(
+      id: originalApp.id,
+      jobTitle: originalApp.jobTitle,
+      companyName: originalApp.companyName,
+      recipientEmail: recipient,
+      extractedSkills: originalApp.extractedSkills,
+      generatedSubject: subject,
+      generatedCoverLetter: body,
+      status: originalApp.status,
+      appliedAt: originalApp.appliedAt,
+      posterImageUrls: originalApp.posterImageUrls,
+      errorMessage: originalApp.errorMessage,
+    );
 
     try {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sending application email in background...')),
       );
 
-      await _service.sendJobApplicationEmail(app);
+      await _service.sendJobApplicationEmail(appToSend);
 
       setState(() {
         _extractedJobs.removeAt(index);
+        _emailControllers.remove(index)?.dispose();
+        _subjectControllers.remove(index)?.dispose();
+        _bodyControllers.remove(index)?.dispose();
+        _refinePromptControllers.remove(index)?.dispose();
+        _refiningMap.remove(index);
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Job application email sent to ${app.recipientEmail}!')),
+          SnackBar(content: Text('Job application email sent to $recipient!')),
         );
       }
     } catch (e) {
@@ -334,13 +455,17 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
-  Future<void> _openNativeMailApp(JobApplication app) async {
+  Future<void> _openNativeMailApp(JobApplication originalApp, int index) async {
+    final recipient = (_emailControllers[index]?.text ?? originalApp.recipientEmail).trim();
+    final subject = (_subjectControllers[index]?.text ?? originalApp.generatedSubject).trim();
+    final body = (_bodyControllers[index]?.text ?? originalApp.generatedCoverLetter).trim();
+
     final uri = Uri(
       scheme: 'mailto',
-      path: app.recipientEmail,
+      path: recipient,
       queryParameters: {
-        'subject': app.generatedSubject,
-        'body': app.generatedCoverLetter,
+        'subject': subject,
+        'body': body,
       },
     );
 
@@ -355,234 +480,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
-  // ============================================================================
-  // BUILD METHOD
-  // ============================================================================
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('AI Job Assistant'),
-        backgroundColor: Colors.blue.shade900,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.amber,
-          tabs: const [
-            Tab(icon: Icon(Icons.add_photo_alternate), text: 'New Applications'),
-            Tab(icon: Icon(Icons.history), text: 'Applied History'),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Email Credentials Settings',
-            onPressed: _showEmailConfigDialog,
-          ),
-        ],
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildNewApplicationTab(),
-          _buildHistoryTab(),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================================
-  // TAB 1: NEW APPLICATION TAB
-  // ============================================================================
-
-  Widget _buildNewApplicationTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Banner: Resume Status & Upload Button
-          Card(
-            color: Colors.blue.shade50,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(14.0),
-              child: Row(
-                children: [
-                  Icon(
-                    _hasResume ? Icons.picture_as_pdf : Icons.upload_file,
-                    color: _hasResume ? Colors.red.shade800 : Colors.blueAccent,
-                    size: 32,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _hasResume ? 'Master Resume: $_resumeFileName' : 'No Resume Uploaded Yet',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        Text(
-                          _hasResume
-                              ? 'This PDF will be attached to outgoing emails.'
-                              : 'Upload your standard Resume (PDF) to auto-attach.',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                  ElevatedButton(
-                    onPressed: _pickMasterResume,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue.shade900,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: Text(_hasResume ? 'Change' : 'Upload'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Upload Mode Choice (Solution 2 Approved)
-          const Text('Upload Mode Strategy:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('📄 1 Job (Multi-page)'),
-                  selected: _uploadMode == 'single_job',
-                  selectedColor: Colors.blue.shade100,
-                  onSelected: (val) {
-                    if (val) setState(() => _uploadMode = 'single_job');
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('📁 Multiple Separate Jobs'),
-                  selected: _uploadMode == 'multiple_jobs',
-                  selectedColor: Colors.blue.shade100,
-                  onSelected: (val) {
-                    if (val) setState(() => _uploadMode = 'multiple_jobs');
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // Pick Poster Screenshots Button
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.grey.shade300),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  if (_selectedImageFiles.isEmpty) ...[
-                    const Icon(Icons.add_a_photo_outlined, size: 48, color: Colors.grey),
-                    const SizedBox(height: 8),
-                    const Text('Select 1 or more Job Poster Screenshots from LinkedIn/Gallery'),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed: _pickJobPosters,
-                      icon: const Icon(Icons.photo_library),
-                      label: const Text('Select Screenshots'),
-                    ),
-                  ] else ...[
-                    Text('${_selectedImageFiles.length} Screenshot(s) Selected',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _selectedImageFiles
-                          .map((f) => Chip(
-                                avatar: const Icon(Icons.image, size: 18),
-                                label: Text(f.name.length > 15 ? '${f.name.substring(0, 12)}...' : f.name),
-                                onDeleted: () {
-                                  setState(() {
-                                    final idx = _selectedImageFiles.indexOf(f);
-                                    _selectedImageFiles.removeAt(idx);
-                                    _selectedImagesBase64.removeAt(idx);
-                                  });
-                                },
-                              ))
-                          .toList(),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: _pickJobPosters,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add More'),
-                        ),
-                        const SizedBox(width: 12),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.amber.shade700,
-                            foregroundColor: Colors.white,
-                          ),
-                          onPressed: _isAnalyzing ? null : _analyzePostersWithAI,
-                          icon: _isAnalyzing
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                )
-                              : const Icon(Icons.psychology),
-                          label: Text(_isAnalyzing ? 'Analyzing...' : 'Analyze with Gemini AI'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Extracted Job Application Cards
-          if (_extractedJobs.isNotEmpty) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Extracted Applications (${_extractedJobs.length})',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                TextButton(
-                  onPressed: () => setState(() => _extractedJobs.clear()),
-                  child: const Text('Clear All'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _extractedJobs.length,
-              itemBuilder: (context, index) {
-                return _buildExtractedJobCard(_extractedJobs[index], index);
-              },
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
   Widget _buildExtractedJobCard(JobApplication app, int index) {
+    final emailCtrl = _getController(_emailControllers, index, app.recipientEmail);
+    final subjectCtrl = _getController(_subjectControllers, index, app.generatedSubject);
+    final bodyCtrl = _getController(_bodyControllers, index, app.generatedCoverLetter);
+    final refineCtrl = _getController(_refinePromptControllers, index, '');
+    final isRefining = _refiningMap[index] ?? false;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -608,28 +512,50 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ],
                   ),
                 ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.grey),
+                  tooltip: 'Remove',
+                  onPressed: () {
+                    setState(() {
+                      _extractedJobs.removeAt(index);
+                      _emailControllers.remove(index)?.dispose();
+                      _subjectControllers.remove(index)?.dispose();
+                      _bodyControllers.remove(index)?.dispose();
+                      _refinePromptControllers.remove(index)?.dispose();
+                      _refiningMap.remove(index);
+                    });
+                  },
+                ),
               ],
             ),
             const Divider(height: 24),
 
-            // HR Email
-            Row(
-              children: [
-                const Icon(Icons.email, size: 18, color: Colors.grey),
-                const SizedBox(width: 6),
-                const Text('Recipient HR Email: ', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                Expanded(
-                  child: Text(
-                    app.recipientEmail.isEmpty ? 'Not Found' : app.recipientEmail,
-                    style: TextStyle(
-                      color: app.recipientEmail.isEmpty ? Colors.red : Colors.blue.shade900,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
+            // HR Email Field
+            TextFormField(
+              controller: emailCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Recipient HR Email',
+                prefixIcon: Icon(Icons.email_outlined, size: 20),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              keyboardType: TextInputType.emailAddress,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+
+            // Email Subject Field
+            TextFormField(
+              controller: subjectCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Email Subject Line',
+                prefixIcon: Icon(Icons.subject, size: 20),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
 
             // Extracted Skills
             if (app.extractedSkills.isNotEmpty) ...[
@@ -647,30 +573,85 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               const SizedBox(height: 10),
             ],
 
-            // Cover Letter Preview
-            const Text('Generated Cover Letter:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            // Cover Letter Body Field
+            const Text('Cover Letter Body (Editable):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
+            TextFormField(
+              controller: bodyCtrl,
+              maxLines: 8,
+              minLines: 4,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                alignLabelWithHint: true,
               ),
-              child: Text(
-                app.generatedCoverLetter,
-                maxLines: 6,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, height: 1.4),
-              ),
+              style: const TextStyle(fontSize: 12.5, height: 1.45),
             ),
             const SizedBox(height: 14),
+
+            // AI Refinement Box
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.amber.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.auto_fix_high, size: 18, color: Colors.amber.shade900),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Refine with Gemini AI',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.amber.shade900),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: refineCtrl,
+                    decoration: const InputDecoration(
+                      hintText: "e.g., 'Make it more concise', 'Highlight my AWS certification', 'Tone down enthusiasm'",
+                      hintStyle: TextStyle(fontSize: 12),
+                      fillColor: Colors.white,
+                      filled: true,
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber.shade700,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: isRefining ? null : () => _refineJobWithAI(index),
+                      icon: isRefining
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                            )
+                          : const Icon(Icons.bolt, size: 16),
+                      label: Text(isRefining ? 'Refining...' : 'Refine Cover Letter'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
 
             // Action Buttons
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 OutlinedButton.icon(
-                  onPressed: () => _openNativeMailApp(app),
+                  onPressed: () => _openNativeMailApp(app, index),
                   icon: const Icon(Icons.open_in_new, size: 16),
                   label: const Text('Open Mail App'),
                 ),
