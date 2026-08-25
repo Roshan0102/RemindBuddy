@@ -18,6 +18,7 @@ import com.google.android.gms.location.SleepSegmentRequest
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.plugin.common.EventChannel
 import android.provider.Telephony
 
