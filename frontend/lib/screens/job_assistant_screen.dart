@@ -638,19 +638,24 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI Job Assistant'),
+        title: const Text('AI Job Assistant', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
         backgroundColor: Colors.blue.shade900,
+        foregroundColor: Colors.white,
+        elevation: 2,
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.amber,
+          indicatorWeight: 3.0,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
           tabs: const [
-            Tab(icon: Icon(Icons.add_photo_alternate), text: 'New Applications'),
-            Tab(icon: Icon(Icons.history), text: 'Applied History'),
+            Tab(icon: Icon(Icons.add_photo_alternate, color: Colors.white), text: 'New Applications'),
+            Tab(icon: Icon(Icons.history, color: Colors.white), text: 'Applied History'),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.settings, color: Colors.white),
             tooltip: 'Email Credentials Settings',
             onPressed: _showEmailConfigDialog,
           ),
@@ -890,30 +895,39 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isMobile = constraints.maxWidth < 600;
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+        final inputBg = isDark ? const Color(0xFF0F172A) : Colors.white;
+
+        InputDecoration buildInputDecoration(String label, {String? hint, Widget? prefixIcon}) {
+          return InputDecoration(
+            labelText: label,
+            hintText: hint,
+            prefixIcon: prefixIcon,
+            filled: true,
+            fillColor: inputBg,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: isDark ? Colors.white24 : Colors.grey.shade300),
+            ),
+            isDense: true,
+          );
+        }
 
         Widget companyAndRoleRow = isMobile
             ? Column(
                 children: [
                   TextFormField(
                     controller: _manualCompanyNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Company Name *',
-                      prefixIcon: Icon(Icons.business, size: 20),
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    style: const TextStyle(fontSize: 13),
+                    decoration: buildInputDecoration('Company Name *', prefixIcon: const Icon(Icons.business, size: 20)),
+                    style: TextStyle(fontSize: 13, color: isDark ? Colors.white : Colors.black87),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _manualJobTitleController,
-                    decoration: const InputDecoration(
-                      labelText: 'Job Role / Title *',
-                      prefixIcon: Icon(Icons.work_outline, size: 20),
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    style: const TextStyle(fontSize: 13),
+                    decoration: buildInputDecoration('Job Role / Title *', prefixIcon: const Icon(Icons.work_outline, size: 20)),
+                    style: TextStyle(fontSize: 13, color: isDark ? Colors.white : Colors.black87),
                   ),
                 ],
               )
@@ -922,26 +936,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   Expanded(
                     child: TextFormField(
                       controller: _manualCompanyNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Company Name *',
-                        prefixIcon: Icon(Icons.business, size: 20),
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      style: const TextStyle(fontSize: 13),
+                      decoration: buildInputDecoration('Company Name *', prefixIcon: const Icon(Icons.business, size: 20)),
+                      style: TextStyle(fontSize: 13, color: isDark ? Colors.white : Colors.black87),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: TextFormField(
                       controller: _manualJobTitleController,
-                      decoration: const InputDecoration(
-                        labelText: 'Job Role / Title *',
-                        prefixIcon: Icon(Icons.work_outline, size: 20),
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      style: const TextStyle(fontSize: 13),
+                      decoration: buildInputDecoration('Job Role / Title *', prefixIcon: const Icon(Icons.work_outline, size: 20)),
+                      style: TextStyle(fontSize: 13, color: isDark ? Colors.white : Colors.black87),
                     ),
                   ),
                 ],
@@ -952,26 +956,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 children: [
                   TextFormField(
                     controller: _manualCompanyUrlController,
-                    decoration: const InputDecoration(
-                      labelText: 'Company Website URL (Optional)',
-                      hintText: 'https://company.com',
-                      prefixIcon: Icon(Icons.link, size: 20),
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    style: const TextStyle(fontSize: 13),
+                    decoration: buildInputDecoration('Company Website URL (Optional)', hint: 'https://company.com', prefixIcon: const Icon(Icons.link, size: 20)),
+                    style: TextStyle(fontSize: 13, color: isDark ? Colors.white : Colors.black87),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _manualRecipientEmailsController,
-                    decoration: const InputDecoration(
-                      labelText: 'HR Email ID(s) (Optional)',
-                      hintText: 'careers@company.com, hr@company.com',
-                      prefixIcon: Icon(Icons.email_outlined, size: 20),
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    style: const TextStyle(fontSize: 13),
+                    decoration: buildInputDecoration('HR Email ID(s) (Optional)', hint: 'careers@company.com, hr@company.com', prefixIcon: const Icon(Icons.email_outlined, size: 20)),
+                    style: TextStyle(fontSize: 13, color: isDark ? Colors.white : Colors.black87),
                   ),
                 ],
               )
@@ -980,40 +972,28 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   Expanded(
                     child: TextFormField(
                       controller: _manualCompanyUrlController,
-                      decoration: const InputDecoration(
-                        labelText: 'Company Website URL (Optional)',
-                        hintText: 'https://company.com',
-                        prefixIcon: Icon(Icons.link, size: 20),
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      style: const TextStyle(fontSize: 13),
+                      decoration: buildInputDecoration('Company Website URL (Optional)', hint: 'https://company.com', prefixIcon: const Icon(Icons.link, size: 20)),
+                      style: TextStyle(fontSize: 13, color: isDark ? Colors.white : Colors.black87),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: TextFormField(
                       controller: _manualRecipientEmailsController,
-                      decoration: const InputDecoration(
-                        labelText: 'HR Email ID(s) (Optional)',
-                        hintText: 'careers@company.com, hr@company.com',
-                        prefixIcon: Icon(Icons.email_outlined, size: 20),
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      style: const TextStyle(fontSize: 13),
+                      decoration: buildInputDecoration('HR Email ID(s) (Optional)', hint: 'careers@company.com, hr@company.com', prefixIcon: const Icon(Icons.email_outlined, size: 20)),
+                      style: TextStyle(fontSize: 13, color: isDark ? Colors.white : Colors.black87),
                     ),
                   ),
                 ],
               );
 
         return Card(
-          elevation: 1,
+          elevation: 2,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.purple.shade200),
+            side: BorderSide(color: Colors.purple.shade300, width: 1),
           ),
-          color: Colors.purple.shade50.withValues(alpha: 0.3),
+          color: cardBg,
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -1046,28 +1026,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 TextFormField(
                   controller: _manualCompanyNotesController,
                   maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Company / Job Notes & Context (Optional)',
-                    hintText: "e.g., 'Cloud Infrastructure consultancy looking for AWS DevOps Lead'",
-                    border: OutlineInputBorder(),
-                    alignLabelWithHint: true,
-                    isDense: true,
-                  ),
-                  style: const TextStyle(fontSize: 12.5),
+                  decoration: buildInputDecoration('Company / Job Notes & Context (Optional)', hint: "e.g., 'Cloud Infrastructure consultancy looking for AWS DevOps Lead'"),
+                  style: TextStyle(fontSize: 12.5, color: isDark ? Colors.white : Colors.black87),
                 ),
                 const SizedBox(height: 12),
 
                 // Custom AI Instructions
                 TextFormField(
                   controller: _manualCustomPromptController,
-                  decoration: const InputDecoration(
-                    labelText: 'Custom AI Instructions (Optional)',
-                    hintText: "e.g., 'Emphasize my AWS certification & Kubernetes experience'",
-                    prefixIcon: Icon(Icons.tune, size: 20),
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                  style: const TextStyle(fontSize: 12.5),
+                  decoration: buildInputDecoration('Custom AI Instructions (Optional)', hint: "e.g., 'Emphasize my AWS certification & Kubernetes experience'", prefixIcon: const Icon(Icons.tune, size: 20)),
+                  style: TextStyle(fontSize: 12.5, color: isDark ? Colors.white : Colors.black87),
                 ),
                 const SizedBox(height: 16),
 
