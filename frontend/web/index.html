@@ -78,13 +78,18 @@
   </div>
   <script>
     window.addEventListener('load', function(ev) {
-      // Download main.dart.js
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (let registration of registrations) {
+            registration.unregister();
+          }
+        });
+      }
       _flutter.loader.loadEntrypoint({
         onEntrypointLoaded: function(engineInitializer) {
-          engineInitializer.initializeEngine({
-            renderer: "html"
-          }).then(function(appRunner) {
-            document.getElementById("loading").remove();
+          engineInitializer.initializeEngine().then(function(appRunner) {
+            var loadingEl = document.getElementById("loading");
+            if (loadingEl) loadingEl.remove();
             appRunner.runApp();
           });
         }
