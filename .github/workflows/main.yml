@@ -17,11 +17,15 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
+
+      # Enable Gradle caching (saves ~5-8 mins)
+      - uses: gradle/actions/setup-gradle@v3
           
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.41.0'
           channel: 'stable'
+          cache: true # Caches Flutter SDK & pub packages
 
       - name: Create placeholder .env
         working-directory: ./frontend
@@ -29,13 +33,11 @@ jobs:
         
       - name: Get Dependencies
         working-directory: ./frontend
-        run: |
-          flutter pub get
-          flutter clean
+        run: flutter pub get
         
       - name: Build Standard APK
         working-directory: ./frontend
-        run: flutter build apk --release --no-tree-shake-icons
+        run: flutter build apk --release --target-platform android-arm64 --no-tree-shake-icons
 
       - name: Setup Shorebird
         uses: shorebirdtech/setup-shorebird@v1
@@ -51,7 +53,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: frontend/build/app/outputs/apk/release/app-release.apk
+          path: frontend/build/app/outputs/**/app-release.apk
 
       - name: Extract version from pubspec.yaml
         id: get_version
@@ -66,7 +68,7 @@ jobs:
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           name: Release v${{ steps.get_version.outputs.version }}
-          files: frontend/build/app/outputs/apk/release/app-release.apk
+          files: frontend/build/app/outputs/**/app-release.apk
           draft: false
           prerelease: false
         env:
