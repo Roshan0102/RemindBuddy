@@ -134,38 +134,342 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: _isAuthenticated
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
-              )
-            : null,
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.blue.shade900,
-              const Color(0xFF1E1E2C),
-            ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isDesktopWeb = constraints.maxWidth >= 768;
+
+        if (isDesktopWeb && !_isAuthenticated) {
+          return _buildWebSplitScreenAuthView(context);
+        }
+
+        return Scaffold(
+          extendBodyBehindAppBar: true,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: _isAuthenticated
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                  )
+                : null,
           ),
-        ),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: _isAuthenticated ? _buildProfileView() : _buildAuthView(),
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.blue.shade900,
+                  const Color(0xFF1E1E2C),
+                ],
+              ),
+            ),
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: _isAuthenticated ? _buildProfileView() : _buildAuthView(),
+                ),
+              ),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildWebSplitScreenAuthView(BuildContext context) {
+    return Scaffold(
+      body: Row(
+        children: [
+          // LEFT HERO PANEL
+          Expanded(
+            flex: 6,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF0F172A),
+                    Color(0xFF1E3A8A),
+                    Color(0xFF0284C7),
+                  ],
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 48),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // App Brand Logo & Name
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white30, width: 2),
+                        ),
+                        child: const Icon(Icons.alarm_add, color: Colors.white, size: 36),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        'RemindBuddy',
+                        style: GoogleFonts.pacifico(
+                          fontSize: 38,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 36),
+
+                  Text(
+                    'Your All-in-One Intelligent\nProductivity & Finance Suite',
+                    style: GoogleFonts.outfit(
+                      fontSize: 34,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      height: 1.25,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Manage daily reminders, work shifts, 22K gold rates, split expenses, and AI job applications seamlessly in one dashboard.',
+                    style: GoogleFonts.outfit(
+                      fontSize: 16,
+                      color: Colors.white70,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 44),
+
+                  // 4 Feature Cards Grid
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: [
+                      _buildHeroFeatureBadge(Icons.alarm_on, Colors.amber, 'Smart Reminders', 'Calendar & Shift tracking'),
+                      _buildHeroFeatureBadge(Icons.monetization_on, Colors.yellowAccent, 'Gold & Finance', 'Live rates & split expenses'),
+                      _buildHeroFeatureBadge(Icons.psychology, Colors.lightBlueAccent, 'Gemini AI Assistant', 'Job applications & resume'),
+                      _buildHeroFeatureBadge(Icons.shield, Colors.tealAccent, 'Secure Vault', 'PIN encrypted vault storage'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // RIGHT LOGIN FORM PANEL
+          Expanded(
+            flex: 5,
+            child: Container(
+              color: const Color(0xFF0F172A),
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(32),
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    padding: const EdgeInsets.all(36),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white12, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.4),
+                          blurRadius: 30,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.blue.withOpacity(0.15),
+                              border: Border.all(color: Colors.blueAccent.withOpacity(0.4), width: 2),
+                            ),
+                            child: const Icon(
+                              Icons.lock_person_rounded,
+                              size: 44,
+                              color: Colors.blueAccent,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          Text(
+                            'Welcome Back',
+                            style: GoogleFonts.outfit(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Sign in to access your RemindBuddy workspace',
+                            style: GoogleFonts.outfit(
+                              fontSize: 13,
+                              color: Colors.grey,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 28),
+
+                          Form(
+                            key: _formKey,
+                            child: Column(
+                              children: [
+                                _buildWebTextField(
+                                  controller: _emailController,
+                                  label: 'Email or Username',
+                                  icon: Icons.person_outline,
+                                  validator: (val) {
+                                    if (val == null || val.isEmpty) return 'Please enter your login';
+                                    if (val.length < 3) return 'Login too short';
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+
+                                _buildWebTextField(
+                                  controller: _passwordController,
+                                  label: 'Password',
+                                  icon: Icons.lock_outline,
+                                  isPassword: true,
+                                  validator: (val) => val != null && val.length > 5 ? null : 'Password too short (min 6)',
+                                ),
+
+                                const SizedBox(height: 28),
+
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 48,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      gradient: LinearGradient(
+                                        colors: [Colors.blue.shade600, Colors.blue.shade800],
+                                      ),
+                                    ),
+                                    child: ElevatedButton(
+                                      onPressed: _isLoading ? null : _submit,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        shadowColor: Colors.transparent,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: _isLoading
+                                          ? const SizedBox(
+                                              width: 22,
+                                              height: 22,
+                                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                            )
+                                          : Text(
+                                              'SIGN IN',
+                                              style: GoogleFonts.outfit(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                                letterSpacing: 1.1,
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroFeatureBadge(IconData icon, Color iconColor, String title, String subtitle) {
+    return Container(
+      width: 220,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: iconColor, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                Text(subtitle, style: const TextStyle(color: Colors.white60, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWebTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    bool isPassword = false,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: isPassword,
+      validator: validator,
+      style: const TextStyle(color: Colors.white, fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+        prefixIcon: Icon(icon, color: Colors.blueAccent, size: 20),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.white24),
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.white24),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
+        ),
+        filled: true,
+        fillColor: const Color(0xFF0F172A),
       ),
     );
   }
@@ -248,7 +552,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                     ),
                   ),
                   Text(
-                    _isLogin ? 'Welcome Back' : 'Join Us Today',
+                    'Welcome Back',
                     style: GoogleFonts.inter(
                       fontSize: 16,
                       color: Colors.white70,
@@ -268,26 +572,15 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                           children: [
                             _buildTextField(
                               controller: _emailController,
-                              label: _isLogin ? 'Email or Username' : 'Email Address',
-                              icon: _isLogin ? Icons.person_pin : Icons.email_outlined,
+                              label: 'Email or Username',
+                              icon: Icons.person_pin,
                               validator: (val) {
                                 if (val == null || val.isEmpty) return 'Please enter your login';
-                                if (!_isLogin && !val.contains('@')) return 'Enter a valid email';
                                 if (val.length < 3) return 'Login too short';
                                 return null;
                               },
                             ),
                             const SizedBox(height: 16),
-                            
-                            if (!_isLogin) ...[
-                              _buildTextField(
-                                controller: _usernameController,
-                                label: 'Display Name',
-                                icon: Icons.person_outline,
-                                validator: (val) => val != null && val.length > 2 ? null : 'Name too short',
-                              ),
-                              const SizedBox(height: 16),
-                            ],
                             
                             _buildTextField(
                               controller: _passwordController,
@@ -315,7 +608,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                 child: _isLoading 
                                   ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                                   : Text(
-                                      _isLogin ? 'LOGIN' : 'SIGN UP',
+                                      'LOGIN',
                                       style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold),
                                     ),
                               ),

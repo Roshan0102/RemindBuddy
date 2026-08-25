@@ -18,7 +18,8 @@ import com.google.android.gms.location.SleepSegmentRequest
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
+import io.flutter.plugin.common.EventChannel
+import android.provider.Telephony
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.remindbuddy/battery"
@@ -32,6 +33,33 @@ class MainActivity: FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // SMS Stream EventChannel
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/sms_stream").setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    SmsReceiver.eventSink = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    SmsReceiver.eventSink = null
+                }
+            }
+        )
+
+        // SMS Inbox Scanner MethodChannel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/sms_scanner").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "scanSmsInbox" -> {
+                    val days = call.argument<Int>("days") ?: 30
+                    val smsList = scanSmsInbox(days)
+                    result.success(smsList)
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
         
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -232,5 +260,41 @@ class MainActivity: FlutterActivity() {
             permissionResult?.success(granted)
             permissionResult = null
         }
+    }
+
+    private fun scanSmsInbox(days: Int): List<Map<String, Any>> {
+        val result = mutableListOf<Map<String, Any>>()
+        try {
+            val cutoffTime = System.currentTimeMillis() - (days.toLong() * 24 * 60 * 60 * 1000)
+            val uri = Telephony.Sms.Inbox.CONTENT_URI
+            val projection = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE)
+            val selection = "${Telephony.Sms.DATE} >= ?"
+            val selectionArgs = arrayOf(cutoffTime.toString())
+            val sortOrder = "${Telephony.Sms.DATE} DESC"
+
+            val cursor = contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)
+            cursor?.use { c ->
+                val addressIdx = c.getColumnIndex(Telephony.Sms.ADDRESS)
+                val bodyIdx = c.getColumnIndex(Telephony.Sms.BODY)
+                val dateIdx = c.getColumnIndex(Telephony.Sms.DATE)
+
+                while (c.moveToNext()) {
+                    val address = if (addressIdx >= 0) c.getString(addressIdx) ?: "" else ""
+                    val body = if (bodyIdx >= 0) c.getString(bodyIdx) ?: "" else ""
+                    val date = if (dateIdx >= 0) c.getLong(dateIdx) else 0L
+
+                    result.add(
+                        mapOf(
+                            "sender" to address,
+                            "body" to body,
+                            "timestamp" to date
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return result
     }
 }

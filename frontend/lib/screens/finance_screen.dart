@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../models/bank_account.dart';
 import '../models/finance_transaction.dart';
 import '../models/recurring_bill.dart';
 import '../models/debt_record.dart';
 import '../models/group_split.dart';
+import '../models/sms_transaction.dart';
 import '../services/finance_service.dart';
+import '../services/sms_parser_service.dart';
+import '../widgets/nightly_expense_tag_sheet.dart';
 
 class FinanceScreen extends StatefulWidget {
   const FinanceScreen({super.key});
@@ -17,11 +22,31 @@ class FinanceScreen extends StatefulWidget {
 class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final FinanceService _financeService = FinanceService();
+  static const EventChannel _smsStreamChannel = EventChannel('com.remindbuddy/sms_stream');
+  bool _isScanningInbox = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
+    _initSmsRealtimeListener();
+  }
+
+  void _initSmsRealtimeListener() {
+    _smsStreamChannel.receiveBroadcastStream().listen((dynamic event) {
+      if (event is Map) {
+        final String sender = event['sender']?.toString() ?? '';
+        final String body = event['body']?.toString() ?? '';
+        final int timestamp = (event['timestamp'] is num) ? (event['timestamp'] as num).toInt() : 0;
+
+        final parsed = SmsParserService.parseSms(sender, body, timestamp);
+        if (parsed != null) {
+          _financeService.saveSmsTransaction(parsed);
+        }
+      }
+    }, onError: (err) {
+      print('SMS EventChannel stream error: $err');
+    });
   }
 
   @override
@@ -46,6 +71,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             Tab(text: 'Bills'),
             Tab(text: 'Lent / Borrowed'),
             Tab(text: 'Group Splitter'),
+            Tab(text: '📱 Auto SMS Tracker'),
           ],
         ),
       ),
@@ -56,6 +82,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
           _buildBillsTab(),
           _buildDebtsTab(),
           _buildGroupSplitterTab(),
+          _buildSmsTrackerTab(),
         ],
       ),
     );
@@ -1168,6 +1195,256 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
           ),
         ],
       ),
+    );
+  }
+
+  // ============================================================================
+  // TAB 5: AUTOMATED SMS BANK TRACKER
+  // ============================================================================
+
+  Widget _buildSmsTrackerTab() {
+    return StreamBuilder<List<SmsTransaction>>(
+      stream: _financeService.getSmsTransactionsStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final allTransactions = snapshot.data ?? [];
+        final pendingUntagged = allTransactions.where((t) => !t.isVerified).toList();
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // Status & Scanning Card
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              color: const Color(0xFF1E293B),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.sms_rounded, color: Colors.blueAccent, size: 26),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Automated SMS Reader',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const Text(
+                                'Real-time Debit/Credit SMS parsing',
+                                style: TextStyle(color: Colors.grey, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'RemindBuddy captures incoming bank SMS messages and presents them for quick 1-tap categorization before sleep 🌙',
+                      style: GoogleFonts.outfit(color: Colors.white70, fontSize: 13, height: 1.4),
+                    ),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        icon: _isScanningInbox
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Icon(Icons.center_focus_strong, size: 18, color: Colors.white),
+                        label: Text(_isScanningInbox ? 'Scanning Past 30 Days...' : 'Scan Last 30 Days SMS Inbox'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade700,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: _isScanningInbox
+                            ? null
+                            : () async {
+                                setState(() => _isScanningInbox = true);
+                                final count = await _financeService.scanPastSmsInbox(days: 30);
+                                setState(() => _isScanningInbox = false);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Scanned SMS Inbox! Detected $count financial transactions.'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                }
+                              },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Pending Review Nightly Banner
+            if (pendingUntagged.isNotEmpty) ...[
+              Card(
+                elevation: 3,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                color: Colors.amber.shade900.withOpacity(0.85),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.nightlight_round, color: Colors.white, size: 30),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${pendingUntagged.length} Untagged Expenses',
+                              style: GoogleFonts.outfit(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const Text(
+                              'Tap to tag reasons & sync your bank balances',
+                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black87,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (ctx) => NightlyExpenseTagSheet(pendingTransactions: pendingUntagged),
+                          );
+                        },
+                        child: const Text('Review Now', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // Section Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Recent SMS Transactions (${allTransactions.length})',
+                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            if (allTransactions.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: Text(
+                    'No SMS bank transactions detected yet.\nTap "Scan Last 30 Days SMS Inbox" above to import!',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+              )
+            else
+              ...allTransactions.map((tx) {
+                final isDebit = tx.type == 'Debit';
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  color: const Color(0xFF1E293B),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: isDebit ? Colors.red.shade900.withOpacity(0.4) : Colors.green.shade900.withOpacity(0.4),
+                      child: Icon(
+                        isDebit ? Icons.arrow_upward : Icons.arrow_downward,
+                        color: isDebit ? Colors.redAccent : Colors.greenAccent,
+                      ),
+                    ),
+                    title: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          tx.bankName,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        Text(
+                          '${isDebit ? '-' : '+'}${NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(tx.amount)}',
+                          style: TextStyle(
+                            color: isDebit ? Colors.redAccent : Colors.greenAccent,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 2),
+                        Text('Payee: ${tx.payee}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              DateFormat('dd MMM, hh:mm a').format(tx.timestamp),
+                              style: const TextStyle(color: Colors.grey, fontSize: 11),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: tx.isVerified ? Colors.green.withOpacity(0.2) : Colors.amber.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                tx.isVerified ? tx.category : 'Untagged',
+                                style: TextStyle(
+                                  color: tx.isVerified ? Colors.greenAccent : Colors.amberAccent,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+          ],
+        );
+      },
     );
   }
 

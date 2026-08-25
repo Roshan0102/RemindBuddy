@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/bank_account.dart';
@@ -5,6 +6,8 @@ import '../models/finance_transaction.dart';
 import '../models/recurring_bill.dart';
 import '../models/debt_record.dart';
 import '../models/group_split.dart';
+import '../models/sms_transaction.dart';
+import 'sms_parser_service.dart';
 
 class FinanceService {
   static final FinanceService _instance = FinanceService._internal();
@@ -433,5 +436,101 @@ class FinanceService {
     }
 
     return settlements;
+  }
+
+  // ============================================================================
+  // AUTOMATED SMS TRANSACTIONS
+  // ============================================================================
+
+  Stream<List<SmsTransaction>> getSmsTransactionsStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    return doc
+        .collection('sms_transactions')
+        .orderBy('timestamp', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => SmsTransaction.fromMap(d.data())).toList());
+  }
+
+  Future<void> saveSmsTransaction(SmsTransaction tx) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('sms_transactions').doc(tx.id).set(tx.toMap(), SetOptions(merge: true));
+  }
+
+  Future<void> updateSmsTransaction(SmsTransaction tx) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('sms_transactions').doc(tx.id).update(tx.toMap());
+
+    // If verified, reconcile transaction balance to corresponding BankAccount if matching
+    if (tx.isVerified) {
+      await _reconcileSmsTransactionWithAccount(tx);
+    }
+  }
+
+  Future<void> deleteSmsTransaction(String id) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('sms_transactions').doc(id).delete();
+  }
+
+  Future<void> _reconcileSmsTransactionWithAccount(SmsTransaction tx) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final accountsSnap = await doc.collection('finance_accounts').get();
+    if (accountsSnap.docs.isEmpty) return;
+
+    for (final accountDoc in accountsSnap.docs) {
+      final bank = BankAccount.fromMap(accountDoc.data(), accountDoc.id);
+      
+      // Match bank name or last 4 digits
+      final bool nameMatch = bank.name.toLowerCase().contains(tx.bankName.toLowerCase()) ||
+          tx.bankName.toLowerCase().contains(bank.name.toLowerCase());
+      final bool last4Match = tx.accountLast4.isNotEmpty && bank.name.contains(tx.accountLast4);
+
+      if (nameMatch || last4Match) {
+        final double change = (tx.type == 'Debit') ? -tx.amount : tx.amount;
+        final double newBal = bank.currentBalance + change;
+        await accountDoc.reference.update({
+          'currentBalance': newBal,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        break; // Matched and updated
+      }
+    }
+  }
+
+  /// Scans past SMS messages from Android Content Provider and saves newly detected transactions
+  Future<int> scanPastSmsInbox({int days = 30}) async {
+    int count = 0;
+    try {
+      final List<dynamic>? rawList = await const MethodChannel('com.remindbuddy/sms_scanner')
+          .invokeListMethod('scanSmsInbox', {'days': days});
+
+      if (rawList != null) {
+        for (final item in rawList) {
+          if (item is Map) {
+            final String sender = item['sender']?.toString() ?? '';
+            final String body = item['body']?.toString() ?? '';
+            final int timestamp = (item['timestamp'] is num) ? (item['timestamp'] as num).toInt() : 0;
+
+            final parsed = SmsParserService.parseSms(sender, body, timestamp);
+            if (parsed != null) {
+              await saveSmsTransaction(parsed);
+              count++;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error scanning SMS inbox: $e');
+    }
+    return count;
   }
 }

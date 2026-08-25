@@ -29,6 +29,10 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
   <title>remindbuddy</title>
   <link rel="manifest" href="manifest.json">
 
@@ -37,7 +41,7 @@
     const serviceWorkerVersion = null;
   </script>
   <!-- This script adds the flutter initialization JS code -->
-  <script src="flutter.js" defer></script>
+  <script src="flutter.js?v=1.8.0" defer></script>
   <style>
     body {
       background-color: #0F172A;
@@ -78,6 +82,7 @@
   </div>
   <script>
     window.addEventListener('load', function(ev) {
+      // 1. Unregister all old service workers
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(registrations) {
           for (let registration of registrations) {
@@ -85,7 +90,17 @@
           }
         });
       }
+      // 2. Clear CacheStorage cache entries
+      if ('caches' in window) {
+        caches.keys().then(function(names) {
+          for (let name of names) {
+            caches.delete(name);
+          }
+        });
+      }
+      // 3. Load entrypoint with timestamp cache-buster
       _flutter.loader.loadEntrypoint({
+        entrypointUrl: 'main.dart.js?v=' + new Date().getTime(),
         onEntrypointLoaded: function(engineInitializer) {
           engineInitializer.initializeEngine().then(function(appRunner) {
             var loadingEl = document.getElementById("loading");
