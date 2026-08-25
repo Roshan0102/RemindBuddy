@@ -61,6 +61,36 @@ class MainActivity: FlutterActivity() {
                 }
             }
         }
+
+        // SMS Background Buffer MethodChannel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/sms_buffer").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getAndClearPendingSms" -> {
+                    try {
+                        val prefs = getSharedPreferences("remindbuddy_sms_buffer", Context.MODE_PRIVATE)
+                        val existingJsonStr = prefs.getString("pending_sms", "[]") ?: "[]"
+                        val jsonArray = org.json.JSONArray(existingJsonStr)
+
+                        val list = mutableListOf<Map<String, Any>>()
+                        for (i in 0 until jsonArray.length()) {
+                            val obj = jsonArray.getJSONObject(i)
+                            list.add(mapOf(
+                                "sender" to obj.optString("sender"),
+                                "body" to obj.optString("body"),
+                                "timestamp" to obj.optLong("timestamp")
+                            ))
+                        }
+
+                        // Clear buffer once retrieved
+                        prefs.edit().remove("pending_sms").apply()
+                        result.success(list)
+                    } catch (e: Exception) {
+                        result.error("BUFFER_ERROR", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
         
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {

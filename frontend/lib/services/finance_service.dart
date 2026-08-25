@@ -460,7 +460,7 @@ class FinanceService {
     await doc.collection('sms_transactions').doc(tx.id).set(tx.toMap(), SetOptions(merge: true));
   }
 
-  Future<void> updateSmsTransaction(SmsTransaction tx) async {
+  Future<void> updateSmsTransaction(SmsTransaction tx, {String? destinationBankAccountId}) async {
     final doc = _userDoc;
     if (doc == null) return;
 
@@ -468,7 +468,7 @@ class FinanceService {
 
     // If verified, reconcile transaction balance to corresponding BankAccount if matching
     if (tx.isVerified) {
-      await _reconcileSmsTransactionWithAccount(tx);
+      await _reconcileSmsTransactionWithAccount(tx, destinationBankAccountId: destinationBankAccountId);
     }
   }
 
@@ -479,17 +479,45 @@ class FinanceService {
     await doc.collection('sms_transactions').doc(id).delete();
   }
 
-  Future<void> _reconcileSmsTransactionWithAccount(SmsTransaction tx) async {
+  Future<void> _reconcileSmsTransactionWithAccount(SmsTransaction tx, {String? destinationBankAccountId}) async {
     final doc = _userDoc;
     if (doc == null) return;
 
     final accountsSnap = await doc.collection('finance_accounts').get();
     if (accountsSnap.docs.isEmpty) return;
 
+    final accounts = accountsSnap.docs.map((d) => BankAccount.fromMap(d.data(), d.id)).toList();
+
+    // Handle Self Transfer: Deduct from source bank, Add to destination bank
+    if (tx.category == 'Self Transfer' && destinationBankAccountId != null && destinationBankAccountId.isNotEmpty) {
+      BankAccount? sourceBank = accounts.firstWhere(
+        (a) => a.name.toLowerCase().contains(tx.bankName.toLowerCase()) || tx.bankName.toLowerCase().contains(a.name.toLowerCase()),
+        orElse: () => accounts.first,
+      );
+      BankAccount? destBank = accounts.firstWhere(
+        (a) => a.id == destinationBankAccountId,
+        orElse: () => accounts.last,
+      );
+
+      if (sourceBank.id != destBank.id) {
+        // Deduct from Source
+        await doc.collection('finance_accounts').doc(sourceBank.id).update({
+          'currentBalance': sourceBank.currentBalance - tx.amount,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        // Add to Destination
+        await doc.collection('finance_accounts').doc(destBank.id).update({
+          'currentBalance': destBank.currentBalance + tx.amount,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      return;
+    }
+
+    // Normal Debit or Credit Sync to Bank Account
     for (final accountDoc in accountsSnap.docs) {
       final bank = BankAccount.fromMap(accountDoc.data(), accountDoc.id);
-      
-      // Match bank name or last 4 digits
+
       final bool nameMatch = bank.name.toLowerCase().contains(tx.bankName.toLowerCase()) ||
           tx.bankName.toLowerCase().contains(bank.name.toLowerCase());
       final bool last4Match = tx.accountLast4.isNotEmpty && bank.name.contains(tx.accountLast4);
@@ -530,6 +558,34 @@ class FinanceService {
       }
     } catch (e) {
       print('Error scanning SMS inbox: $e');
+    }
+    return count;
+  }
+
+  /// Checks for any SMS messages captured while the app was closed/terminated in background
+  Future<int> checkAndProcessPendingBackgroundSms() async {
+    int count = 0;
+    try {
+      final List<dynamic>? rawList = await const MethodChannel('com.remindbuddy/sms_buffer')
+          .invokeListMethod('getAndClearPendingSms');
+
+      if (rawList != null && rawList.isNotEmpty) {
+        for (final item in rawList) {
+          if (item is Map) {
+            final String sender = item['sender']?.toString() ?? '';
+            final String body = item['body']?.toString() ?? '';
+            final int timestamp = (item['timestamp'] is num) ? (item['timestamp'] as num).toInt() : 0;
+
+            final parsed = SmsParserService.parseSms(sender, body, timestamp);
+            if (parsed != null) {
+              await saveSmsTransaction(parsed);
+              count++;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error checking background SMS buffer: $e');
     }
     return count;
   }

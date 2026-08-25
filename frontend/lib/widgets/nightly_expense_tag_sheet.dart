@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/bank_account.dart';
 import '../models/sms_transaction.dart';
 import '../services/finance_service.dart';
 
@@ -17,6 +19,8 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
   late List<SmsTransaction> _items;
   final Map<String, String> _selectedCategories = {};
   final Map<String, TextEditingController> _noteControllers = {};
+  final Map<String, String> _targetBankIds = {};
+  List<String> _customTagRecommendations = ['Water Can', 'Milk', 'House Maid', 'Laundry', 'WiFi Bill'];
 
   final List<Map<String, dynamic>> _categories = [
     {'name': 'Food & Dining', 'icon': Icons.fastfood, 'color': Colors.orange},
@@ -24,6 +28,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     {'name': 'Groceries', 'icon': Icons.shopping_basket, 'color': Colors.green},
     {'name': 'Bills & Utilities', 'icon': Icons.receipt_long, 'color': Colors.blue},
     {'name': 'Shopping', 'icon': Icons.shopping_bag, 'color': Colors.purple},
+    {'name': 'Self Transfer', 'icon': Icons.swap_horiz_rounded, 'color': Colors.indigoAccent},
     {'name': 'Entertainment', 'icon': Icons.movie, 'color': Colors.pink},
     {'name': 'Personal Care', 'icon': Icons.spa, 'color': Colors.teal},
     {'name': 'Others', 'icon': Icons.more_horiz, 'color': Colors.grey},
@@ -35,16 +40,33 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     _items = List.from(widget.pendingTransactions);
     for (var tx in _items) {
       _selectedCategories[tx.id] = tx.category == 'Uncategorized' ? 'Food & Dining' : tx.category;
-      _noteControllers[tx.id] = TextEditingController(text: tx.notes);
+      _noteControllers[tx.id] = TextEditingController(text: tx.notes == tx.payee ? '' : tx.notes);
+    }
+    _loadCustomTagRecommendations();
+  }
+
+  Future<void> _loadCustomTagRecommendations() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('user_custom_tags');
+    if (saved != null && saved.isNotEmpty) {
+      setState(() {
+        for (var s in saved) {
+          if (!_customTagRecommendations.contains(s)) {
+            _customTagRecommendations.insert(0, s);
+          }
+        }
+      });
     }
   }
 
-  @override
-  void dispose() {
-    for (var controller in _noteControllers.values) {
-      controller.dispose();
+  Future<void> _saveCustomTag(String tag) async {
+    if (tag.trim().isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final clean = tag.trim();
+    if (!_customTagRecommendations.contains(clean)) {
+      _customTagRecommendations.insert(0, clean);
+      await prefs.setStringList('user_custom_tags', _customTagRecommendations);
     }
-    super.dispose();
   }
 
   Future<void> _verifyAndSyncAll() async {
@@ -53,19 +75,25 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
       final category = _selectedCategories[tx.id] ?? 'Others';
       final notes = _noteControllers[tx.id]?.text ?? '';
       
+      if (notes.isNotEmpty) {
+        await _saveCustomTag(notes);
+      }
+
       final updatedTx = tx.copyWith(
         isVerified: true,
         category: category,
         notes: notes.isNotEmpty ? notes : tx.payee,
       );
-      await finance.updateSmsTransaction(updatedTx);
+
+      final destBankId = _targetBankIds[tx.id];
+      await finance.updateSmsTransaction(updatedTx, destinationBankAccountId: destBankId);
     }
 
     if (mounted) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Synced ${_items.length} expenses to your bank balance!'),
+          content: Text('Synced ${_items.length} expenses to your bank balances!'),
           backgroundColor: Colors.green,
         ),
       );
@@ -236,6 +264,106 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                           );
                         }).toList(),
                       ),
+
+                      if (selectedCat == 'Self Transfer') ...[
+                        const SizedBox(height: 12),
+                        StreamBuilder<List<BankAccount>>(
+                          stream: FinanceService().getAccountsStream(),
+                          builder: (context, accountsSnap) {
+                            final accounts = accountsSnap.data ?? [];
+                            if (accounts.isEmpty) {
+                              return const Padding(
+                                padding: EdgeInsets.all(8.0),
+                                child: Text('No Bank Accounts added yet. Add banks in Accounts tab!', style: TextStyle(color: Colors.amber, fontSize: 12)),
+                              );
+                            }
+
+                            final currentTargetId = _targetBankIds[tx.id] ?? accounts.first.id;
+
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.indigoAccent),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Select Destination Bank Account:',
+                                    style: TextStyle(color: Colors.indigoAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  DropdownButton<String>(
+                                    value: accounts.any((a) => a.id == currentTargetId) ? currentTargetId : accounts.first.id,
+                                    isExpanded: true,
+                                    dropdownColor: const Color(0xFF1E293B),
+                                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                                    underline: const SizedBox(),
+                                    items: accounts.map((acc) {
+                                      return DropdownMenuItem<String>(
+                                        value: acc.id,
+                                        child: Text('${acc.name} (Bal: ₹${acc.currentBalance.toStringAsFixed(0)})'),
+                                      );
+                                    }).toList(),
+                                    onChanged: (newId) {
+                                      if (newId != null) {
+                                        setState(() {
+                                          _targetBankIds[tx.id] = newId;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                      if (selectedCat == 'Others') ...[
+                        const SizedBox(height: 12),
+                        if (_customTagRecommendations.isNotEmpty) ...[
+                          const Text(
+                            'Frequent Custom Tags (Tap to fill):',
+                            style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: _customTagRecommendations.take(6).map((tag) {
+                              return ActionChip(
+                                backgroundColor: const Color(0xFF1E293B),
+                                side: const BorderSide(color: Colors.amber, width: 0.8),
+                                avatar: const Icon(Icons.bolt, size: 14, color: Colors.amber),
+                                label: Text(tag, style: const TextStyle(color: Colors.white, fontSize: 11)),
+                                onPressed: () {
+                                  setState(() {
+                                    _noteControllers[tx.id]?.text = tag;
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                        TextField(
+                          controller: _noteControllers[tx.id],
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                          decoration: InputDecoration(
+                            hintText: 'Type custom reason (e.g., Domain, Gift, Bike repair)...',
+                            hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                            filled: true,
+                            fillColor: const Color(0xFF1E293B),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Colors.white24),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 );
