@@ -43,6 +43,8 @@ class _AdminScreenState extends State<AdminScreen> {
     {'id': 'daily_reminders', 'label': 'Daily Reminders'},
     {'id': 'notes', 'label': 'Aesthetic Notes'},
     {'id': 'shifts', 'label': 'My Shifts'},
+    {'id': 'job_assistant', 'label': 'AI Job Assistant'},
+    {'id': 'finance', 'label': 'Finance & Split Expenses'},
     {'id': 'checklist', 'label': 'Checklist'},
     {'id': 'vault', 'label': 'Secure Vault'},
     {'id': 'events', 'label': 'Tech Events'},

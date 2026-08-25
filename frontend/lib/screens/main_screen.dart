@@ -59,7 +59,20 @@ class _MainScreenState extends State<MainScreen> {
   ];
   List<String> _userSelectedBottomModules = [];
   List<String> _userMenuOrder = [];
+  List<String> _userFavoriteModules = ['gold', 'reminders', 'notes', 'shifts'];
   bool _isLoading = true;
+
+  Future<void> _toggleFavorite(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      if (_userFavoriteModules.contains(id)) {
+        _userFavoriteModules.remove(id);
+      } else {
+        _userFavoriteModules.add(id);
+      }
+    });
+    await prefs.setStringList('user_favorite_modules', _userFavoriteModules);
+  }
 
   bool get _isVaultEnabled => _enabledModules.contains('vault');
 
@@ -121,6 +134,7 @@ class _MainScreenState extends State<MainScreen> {
     final cachedBottom = localPrefs.getStringList('user_bottom_modules') ?? [];
     final cachedModulesStr = localPrefs.getStringList('cached_enabled_modules');
     final cachedMenuOrder = localPrefs.getStringList('user_menu_order') ?? [];
+    final cachedFavorites = localPrefs.getStringList('user_favorite_modules') ?? ['gold', 'reminders', 'notes', 'shifts'];
 
     if (mounted) {
       setState(() {
@@ -130,6 +144,7 @@ class _MainScreenState extends State<MainScreen> {
         }
         _userSelectedBottomModules = cachedBottom;
         _userMenuOrder = cachedMenuOrder;
+        _userFavoriteModules = cachedFavorites;
         _isLoading = false;
       });
     }
@@ -480,6 +495,12 @@ class _MainScreenState extends State<MainScreen> {
     return result;
   }
 
+  List<String> get _desktopActiveModules {
+    return _enabledModules
+        .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled) && (!kIsWeb || id != 'checklist'))
+        .toList();
+  }
+
   int get _menuIndex {
     final active = _activeFeatures;
     if (active.length >= 4) return 2;
@@ -578,6 +599,14 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   bool _isModuleSelected(String id) {
+    final isLargeScreen = MediaQuery.of(context).size.width >= 768;
+    if (isLargeScreen) {
+      final desktop = _desktopActiveModules;
+      if (_selectedIndex < desktop.length) {
+        return desktop[_selectedIndex] == id;
+      }
+      return false;
+    }
     final active = _activeFeatures;
     if (_selectedIndex < active.length) {
       return active[_selectedIndex] == id;
@@ -611,6 +640,16 @@ class _MainScreenState extends State<MainScreen> {
     } else if (id == 'settings') {
       Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
       return;
+    }
+
+    final isLargeScreen = MediaQuery.of(context).size.width >= 768;
+    if (isLargeScreen) {
+      final desktop = _desktopActiveModules;
+      final idx = desktop.indexOf(id);
+      if (idx != -1) {
+        setState(() => _selectedIndex = idx);
+        return;
+      }
     }
 
     final active = _activeFeatures;
@@ -1062,14 +1101,12 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   @override
-  Widget _buildDesktopSidebar(List<String> activeModules, int displayIndex) {
+  Widget _buildDesktopSidebar(List<String> desktopModules, int displayIndex) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sidebarBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
     final borderCol = isDark ? Colors.white10 : Colors.black12;
     final activeColor = Theme.of(context).colorScheme.primary;
     final activeBg = activeColor.withOpacity(isDark ? 0.15 : 0.08);
-
-    final active = activeModules;
 
     return Container(
       width: 260,
@@ -1109,26 +1146,28 @@ class _MainScreenState extends State<MainScreen> {
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
               children: [
+                // FAVORITES SECTION
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Text(
-                    'DASHBOARD',
+                    '⭐ FAVORITES',
                     style: GoogleFonts.outfit(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: Colors.grey,
+                      color: Colors.amber.shade700,
                       letterSpacing: 1.2,
                     ),
                   ),
                 ),
                 
-                ...List.generate(active.length, (index) {
-                  final id = active[index];
+                ...desktopModules.where((id) => _userFavoriteModules.contains(id)).map((id) {
+                  final index = desktopModules.indexOf(id);
                   final registry = _moduleRegistry[id]!;
                   final name = registry['name'] as String;
                   final isSelected = displayIndex == index;
                   final dest = registry['destination'] as NavigationDestination;
-                  
+                  final vibrantColor = (dest.icon as Icon).color ?? activeColor;
+
                   return Container(
                     margin: const EdgeInsets.only(bottom: 4),
                     child: ListTile(
@@ -1137,15 +1176,19 @@ class _MainScreenState extends State<MainScreen> {
                       selected: isSelected,
                       selectedTileColor: activeBg,
                       selectedColor: activeColor,
-                      iconColor: Colors.grey,
                       textColor: isDark ? Colors.white70 : Colors.black87,
-                      leading: _buildMenuIcon(id, (dest.icon as Icon).icon!, isSelected ? activeColor : Colors.grey),
+                      leading: _buildMenuIcon(id, (dest.icon as Icon).icon!, vibrantColor),
                       title: Text(
                         name,
                         style: GoogleFonts.outfit(
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                           fontSize: 14,
                         ),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.star, color: Colors.amber, size: 18),
+                        onPressed: () => _toggleFavorite(id),
+                        tooltip: 'Remove from Favorites',
                       ),
                       onTap: () {
                         setState(() {
@@ -1155,7 +1198,64 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                   );
                 }),
-                
+
+                const SizedBox(height: 12),
+                const Divider(),
+                const SizedBox(height: 8),
+
+                // OTHER FEATURES SECTION
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text(
+                    '📌 OTHER FEATURES',
+                    style: GoogleFonts.outfit(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+
+                ...desktopModules.where((id) => !_userFavoriteModules.contains(id)).map((id) {
+                  final index = desktopModules.indexOf(id);
+                  final registry = _moduleRegistry[id]!;
+                  final name = registry['name'] as String;
+                  final isSelected = displayIndex == index;
+                  final dest = registry['destination'] as NavigationDestination;
+                  final vibrantColor = (dest.icon as Icon).color ?? activeColor;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    child: ListTile(
+                      dense: true,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      selected: isSelected,
+                      selectedTileColor: activeBg,
+                      selectedColor: activeColor,
+                      textColor: isDark ? Colors.white70 : Colors.black87,
+                      leading: _buildMenuIcon(id, (dest.icon as Icon).icon!, vibrantColor),
+                      title: Text(
+                        name,
+                        style: GoogleFonts.outfit(
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          fontSize: 14,
+                        ),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.star_border, color: Colors.grey, size: 18),
+                        onPressed: () => _toggleFavorite(id),
+                        tooltip: 'Add to Favorites',
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _selectedIndex = index;
+                        });
+                      },
+                    ),
+                  );
+                }),
+
                 const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 8),
@@ -1359,8 +1459,33 @@ class _MainScreenState extends State<MainScreen> {
     final double screenWidth = MediaQuery.of(context).size.width;
     final bool isLargeScreen = screenWidth >= 768;
 
-    final activeModules = _activeFeatures;
+    if (isLargeScreen) {
+      final desktopModules = _desktopActiveModules;
+      if (_selectedIndex >= desktopModules.length) {
+        _selectedIndex = 0;
+      }
+      final int displayIndex = _selectedIndex;
 
+      final desktopMainBody = IndexedStack(
+        index: displayIndex,
+        children: desktopModules
+            .map((id) => _moduleRegistry[id]!['screen'] as Widget)
+            .toList(),
+      );
+
+      return Scaffold(
+        body: Row(
+          children: [
+            _buildDesktopSidebar(desktopModules, displayIndex),
+            Expanded(
+              child: desktopMainBody,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final activeModules = _activeFeatures;
     if (_selectedIndex >= activeModules.length) {
       _selectedIndex = 0;
     }
@@ -1372,19 +1497,6 @@ class _MainScreenState extends State<MainScreen> {
           .map((id) => _moduleRegistry[id]!['screen'] as Widget)
           .toList(),
     );
-
-    if (isLargeScreen) {
-      return Scaffold(
-        body: Row(
-          children: [
-            _buildDesktopSidebar(activeModules, displayIndex),
-            Expanded(
-              child: mainBody,
-            ),
-          ],
-        ),
-      );
-    }
 
     return Scaffold(
       appBar: AppBar(
@@ -1480,6 +1592,26 @@ class _MainScreenState extends State<MainScreen> {
                   _selectTabOrPush('gold');
                 },
               ),
+            if (_enabledModules.contains('job_assistant'))
+              ListTile(
+                leading: const Icon(Icons.work_outline, color: Colors.blueAccent),
+                title: const Text('AI Job Assistant'),
+                selected: _isModuleSelected('job_assistant'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectTabOrPush('job_assistant');
+                },
+              ),
+            if (_enabledModules.contains('finance'))
+              ListTile(
+                leading: const Icon(Icons.account_balance_wallet_outlined, color: Colors.teal),
+                title: const Text('Finance'),
+                selected: _isModuleSelected('finance'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectTabOrPush('finance');
+                },
+              ),
             if (_enabledModules.contains('astro_calendar'))
               ListTile(
                 leading: const Icon(Icons.sunny, color: Colors.orange),
@@ -1488,6 +1620,26 @@ class _MainScreenState extends State<MainScreen> {
                 onTap: () {
                   Navigator.pop(context);
                   _selectTabOrPush('astro_calendar');
+                },
+              ),
+            if (_enabledModules.contains('gcp_cost'))
+              ListTile(
+                leading: const Icon(Icons.account_balance_wallet, color: Colors.green),
+                title: const Text('GCP Cost Tracker'),
+                selected: _isModuleSelected('gcp_cost'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectTabOrPush('gcp_cost');
+                },
+              ),
+            if (_isVaultEnabled)
+              ListTile(
+                leading: const Icon(Icons.shield, color: Colors.blueAccent),
+                title: const Text('Secure Vault'),
+                selected: _isModuleSelected('vault'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectTabOrPush('vault');
                 },
               ),
             const Divider(),

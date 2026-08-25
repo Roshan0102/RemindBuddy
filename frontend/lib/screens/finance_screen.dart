@@ -38,11 +38,14 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          indicatorSize: TabBarIndicatorSize.label,
+          labelPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           tabs: const [
-            Tab(icon: Icon(Icons.account_balance), text: 'Accounts'),
-            Tab(icon: Icon(Icons.receipt_long), text: 'Bills'),
-            Tab(icon: Icon(Icons.people_alt), text: 'Lent / Borrowed'),
-            Tab(icon: Icon(Icons.call_split), text: 'Group Splitter'),
+            Tab(text: 'Accounts'),
+            Tab(text: 'Bills'),
+            Tab(text: 'Lent / Borrowed'),
+            Tab(text: 'Group Splitter'),
           ],
         ),
       ),
@@ -167,27 +170,23 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       child: Text('No bank accounts added yet. Tap "Add Account" to start tracking!'),
                     ),
                   )
-                else
-                  SizedBox(
-                    height: 130,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: accounts.length,
-                      itemBuilder: (context, index) {
-                        final acc = accounts[index];
-                        final Color accColor = Color(acc.colorHex);
-
-                        return Container(
-                          width: 200,
-                          margin: const EdgeInsets.only(right: 12),
+                else if (accounts.length <= 3)
+                  Row(
+                    children: accounts.map((acc) {
+                      final Color accColor = Color(acc.colorHex);
+                      return Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 6),
+                          height: 90,
                           child: Card(
                             elevation: 2,
+                            margin: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                               side: BorderSide(color: accColor.withOpacity(0.4), width: 1.5),
                             ),
                             child: Padding(
-                              padding: const EdgeInsets.all(14),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -195,8 +194,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Icon(_getIconData(acc.iconName), color: accColor),
+                                      Icon(_getIconData(acc.iconName), color: accColor, size: 18),
                                       PopupMenuButton<String>(
+                                        padding: EdgeInsets.zero,
+                                        iconSize: 16,
                                         onSelected: (val) {
                                           if (val == 'delete') {
                                             _financeService.deleteAccount(acc.id);
@@ -205,23 +206,94 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                         itemBuilder: (_) => [
                                           const PopupMenuItem(value: 'delete', child: Text('Delete Account')),
                                         ],
-                                        icon: const Icon(Icons.more_vert, size: 18, color: Colors.grey),
+                                        icon: const Icon(Icons.more_vert, size: 16, color: Colors.grey),
                                       ),
                                     ],
                                   ),
                                   Text(
                                     acc.name,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
-                                    '₹${NumberFormat('#,##,##0.00').format(acc.currentBalance)}',
+                                    '₹${NumberFormat('#,##,##0').format(acc.currentBalance)}',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 16,
+                                      fontSize: 12,
                                       color: acc.currentBalance >= 0 ? Colors.green.shade700 : Colors.red,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  )
+                else
+                  SizedBox(
+                    height: 90,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: accounts.length,
+                      itemBuilder: (context, index) {
+                        final acc = accounts[index];
+                        final Color accColor = Color(acc.colorHex);
+
+                        return Container(
+                          width: 115,
+                          margin: const EdgeInsets.only(right: 8),
+                          child: Card(
+                            elevation: 2,
+                            margin: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(color: accColor.withOpacity(0.4), width: 1.5),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Icon(_getIconData(acc.iconName), color: accColor, size: 18),
+                                      PopupMenuButton<String>(
+                                        padding: EdgeInsets.zero,
+                                        iconSize: 16,
+                                        onSelected: (val) {
+                                          if (val == 'delete') {
+                                            _financeService.deleteAccount(acc.id);
+                                          }
+                                        },
+                                        itemBuilder: (_) => [
+                                          const PopupMenuItem(value: 'delete', child: Text('Delete Account')),
+                                        ],
+                                        icon: const Icon(Icons.more_vert, size: 16, color: Colors.grey),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    acc.name,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    '₹${NumberFormat('#,##,##0').format(acc.currentBalance)}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                      color: acc.currentBalance >= 0 ? Colors.green.shade700 : Colors.red,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
@@ -801,8 +873,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     final titleCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
     final notesCtrl = TextEditingController();
+    final customDaysCtrl = TextEditingController(text: '15');
     DateTime dueDate = DateTime.now().add(const Duration(days: 7));
-    String frequency = 'monthly';
+    String selectedFrequency = 'monthly';
     String category = 'Utilities';
 
     showDialog(
@@ -841,15 +914,35 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   },
                 ),
                 DropdownButtonFormField<String>(
-                  initialValue: frequency,
+                  initialValue: selectedFrequency,
                   decoration: const InputDecoration(labelText: 'Frequency'),
                   items: const [
                     DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
                     DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
                     DropdownMenuItem(value: 'yearly', child: Text('Yearly')),
+                    DropdownMenuItem(value: '15_days', child: Text('Every 15 Days')),
+                    DropdownMenuItem(value: '30_days', child: Text('Every 30 Days')),
+                    DropdownMenuItem(value: '45_days', child: Text('Every 45 Days')),
+                    DropdownMenuItem(value: '60_days', child: Text('Every 60 Days')),
+                    DropdownMenuItem(value: 'custom', child: Text('Custom Days Interval')),
                   ],
-                  onChanged: (val) => frequency = val ?? 'monthly',
+                  onChanged: (val) {
+                    setDialogState(() {
+                      selectedFrequency = val ?? 'monthly';
+                    });
+                  },
                 ),
+                if (selectedFrequency == 'custom') ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: customDaysCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Interval in Days (e.g. 15, 45, 90)',
+                      hintText: 'Enter number of days',
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -859,6 +952,19 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               onPressed: () {
                 if (titleCtrl.text.trim().isEmpty) return;
                 final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+                String freqStr = selectedFrequency;
+                if (selectedFrequency == '15_days') {
+                  freqStr = 'Every 15 Days';
+                } else if (selectedFrequency == '30_days') {
+                  freqStr = 'Every 30 Days';
+                } else if (selectedFrequency == '45_days') {
+                  freqStr = 'Every 45 Days';
+                } else if (selectedFrequency == '60_days') {
+                  freqStr = 'Every 60 Days';
+                } else if (selectedFrequency == 'custom') {
+                  final days = int.tryParse(customDaysCtrl.text.trim()) ?? 30;
+                  freqStr = 'Every $days Days';
+                }
 
                 _financeService.addBill(RecurringBill(
                   id: '',
@@ -866,7 +972,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   amount: amt,
                   category: category,
                   dueDate: dueDate,
-                  frequency: frequency,
+                  frequency: freqStr,
                   notes: notesCtrl.text.trim(),
                 ));
                 Navigator.pop(context);
