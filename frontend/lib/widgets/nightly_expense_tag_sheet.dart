@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -22,6 +23,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
   final Map<String, TextEditingController> _noteControllers = {};
   final Map<String, String> _targetBankIds = {};
   final Map<String, String> _targetDebtIds = {};
+  final Map<String, String> _selectedBankNames = {};
   List<String> _customTagRecommendations = [];
 
   final List<Map<String, dynamic>> _categories = [
@@ -40,6 +42,8 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     {'name': 'Others', 'icon': Icons.more_horiz, 'color': Colors.grey},
   ];
 
+  StreamSubscription<List<String>>? _customTagsSub;
+
   @override
   void initState() {
     super.initState();
@@ -47,30 +51,24 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     for (var tx in _items) {
       _selectedCategories[tx.id] = tx.category == 'Uncategorized' ? 'Food & Dining' : tx.category;
       _noteControllers[tx.id] = TextEditingController(text: '');
+      _selectedBankNames[tx.id] = tx.bankName;
     }
-    _loadCustomTagRecommendations();
+    _customTagsSub = FinanceService().getUserCustomTagsStream().listen((tags) {
+      if (mounted) {
+        setState(() {
+          _customTagRecommendations = tags;
+        });
+      }
+    });
   }
 
-  Future<void> _loadCustomTagRecommendations() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList('user_custom_tags');
-    if (saved != null && saved.isNotEmpty) {
-      setState(() {
-        _customTagRecommendations = saved.take(5).toList();
-      });
+  @override
+  void dispose() {
+    _customTagsSub?.cancel();
+    for (var ctrl in _noteControllers.values) {
+      ctrl.dispose();
     }
-  }
-
-  Future<void> _saveCustomTag(String tag) async {
-    final clean = tag.trim();
-    if (clean.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    _customTagRecommendations.remove(clean);
-    _customTagRecommendations.insert(0, clean);
-    if (_customTagRecommendations.length > 5) {
-      _customTagRecommendations = _customTagRecommendations.sublist(0, 5);
-    }
-    await prefs.setStringList('user_custom_tags', _customTagRecommendations);
+    super.dispose();
   }
 
   Future<void> _verifyAndSyncAll() async {
@@ -78,13 +76,15 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     for (var tx in _items) {
       final category = _selectedCategories[tx.id] ?? 'Others';
       final notes = _noteControllers[tx.id]?.text.trim() ?? '';
+      final chosenBankName = _selectedBankNames[tx.id] ?? tx.bankName;
       
       if (notes.isNotEmpty) {
-        await _saveCustomTag(notes);
+        await finance.saveUserCustomTag(notes);
       }
 
       final updatedTx = tx.copyWith(
         isVerified: true,
+        bankName: chosenBankName,
         category: category,
         notes: notes.isNotEmpty ? notes : tx.payee,
       );
@@ -187,13 +187,18 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                 final tx = _items[index];
                 final isDebit = tx.type == 'Debit';
                 final selectedCat = _selectedCategories[tx.id] ?? 'Others';
+                final currentBankName = _selectedBankNames[tx.id] ?? tx.bankName;
+                final bool isUnassignedBank = currentBankName == 'Bank' || currentBankName.toLowerCase() == 'unknown';
 
                 return Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: cardColor,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: borderColor),
+                    border: Border.all(
+                      color: isUnassignedBank ? Colors.redAccent : borderColor,
+                      width: isUnassignedBank ? 1.8 : 1.0,
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -210,20 +215,51 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                tx.bankName,
+                                currentBankName,
                                 style: TextStyle(
-                                  color: textColor,
+                                  color: isUnassignedBank ? Colors.redAccent : textColor,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15,
                                 ),
                               ),
                               if (tx.accountLast4.isNotEmpty) ...[
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 4),
                                 Text(
                                   '(*${tx.accountLast4})',
                                   style: TextStyle(color: subtextColor, fontSize: 12),
                                 ),
                               ],
+                              if (isUnassignedBank) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text('⚠️ Assign Bank', style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () => _showSmsDetailsDialog(context, tx),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: Colors.blue.withOpacity(0.4), width: 0.8),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.sms_rounded, size: 11, color: Colors.blueAccent),
+                                      SizedBox(width: 3),
+                                      Text('SMS 📩', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                           Text(
@@ -241,6 +277,74 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                       Text(
                         'Payee: ${tx.payee}',
                         style: TextStyle(color: subtextColor, fontSize: 13, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Bank Account Selector / Reassigner
+                      StreamBuilder<List<BankAccount>>(
+                        stream: FinanceService().getAccountsStream(),
+                        builder: (context, accountsSnap) {
+                          final userAccounts = accountsSnap.data ?? [];
+                          if (userAccounts.isEmpty) return const SizedBox();
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isUnassignedBank ? Colors.red.withOpacity(0.12) : inputBg,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: isUnassignedBank ? Colors.redAccent.withOpacity(0.6) : borderColor,
+                                width: isUnassignedBank ? 1.2 : 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isUnassignedBank ? Icons.warning_amber_rounded : Icons.account_balance_rounded,
+                                  size: 15,
+                                  color: isUnassignedBank ? Colors.redAccent : Colors.blueAccent,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: userAccounts.any((a) => a.name == currentBankName)
+                                          ? currentBankName
+                                          : null,
+                                      hint: Text(
+                                        isUnassignedBank ? '⚠️ Assign Bank Account (Select)' : 'Change Bank Account',
+                                        style: TextStyle(
+                                          color: isUnassignedBank ? Colors.redAccent : subtextColor,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      isExpanded: true,
+                                      dropdownColor: bgColor,
+                                      style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.w600),
+                                      items: userAccounts.map((acc) {
+                                        return DropdownMenuItem<String>(
+                                          value: acc.name,
+                                          child: Text('${acc.name} (Bal: ₹${acc.currentBalance.toStringAsFixed(0)})'),
+                                        );
+                                      }).toList(),
+                                      onChanged: (newBankName) {
+                                        if (newBankName != null) {
+                                          final selectedAcc = userAccounts.firstWhere((a) => a.name == newBankName);
+                                          setState(() {
+                                            _selectedBankNames[tx.id] = newBankName;
+                                            _targetBankIds[tx.id] = selectedAcc.id;
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                       Text(
                         DateFormat('dd MMM yyyy, hh:mm a').format(tx.timestamp),
@@ -403,45 +507,71 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                       ],
                       if (selectedCat == 'Others') ...[
                         const SizedBox(height: 12),
-                        if (_customTagRecommendations.isNotEmpty) ...[
-                          const Text(
-                            'Your Custom Tags (Tap to fill):',
-                            style: TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: _customTagRecommendations.take(5).map((tag) {
-                              return ActionChip(
-                                backgroundColor: chipBg,
-                                side: const BorderSide(color: Colors.amber, width: 0.8),
-                                avatar: const Icon(Icons.bolt, size: 14, color: Colors.amber),
-                                label: Text(tag, style: TextStyle(color: textColor, fontSize: 11)),
-                                onPressed: () {
-                                  setState(() {
-                                    _noteControllers[tx.id]?.text = tag;
-                                  });
-                                },
-                              );
-                            }).toList(),
-                          ),
-                          const SizedBox(height: 10),
-                        ],
-                        TextField(
-                          controller: _noteControllers[tx.id],
-                          style: TextStyle(color: textColor, fontSize: 13),
-                          decoration: InputDecoration(
-                            hintText: 'Type custom reason (e.g., Domain, Gift, Bike repair)...',
-                            hintStyle: TextStyle(color: subtextColor, fontSize: 12),
-                            filled: true,
-                            fillColor: inputBg,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: borderColor),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          ),
+                        Builder(
+                          builder: (context) {
+                            final currentInput = _noteControllers[tx.id]?.text.trim() ?? '';
+                            List<String> matchingTags = [];
+                            if (currentInput.isEmpty) {
+                              matchingTags = _customTagRecommendations.take(5).toList();
+                            } else {
+                              matchingTags = _customTagRecommendations
+                                  .where((t) => t.toLowerCase().contains(currentInput.toLowerCase()))
+                                  .take(5)
+                                  .toList();
+                            }
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (matchingTags.isNotEmpty) ...[
+                                  Text(
+                                    currentInput.isEmpty ? 'Your Custom Tags (Tap to fill):' : 'Matching Custom Tags:',
+                                    style: const TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children: matchingTags.map((tag) {
+                                      return ActionChip(
+                                        backgroundColor: chipBg,
+                                        side: const BorderSide(color: Colors.amber, width: 0.8),
+                                        avatar: const Icon(Icons.bolt, size: 14, color: Colors.amber),
+                                        label: Text(tag, style: TextStyle(color: textColor, fontSize: 11)),
+                                        onPressed: () {
+                                          setState(() {
+                                            _noteControllers[tx.id]?.text = tag;
+                                            _noteControllers[tx.id]?.selection = TextSelection.fromPosition(
+                                              TextPosition(offset: tag.length),
+                                            );
+                                          });
+                                        },
+                                      );
+                                    }).toList(),
+                                  ),
+                                  const SizedBox(height: 10),
+                                ],
+                                TextField(
+                                  controller: _noteControllers[tx.id],
+                                  onChanged: (_) {
+                                    setState(() {});
+                                  },
+                                  style: TextStyle(color: textColor, fontSize: 13),
+                                  decoration: InputDecoration(
+                                    hintText: 'Type custom reason (e.g., Domain, Gift, Bike repair)...',
+                                    hintStyle: TextStyle(color: subtextColor, fontSize: 12),
+                                    filled: true,
+                                    fillColor: inputBg,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide(color: borderColor),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ],
                     ],
@@ -467,6 +597,170 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
               ),
               onPressed: _verifyAndSyncAll,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSmsDetailsDialog(BuildContext context, SmsTransaction tx) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color bgColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final Color subtextColor = isDark ? Colors.white70 : Colors.black54;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: bgColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.sms_rounded, color: Colors.blue, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'SMS Raw Details 📩',
+                style: GoogleFonts.outfit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: textColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header Box
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'SMS SENDER HEADER',
+                      style: TextStyle(color: Colors.blue.shade700, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      tx.sender.isNotEmpty ? tx.sender : (tx.bankName.isNotEmpty ? tx.bankName : 'Unknown Header'),
+                      style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Timing Box
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'RECEIVED TIMING',
+                      style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      DateFormat('dd MMMM yyyy, hh:mm:ss a').format(tx.timestamp),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textColor),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Detected Bank & Payee
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('DETECTED BANK', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 2),
+                          Text(tx.bankName, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('EXTRACTED PAYEE', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 2),
+                          Text(tx.payee, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Raw Body Text
+              Text(
+                'RAW SMS MESSAGE BODY:',
+                style: TextStyle(color: subtextColor, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade300),
+                ),
+                child: SelectableText(
+                  tx.notes.isNotEmpty ? tx.notes : 'No raw SMS body recorded.',
+                  style: TextStyle(fontSize: 13, color: textColor, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
           ),
         ],
       ),

@@ -180,6 +180,7 @@ class SmsParserService {
 
     return SmsTransaction(
       id: id,
+      sender: sender,
       bankName: bankName,
       accountLast4: accountLast4,
       type: type,
@@ -206,15 +207,15 @@ class SmsParserService {
     final String cleanBody = body.toLowerCase();
 
     final List<_BankMatchRule> bankRules = [
-      _BankMatchRule('HDFC Bank', ['HDFCBK', 'HDFC'], ['hdfc bank', 'hdfc']),
-      _BankMatchRule('SBI', ['SBIBNK', 'SBIN', 'SBI'], ['state bank of india', 'state bank', 'sbi']),
+      _BankMatchRule('HDFC Bank', ['HDFCBK', 'HDFC', 'HDFCB'], ['hdfc bank', 'hdfc']),
+      _BankMatchRule('SBI', ['SBIBNK', 'SBIN', 'SBI', 'SBIUPI'], ['state bank of india', 'state bank', 'sbi', '-sbi']),
       _BankMatchRule('ICICI Bank', ['ICICIB', 'ICICI'], ['icici bank', 'icici']),
       _BankMatchRule('Axis Bank', ['AXISBK', 'UTIB', 'AXIS'], ['axis bank', 'axis']),
       _BankMatchRule('Kotak Bank', ['KOTAKB', 'KOTAK'], ['kotak mahindra', 'kotak bank', 'kotak']),
-      _BankMatchRule('Indian Bank', ['INDNBN', 'INDIBK', 'INDIANB'], ['indian bank', 'indianb']),
+      _BankMatchRule('Indian Bank', ['INDNBN', 'INDIBK', 'INDIANB', 'INDN', 'INDB', 'IBK'], ['indian bank', 'indianb', 'ind bank', 'indibk']),
       _BankMatchRule('Bank of Baroda', ['BOBTXT', 'BOB', 'BARODA'], ['bank of baroda', 'baroda bank', 'bob']),
       _BankMatchRule('Canara Bank', ['CANBNK', 'CNRB', 'CANARA'], ['canara bank', 'canara']),
-      _BankMatchRule('Union Bank', ['UNIONB', 'UBOI'], ['union bank of india', 'union bank', 'uboi']),
+      _BankMatchRule('Union Bank', ['UNIONB', 'UBOI', 'UNIN', 'UBIN', 'UBI'], ['union bank of india', 'union bank', 'uboi', 'ubin']),
       _BankMatchRule('PNB', ['PNBSMS', 'PNB'], ['punjab national bank', 'pnb']),
       _BankMatchRule('IndusInd Bank', ['INDUSB', 'INDUS'], ['indusind bank', 'indusind']),
       _BankMatchRule('IDFC FIRST Bank', ['IDFCFB', 'IDFC'], ['idfc first bank', 'idfc bank', 'idfc']),

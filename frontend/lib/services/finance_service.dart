@@ -717,4 +717,47 @@ class FinanceService {
     }
     return count;
   }
+
+  // ============================================================================
+  // USER CUSTOM TAGS (PERSISTENCE & SYNC)
+  // ============================================================================
+
+  Stream<List<String>> getUserCustomTagsStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    return doc.snapshots().map((snap) {
+      if (!snap.exists || snap.data() == null) return [];
+      final data = snap.data() as Map<String, dynamic>;
+      final List<dynamic> tags = data['customTags'] ?? [];
+      return tags.map((e) => e.toString()).toList();
+    });
+  }
+
+  Future<void> saveUserCustomTag(String tag) async {
+    final cleanTag = tag.trim();
+    if (cleanTag.isEmpty) return;
+
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final snap = await doc.get();
+    List<String> existingTags = [];
+    if (snap.exists && snap.data() != null) {
+      final data = snap.data() as Map<String, dynamic>;
+      final List<dynamic> list = data['customTags'] ?? [];
+      existingTags = list.map((e) => e.toString()).toList();
+    }
+
+    // Remove duplicates case-insensitively and prepend to top (most recent)
+    existingTags.removeWhere((t) => t.toLowerCase() == cleanTag.toLowerCase());
+    existingTags.insert(0, cleanTag);
+
+    // Keep max 50 recent tags stored in Firestore
+    if (existingTags.length > 50) {
+      existingTags = existingTags.sublist(0, 50);
+    }
+
+    await doc.set({'customTags': existingTags}, SetOptions(merge: true));
+  }
 }

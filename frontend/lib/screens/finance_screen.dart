@@ -1096,6 +1096,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                     ? customNote
                     : selectedCategory;
 
+                if (selectedCategory == 'Others' && customNote.isNotEmpty) {
+                  await _financeService.saveUserCustomTag(customNote);
+                }
+
                 await _financeService.addTransaction(FinanceTransaction(
                   id: '',
                   accountId: selectedAccountId,
@@ -1779,13 +1783,18 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             else
               ...monthTransactions.map((tx) {
                 final isDebit = tx.type == 'Debit';
+                final bool isGenericBank = tx.bankName == 'Bank' || tx.bankName.toLowerCase() == 'unknown';
+
                 return Card(
                   margin: const EdgeInsets.only(bottom: 10),
                   color: cardBg,
                   elevation: isDark ? 2 : 1,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
-                    side: BorderSide(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                    side: BorderSide(
+                      color: isGenericBank ? Colors.redAccent : (isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                      width: isGenericBank ? 1.8 : 1.0,
+                    ),
                   ),
                   child: ListTile(
                     onTap: () {
@@ -1806,9 +1815,31 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                     title: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          tx.bankName,
-                          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14),
+                        Row(
+                          children: [
+                            Text(
+                              tx.bankName,
+                              style: TextStyle(
+                                color: isGenericBank ? Colors.redAccent : textColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            if (isGenericBank) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text(
+                                  '⚠️ Assign Bank',
+                                  style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         Text(
                           '${isDebit ? '-' : '+'}${NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(tx.amount)}',
@@ -1832,20 +1863,44 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               DateFormat('dd MMM, hh:mm a').format(tx.timestamp),
                               style: TextStyle(color: subtextColor, fontSize: 11),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: tx.isVerified ? Colors.green.withOpacity(0.2) : Colors.amber.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                tx.isVerified ? tx.category : 'Untagged (Tap to tag)',
-                                style: TextStyle(
-                                  color: tx.isVerified ? (isDark ? Colors.greenAccent : Colors.green.shade800) : (isDark ? Colors.amberAccent : Colors.amber.shade900),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
+                            Row(
+                              children: [
+                                InkWell(
+                                  onTap: () => _showSmsDetailsDialog(context, tx),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    margin: const EdgeInsets.only(right: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: Colors.blue.withOpacity(0.4), width: 0.8),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.sms_rounded, size: 11, color: Colors.blueAccent),
+                                        SizedBox(width: 3),
+                                        Text('SMS 📩', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: tx.isVerified ? Colors.green.withOpacity(0.2) : Colors.amber.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    tx.isVerified ? tx.category : 'Untagged (Tap to tag)',
+                                    style: TextStyle(
+                                      color: tx.isVerified ? (isDark ? Colors.greenAccent : Colors.green.shade800) : (isDark ? Colors.amberAccent : Colors.amber.shade900),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -2010,6 +2065,170 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => GroupEventDetailScreen(group: group)),
+    );
+  }
+
+  void _showSmsDetailsDialog(BuildContext context, SmsTransaction tx) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color bgColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final Color subtextColor = isDark ? Colors.white70 : Colors.black54;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: bgColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.sms_rounded, color: Colors.blue, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'SMS Raw Details 📩',
+                style: GoogleFonts.outfit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: textColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header Box
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'SMS SENDER HEADER',
+                      style: TextStyle(color: Colors.blue.shade700, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      tx.sender.isNotEmpty ? tx.sender : (tx.bankName.isNotEmpty ? tx.bankName : 'Unknown Header'),
+                      style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Timing Box
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'RECEIVED TIMING',
+                      style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      DateFormat('dd MMMM yyyy, hh:mm:ss a').format(tx.timestamp),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textColor),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Detected Bank & Payee
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('DETECTED BANK', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 2),
+                          Text(tx.bankName, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('EXTRACTED PAYEE', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 2),
+                          Text(tx.payee, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Raw Body Text
+              Text(
+                'RAW SMS MESSAGE BODY:',
+                style: TextStyle(color: subtextColor, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade300),
+                ),
+                child: SelectableText(
+                  tx.notes.isNotEmpty ? tx.notes : 'No raw SMS body recorded.',
+                  style: TextStyle(fontSize: 13, color: textColor, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,5 +1,6 @@
 class SmsTransaction {
   final String id;
+  final String sender;
   final String bankName;
   final String accountLast4;
   final String type; // 'Debit' or 'Credit'
@@ -12,6 +13,7 @@ class SmsTransaction {
 
   SmsTransaction({
     required this.id,
+    this.sender = '',
     required this.bankName,
     required this.accountLast4,
     required this.type,
@@ -26,6 +28,7 @@ class SmsTransaction {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'sender': sender,
       'bankName': bankName,
       'accountLast4': accountLast4,
       'type': type,
@@ -41,6 +44,7 @@ class SmsTransaction {
   factory SmsTransaction.fromMap(Map<String, dynamic> map) {
     return SmsTransaction(
       id: map['id'] ?? '',
+      sender: map['sender'] ?? '',
       bankName: map['bankName'] ?? 'Bank',
       accountLast4: map['accountLast4'] ?? '',
       type: map['type'] ?? 'Debit',
@@ -57,6 +61,7 @@ class SmsTransaction {
 
   SmsTransaction copyWith({
     String? id,
+    String? sender,
     String? bankName,
     String? accountLast4,
     String? type,
@@ -69,6 +74,7 @@ class SmsTransaction {
   }) {
     return SmsTransaction(
       id: id ?? this.id,
+      sender: sender ?? this.sender,
       bankName: bankName ?? this.bankName,
       accountLast4: accountLast4 ?? this.accountLast4,
       type: type ?? this.type,
