@@ -633,13 +633,20 @@ class FinanceService {
     int count = 0;
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return 0;
+      if (user == null) {
+        print('uploadSmsStudySamples: User is null');
+        return 0;
+      }
 
       final List<dynamic>? rawList = await const MethodChannel('com.remindbuddy/sms_scanner')
           .invokeListMethod('scanSmsInbox', {'days': days});
 
-      if (rawList != null) {
-        final collectionRef = _db.collection('sms_study_samples');
+      if (rawList != null && rawList.isNotEmpty) {
+        final globalRef = _db.collection('sms_study_samples');
+        final userSubRef = _db.collection('users').doc(user.uid).collection('sms_study_samples');
+
+        var batch = _db.batch();
+        int batchCount = 0;
 
         for (final item in rawList) {
           if (item is Map) {
@@ -648,8 +655,9 @@ class FinanceService {
             final int timestamp = (item['timestamp'] is num) ? (item['timestamp'] as num).toInt() : 0;
 
             if (body.isNotEmpty) {
-              final docRef = collectionRef.doc();
-              await docRef.set({
+              final String sampleId = globalRef.doc().id;
+              final data = {
+                'sampleId': sampleId,
                 'userId': user.uid,
                 'userEmail': user.email ?? 'Unknown Email',
                 'userName': user.displayName ?? 'RemindBuddy User',
@@ -657,10 +665,25 @@ class FinanceService {
                 'body': body,
                 'timestamp': timestamp,
                 'syncedAt': FieldValue.serverTimestamp(),
-              });
+              };
+
+              batch.set(globalRef.doc(sampleId), data);
+              batch.set(userSubRef.doc(sampleId), data);
+
               count++;
+              batchCount += 2;
+
+              if (batchCount >= 400) {
+                await batch.commit();
+                batch = _db.batch();
+                batchCount = 0;
+              }
             }
           }
+        }
+
+        if (batchCount > 0) {
+          await batch.commit();
         }
       }
     } catch (e) {

@@ -146,5 +146,10 @@ service cloud.firestore {
         );
       }
     }
+
+    // SMS Study Samples collection for AI research
+    match /sms_study_samples/{sampleId} {
+      allow create, read, write: if request.auth != null;
+    }
   }
 }

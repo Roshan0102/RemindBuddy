@@ -43,8 +43,8 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
-          path: frontend/build/app/outputs/**/app-release.apk
+          name: RemindBuddy-v1.8.5-APK
+          path: frontend/build/app/outputs/flutter-apk/app-release.apk
 
       - name: Extract version from pubspec.yaml
         id: get_version
@@ -59,7 +59,7 @@ jobs:
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           name: Release v${{ steps.get_version.outputs.version }}
-          files: frontend/build/app/outputs/**/app-release.apk
+          files: frontend/build/app/outputs/flutter-apk/app-release.apk
           draft: false
           prerelease: false
         env:
