@@ -479,9 +479,47 @@ class FinanceService {
     await doc.collection('sms_transactions').doc(id).delete();
   }
 
+  /// Deletes all SMS transaction records for a specific month & year
+  Future<int> deleteSmsTransactionsForMonth(DateTime monthYear) async {
+    final doc = _userDoc;
+    if (doc == null) return 0;
+
+    final snap = await doc.collection('sms_transactions').get();
+    final batch = _db.batch();
+    int count = 0;
+
+    for (final d in snap.docs) {
+      final data = d.data();
+      final dynamic rawTs = data['timestamp'];
+      DateTime? date;
+      if (rawTs is Timestamp) {
+        date = rawTs.toDate();
+      } else if (rawTs is int) {
+        date = DateTime.fromMillisecondsSinceEpoch(rawTs);
+      } else if (rawTs is String) {
+        date = DateTime.tryParse(rawTs);
+      }
+
+      if (date != null && date.year == monthYear.year && date.month == monthYear.month) {
+        batch.delete(d.reference);
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
+    }
+    return count;
+  }
+
   Future<void> _reconcileSmsTransactionWithAccount(SmsTransaction tx, {String? destinationBankAccountId}) async {
     final doc = _userDoc;
     if (doc == null) return;
+
+    // Exclude Ignored / Not Needed transactions from balance changes
+    if (tx.category == 'Ignored / Not Needed' || tx.category == 'Ignored') {
+      return;
+    }
 
     final accountsSnap = await doc.collection('finance_accounts').get();
     if (accountsSnap.docs.isEmpty) return;

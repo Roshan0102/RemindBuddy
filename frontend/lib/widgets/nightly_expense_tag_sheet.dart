@@ -31,6 +31,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     {'name': 'Self Transfer', 'icon': Icons.swap_horiz_rounded, 'color': Colors.indigoAccent},
     {'name': 'Entertainment', 'icon': Icons.movie, 'color': Colors.pink},
     {'name': 'Personal Care', 'icon': Icons.spa, 'color': Colors.teal},
+    {'name': 'Ignored / Not Needed', 'icon': Icons.block_rounded, 'color': Colors.blueGrey},
     {'name': 'Others', 'icon': Icons.more_horiz, 'color': Colors.grey},
   ];
 

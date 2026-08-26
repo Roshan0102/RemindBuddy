@@ -1506,47 +1506,65 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   const SizedBox(height: 14),
                 ],
 
-                // Month Selector Bar
+                // Month Selector Bar with Sync & Month Delete Actions
                 Card(
                   elevation: isDark ? 3 : 1,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                   color: cardBg,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left, color: Colors.blueAccent, size: 28),
-                      onPressed: () {
-                        setState(() {
-                          _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month - 1);
-                        });
-                      },
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.chevron_left, color: Colors.blueAccent, size: 28),
+                              onPressed: () {
+                                setState(() {
+                                  _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month - 1);
+                                });
+                              },
+                            ),
+                            Text(
+                              DateFormat('MMMM yyyy').format(_smsMonthFilter),
+                              style: GoogleFonts.outfit(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: textColor,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.chevron_right, color: Colors.blueAccent, size: 28),
+                              onPressed: () {
+                                setState(() {
+                                  _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1);
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            IconButton(
+                              tooltip: 'Sync Bank SMS',
+                              icon: _isScanningInbox
+                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
+                                  : const Icon(Icons.sync_rounded, color: Colors.blueAccent, size: 22),
+                              onPressed: _isScanningInbox ? null : _showSmsSyncDialog,
+                            ),
+                            IconButton(
+                              tooltip: 'Delete Month Transactions',
+                              icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 22),
+                              onPressed: () => _confirmDeleteMonthTransactions(context),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      DateFormat('MMMM yyyy').format(_smsMonthFilter),
-                      style: GoogleFonts.outfit(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                        color: textColor,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right, color: Colors.blueAccent, size: 28),
-                      onPressed: () {
-                        setState(() {
-                          _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1);
-                        });
-                      },
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 14),
+                const SizedBox(height: 14),
 
             // Monthly Financial Summary & Spending Graph Card
             Card(
@@ -1787,6 +1805,150 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   },
 );
 }
+
+  void _showSmsSyncDialog() {
+    final String currentMonthName = DateFormat('MMMM').format(_smsMonthFilter);
+    final now = DateTime.now();
+    int daysInCurrentMonth = now.day;
+    if (_smsMonthFilter.year != now.year || _smsMonthFilter.month != now.month) {
+      daysInCurrentMonth = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1, 0).day;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final bool isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          title: Row(
+            children: [
+              const Icon(Icons.sync_rounded, color: Colors.blueAccent),
+              const SizedBox(width: 10),
+              Text(
+                'Sync Bank SMS',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Select SMS scan range for your bank transactions:'),
+              const SizedBox(height: 16),
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                tileColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
+                leading: const Icon(Icons.calendar_month_rounded, color: Colors.indigoAccent),
+                title: Text('Current Selected Month ($currentMonthName)'),
+                subtitle: Text('Scan past $daysInCurrentMonth days of SMS'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _runSmsScan(daysInCurrentMonth);
+                },
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                tileColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
+                leading: const Icon(Icons.history_rounded, color: Colors.blueAccent),
+                title: const Text('Last 15 Days'),
+                subtitle: const Text('Scan SMS from past 15 days'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _runSmsScan(15);
+                },
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                tileColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
+                leading: const Icon(Icons.date_range_rounded, color: Colors.teal),
+                title: const Text('Last 30 Days'),
+                subtitle: const Text('Scan SMS from past 30 days'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _runSmsScan(30);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _runSmsScan(int days) async {
+    setState(() => _isScanningInbox = true);
+    final count = await _financeService.scanPastSmsInbox(days: days);
+    setState(() => _isScanningInbox = false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(count > 0 ? 'Detected & saved $count new SMS transactions!' : 'No new bank SMS detected in past $days days.'),
+          backgroundColor: count > 0 ? Colors.green : Colors.blueGrey,
+        ),
+      );
+    }
+  }
+
+  void _confirmDeleteMonthTransactions(BuildContext context) {
+    final String monthYearText = DateFormat('MMMM yyyy').format(_smsMonthFilter);
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final bool isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          title: Row(
+            children: [
+              const Icon(Icons.delete_forever_rounded, color: Colors.redAccent),
+              const SizedBox(width: 10),
+              Text(
+                'Delete $monthYearText?',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Text(
+            'Are you sure you want to delete ALL SMS transactions recorded for $monthYearText?\n\nThis action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final deletedCount = await _financeService.deleteSmsTransactionsForMonth(_smsMonthFilter);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Deleted $deletedCount transactions for $monthYearText.'),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Delete All'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   void _openGroupEventDetailScreen(BuildContext context, GroupEvent group) {
     Navigator.push(

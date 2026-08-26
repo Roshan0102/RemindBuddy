@@ -296,7 +296,9 @@ class MainActivity: FlutterActivity() {
     private fun scanSmsInbox(days: Int): List<Map<String, Any>> {
         val result = mutableListOf<Map<String, Any>>()
         try {
-            val cutoffTime = System.currentTimeMillis() - (days.toLong() * 24 * 60 * 60 * 1000)
+            val daysLong = if (days <= 0) 30L else days.toLong()
+            val millisInPeriod = daysLong * 24L * 60L * 60L * 1000L
+            val cutoffTime = System.currentTimeMillis() - millisInPeriod
             val uri = Telephony.Sms.Inbox.CONTENT_URI
             val projection = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE)
             val selection = "${Telephony.Sms.DATE} >= ?"
