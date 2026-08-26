@@ -73,7 +73,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
       case 3:
         return const Text('Group Expense Splitter 👥', style: TextStyle(fontWeight: FontWeight.bold));
       case 4:
-        return const Text('Auto SMS Tracker 📱', style: TextStyle(fontWeight: FontWeight.bold));
+        return const Text('Smart Bank Tracker 💳', style: TextStyle(fontWeight: FontWeight.bold));
       default:
         return const Text('FinanceBuddy', style: TextStyle(fontWeight: FontWeight.bold));
     }
@@ -105,9 +105,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     final List<Map<String, dynamic>> features = [
       {
         'index': 4,
-        'title': 'Auto SMS Tracker 📱',
+        'title': 'Smart Bank Tracker 💳',
         'subtitle': 'Real-time bank SMS parsing, monthly spend analytics & 1-tap review',
-        'icon': Icons.sms_rounded,
+        'icon': Icons.account_balance_wallet_rounded,
         'gradient': [const Color(0xFF3B82F6), const Color(0xFF1D4ED8)],
       },
       {
@@ -293,6 +293,8 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         return StreamBuilder<List<FinanceTransaction>>(
           stream: _financeService.getTransactionsStream(),
           builder: (context, txSnap) {
+            final bool isDark = Theme.of(context).brightness == Brightness.dark;
+            final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
             final transactions = txSnap.data ?? [];
 
             return ListView(
@@ -384,138 +386,99 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       child: Text('No bank accounts added yet. Tap "Add Account" to start tracking!'),
                     ),
                   )
-                else if (accounts.length <= 3)
-                  Row(
-                    children: accounts.map((acc) {
+                else
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: accounts.length,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                      childAspectRatio: 0.88,
+                    ),
+                    itemBuilder: (context, index) {
+                      final acc = accounts[index];
                       final Color accColor = Color(acc.colorHex);
-                      return Expanded(
-                        child: Container(
-                          margin: const EdgeInsets.only(right: 6),
-                          height: 90,
-                          child: Card(
-                            elevation: 2,
-                            margin: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(color: accColor.withOpacity(0.4), width: 1.5),
+                      final bool isPositive = acc.currentBalance >= 0;
+
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: accColor.withOpacity(0.5), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.12),
+                              blurRadius: 6,
+                              offset: const Offset(0, 3),
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Icon(_getIconData(acc.iconName), color: accColor, size: 18),
-                                      PopupMenuButton<String>(
-                                        padding: EdgeInsets.zero,
-                                        iconSize: 16,
-                                        onSelected: (val) {
-                                          if (val == 'delete') {
-                                            _financeService.deleteAccount(acc.id);
-                                          }
-                                        },
-                                        itemBuilder: (_) => [
-                                          const PopupMenuItem(value: 'delete', child: Text('Delete Account')),
-                                        ],
-                                        icon: const Icon(Icons.more_vert, size: 16, color: Colors.grey),
-                                      ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Top Row: Small Icon & Compact Menu
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: accColor.withOpacity(0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(_getIconData(acc.iconName), color: accColor, size: 14),
+                                ),
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: PopupMenuButton<String>(
+                                    padding: EdgeInsets.zero,
+                                    iconSize: 14,
+                                    onSelected: (val) {
+                                      if (val == 'delete') {
+                                        _financeService.deleteAccount(acc.id);
+                                      }
+                                    },
+                                    itemBuilder: (_) => [
+                                      const PopupMenuItem(value: 'delete', child: Text('Delete Account', style: TextStyle(fontSize: 12))),
                                     ],
+                                    icon: const Icon(Icons.more_vert, size: 14, color: Colors.grey),
                                   ),
-                                  Text(
-                                    acc.name,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  Text(
-                                    '₹${NumberFormat('#,##,##0').format(acc.currentBalance)}',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                      color: acc.currentBalance >= 0 ? Colors.green.shade700 : Colors.red,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                          ),
+
+                            // Middle: Bank Name (BIGGER & BOLD)
+                            Text(
+                              acc.name,
+                              style: GoogleFonts.outfit(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: textColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+
+                            // Bottom: Balance (BIGGER & PROMINENT)
+                            Text(
+                              '₹${NumberFormat('#,##,##0').format(acc.currentBalance)}',
+                              style: GoogleFonts.outfit(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                                color: isPositive ? Colors.green.shade600 : Colors.redAccent,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
                       );
-                    }).toList(),
-                  )
-                else
-                  SizedBox(
-                    height: 90,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: accounts.length,
-                      itemBuilder: (context, index) {
-                        final acc = accounts[index];
-                        final Color accColor = Color(acc.colorHex);
-
-                        return Container(
-                          width: 115,
-                          margin: const EdgeInsets.only(right: 8),
-                          child: Card(
-                            elevation: 2,
-                            margin: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(color: accColor.withOpacity(0.4), width: 1.5),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Icon(_getIconData(acc.iconName), color: accColor, size: 18),
-                                      PopupMenuButton<String>(
-                                        padding: EdgeInsets.zero,
-                                        iconSize: 16,
-                                        onSelected: (val) {
-                                          if (val == 'delete') {
-                                            _financeService.deleteAccount(acc.id);
-                                          }
-                                        },
-                                        itemBuilder: (_) => [
-                                          const PopupMenuItem(value: 'delete', child: Text('Delete Account')),
-                                        ],
-                                        icon: const Icon(Icons.more_vert, size: 16, color: Colors.grey),
-                                      ),
-                                    ],
-                                  ),
-                                  Text(
-                                    acc.name,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  Text(
-                                    '₹${NumberFormat('#,##,##0').format(acc.currentBalance)}',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                      color: acc.currentBalance >= 0 ? Colors.green.shade700 : Colors.red,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                    },
                   ),
 
                 const SizedBox(height: 24),
@@ -999,19 +962,35 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
   void _showAddTransactionDialog(BuildContext context, List<BankAccount> accounts) {
     final amountCtrl = TextEditingController();
-    final noteCtrl = TextEditingController();
+    final noteCtrl = TextEditingController(text: '');
     String selectedAccountId = accounts.first.id;
     String type = 'expense';
-    String category = 'General';
+    String selectedCategory = 'Food & Dining';
+
+    final List<Map<String, dynamic>> categories = [
+      {'name': 'Food & Dining', 'icon': Icons.fastfood, 'color': Colors.orange},
+      {'name': 'Fuel & Travel', 'icon': Icons.local_gas_station, 'color': Colors.redAccent},
+      {'name': 'Groceries', 'icon': Icons.shopping_basket, 'color': Colors.green},
+      {'name': 'Bills & Utilities', 'icon': Icons.receipt_long, 'color': Colors.blue},
+      {'name': 'Shopping', 'icon': Icons.shopping_bag, 'color': Colors.purple},
+      {'name': 'Self Transfer', 'icon': Icons.swap_horiz_rounded, 'color': Colors.indigoAccent},
+      {'name': 'Borrowed', 'icon': Icons.south_west_rounded, 'color': Colors.amber.shade700},
+      {'name': 'Lended', 'icon': Icons.north_east_rounded, 'color': Colors.teal},
+      {'name': 'Entertainment', 'icon': Icons.movie, 'color': Colors.pink},
+      {'name': 'Personal Care', 'icon': Icons.spa, 'color': Colors.deepOrangeAccent},
+      {'name': 'Ignored / Not Needed', 'icon': Icons.block_rounded, 'color': Colors.blueGrey},
+      {'name': 'Others', 'icon': Icons.more_horiz, 'color': Colors.grey},
+    ];
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add Transaction'),
+          title: const Text('Add Transaction 💳'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
@@ -1039,7 +1018,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   initialValue: selectedAccountId,
                   decoration: const InputDecoration(labelText: 'Select Account'),
                   items: accounts
-                      .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name)))
+                      .map((a) => DropdownMenuItem(value: a.id, child: Text('${a.name} (₹${a.currentBalance.toStringAsFixed(0)})')))
                       .toList(),
                   onChanged: (val) => selectedAccountId = val!,
                 ),
@@ -1049,31 +1028,108 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(labelText: 'Amount (₹)'),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: noteCtrl,
-                  decoration: const InputDecoration(labelText: 'Note / Reason (e.g., Dad gave money, Gas bill)'),
+                const SizedBox(height: 16),
+                const Text(
+                  'Select Category:',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                 ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: categories.map((cat) {
+                    final bool isSelected = selectedCategory == cat['name'];
+                    final Color catColor = cat['color'] as Color;
+
+                    return ChoiceChip(
+                      avatar: Icon(cat['icon'] as IconData, size: 14, color: isSelected ? Colors.white : catColor),
+                      label: Text(
+                        cat['name'] as String,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isSelected ? Colors.white : null,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      selected: isSelected,
+                      selectedColor: catColor,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setDialogState(() {
+                            selectedCategory = cat['name'] as String;
+                          });
+                        }
+                      },
+                    );
+                  }).toList(),
+                ),
+                if (selectedCategory == 'Others' || selectedCategory == 'Borrowed' || selectedCategory == 'Lended') ...[
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: noteCtrl,
+                    decoration: InputDecoration(
+                      labelText: selectedCategory == 'Borrowed'
+                          ? 'Borrowed From (Person / Reason)'
+                          : selectedCategory == 'Lended'
+                              ? 'Lended To (Person / Reason)'
+                              : 'Custom Category / Reason',
+                      hintText: selectedCategory == 'Borrowed'
+                          ? 'e.g. Rahul, John...'
+                          : selectedCategory == 'Lended'
+                              ? 'e.g. Alex, Friend...'
+                              : 'Type custom reason...',
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
                 if (amt <= 0) return;
 
-                _financeService.addTransaction(FinanceTransaction(
+                final customNote = noteCtrl.text.trim();
+                final finalCategory = (selectedCategory == 'Others' && customNote.isNotEmpty)
+                    ? customNote
+                    : selectedCategory;
+
+                await _financeService.addTransaction(FinanceTransaction(
                   id: '',
                   accountId: selectedAccountId,
                   type: type,
                   amount: amt,
-                  category: category,
-                  note: noteCtrl.text.trim(),
+                  category: finalCategory,
+                  note: customNote.isNotEmpty ? customNote : selectedCategory,
                   timestamp: DateTime.now(),
                 ));
-                Navigator.pop(context);
+
+                // If Category is Borrowed or Lended, also create a DebtRecord entry in Debts & Lended Money feature!
+                if (selectedCategory == 'Borrowed' || selectedCategory == 'Lended') {
+                  final String debtType = selectedCategory == 'Borrowed' ? 'borrowed' : 'lent';
+                  final String personName = customNote.isNotEmpty ? customNote : 'Person';
+                  final String noteText = customNote.isNotEmpty ? customNote : 'Manually added in Bank Accounts';
+
+                  await _financeService.addDebt(
+                    DebtRecord(
+                      id: '',
+                      personName: personName,
+                      type: debtType,
+                      amount: amt,
+                      note: noteText,
+                      date: DateTime.now(),
+                      isSettled: false,
+                      accountId: selectedAccountId,
+                    ),
+                    updateAccountBalance: false, // Balance already updated by addTransaction above
+                  );
+                }
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
               },
               child: const Text('Save'),
             ),

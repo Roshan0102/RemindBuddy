@@ -172,6 +172,9 @@ class SmsParserService {
     // 5. Extract Payee / Merchant / Recipient Name
     final String payee = _extractPayee(body, type);
 
+    // 6. Automatically Determine Category
+    final String category = _determineCategory(payee, body);
+
     final DateTime timestamp = DateTime.fromMillisecondsSinceEpoch(timestampMillis);
     final String id = 'sms_${timestamp.millisecondsSinceEpoch}_${amount.toInt()}';
 
@@ -184,7 +187,7 @@ class SmsParserService {
       payee: payee,
       timestamp: timestamp,
       isVerified: false,
-      category: 'Uncategorized',
+      category: category,
       notes: body,
     );
   }
@@ -308,14 +311,73 @@ class SmsParserService {
 
   /// Extracts Payee / Merchant / Recipient name using multi-pattern matching and candidate validation
   static String _extractPayee(String body, String type) {
-    // Step 0: ATM Cash Withdrawal Pattern
-    final String lower = body.toLowerCase();
+    final String cleanBody = body.replaceAll('\n', ' ');
+    final String lower = cleanBody.toLowerCase();
+
+    // Pattern 1: Union Bank "Fvg: [Payee]"
+    final RegExp fvgRegExp = RegExp(
+      r'Fvg\s*:\s*([^,\.]+)',
+      caseSensitive: false,
+    );
+    for (final m in fvgRegExp.allMatches(cleanBody)) {
+      if (m.group(1) != null) {
+        final String candidate = _cleanPayeeCandidate(m.group(1)!);
+        if (candidate.isNotEmpty) return candidate;
+      }
+    }
+
+    // Pattern 2: Indian Bank Debit Self Transfer ("to the credit of A/c XXXXXX6630")
+    final RegExp creditAcRegExp = RegExp(
+      r'to\s+the\s+credit\s+of\s+A/c\s+([X\*\d]+)',
+      caseSensitive: false,
+    );
+    final creditAcMatch = creditAcRegExp.firstMatch(cleanBody);
+    if (creditAcMatch != null && creditAcMatch.group(1) != null) {
+      final ac = creditAcMatch.group(1)!.replaceAll('X', '').replaceAll('*', '');
+      return 'Self Transfer (A/c *$ac)';
+    }
+
+    // Pattern 3: Indian Bank Autopay / Mandate ("towards [Service] for")
+    final RegExp towardsForRegExp = RegExp(
+      r'towards\s+([^for]+)\s+for',
+      caseSensitive: false,
+    );
+    final towardsForMatch = towardsForRegExp.firstMatch(cleanBody);
+    if (towardsForMatch != null && towardsForMatch.group(1) != null) {
+      final candidate = _cleanPayeeCandidate(towardsForMatch.group(1)!);
+      if (candidate.isNotEmpty) return candidate;
+    }
+
+    // Pattern 4: Indian Bank Credit ("by [Name]. RRN")
+    final RegExp byRrnRegExp = RegExp(
+      r'by\s+([A-Z\s\.]+)\.\s*RRN',
+      caseSensitive: false,
+    );
+    final byRrnMatch = byRrnRegExp.firstMatch(cleanBody);
+    if (byRrnMatch != null && byRrnMatch.group(1) != null) {
+      final candidate = _cleanPayeeCandidate(byRrnMatch.group(1)!);
+      if (candidate.isNotEmpty) return candidate;
+    }
+
+    // Pattern 5: HDFC Credit VPA ("from VPA [VPA_HANDLE]")
+    final RegExp hdfcVpaRegExp = RegExp(
+      r'from\s+VPA\s+([^\s]+)',
+      caseSensitive: false,
+    );
+    final hdfcVpaMatch = hdfcVpaRegExp.firstMatch(cleanBody);
+    if (hdfcVpaMatch != null && hdfcVpaMatch.group(1) != null) {
+      final rawVpa = hdfcVpaMatch.group(1)!.split('@').first.replaceAll('-', ' ');
+      final candidate = _cleanPayeeCandidate(rawVpa);
+      if (candidate.isNotEmpty) return candidate;
+    }
+
+    // Pattern 6: ATM Cash Withdrawal Pattern
     if (lower.contains('atm') || lower.contains('cash wdl') || lower.contains('cash withdrawal')) {
       final RegExp atmLocationRegExp = RegExp(
         r'\bat\s+([A-Za-z0-9_\-\.\s&]{2,35}?atm[A-Za-z0-9_\-\.\s&]{0,25}?)(?=\s+on|\s+ref|\s+avail|\s+bal|\s+dt|\.|\s*$)',
         caseSensitive: false,
       );
-      final atmMatch = atmLocationRegExp.firstMatch(body);
+      final atmMatch = atmLocationRegExp.firstMatch(cleanBody);
       if (atmMatch != null && atmMatch.group(1) != null) {
         final String candidate = _cleanPayeeCandidate(atmMatch.group(1)!);
         if (candidate.isNotEmpty) return candidate;
@@ -323,24 +385,24 @@ class SmsParserService {
       return 'ATM Cash Withdrawal';
     }
 
-    // Step 1: UPI Info format
+    // Pattern 7: UPI Info format
     final RegExp upiInfoRegExp = RegExp(
       r'(?:upi|ref|info)[\/\s\:\-]*[0-9]*[\/\s]+([A-Za-z0-9_\-\.\s]{2,30}?)(?=\.|\s+on|\s+avail|\s+bal|\s+ref|\s+dt|\s*$)',
       caseSensitive: false,
     );
-    for (final m in upiInfoRegExp.allMatches(body)) {
+    for (final m in upiInfoRegExp.allMatches(cleanBody)) {
       if (m.group(1) != null) {
         final String candidate = _cleanPayeeCandidate(m.group(1)!);
         if (candidate.isNotEmpty) return candidate;
       }
     }
 
-    // Step 2: VPA Format
+    // Pattern 8: VPA Format
     final RegExp vpaRegExp = RegExp(
       r'(?:vpa|to vpa)\s+([a-zA-Z0-9.\-_]+@[a-zA-Z0-9]+|[a-zA-Z0-9.\-_]{3,25})',
       caseSensitive: false,
     );
-    for (final m in vpaRegExp.allMatches(body)) {
+    for (final m in vpaRegExp.allMatches(cleanBody)) {
       if (m.group(1) != null) {
         String rawVpa = m.group(1)!;
         if (rawVpa.contains('@')) {
@@ -351,48 +413,48 @@ class SmsParserService {
       }
     }
 
-    // Step 3: Card POS / Online Merchant ("at [Merchant]")
+    // Pattern 9: Card POS / Online Merchant ("at [Merchant]")
     final RegExp atRegExp = RegExp(
       r'\bat\s+([A-Za-z0-9_\-\.\s&]{2,30}?)(?=\s+on|\s+ref|\s+avail|\s+bal|\s+link|\s+dt|\.|\s*$)',
       caseSensitive: false,
     );
-    for (final m in atRegExp.allMatches(body)) {
+    for (final m in atRegExp.allMatches(cleanBody)) {
       if (m.group(1) != null) {
         final String candidate = _cleanPayeeCandidate(m.group(1)!);
         if (candidate.isNotEmpty) return candidate;
       }
     }
 
-    // Step 4: "to [Payee]", "paid to [Payee]", "sent to [Payee]", "transferred to [Payee]", "towards [Payee]"
+    // Pattern 10: "to [Payee]", "paid to [Payee]", "sent to [Payee]", "transferred to [Payee]", "towards [Payee]"
     final RegExp toRegExp = RegExp(
       r'(?:paid to|sent to|transfer to|transferred to|debited to|towards|to)\s+([A-Za-z0-9_\-\.\s&]{2,35}?)(?=\s+using|\s+via|\s+on|\s+ref|\s+avail|\s+bal|\s+upi|\s+a\/c|\.|\(|\)|\n|$)',
       caseSensitive: false,
     );
-    for (final m in toRegExp.allMatches(body)) {
+    for (final m in toRegExp.allMatches(cleanBody)) {
       if (m.group(1) != null) {
         final String candidate = _cleanPayeeCandidate(m.group(1)!);
         if (candidate.isNotEmpty) return candidate;
       }
     }
 
-    // Step 5: "received from [Payee]", "from [Payee]", "credited by [Payee]"
+    // Pattern 11: "received from [Payee]", "from [Payee]", "credited by [Payee]"
     final RegExp fromRegExp = RegExp(
       r'(?:received from|received payment of|credited by|transfer from|from)\s+([A-Za-z0-9_\-\.\s&]{2,35}?)(?=\s+via|\s+on|\s+ref|\s+avail|\s+bal|\s+upi|\s+a\/c|\.|\(|\)|\n|$)',
       caseSensitive: false,
     );
-    for (final m in fromRegExp.allMatches(body)) {
+    for (final m in fromRegExp.allMatches(cleanBody)) {
       if (m.group(1) != null) {
         final String candidate = _cleanPayeeCandidate(m.group(1)!);
         if (candidate.isNotEmpty) return candidate;
       }
     }
 
-    // Step 6: "by [Payee]", "by transfer to [Payee]", "by IMPS to [Payee]"
+    // Pattern 12: "by [Payee]", "by transfer to [Payee]", "by IMPS to [Payee]"
     final RegExp byRegExp = RegExp(
       r'(?:by transfer to|by upi|by imps to|by neft to|by)\s+([A-Za-z0-9_\-\.\s&]{2,35}?)(?=\s+ref|\s+on|\s+avail|\s+bal|\.|\(|\)|\n|$)',
       caseSensitive: false,
     );
-    for (final m in byRegExp.allMatches(body)) {
+    for (final m in byRegExp.allMatches(cleanBody)) {
       if (m.group(1) != null) {
         final String candidate = _cleanPayeeCandidate(m.group(1)!);
         if (candidate.isNotEmpty) return candidate;
@@ -402,11 +464,61 @@ class SmsParserService {
     return 'Unknown Merchant';
   }
 
+  /// Automatically classifies payee and body keywords into standard categories
+  static String _determineCategory(String payee, String body) {
+    final String pLower = payee.toLowerCase();
+    final String bLower = body.toLowerCase();
+
+    // 1. Self Transfer Check
+    if (pLower.contains('self transfer') || bLower.contains('self transfer') || (bLower.contains('transfer from') && bLower.contains('a/c'))) {
+      return 'Self Transfer';
+    }
+
+    // 2. Food & Dining
+    if (RegExp(r'\b(swiggy|zomato|food|coffee|hotel|restaurant|cocktail|dining|bakery|tea|cafe|eats|dominos|pizza|mcdonalds|kfc|starbucks|biryani)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
+      return 'Food & Dining';
+    }
+
+    // 3. Fuel & Travel
+    if (RegExp(r'\b(rapido|uber|ola|fuel|pump|petrol|diesel|travel|bus|train|irctc|toll|fastag|flight|redbus|namma metro|metro)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
+      return 'Fuel & Travel';
+    }
+
+    // 4. Bills & Utilities
+    if (RegExp(r'\b(google cloud|autopay|bill|recharge|electricity|wifi|broadband|airtel|jio|vi|bescom|tneb|water|gas|dth)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
+      return 'Bills & Utilities';
+    }
+
+    // 5. Groceries
+    if (RegExp(r'\b(grocery|mart|store|supermarket|milk|zepto|blinkit|instamart|bigbasket|provision|vegetable|fruit)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
+      return 'Groceries';
+    }
+
+    // 6. Shopping
+    if (RegExp(r'\b(amazon|flipkart|myntra|meesho|ajio|shopping|fashion|trends|decathlon)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
+      return 'Shopping';
+    }
+
+    // 7. Entertainment
+    if (RegExp(r'\b(netflix|prime|spotify|hotstar|bookmyshow|cinema|movie|youtube|pvr|inox)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
+      return 'Entertainment';
+    }
+
+    return 'Uncategorized';
+  }
+
   static String _cleanPayeeCandidate(String raw) {
     String clean = raw.trim();
     if (clean.contains('\n')) {
       clean = clean.split('\n').first.trim();
     }
+
+    // Strip out balance/ref trailers (e.g. "PRAMOD H Avl Bal Rs:20537" -> "PRAMOD H")
+    clean = clean.replaceAll(RegExp(r'\s+Avl.*', caseSensitive: false), '');
+    clean = clean.replaceAll(RegExp(r'\s+Ref.*', caseSensitive: false), '');
+    clean = clean.replaceAll(RegExp(r'\s+Bal.*', caseSensitive: false), '');
+    clean = clean.replaceAll(RegExp(r'\s+Rs.*', caseSensitive: false), '');
+
     final lower = clean.toLowerCase();
 
     // Rejection 1: Reject pure numbers or phone numbers (e.g. "7308080808", "18002586161")
@@ -434,6 +546,7 @@ class SmsParserService {
         lower == 'upi' ||
         lower == 'rs' ||
         lower == 'inr' ||
+        lower == 'mob bk' ||
         lower.startsWith('your a/c') ||
         lower.startsWith('account')) {
       return '';
