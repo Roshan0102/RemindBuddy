@@ -39,16 +39,7 @@ jobs:
         working-directory: ./frontend
         run: flutter build apk --release --target-platform android-arm64 --no-tree-shake-icons
 
-      - name: Setup Shorebird
-        uses: shorebirdtech/setup-shorebird@v1
 
-      - name: Build with Shorebird (Optional)
-        working-directory: ./frontend
-        continue-on-error: true
-        env:
-          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
-        run: shorebird release android --artifact apk --flutter-version=3.41.0 -- --no-tree-shake-icons
-        
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:

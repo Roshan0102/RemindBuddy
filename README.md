@@ -44,7 +44,7 @@ RemindBuddy is a premium, feature-rich productivity companion built with **Flutt
 - **Framework**: [Flutter](https://flutter.dev/) (SDK 3.41.0+)
 - **Language**: [Dart](https://dart.dev/)
 - **Backend/Database**: [Firebase](https://firebase.google.com/) (Firestore & Authentication)
-- **CI/CD**: GitHub Actions & [Shorebird](https://shorebird.dev/) (OTA Updates)
+- **CI/CD**: GitHub Actions
 
 ### Key Packages
 - `cloud_firestore` & `firebase_auth`: For real-time data and user management.
@@ -100,11 +100,8 @@ flutter run -d chrome
 ### Android APK Build
 The project uses GitHub Actions to automate APK generation. Every push to `main` triggers a build that:
 1. Validates the code.
-2. Builds the APK via **Shorebird**.
-3. Uploads the artifact for download.
-
-### Over-The-Air (OTA) Updates
-We use **Shorebird** to push hot-fixes and UI updates directly to user devices without requiring a full APK re-installation.
+2. Builds the release APK.
+3. Creates a GitHub Release with the downloadable APK artifact.
 
 ## Permissions & Reliability 🔐
 The app is designed for "High-Reliability" notifications on Android, requesting:

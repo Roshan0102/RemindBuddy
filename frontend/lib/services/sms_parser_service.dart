@@ -20,8 +20,11 @@ class SmsParserService {
   };
 
   /// Parses a single SMS body and returns an [SmsTransaction] if it's a valid bank transaction, or null otherwise.
-  static SmsTransaction? parseSms(String sender, String body, int timestampMillis) {
-    if (body.isEmpty) return null;
+  static SmsTransaction? parseSms(String sender, String rawBody, int timestampMillis) {
+    if (rawBody.isEmpty) return null;
+
+    // Step A: Strip out common bank security & dispute footers (e.g. "Not You? Call 1800.../SMS BLOCK UPI to 7308080808")
+    final String body = _stripDisputeFooters(rawBody);
 
     final String lowerBody = body.toLowerCase();
 
@@ -272,9 +275,40 @@ class SmsParserService {
     return 'Bank';
   }
 
-  /// Extracts Payee / Merchant / Recipient name using 7-step multi-pattern matching
+  /// Truncates SMS body before common bank dispute & security footers
+  static String _stripDisputeFooters(String body) {
+    final lower = body.toLowerCase();
+    int cutIndex = body.length;
+
+    final List<String> footerTriggers = [
+      'not you?',
+      'if not done by you',
+      'if not you',
+      'if not u',
+      'call 1800',
+      'call 180',
+      'call 19',
+      'sms block',
+      'block upi',
+      'block card',
+      'report fraud',
+      'to report',
+      'contact bank',
+    ];
+
+    for (final trigger in footerTriggers) {
+      final idx = lower.indexOf(trigger);
+      if (idx != -1 && idx < cutIndex) {
+        cutIndex = idx;
+      }
+    }
+
+    return body.substring(0, cutIndex).trim();
+  }
+
+  /// Extracts Payee / Merchant / Recipient name using multi-pattern matching and candidate validation
   static String _extractPayee(String body, String type) {
-    // Step 0: ATM Cash Withdrawal Pattern (e.g. "withdrawn at SBI ATM", "Cash Wdl at HDFC BANK ATM", "INR 1000 withdrawn at ATM")
+    // Step 0: ATM Cash Withdrawal Pattern
     final String lower = body.toLowerCase();
     if (lower.contains('atm') || lower.contains('cash wdl') || lower.contains('cash withdrawal')) {
       final RegExp atmLocationRegExp = RegExp(
@@ -289,30 +323,32 @@ class SmsParserService {
       return 'ATM Cash Withdrawal';
     }
 
-    // Step 1: UPI Info format (e.g. "Info- UPI/423456/Zomato" or "UPI/423456/Swiggy" or "UPI/Swiggy/423456")
+    // Step 1: UPI Info format
     final RegExp upiInfoRegExp = RegExp(
       r'(?:upi|ref|info)[\/\s\:\-]*[0-9]*[\/\s]+([A-Za-z0-9_\-\.\s]{2,30}?)(?=\.|\s+on|\s+avail|\s+bal|\s+ref|\s+dt|\s*$)',
       caseSensitive: false,
     );
-    var match = upiInfoRegExp.firstMatch(body);
-    if (match != null && match.group(1) != null) {
-      final String candidate = _cleanPayeeCandidate(match.group(1)!);
-      if (candidate.isNotEmpty) return candidate;
+    for (final m in upiInfoRegExp.allMatches(body)) {
+      if (m.group(1) != null) {
+        final String candidate = _cleanPayeeCandidate(m.group(1)!);
+        if (candidate.isNotEmpty) return candidate;
+      }
     }
 
-    // Step 2: VPA Format (e.g. "to VPA zomato@hdfcbank" -> "Zomato")
+    // Step 2: VPA Format
     final RegExp vpaRegExp = RegExp(
       r'(?:vpa|to vpa)\s+([a-zA-Z0-9.\-_]+@[a-zA-Z0-9]+|[a-zA-Z0-9.\-_]{3,25})',
       caseSensitive: false,
     );
-    match = vpaRegExp.firstMatch(body);
-    if (match != null && match.group(1) != null) {
-      String rawVpa = match.group(1)!;
-      if (rawVpa.contains('@')) {
-        rawVpa = rawVpa.split('@').first;
+    for (final m in vpaRegExp.allMatches(body)) {
+      if (m.group(1) != null) {
+        String rawVpa = m.group(1)!;
+        if (rawVpa.contains('@')) {
+          rawVpa = rawVpa.split('@').first;
+        }
+        final String candidate = _cleanPayeeCandidate(rawVpa);
+        if (candidate.isNotEmpty) return candidate;
       }
-      final String candidate = _cleanPayeeCandidate(rawVpa);
-      if (candidate.isNotEmpty) return candidate;
     }
 
     // Step 3: Card POS / Online Merchant ("at [Merchant]")
@@ -320,43 +356,47 @@ class SmsParserService {
       r'\bat\s+([A-Za-z0-9_\-\.\s&]{2,30}?)(?=\s+on|\s+ref|\s+avail|\s+bal|\s+link|\s+dt|\.|\s*$)',
       caseSensitive: false,
     );
-    match = atRegExp.firstMatch(body);
-    if (match != null && match.group(1) != null) {
-      final String candidate = _cleanPayeeCandidate(match.group(1)!);
-      if (candidate.isNotEmpty) return candidate;
+    for (final m in atRegExp.allMatches(body)) {
+      if (m.group(1) != null) {
+        final String candidate = _cleanPayeeCandidate(m.group(1)!);
+        if (candidate.isNotEmpty) return candidate;
+      }
     }
 
     // Step 4: "to [Payee]", "paid to [Payee]", "sent to [Payee]", "transferred to [Payee]", "towards [Payee]"
     final RegExp toRegExp = RegExp(
-      r'(?:paid to|sent to|transfer to|transferred to|debited to|towards|to)\s+([A-Za-z0-9_\-\.\s&]{2,30}?)(?=\s+using|\s+via|\s+on|\s+ref|\s+avail|\s+bal|\s+upi|\s+a\/c|\.|\(|\)|$)',
+      r'(?:paid to|sent to|transfer to|transferred to|debited to|towards|to)\s+([A-Za-z0-9_\-\.\s&]{2,35}?)(?=\s+using|\s+via|\s+on|\s+ref|\s+avail|\s+bal|\s+upi|\s+a\/c|\.|\(|\)|\n|$)',
       caseSensitive: false,
     );
-    match = toRegExp.firstMatch(body);
-    if (match != null && match.group(1) != null) {
-      final String candidate = _cleanPayeeCandidate(match.group(1)!);
-      if (candidate.isNotEmpty) return candidate;
+    for (final m in toRegExp.allMatches(body)) {
+      if (m.group(1) != null) {
+        final String candidate = _cleanPayeeCandidate(m.group(1)!);
+        if (candidate.isNotEmpty) return candidate;
+      }
     }
 
     // Step 5: "received from [Payee]", "from [Payee]", "credited by [Payee]"
     final RegExp fromRegExp = RegExp(
-      r'(?:received from|received payment of|credited by|transfer from|from)\s+([A-Za-z0-9_\-\.\s&]{2,30}?)(?=\s+via|\s+on|\s+ref|\s+avail|\s+bal|\s+upi|\s+a\/c|\.|\(|\)|$)',
+      r'(?:received from|received payment of|credited by|transfer from|from)\s+([A-Za-z0-9_\-\.\s&]{2,35}?)(?=\s+via|\s+on|\s+ref|\s+avail|\s+bal|\s+upi|\s+a\/c|\.|\(|\)|\n|$)',
       caseSensitive: false,
     );
-    match = fromRegExp.firstMatch(body);
-    if (match != null && match.group(1) != null) {
-      final String candidate = _cleanPayeeCandidate(match.group(1)!);
-      if (candidate.isNotEmpty) return candidate;
+    for (final m in fromRegExp.allMatches(body)) {
+      if (m.group(1) != null) {
+        final String candidate = _cleanPayeeCandidate(m.group(1)!);
+        if (candidate.isNotEmpty) return candidate;
+      }
     }
 
     // Step 6: "by [Payee]", "by transfer to [Payee]", "by IMPS to [Payee]"
     final RegExp byRegExp = RegExp(
-      r'(?:by transfer to|by upi|by imps to|by neft to|by)\s+([A-Za-z0-9_\-\.\s&]{2,30}?)(?=\s+ref|\s+on|\s+avail|\s+bal|\.|\(|\)|$)',
+      r'(?:by transfer to|by upi|by imps to|by neft to|by)\s+([A-Za-z0-9_\-\.\s&]{2,35}?)(?=\s+ref|\s+on|\s+avail|\s+bal|\.|\(|\)|\n|$)',
       caseSensitive: false,
     );
-    match = byRegExp.firstMatch(body);
-    if (match != null && match.group(1) != null) {
-      final String candidate = _cleanPayeeCandidate(match.group(1)!);
-      if (candidate.isNotEmpty) return candidate;
+    for (final m in byRegExp.allMatches(body)) {
+      if (m.group(1) != null) {
+        final String candidate = _cleanPayeeCandidate(m.group(1)!);
+        if (candidate.isNotEmpty) return candidate;
+      }
     }
 
     return 'Unknown Merchant';
@@ -364,7 +404,28 @@ class SmsParserService {
 
   static String _cleanPayeeCandidate(String raw) {
     String clean = raw.trim();
+    if (clean.contains('\n')) {
+      clean = clean.split('\n').first.trim();
+    }
     final lower = clean.toLowerCase();
+
+    // Rejection 1: Reject pure numbers or phone numbers (e.g. "7308080808", "18002586161")
+    if (RegExp(r'^\+?\d{8,15}$').hasMatch(clean.replaceAll(RegExp(r'[\s\-]'), ''))) {
+      return '';
+    }
+
+    // Rejection 2: Dispute & security keywords
+    if (lower.contains('block') ||
+        lower.contains('upi to') ||
+        lower.contains('1800') ||
+        lower.contains('report') ||
+        lower.contains('fraud') ||
+        lower.contains('call') ||
+        lower.contains('customer care')) {
+      return '';
+    }
+
+    // Rejection 3: Generic words
     if (lower == 'account' ||
         lower == 'your' ||
         lower == 'a/c' ||

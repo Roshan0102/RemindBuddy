@@ -589,4 +589,45 @@ class FinanceService {
     }
     return count;
   }
+
+  /// Scans past 15 days of SMS messages and uploads raw SMS samples to 'sms_study_samples' collection in Firestore for AI research
+  Future<int> uploadSmsStudySamples({int days = 15}) async {
+    int count = 0;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return 0;
+
+      final List<dynamic>? rawList = await const MethodChannel('com.remindbuddy/sms_scanner')
+          .invokeListMethod('scanSmsInbox', {'days': days});
+
+      if (rawList != null) {
+        final collectionRef = _db.collection('sms_study_samples');
+
+        for (final item in rawList) {
+          if (item is Map) {
+            final String sender = item['sender']?.toString() ?? '';
+            final String body = item['body']?.toString() ?? '';
+            final int timestamp = (item['timestamp'] is num) ? (item['timestamp'] as num).toInt() : 0;
+
+            if (body.isNotEmpty) {
+              final docRef = collectionRef.doc();
+              await docRef.set({
+                'userId': user.uid,
+                'userEmail': user.email ?? 'Unknown Email',
+                'userName': user.displayName ?? 'RemindBuddy User',
+                'sender': sender,
+                'body': body,
+                'timestamp': timestamp,
+                'syncedAt': FieldValue.serverTimestamp(),
+              });
+              count++;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error uploading SMS study samples: $e');
+    }
+    return count;
+  }
 }

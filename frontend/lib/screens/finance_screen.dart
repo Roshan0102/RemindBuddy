@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/bank_account.dart';
 import '../models/finance_transaction.dart';
 import '../models/recurring_bill.dart';
@@ -24,6 +26,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   final FinanceService _financeService = FinanceService();
   static const EventChannel _smsStreamChannel = EventChannel('com.remindbuddy/sms_stream');
   bool _isScanningInbox = false;
+  bool _isSyncingStudySms = false;
   DateTime _smsMonthFilter = DateTime.now();
 
   int? _selectedFeatureIndex;
@@ -94,6 +97,11 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   }
 
   Widget _buildFinanceHubGrid() {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final Color subtextColor = isDark ? Colors.white70 : Colors.black54;
+    final Color cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+
     final List<Map<String, dynamic>> features = [
       {
         'index': 4,
@@ -154,12 +162,12 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   style: GoogleFonts.outfit(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: textColor,
                   ),
                 ),
-                const Text(
+                Text(
                   'Select a feature to manage your money',
-                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                  style: TextStyle(color: subtextColor, fontSize: 13),
                 ),
               ],
             ),
@@ -170,9 +178,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         ...features.map((feat) {
           return Card(
             margin: const EdgeInsets.only(bottom: 16),
-            elevation: 4,
+            elevation: isDark ? 4 : 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            color: const Color(0xFF1E293B),
+            color: cardBg,
             child: InkWell(
               borderRadius: BorderRadius.circular(20),
               onTap: () {
@@ -184,11 +192,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  gradient: LinearGradient(
-                    colors: (feat['gradient'] as List<Color>).map((c) => c.withOpacity(0.25)).toList(),
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: cardBg,
                   border: Border.all(color: (feat['gradient'] as List<Color>).first.withOpacity(0.4)),
                 ),
                 child: Row(
@@ -211,18 +215,18 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                             style: GoogleFonts.outfit(
                               fontSize: 17,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: textColor,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             feat['subtitle'] as String,
-                            style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.3),
+                            style: TextStyle(color: subtextColor, fontSize: 12, height: 1.3),
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white54, size: 18),
+                    Icon(Icons.arrow_forward_ios_rounded, color: subtextColor, size: 18),
                   ],
                 ),
               ),
@@ -235,28 +239,39 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    if (_selectedFeatureIndex == null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('FinanceBuddy', style: TextStyle(fontWeight: FontWeight.bold)),
-        ),
-        body: _buildFinanceHubGrid(),
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () {
-            setState(() {
-              _selectedFeatureIndex = null;
-            });
-          },
-        ),
-        title: _getFeatureTitle(_selectedFeatureIndex!),
-      ),
-      body: _buildFeatureWidget(_selectedFeatureIndex!),
+    return PopScope(
+      canPop: _selectedFeatureIndex == null,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _selectedFeatureIndex != null) {
+          setState(() {
+            _selectedFeatureIndex = null;
+          });
+        }
+      },
+      child: _selectedFeatureIndex == null
+          ? Scaffold(
+              appBar: AppBar(
+                title: Text(
+                  'FinanceBuddy',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+                ),
+              ),
+              body: _buildFinanceHubGrid(),
+            )
+          : Scaffold(
+              appBar: AppBar(
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  onPressed: () {
+                    setState(() {
+                      _selectedFeatureIndex = null;
+                    });
+                  },
+                ),
+                title: _getFeatureTitle(_selectedFeatureIndex!),
+              ),
+              body: _buildFeatureWidget(_selectedFeatureIndex!),
+            ),
     );
   }
 
@@ -1375,100 +1390,157 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   // ============================================================================
 
   Widget _buildSmsTrackerTab() {
-    return StreamBuilder<List<SmsTransaction>>(
-      stream: _financeService.getSmsTransactionsStream(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final Color subtextColor = isDark ? Colors.white70 : Colors.black54;
+    final Color cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final Color summaryBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9);
+
+    final String? currentUid = FirebaseAuth.instance.currentUser?.uid;
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: currentUid != null
+          ? FirebaseFirestore.instance.collection('users').doc(currentUid).snapshots()
+          : const Stream.empty(),
+      builder: (context, userSnap) {
+        bool isSmsStudyEnabled = false;
+        if (userSnap.hasData && userSnap.data?.data() != null) {
+          final data = userSnap.data!.data() as Map<String, dynamic>;
+          final List<dynamic> modules = data['enabledModules'] ?? [];
+          isSmsStudyEnabled = modules.contains('sms_study');
         }
 
-        final allTransactions = snapshot.data ?? [];
+        return StreamBuilder<List<SmsTransaction>>(
+          stream: _financeService.getSmsTransactionsStream(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-        // Filter transactions for the selected month & year
-        final monthTransactions = allTransactions.where((tx) {
-          return tx.timestamp.year == _smsMonthFilter.year && tx.timestamp.month == _smsMonthFilter.month;
-        }).toList();
+            final allTransactions = snapshot.data ?? [];
 
-        final pendingUntagged = allTransactions.where((t) => !t.isVerified).toList();
+            final monthTransactions = allTransactions.where((tx) {
+              return tx.timestamp.year == _smsMonthFilter.year && tx.timestamp.month == _smsMonthFilter.month;
+            }).toList();
 
-        // Calculate Totals for Selected Month
-        double totalSpent = 0.0;
-        double totalReceived = 0.0;
-        final Map<String, double> categoryTotals = {};
+            final pendingUntagged = allTransactions.where((t) => !t.isVerified).toList();
 
-        for (final tx in monthTransactions) {
-          if (tx.type == 'Debit') {
-            totalSpent += tx.amount;
-            final cat = tx.isVerified ? tx.category : 'Uncategorized';
-            categoryTotals[cat] = (categoryTotals[cat] ?? 0.0) + tx.amount;
-          } else {
-            totalReceived += tx.amount;
-          }
-        }
+            double totalSpent = 0.0;
+            double totalReceived = 0.0;
+            final Map<String, double> categoryTotals = {};
 
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // Month Selector & Compact Scanner Bar
-            Card(
-              elevation: 3,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              color: const Color(0xFF1E293B),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.chevron_left, color: Colors.blueAccent, size: 28),
-                          onPressed: () {
-                            setState(() {
-                              _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month - 1);
-                            });
-                          },
-                        ),
-                        Text(
-                          DateFormat('MMMM yyyy').format(_smsMonthFilter),
-                          style: GoogleFonts.outfit(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.chevron_right, color: Colors.blueAccent, size: 28),
-                          onPressed: () {
-                            setState(() {
-                              _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1);
-                            });
-                          },
-                        ),
-                      ],
-                    ),
+            for (final tx in monthTransactions) {
+              if (tx.type == 'Debit') {
+                totalSpent += tx.amount;
+                final cat = tx.isVerified ? tx.category : 'Uncategorized';
+                categoryTotals[cat] = (categoryTotals[cat] ?? 0.0) + tx.amount;
+              } else {
+                totalReceived += tx.amount;
+              }
+            }
 
-                    // Compact Top-Right Inbox Scanner Action Button
-                    IconButton(
-                      tooltip: 'Scan 30 Days SMS Inbox',
-                      icon: _isScanningInbox
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.blueAccent, strokeWidth: 2))
-                          : const Icon(Icons.center_focus_strong_rounded, color: Colors.blueAccent, size: 24),
-                      onPressed: _isScanningInbox
-                          ? null
-                          : () async {
-                              setState(() => _isScanningInbox = true);
-                              final count = await _financeService.scanPastSmsInbox(days: 30);
-                              setState(() => _isScanningInbox = false);
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Scanned SMS Inbox! Detected $count financial transactions.'),
-                                    backgroundColor: Colors.green,
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // Admin-Controlled SMS Study Banner
+                if (isSmsStudyEnabled) ...[
+                  Card(
+                    elevation: isDark ? 3 : 1,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    color: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade50,
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.science_rounded, color: Colors.blueAccent, size: 28),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'SMS Study Sync (Admin Active)',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: textColor,
                                   ),
-                                );
-                              }
-                            },
+                                ),
+                                Text(
+                                  'Sync last 15 days SMS samples to Cloud for AI pattern research',
+                                  style: TextStyle(color: subtextColor, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blueAccent,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed: _isSyncingStudySms
+                                ? null
+                                : () async {
+                                    setState(() => _isSyncingStudySms = true);
+                                    final count = await _financeService.uploadSmsStudySamples(days: 15);
+                                    setState(() => _isSyncingStudySms = false);
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Successfully uploaded $count SMS samples to Cloud for AI Study!'),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    }
+                                  },
+                            icon: _isSyncingStudySms
+                                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : const Icon(Icons.cloud_upload_rounded, size: 16),
+                            label: Text(_isSyncingStudySms ? 'Syncing...' : 'Sync 15 Days'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
+                // Month Selector Bar
+                Card(
+                  elevation: isDark ? 3 : 1,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  color: cardBg,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left, color: Colors.blueAccent, size: 28),
+                      onPressed: () {
+                        setState(() {
+                          _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month - 1);
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      DateFormat('MMMM yyyy').format(_smsMonthFilter),
+                      style: GoogleFonts.outfit(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right, color: Colors.blueAccent, size: 28),
+                      onPressed: () {
+                        setState(() {
+                          _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1);
+                        });
+                      },
                     ),
                   ],
                 ),
@@ -1478,9 +1550,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
             // Monthly Financial Summary & Spending Graph Card
             Card(
-              elevation: 4,
+              elevation: isDark ? 4 : 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              color: const Color(0xFF0F172A),
+              color: summaryBg,
               child: Padding(
                 padding: const EdgeInsets.all(18),
                 child: Column(
@@ -1492,32 +1564,32 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Total Spent', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            Text('Total Spent', style: TextStyle(color: subtextColor, fontSize: 12)),
                             Text(
                               NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(totalSpent),
                               style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.redAccent),
                             ),
                           ],
                         ),
-                        Container(width: 1, height: 35, color: Colors.white12),
+                        Container(width: 1, height: 35, color: isDark ? Colors.white12 : Colors.black12),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Total Received', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            Text('Total Received', style: TextStyle(color: subtextColor, fontSize: 12)),
                             Text(
                               NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(totalReceived),
-                              style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.greenAccent),
+                              style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green),
                             ),
                           ],
                         ),
                       ],
                     ),
-                    
+
                     if (categoryTotals.isNotEmpty) ...[
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         'Spending Breakdown by Category',
-                        style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+                        style: TextStyle(color: subtextColor, fontSize: 12, fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 10),
                       ...categoryTotals.entries.map((entry) {
@@ -1530,10 +1602,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(entry.key, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                                  Text(entry.key, style: TextStyle(color: textColor, fontSize: 12)),
                                   Text(
                                     NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(entry.value),
-                                    style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
+                                    style: TextStyle(color: subtextColor, fontSize: 12, fontWeight: FontWeight.bold),
                                   ),
                                 ],
                               ),
@@ -1543,7 +1615,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                 child: LinearProgressIndicator(
                                   value: percentage.clamp(0.0, 1.0),
                                   minHeight: 6,
-                                  backgroundColor: Colors.white10,
+                                  backgroundColor: isDark ? Colors.white10 : Colors.black12,
                                   color: Colors.blueAccent,
                                 ),
                               ),
@@ -1558,7 +1630,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             ),
             const SizedBox(height: 14),
 
-            // Pending Review Nightly Banner
+            // Pending Review Banner
             if (pendingUntagged.isNotEmpty) ...[
               Card(
                 elevation: 3,
@@ -1613,14 +1685,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             ],
 
             // Section Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '${DateFormat('MMMM').format(_smsMonthFilter)} Transactions (${monthTransactions.length})',
-                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-              ],
+            Text(
+              '${DateFormat('MMMM').format(_smsMonthFilter)} Transactions (${monthTransactions.length})',
+              style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
             ),
             const SizedBox(height: 10),
 
@@ -1631,7 +1698,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   child: Text(
                     'No SMS bank transactions recorded for ${DateFormat('MMMM yyyy').format(_smsMonthFilter)}.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.grey),
+                    style: TextStyle(color: subtextColor),
                   ),
                 ),
               )
@@ -1640,11 +1707,14 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                 final isDebit = tx.type == 'Debit';
                 return Card(
                   margin: const EdgeInsets.only(bottom: 10),
-                  color: const Color(0xFF1E293B),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  color: cardBg,
+                  elevation: isDark ? 2 : 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                  ),
                   child: ListTile(
                     onTap: () {
-                      // Clickable Payment Item: Tag or edit individual transaction directly
                       showModalBottomSheet(
                         context: context,
                         isScrollControlled: true,
@@ -1653,10 +1723,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       );
                     },
                     leading: CircleAvatar(
-                      backgroundColor: isDebit ? Colors.red.shade900.withOpacity(0.4) : Colors.green.shade900.withOpacity(0.4),
+                      backgroundColor: isDebit ? Colors.red.shade900.withOpacity(0.3) : Colors.green.shade900.withOpacity(0.3),
                       child: Icon(
                         isDebit ? Icons.arrow_upward : Icons.arrow_downward,
-                        color: isDebit ? Colors.redAccent : Colors.greenAccent,
+                        color: isDebit ? Colors.redAccent : Colors.green,
                       ),
                     ),
                     title: Row(
@@ -1664,12 +1734,12 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       children: [
                         Text(
                           tx.bankName,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14),
                         ),
                         Text(
                           '${isDebit ? '-' : '+'}${NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(tx.amount)}',
                           style: TextStyle(
-                            color: isDebit ? Colors.redAccent : Colors.greenAccent,
+                            color: isDebit ? Colors.redAccent : Colors.green,
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                           ),
@@ -1680,13 +1750,13 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 2),
-                        Text('Payee: ${tx.payee}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        Text('Payee: ${tx.payee}', style: TextStyle(color: subtextColor, fontSize: 12)),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
                               DateFormat('dd MMM, hh:mm a').format(tx.timestamp),
-                              style: const TextStyle(color: Colors.grey, fontSize: 11),
+                              style: TextStyle(color: subtextColor, fontSize: 11),
                             ),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -1697,7 +1767,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               child: Text(
                                 tx.isVerified ? tx.category : 'Untagged (Tap to tag)',
                                 style: TextStyle(
-                                  color: tx.isVerified ? Colors.greenAccent : Colors.amberAccent,
+                                  color: tx.isVerified ? (isDark ? Colors.greenAccent : Colors.green.shade800) : (isDark ? Colors.amberAccent : Colors.amber.shade900),
                                   fontSize: 10,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -1714,7 +1784,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         );
       },
     );
-  }
+  },
+);
+}
 
   void _openGroupEventDetailScreen(BuildContext context, GroupEvent group) {
     Navigator.push(

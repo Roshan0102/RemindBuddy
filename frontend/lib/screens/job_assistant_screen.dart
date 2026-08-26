@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../models/job_application.dart';
 import '../services/job_assistant_service.dart';
 
@@ -636,26 +637,28 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI Job Assistant', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-        backgroundColor: Colors.blue.shade900,
-        foregroundColor: Colors.white,
+        title: Text(
+          'AI Job Applicant 💼',
+          style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+        ),
         elevation: 2,
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.amber,
           indicatorWeight: 3.0,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
           tabs: const [
-            Tab(icon: Icon(Icons.add_photo_alternate, color: Colors.white), text: 'New Applications'),
-            Tab(icon: Icon(Icons.history, color: Colors.white), text: 'Applied History'),
+            Tab(icon: Icon(Icons.add_photo_alternate), text: 'New Applications'),
+            Tab(icon: Icon(Icons.history), text: 'Applied History'),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings, color: Colors.white),
+            icon: const Icon(Icons.settings),
             tooltip: 'Email Credentials Settings',
             onPressed: _showEmailConfigDialog,
           ),
@@ -676,6 +679,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   // ============================================================================
 
   Widget _buildNewApplicationTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.blue.shade50;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subtextColor = isDark ? Colors.white70 : Colors.black54;
+
     return Scrollbar(
       controller: _newAppScrollController,
       child: SingleChildScrollView(
@@ -687,7 +695,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           children: [
             // Banner: Resume Status & Upload Button
             Card(
-              color: Colors.blue.shade50,
+              color: cardBg,
+              elevation: isDark ? 3 : 1,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(14.0),
@@ -695,7 +704,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   children: [
                     Icon(
                       _hasResume ? Icons.picture_as_pdf : Icons.upload_file,
-                      color: _hasResume ? Colors.red.shade800 : Colors.blueAccent,
+                      color: _hasResume ? (isDark ? Colors.redAccent : Colors.red.shade800) : Colors.blueAccent,
                       size: 32,
                     ),
                     const SizedBox(width: 12),
@@ -705,13 +714,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         children: [
                           Text(
                             _hasResume ? 'Master Resume: $_resumeFileName' : 'No Resume Uploaded Yet',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor),
                           ),
                           Text(
                             _hasResume
                                 ? 'This PDF will be attached & analyzed by Gemini for applications.'
                                 : 'Upload your standard Resume (PDF) to auto-attach & analyze.',
-                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            style: TextStyle(fontSize: 12, color: subtextColor),
                           ),
                         ],
                       ),
@@ -719,7 +728,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ElevatedButton(
                       onPressed: _pickMasterResume,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue.shade900,
+                        backgroundColor: Colors.blue.shade700,
                         foregroundColor: Colors.white,
                       ),
                       child: Text(_hasResume ? 'Change' : 'Upload'),
@@ -731,7 +740,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             const SizedBox(height: 16),
 
             // Upload Mode Choice
-            const Text('Upload Mode Strategy:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            Text('Upload Mode Strategy:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: textColor)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -1072,6 +1081,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Widget _buildExtractedJobCard(JobApplication app, int index) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subtextColor = isDark ? Colors.white70 : Colors.black54;
+
     final emailCtrl = _getController(_emailControllers, index, app.recipientEmail);
     final subjectCtrl = _getController(_subjectControllers, index, app.generatedSubject);
     final bodyCtrl = _getController(_bodyControllers, index, app.generatedCoverLetter);
@@ -1080,8 +1094,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
+      color: cardBg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      elevation: 2,
+      elevation: isDark ? 3 : 1,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -1090,21 +1105,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             Row(
               children: [
                 CircleAvatar(
-                  backgroundColor: Colors.blue.shade100,
-                  child: Icon(Icons.work, color: Colors.blue.shade900),
+                  backgroundColor: isDark ? Colors.blue.shade900 : Colors.blue.shade100,
+                  child: Icon(Icons.work, color: isDark ? Colors.blue.shade100 : Colors.blue.shade900),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(app.jobTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      Text(app.companyName, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                      Text(app.jobTitle, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textColor)),
+                      Text(app.companyName, style: TextStyle(color: subtextColor, fontSize: 13)),
                     ],
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, color: Colors.grey),
+                  icon: Icon(Icons.close, color: subtextColor),
                   tooltip: 'Remove',
                   onPressed: () {
                     setState(() {
@@ -1131,7 +1146,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 isDense: true,
               ),
               keyboardType: TextInputType.emailAddress,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textColor),
             ),
             const SizedBox(height: 12),
 
@@ -1144,7 +1159,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textColor),
             ),
             const SizedBox(height: 12),
 
@@ -1156,8 +1171,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 children: app.extractedSkills
                     .map((sk) => Chip(
                           visualDensity: VisualDensity.compact,
-                          label: Text(sk, style: const TextStyle(fontSize: 11)),
-                          backgroundColor: Colors.blue.shade50,
+                          label: Text(sk, style: TextStyle(fontSize: 11, color: isDark ? Colors.white : Colors.black87)),
+                          backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.blue.shade50,
                         ))
                     .toList(),
               ),
@@ -1165,7 +1180,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             ],
 
             // Cover Letter Body Field
-            const Text('Cover Letter Body (Editable):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            Text('Cover Letter Body (Editable):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
             const SizedBox(height: 6),
             TextFormField(
               controller: bodyCtrl,
@@ -1175,7 +1190,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 border: OutlineInputBorder(),
                 alignLabelWithHint: true,
               ),
-              style: const TextStyle(fontSize: 12.5, height: 1.45),
+              style: TextStyle(fontSize: 12.5, height: 1.45, color: textColor),
             ),
             const SizedBox(height: 14),
 
@@ -1183,35 +1198,35 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.amber.shade50,
+                color: isDark ? const Color(0xFF332A15) : Colors.amber.shade50,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.amber.shade200),
+                border: Border.all(color: isDark ? Colors.amber.shade700 : Colors.amber.shade200),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.auto_fix_high, size: 18, color: Colors.amber.shade900),
+                      Icon(Icons.auto_fix_high, size: 18, color: isDark ? Colors.amber.shade300 : Colors.amber.shade900),
                       const SizedBox(width: 6),
                       Text(
                         'Refine with Gemini AI',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.amber.shade900),
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.amber.shade300 : Colors.amber.shade900),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: refineCtrl,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: "e.g., 'Make it more concise', 'Highlight my AWS certification', 'Tone down enthusiasm'",
-                      hintStyle: TextStyle(fontSize: 12),
-                      fillColor: Colors.white,
+                      hintStyle: TextStyle(fontSize: 12, color: subtextColor),
+                      fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
                       filled: true,
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: const OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     ),
-                    style: const TextStyle(fontSize: 12),
+                    style: TextStyle(fontSize: 12, color: textColor),
                   ),
                   const SizedBox(height: 8),
                   Align(
@@ -1266,6 +1281,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   // ============================================================================
 
   Widget _buildHistoryTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subtextColor = isDark ? Colors.white70 : Colors.black54;
+
     return StreamBuilder<List<JobApplication>>(
       stream: _service.getJobApplicationsStream(),
       builder: (context, snapshot) {
@@ -1275,13 +1295,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
         final apps = snapshot.data ?? [];
         if (apps.isEmpty) {
-          return const Center(
+          return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.history_toggle_off, size: 64, color: Colors.grey),
-                SizedBox(height: 12),
-                Text('No Applied Jobs History Yet.', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                Icon(Icons.history_toggle_off, size: 64, color: subtextColor),
+                const SizedBox(height: 12),
+                Text('No Applied Jobs History Yet.', style: TextStyle(color: subtextColor, fontSize: 16)),
               ],
             ),
           );
@@ -1298,20 +1318,28 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               final app = apps[index];
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
+                color: cardBg,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: app.status == 'sent' ? Colors.green.shade100 : Colors.amber.shade100,
+                    backgroundColor: app.status == 'sent'
+                        ? (isDark ? Colors.green.shade900 : Colors.green.shade100)
+                        : (isDark ? Colors.amber.shade900 : Colors.amber.shade100),
                     child: Icon(
                       app.status == 'sent' ? Icons.check_circle : Icons.pending,
-                      color: app.status == 'sent' ? Colors.green.shade800 : Colors.amber.shade800,
+                      color: app.status == 'sent'
+                          ? (isDark ? Colors.green.shade300 : Colors.green.shade800)
+                          : (isDark ? Colors.amber.shade300 : Colors.amber.shade800),
                     ),
                   ),
-                  title: Text(app.jobTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('${app.companyName} • ${app.recipientEmail}\nApplied: ${app.appliedAt.toString().substring(0, 10)}'),
+                  title: Text(app.jobTitle, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+                  subtitle: Text(
+                    '${app.companyName} • ${app.recipientEmail}\nApplied: ${app.appliedAt.toString().substring(0, 10)}',
+                    style: TextStyle(color: subtextColor),
+                  ),
                   isThreeLine: true,
                   trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                     onPressed: () => _service.deleteJobApplication(app.id),
                   ),
                 ),
