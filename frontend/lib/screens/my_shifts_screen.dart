@@ -816,34 +816,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       ),
     );
   }
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Roles saved! Fetching new walk-ins...'),
-                          ),
-                        );
-                        _triggerFetchWalkIns();
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to save roles: $e'), backgroundColor: Colors.red),
-                        );
-                      } finally {
-                        setDialogState(() => isSavingRoles = false);
-                      }
-                    },
-              child: isSavingRoles
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  
   
   void _changeMonth(int delta) {
     setState(() {

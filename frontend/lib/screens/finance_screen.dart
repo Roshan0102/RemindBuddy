@@ -3038,239 +3038,6 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
       ),
     );
   }
-}
-
-// ============================================================================
-// GROUP EVENT DETAIL SCREEN (WHO OWES WHOM & EXPENSES)
-// ============================================================================
-
-class GroupEventDetailScreen extends StatefulWidget {
-  final GroupEvent group;
-  const GroupEventDetailScreen({super.key, required this.group});
-
-  @override
-  State<GroupEventDetailScreen> createState() => _GroupEventDetailScreenState();
-}
-
-class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
-  final FinanceService _financeService = FinanceService();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.group.title),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddExpenseDialog(context),
-        icon: const Icon(Icons.receipt),
-        label: const Text('Add Expense'),
-      ),
-      body: StreamBuilder<List<GroupExpense>>(
-        stream: _financeService.getGroupExpensesStream(widget.group.id),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final expenses = snapshot.data ?? [];
-          final settlements = _financeService.calculateGroupBalances(widget.group.members, expenses);
-
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // Members list
-              Wrap(
-                spacing: 8,
-                children: widget.group.members
-                    .map((m) => Chip(
-                          avatar: CircleAvatar(child: Text(m[0].toUpperCase())),
-                          label: Text(m),
-                        ))
-                    .toList(),
-              ),
-              const SizedBox(height: 16),
-
-              // Settlement Matrix (Who Owes Whom)
-              Card(
-                color: Colors.orange.shade50,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.swap_horiz, color: Colors.orange),
-                          SizedBox(width: 8),
-                          Text('Settlement Matrix (Who Owes Whom)',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (settlements.isEmpty)
-                        const Text('All settled up! No pending balances in this group.')
-                      else
-                        Column(
-                          children: settlements
-                              .map((s) => Container(
-                                    margin: const EdgeInsets.only(bottom: 6),
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          '${s.fromPerson} owes ${s.toPerson}',
-                                          style: const TextStyle(fontWeight: FontWeight.w600),
-                                        ),
-                                        Text(
-                                          '₹${NumberFormat('#,##,##0.00').format(s.amount)}',
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold, color: Colors.orange),
-                                        ),
-                                      ],
-                                    ),
-                                  ))
-                              .toList(),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              const Text('Expenses Log', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-
-              if (expenses.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Center(child: Text('No group expenses added yet.')),
-                )
-              else
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: expenses.length,
-                  itemBuilder: (context, index) {
-                    final exp = expenses[index];
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        title: Text(exp.description, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(
-                          'Paid by ${exp.payerName} • Split among ${exp.involvedMembers.join(", ")}',
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '₹${NumberFormat('#,##,##0').format(exp.amount)}',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.grey),
-                              onPressed: () => _financeService.deleteGroupExpense(exp.id),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  void _showAddExpenseDialog(BuildContext context) {
-    final descCtrl = TextEditingController();
-    final amountCtrl = TextEditingController();
-    String payer = widget.group.members.first;
-    final Set<String> selectedInvolved = Set.from(widget.group.members);
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add Group Expense'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: descCtrl,
-                  decoration: const InputDecoration(labelText: 'Expense Description (e.g. Dinner, Fuel)'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amountCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Total Amount (₹)'),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: payer,
-                  decoration: const InputDecoration(labelText: 'Paid By'),
-                  items: widget.group.members
-                      .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-                      .toList(),
-                  onChanged: (val) => payer = val!,
-                ),
-                const SizedBox(height: 12),
-                const Text('Split Among:', style: TextStyle(fontWeight: FontWeight.bold)),
-                ...widget.group.members.map(
-                  (m) => CheckboxListTile(
-                    title: Text(m),
-                    value: selectedInvolved.contains(m),
-                    onChanged: (checked) {
-                      setDialogState(() {
-                        if (checked == true) {
-                          selectedInvolved.add(m);
-                        } else {
-                          selectedInvolved.remove(m);
-                        }
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () {
-                if (descCtrl.text.trim().isEmpty) return;
-                final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
-                if (amt <= 0 || selectedInvolved.isEmpty) return;
-
-                _financeService.addGroupExpense(GroupExpense(
-                  id: '',
-                  groupId: widget.group.id,
-                  description: descCtrl.text.trim(),
-                  amount: amt,
-                  payerName: payer,
-                  involvedMembers: selectedInvolved.toList(),
-                  date: DateTime.now(),
-                ));
-                Navigator.pop(context);
-              },
-              child: const Text('Add Expense'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Future<void> _showCustomHeaderRulesDialog(BuildContext context) async {
     final patternController = TextEditingController();
@@ -3540,3 +3307,237 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
     );
   }
 }
+
+// ============================================================================
+// GROUP EVENT DETAIL SCREEN (WHO OWES WHOM & EXPENSES)
+// ============================================================================
+
+class GroupEventDetailScreen extends StatefulWidget {
+  final GroupEvent group;
+  const GroupEventDetailScreen({super.key, required this.group});
+
+  @override
+  State<GroupEventDetailScreen> createState() => _GroupEventDetailScreenState();
+}
+
+class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
+  final FinanceService _financeService = FinanceService();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.group.title),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddExpenseDialog(context),
+        icon: const Icon(Icons.receipt),
+        label: const Text('Add Expense'),
+      ),
+      body: StreamBuilder<List<GroupExpense>>(
+        stream: _financeService.getGroupExpensesStream(widget.group.id),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final expenses = snapshot.data ?? [];
+          final settlements = _financeService.calculateGroupBalances(widget.group.members, expenses);
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // Members list
+              Wrap(
+                spacing: 8,
+                children: widget.group.members
+                    .map((m) => Chip(
+                          avatar: CircleAvatar(child: Text(m[0].toUpperCase())),
+                          label: Text(m),
+                        ))
+                    .toList(),
+              ),
+              const SizedBox(height: 16),
+
+              // Settlement Matrix (Who Owes Whom)
+              Card(
+                color: Colors.orange.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.swap_horiz, color: Colors.orange),
+                          SizedBox(width: 8),
+                          Text('Settlement Matrix (Who Owes Whom)',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (settlements.isEmpty)
+                        const Text('All settled up! No pending balances in this group.')
+                      else
+                        Column(
+                          children: settlements
+                              .map((s) => Container(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          '${s.fromPerson} owes ${s.toPerson}',
+                                          style: const TextStyle(fontWeight: FontWeight.w600),
+                                        ),
+                                        Text(
+                                          '₹${NumberFormat('#,##,##0.00').format(s.amount)}',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold, color: Colors.orange),
+                                        ),
+                                      ],
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              const Text('Expenses Log', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+
+              if (expenses.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(child: Text('No group expenses added yet.')),
+                )
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: expenses.length,
+                  itemBuilder: (context, index) {
+                    final exp = expenses[index];
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        title: Text(exp.description, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(
+                          'Paid by ${exp.payerName} • Split among ${exp.involvedMembers.join(", ")}',
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '₹${NumberFormat('#,##,##0').format(exp.amount)}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                              onPressed: () => _financeService.deleteGroupExpense(exp.id),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showAddExpenseDialog(BuildContext context) {
+    final descCtrl = TextEditingController();
+    final amountCtrl = TextEditingController();
+    String payer = widget.group.members.first;
+    final Set<String> selectedInvolved = Set.from(widget.group.members);
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add Group Expense'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: descCtrl,
+                  decoration: const InputDecoration(labelText: 'Expense Description (e.g. Dinner, Fuel)'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Total Amount (₹)'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: payer,
+                  decoration: const InputDecoration(labelText: 'Paid By'),
+                  items: widget.group.members
+                      .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                      .toList(),
+                  onChanged: (val) => payer = val!,
+                ),
+                const SizedBox(height: 12),
+                const Text('Split Among:', style: TextStyle(fontWeight: FontWeight.bold)),
+                ...widget.group.members.map(
+                  (m) => CheckboxListTile(
+                    title: Text(m),
+                    value: selectedInvolved.contains(m),
+                    onChanged: (checked) {
+                      setDialogState(() {
+                        if (checked == true) {
+                          selectedInvolved.add(m);
+                        } else {
+                          selectedInvolved.remove(m);
+                        }
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                if (descCtrl.text.trim().isEmpty) return;
+                final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+                if (amt <= 0 || selectedInvolved.isEmpty) return;
+
+                _financeService.addGroupExpense(GroupExpense(
+                  id: '',
+                  groupId: widget.group.id,
+                  description: descCtrl.text.trim(),
+                  amount: amt,
+                  payerName: payer,
+                  involvedMembers: selectedInvolved.toList(),
+                  date: DateTime.now(),
+                ));
+                Navigator.pop(context);
+              },
+              child: const Text('Add Expense'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
