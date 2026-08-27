@@ -296,6 +296,8 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (status) {
       case 'scheduled':
         return const Icon(Icons.schedule, color: Colors.orange);
+      case 'notified':
+        return const Icon(Icons.help_outline, color: Colors.amber);
       case 'completed':
         return const Icon(Icons.check_circle, color: Colors.green);
       case 'expired':
@@ -303,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'error':
         return const Icon(Icons.error_outline, color: Colors.red);
       default:
-        return const Icon(Icons.help_outline);
+        return const Icon(Icons.help_outline, color: Colors.amber);
     }
   }
 

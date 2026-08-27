@@ -579,7 +579,7 @@ class FinanceService {
   }
 
   /// Scans past SMS messages from Android Content Provider and saves newly detected transactions
-  Future<int> scanPastSmsInbox({int days = 30}) async {
+  Future<int> scanPastSmsInbox({int days = 30, DateTime? startCutoff, DateTime? endCutoff}) async {
     int count = 0;
     try {
       final List<dynamic>? rawList = await const MethodChannel('com.remindbuddy/sms_scanner')
@@ -591,6 +591,10 @@ class FinanceService {
             final String sender = item['sender']?.toString() ?? '';
             final String body = item['body']?.toString() ?? '';
             final int timestamp = (item['timestamp'] is num) ? (item['timestamp'] as num).toInt() : 0;
+
+            final dt = DateTime.fromMillisecondsSinceEpoch(timestamp);
+            if (startCutoff != null && dt.isBefore(startCutoff)) continue;
+            if (endCutoff != null && dt.isAfter(endCutoff)) continue;
 
             final parsed = SmsParserService.parseSms(sender, body, timestamp);
             if (parsed != null) {
@@ -779,55 +783,58 @@ class FinanceService {
   }
 
   // ============================================================================
-  // USER SMS HEADER -> BANK MAPPINGS (AUTO-LEARNING & PERSISTENCE)
+  // USER SMS HEADER -> BANK RULES (CUSTOM KEYWORD RULES)
   // ============================================================================
 
-  Stream<Map<String, String>> getUserHeaderBankMappingsStream() {
+  Stream<List<Map<String, String>>> getCustomHeaderBankRulesStream() {
     final doc = _userDoc;
-    if (doc == null) return Stream.value({});
+    if (doc == null) return Stream.value([]);
 
     return doc.snapshots().map((snap) {
-      if (!snap.exists || snap.data() == null) return {};
+      if (!snap.exists || snap.data() == null) return [];
       final data = snap.data() as Map<String, dynamic>;
+      
+      if (data.containsKey('customHeaderBankRules') && data['customHeaderBankRules'] is List) {
+        final List<dynamic> list = data['customHeaderBankRules'];
+        final List<Map<String, String>> result = [];
+        for (final item in list) {
+          if (item is Map) {
+            final p = (item['pattern'] ?? '').toString().trim().toUpperCase();
+            final b = (item['bankName'] ?? '').toString().trim();
+            if (p.isNotEmpty && b.isNotEmpty) {
+              result.add({'pattern': p, 'bankName': b});
+            }
+          }
+        }
+        return result;
+      }
+
+      // Legacy fallback: convert old headerBankMappings Map to List<Map<String, String>> rules
       final Map<String, dynamic> rawMap = data['headerBankMappings'] ?? {};
-      final Map<String, String> result = {};
+      final List<Map<String, String>> result = [];
       rawMap.forEach((key, value) {
-        result[key.toString().trim().toUpperCase()] = value.toString();
+        final p = key.toString().trim().toUpperCase();
+        final b = value.toString().trim();
+        if (p.isNotEmpty && b.isNotEmpty) {
+          result.add({'pattern': p, 'bankName': b});
+        }
       });
       return result;
     });
   }
 
-  Future<void> saveUserHeaderBankMapping(String sender, String bankName) async {
-    final cleanSender = sender.trim().toUpperCase();
-    if (cleanSender.isEmpty || bankName.isEmpty || bankName == 'Bank' || bankName.toLowerCase() == 'unknown') return;
-
+  Future<void> saveCustomHeaderBankRules(List<Map<String, String>> rules) async {
     final doc = _userDoc;
     if (doc == null) return;
 
-    final snap = await doc.get();
-    Map<String, dynamic> existingMappings = {};
-    if (snap.exists && snap.data() != null) {
-      final data = snap.data() as Map<String, dynamic>;
-      existingMappings = Map<String, dynamic>.from(data['headerBankMappings'] ?? {});
-    }
+    final cleanedRules = rules.map((r) => {
+      'pattern': r['pattern']!.trim().toUpperCase(),
+      'bankName': r['bankName']!.trim(),
+    }).where((r) => r['pattern']!.isNotEmpty && r['bankName']!.isNotEmpty).toList();
 
-    existingMappings[cleanSender] = bankName;
+    await doc.set({'customHeaderBankRules': cleanedRules}, SetOptions(merge: true));
 
-    // Also extract code part (e.g. "BV-INDBNK-S" -> "INDBNK")
-    if (cleanSender.contains('-')) {
-      final parts = cleanSender.split('-');
-      if (parts.length > 1) {
-        final codePart = parts.last.replaceAll(' ', '');
-        if (codePart.isNotEmpty) {
-          existingMappings[codePart] = bankName;
-        }
-      }
-    }
-
-    await doc.set({'headerBankMappings': existingMappings}, SetOptions(merge: true));
-
-    // Update existing unassigned SMS transactions in Firestore matching this sender
+    // Retroactively update existing unassigned/unverified transactions in Firestore matching these pattern rules!
     try {
       final unassignedSnap = await doc.collection('sms_transactions').get();
       final batch = _db.batch();
@@ -838,10 +845,17 @@ class FinanceService {
         final txSender = (data['sender'] ?? '').toString().trim().toUpperCase();
         final currentBank = (data['bankName'] ?? '').toString();
 
-        if (txSender == cleanSender || (cleanSender.contains('-') && txSender.contains(cleanSender.split('-').last))) {
-          if (currentBank == 'Bank' || currentBank.toLowerCase() == 'unknown') {
-            batch.update(txDoc.reference, {'bankName': bankName});
-            updateCount++;
+        if (txSender.isEmpty) continue;
+
+        for (final rule in cleanedRules) {
+          final p = rule['pattern']!;
+          final b = rule['bankName']!;
+          if (txSender.contains(p)) {
+            if (currentBank == 'Bank' || currentBank.toLowerCase() == 'unknown' || currentBank != b) {
+              batch.update(txDoc.reference, {'bankName': b});
+              updateCount++;
+            }
+            break;
           }
         }
       }
@@ -850,8 +864,67 @@ class FinanceService {
         await batch.commit();
       }
     } catch (e) {
-      print('Error updating unassigned transactions for header $cleanSender: $e');
+      print('Error applying custom header bank rules retroactively: $e');
     }
+  }
+
+  Future<void> addCustomHeaderBankRule(String pattern, String bankName) async {
+    final p = pattern.trim().toUpperCase();
+    final b = bankName.trim();
+    if (p.isEmpty || b.isEmpty) return;
+
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final snap = await doc.get();
+    List<Map<String, String>> currentRules = [];
+    if (snap.exists && snap.data() != null) {
+      final data = snap.data() as Map<String, dynamic>;
+      if (data.containsKey('customHeaderBankRules') && data['customHeaderBankRules'] is List) {
+        final List<dynamic> list = data['customHeaderBankRules'];
+        for (final item in list) {
+          if (item is Map) {
+            currentRules.add({
+              'pattern': (item['pattern'] ?? '').toString().trim().toUpperCase(),
+              'bankName': (item['bankName'] ?? '').toString().trim(),
+            });
+          }
+        }
+      }
+    }
+
+    currentRules.removeWhere((r) => r['pattern'] == p);
+    currentRules.add({'pattern': p, 'bankName': b});
+
+    await saveCustomHeaderBankRules(currentRules);
+  }
+
+  Future<void> deleteCustomHeaderBankRule(String pattern) async {
+    final p = pattern.trim().toUpperCase();
+    if (p.isEmpty) return;
+
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final snap = await doc.get();
+    List<Map<String, String>> currentRules = [];
+    if (snap.exists && snap.data() != null) {
+      final data = snap.data() as Map<String, dynamic>;
+      if (data.containsKey('customHeaderBankRules') && data['customHeaderBankRules'] is List) {
+        final List<dynamic> list = data['customHeaderBankRules'];
+        for (final item in list) {
+          if (item is Map) {
+            currentRules.add({
+              'pattern': (item['pattern'] ?? '').toString().trim().toUpperCase(),
+              'bankName': (item['bankName'] ?? '').toString().trim(),
+            });
+          }
+        }
+      }
+    }
+
+    currentRules.removeWhere((r) => r['pattern'] == p);
+    await saveCustomHeaderBankRules(currentRules);
   }
 
   // ============================================================================

@@ -46,10 +46,13 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   bool _isWalkInEnabled = false;
   bool _isFetchingEvents = false;
   bool _isFetchingWalkIns = false;
-  List<String> _eventInterests = ['Cloud', 'Devops', 'AI', 'Agentic AI'];
-  String _eventLocation = 'Bengaluru';
+  bool _isEventsConfigured = false;
+  bool _isWalkInConfigured = false;
+  List<String> _eventInterests = [];
+  String _eventLocation = '';
   String _eventMode = 'In-Person'; // 'In-Person', 'Online', 'Both'
-  List<String> _walkinRoles = ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer'];
+  List<String> _walkinRoles = [];
+  String _walkinLocation = '';
   DateTime? _eventsLastUpdated;
   DateTime? _walkinsLastUpdated;
   DateTime? _eventsLastRan;
@@ -83,6 +86,20 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     super.dispose();
   }
 
+  bool _isLocationMatch(String itemLocation, String targetLocation) {
+    final itemLoc = itemLocation.toLowerCase().trim();
+    final target = targetLocation.toLowerCase().trim();
+    if (target.isEmpty || target == 'all' || target == 'any') return true;
+
+    if (target.contains('bengaluru') || target.contains('bangalore') || target.contains('blr')) {
+      return itemLoc.contains('bengaluru') || itemLoc.contains('bangalore') || itemLoc.contains('blr') ||
+             itemLoc.contains('electronic city') || itemLoc.contains('hsr') || itemLoc.contains('koramangala') ||
+             itemLoc.contains('indiranagar') || itemLoc.contains('manyata') || itemLoc.contains('whitefield') || itemLoc.contains('marathahalli');
+    }
+
+    return itemLoc.contains(target);
+  }
+
   void _listenToUserAndCounts() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -110,11 +127,17 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         final enabledModules = List<String>.from(data['enabledModules'] ?? ['gold']);
-        final interests = List<String>.from(data['eventInterests'] ?? ['Cloud', 'Devops', 'AI', 'Agentic AI']);
-        final location = (data['eventLocation'] ?? 'Bengaluru').toString();
-        final mode = (data['eventMode'] ?? 'In-Person').toString();
-        final walkinRoles = List<String>.from(data['walkinRoles'] ?? ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer']);
         
+        final hasEventsConfigured = (data['isEventsConfigured'] == true) || (data['eventLocation'] != null && data['eventInterests'] != null && data['eventMode'] != null);
+        final hasWalkinConfigured = (data['isWalkinConfigured'] == true) || (data['walkinLocation'] != null && data['walkinRoles'] != null);
+
+        final interests = data['eventInterests'] != null ? List<String>.from(data['eventInterests']) : <String>[];
+        final location = (data['eventLocation'] ?? '').toString();
+        final mode = (data['eventMode'] ?? 'In-Person').toString();
+
+        final walkinRoles = data['walkinRoles'] != null ? List<String>.from(data['walkinRoles']) : <String>[];
+        final walkinLocation = (data['walkinLocation'] ?? '').toString();
+
         final lastUpdatedVal = data['eventsLastUpdated'];
         DateTime? lastUpdated;
         if (lastUpdatedVal is Timestamp) {
@@ -151,10 +174,13 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
           setState(() {
             _isEventsEnabled = enabledModules.contains('events') || _selectedTab == 1;
             _isWalkInEnabled = enabledModules.contains('walkin') || _selectedTab == 2;
+            _isEventsConfigured = hasEventsConfigured;
+            _isWalkInConfigured = hasWalkinConfigured;
             _eventInterests = interests;
             _eventLocation = location;
             _eventMode = mode;
             _walkinRoles = walkinRoles;
+            _walkinLocation = walkinLocation;
             _eventsLastUpdated = lastUpdated;
             _walkinsLastUpdated = walkinsLastUpdated;
             _eventsLastRan = eventsLastRan;
@@ -166,8 +192,11 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
           setState(() {
             _isEventsEnabled = _selectedTab == 1;
             _isWalkInEnabled = _selectedTab == 2;
-            _eventInterests = ['Cloud', 'Devops', 'AI', 'Agentic AI'];
-            _walkinRoles = ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer'];
+            _isEventsConfigured = false;
+            _isWalkInConfigured = false;
+            _eventInterests = [];
+            _walkinRoles = [];
+            _walkinLocation = '';
           });
         }
       }
@@ -535,7 +564,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     if (user == null) return;
 
     final interestsController = TextEditingController(text: _eventInterests.join(', '));
-    final locationController = TextEditingController(text: _eventLocation);
+    final locationController = TextEditingController(text: _eventLocation.isEmpty ? 'Bengaluru' : _eventLocation);
     String selectedMode = _eventMode;
     bool isSavingInterests = false;
 
@@ -631,12 +660,14 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                           'eventInterests': list,
                           'eventLocation': loc,
                           'eventMode': selectedMode,
+                          'isEventsConfigured': true,
                         }, SetOptions(merge: true));
 
                         setState(() {
                           _eventInterests = list;
                           _eventLocation = loc;
                           _eventMode = selectedMode;
+                          _isEventsConfigured = true;
                         });
 
                         Navigator.pop(context);
@@ -675,32 +706,53 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final controller = TextEditingController(text: _walkinRoles.join(', '));
+    final rolesController = TextEditingController(text: _walkinRoles.join(', '));
+    final locationController = TextEditingController(text: _walkinLocation.isEmpty ? 'Bengaluru' : _walkinLocation);
     bool isSavingRoles = false;
 
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Edit Walk-In Roles'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Enter job roles you want walk-in drives for (comma separated):',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                decoration: const InputDecoration(
-                  labelText: 'Roles',
-                  hintText: 'e.g. DevOps Engineer, Cloud Engineer, SRE',
-                  border: OutlineInputBorder(),
+          title: const Text('Walk-In Drive Preferences 🏢'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  '1. Target Location / City:',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                TextField(
+                  controller: locationController,
+                  decoration: const InputDecoration(
+                    labelText: 'Location / City',
+                    hintText: 'e.g. Bengaluru, Hyderabad, Chennai, Pune, All',
+                    prefixIcon: Icon(Icons.location_on_outlined, size: 20),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '2. Targeted Job Roles (comma-separated):',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: rolesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Roles',
+                    hintText: 'e.g. DevOps Engineer, Cloud Engineer, SRE',
+                    prefixIcon: Icon(Icons.work_outline, size: 20),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -713,21 +765,57 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                   : () async {
                       setDialogState(() => isSavingRoles = true);
                       try {
-                        final list = controller.text
+                        final list = rolesController.text
                             .split(',')
                             .map((s) => s.trim())
                             .where((s) => s.isNotEmpty)
                             .toList();
                         
+                        final loc = locationController.text.trim().isEmpty ? 'Bengaluru' : locationController.text.trim();
+
                         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
                           'walkinRoles': list,
+                          'walkinLocation': loc,
+                          'isWalkinConfigured': true,
                         }, SetOptions(merge: true));
 
                         setState(() {
                           _walkinRoles = list;
+                          _walkinLocation = loc;
+                          _isWalkInConfigured = true;
                         });
 
                         Navigator.pop(context);
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Walk-In preferences saved! Fetching matching drives...'),
+                          ),
+                        );
+                        _triggerFetchWalkIns();
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed to save preferences: $e'), backgroundColor: Colors.red),
+                        );
+                      } finally {
+                        if (mounted) {
+                          setDialogState(() => isSavingRoles = false);
+                        }
+                      }
+                    },
+              child: isSavingRoles
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
@@ -1908,6 +1996,71 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       return const Center(child: Text('Please log in first.'));
     }
 
+    if (!_isEventsConfigured) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final textColor = isDark ? Colors.white : Colors.black87;
+      final subtextColor = isDark ? Colors.white70 : Colors.grey.shade600;
+
+      return Center(
+        child: SingleChildScrollView(
+          child: Container(
+            margin: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+              border: Border.all(color: Colors.blueAccent.withOpacity(0.2)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.tune_rounded, size: 48, color: Colors.blueAccent),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Customize Your Tech Events Feed 🎯',
+                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Select your preferred Location, Event Format (In-Person / Online), and Tech Interests to discover events tailored specifically for you.',
+                  style: TextStyle(color: subtextColor, fontSize: 13, height: 1.4),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 22),
+                ElevatedButton.icon(
+                  onPressed: _editInterestsDialog,
+                  icon: const Icon(Icons.tune, size: 18),
+                  label: const Text('Set Event Preferences', style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     _eventsStream ??= FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
@@ -1949,14 +2102,13 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
           if (dateStr.isEmpty) continue;
 
-          // 3. Location Filter: Must be physical offline event in Bangalore (exclude online/virtual webinars completely)
-          final loc = (data['location'] ?? '').toString().toLowerCase();
-          final isOnline = loc.contains('online') || loc.contains('virtual') || loc.contains('webinar') || loc.contains('zoom');
-          if (isOnline) continue;
+          // 3. Location & Format Filter
+          final loc = (data['location'] ?? '').toString();
+          final isOnline = loc.toLowerCase().contains('online') || loc.toLowerCase().contains('virtual') || loc.toLowerCase().contains('webinar') || loc.toLowerCase().contains('zoom');
 
-          final isBangalore = loc.contains('bengaluru') || loc.contains('bangalore') || loc.contains('blr') || loc.contains('electronic city') || loc.contains('hsr') || loc.contains('koramangala') || loc.contains('indiranagar') || loc.contains('manyata');
-          final isOtherCity = (loc.contains('mumbai') || loc.contains('delhi') || loc.contains('hyderabad') || loc.contains('pune') || loc.contains('chennai') || loc.contains('noida') || loc.contains('gurgaon')) && !isBangalore;
-          if (isOtherCity) continue;
+          if (_eventMode == 'In-Person' && isOnline) continue;
+          if (_eventMode == 'Online' && !isOnline) continue;
+          if (_eventMode != 'Online' && !_isLocationMatch(loc, _eventLocation)) continue;
 
           // 4. Interest Relevance Filter: Match user interests or tech keywords
           final desc = (data['description'] ?? '').toString().toLowerCase();
@@ -2460,6 +2612,71 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       return const Center(child: Text('Please log in first.'));
     }
 
+    if (!_isWalkInConfigured) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final textColor = isDark ? Colors.white : Colors.black87;
+      final subtextColor = isDark ? Colors.white70 : Colors.grey.shade600;
+
+      return Center(
+        child: SingleChildScrollView(
+          child: Container(
+            margin: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+              border: Border.all(color: Colors.lightBlue.withOpacity(0.2)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.lightBlue.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.campaign_rounded, size: 48, color: Colors.lightBlue),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Customize Your Walk-In Drives Feed 🏢',
+                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Select your target Location and Job Roles to discover walk-in interview opportunities in your preferred city.',
+                  style: TextStyle(color: subtextColor, fontSize: 13, height: 1.4),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 22),
+                ElevatedButton.icon(
+                  onPressed: _editWalkInRolesDialog,
+                  icon: const Icon(Icons.tune, size: 18),
+                  label: const Text('Set Walk-In Preferences', style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.lightBlue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     _walkinsStream ??= FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
@@ -2485,9 +2702,12 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
           final data = doc.data() as Map<String, dynamic>;
           final dateStr = data['date'] as String? ?? '';
           final notInterested = data['notInterested'] as bool? ?? false;
+          final loc = data['location'] as String? ?? '';
           final matchesMonth = dateStr.startsWith(_selectedRosterMonth);
           if (!matchesMonth || notInterested) return false;
           
+          if (!_isLocationMatch(loc, _walkinLocation)) return false;
+
           if (!_showPastWalkIns) {
             return dateStr.compareTo(todayStr) >= 0;
           }

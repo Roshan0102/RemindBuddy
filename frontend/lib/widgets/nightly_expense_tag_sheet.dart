@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/bank_account.dart';
 import '../models/debt_record.dart';
 import '../models/sms_transaction.dart';
@@ -97,12 +96,6 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
       
       if (notes.isNotEmpty) {
         await finance.saveUserCustomTag(notes);
-      }
-
-      if (chosenBankName != 'Bank' && chosenBankName.toLowerCase() != 'unknown') {
-        if (tx.sender.isNotEmpty) {
-          await finance.saveUserHeaderBankMapping(tx.sender, chosenBankName);
-        }
       }
 
       final personInput = _personNameControllers[tx.id]?.text.trim() ?? '';

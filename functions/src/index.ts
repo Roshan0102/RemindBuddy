@@ -304,7 +304,7 @@ exports.autoSnoozeReminderCheckTask = functions.tasks
                 if (baseMoment.isValid()) {
                     const totalSnoozeMinutes = (currentSnooze + 1) * interval;
                     let nextTime = baseMoment.clone().add(totalSnoozeMinutes, 'minutes');
-                    if (nextTime.isBefore(nowKolkata.clone().add(15, 'seconds'))) {
+                    if (nextTime.isBefore(nowKolkata)) {
                         nextTime = nowKolkata.clone().add(interval, 'minutes');
                     }
                     dateStr = nextTime.format('YYYY-MM-DD');
@@ -2279,10 +2279,14 @@ exports.fetchUserTechEventsTrigger = functions.runWith({ timeoutSeconds: 300, me
 async function fetchAndStoreWalkInsForUserInternal(uid: string, triggerNotification: boolean): Promise<any> {
     const userDoc = await db.collection("users").doc(uid).get();
     let roles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"];
+    let location = "Bengaluru";
     if (userDoc.exists) {
         const data = userDoc.data();
         if (data && data.walkinRoles && Array.isArray(data.walkinRoles) && data.walkinRoles.length > 0) {
             roles = data.walkinRoles;
+        }
+        if (data && data.walkinLocation && typeof data.walkinLocation === "string" && data.walkinLocation.trim().length > 0) {
+            location = data.walkinLocation.trim();
         }
     }
     
@@ -2299,7 +2303,7 @@ async function fetchAndStoreWalkInsForUserInternal(uid: string, triggerNotificat
     const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
     const endDateStr = today.clone().add(2, 'months').endOf('month').format('YYYY-MM-DD');
 
-    const prompt = `Find Walk-in drives/interviews happening in Bengaluru, India for the following job roles: ${roles.join(', ')}.
+    const prompt = `Find Walk-in drives/interviews happening in ${location}, India for the following job roles: ${roles.join(', ')}.
 The drives/interviews must happen between ${startDateStr} and ${endDateStr}.
 Use Google Search grounding to find real, current upcoming walk-in interviews.
 Provide a clean JSON list of walk-in drives. The "registrationLink" property in the JSON should point directly to the specific page/post/posting URL from where you found the drive (e.g. LinkedIn post, company career post, event page, etc.).
@@ -2313,7 +2317,7 @@ Respond ONLY with a JSON array matching this schema:
     "company": "string (e.g. Google)",
     "date": "YYYY-MM-DD",
     "timings": "string (e.g. 9:00 AM - 1:00 PM)",
-    "location": "string (specific address or location in Bengaluru)",
+    "location": "string (specific address or location in ${location})",
     "experience": "string (e.g. 0-2 yrs, Freshers, 3-5 yrs, or N/A)",
     "registrationLink": "string (direct link to where this walk-in info was found)"
   }

@@ -20,7 +20,7 @@ class SmsParserService {
   };
 
   /// Parses a single SMS body and returns an [SmsTransaction] if it's a valid bank transaction, or null otherwise.
-  static SmsTransaction? parseSms(String sender, String rawBody, int timestampMillis, [Map<String, String>? customHeaderMappings]) {
+  static SmsTransaction? parseSms(String sender, String rawBody, int timestampMillis, [dynamic customHeaderRules]) {
     if (rawBody.isEmpty) return null;
 
     final String lowerRaw = rawBody.toLowerCase();
@@ -124,7 +124,7 @@ class SmsParserService {
     }
 
     // 2. Extract Bank Name
-    final String bankName = _extractBankName(sender, body, customHeaderMappings);
+    final String bankName = _extractBankName(sender, body, customHeaderRules);
 
     // 3. Extract Amount
     double amount = 0.0;
@@ -207,21 +207,29 @@ class SmsParserService {
   }
 
   /// Extracted Bank Name from SMS sender header & body matching top 45+ Indian Banks & Financial Institutions
-  static String _extractBankName(String sender, String body, [Map<String, String>? customHeaderMappings]) {
+  static String _extractBankName(String sender, String body, [dynamic customHeaderRules]) {
     final String cleanFullSender = sender.trim().toUpperCase();
-    if (customHeaderMappings != null && customHeaderMappings.isNotEmpty) {
-      if (customHeaderMappings.containsKey(cleanFullSender)) {
-        return customHeaderMappings[cleanFullSender]!;
-      }
-      String codePart = cleanFullSender;
-      if (codePart.contains('-')) {
-        final parts = codePart.split('-');
-        if (parts.length > 1) {
-          codePart = parts.last.replaceAll(' ', '');
+
+    // Check user's custom header keyword rules first!
+    if (customHeaderRules != null) {
+      if (customHeaderRules is List) {
+        for (final rule in customHeaderRules) {
+          if (rule is Map) {
+            final String pattern = (rule['pattern'] ?? '').toString().trim().toUpperCase();
+            final String bankName = (rule['bankName'] ?? '').toString().trim();
+            if (pattern.isNotEmpty && bankName.isNotEmpty && cleanFullSender.contains(pattern)) {
+              return bankName;
+            }
+          }
         }
-      }
-      if (customHeaderMappings.containsKey(codePart)) {
-        return customHeaderMappings[codePart]!;
+      } else if (customHeaderRules is Map) {
+        for (final entry in customHeaderRules.entries) {
+          final String pattern = entry.key.toString().trim().toUpperCase();
+          final String bankName = entry.value.toString().trim();
+          if (pattern.isNotEmpty && bankName.isNotEmpty && cleanFullSender.contains(pattern)) {
+            return bankName;
+          }
+        }
       }
     }
 

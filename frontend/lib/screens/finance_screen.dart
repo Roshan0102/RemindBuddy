@@ -1495,7 +1495,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               return tx.timestamp.year == _smsMonthFilter.year && tx.timestamp.month == _smsMonthFilter.month;
             }).toList();
 
-            final pendingUntagged = activeTransactions.where((t) => !t.isVerified).toList();
+            final pendingUntagged = monthTransactions.where((t) => !t.isVerified).toList();
 
             double totalSpent = 0.0;
             double totalReceived = 0.0;
@@ -1617,28 +1617,15 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                       });
                                     },
                                   ),
-                                  if (_smsMonthFilter.year != DateTime.now().year || _smsMonthFilter.month != DateTime.now().month)
-                                    InkWell(
-                                      onTap: () {
-                                        final now = DateTime.now();
-                                        setState(() {
-                                          _smsMonthFilter = DateTime(now.year, now.month);
-                                        });
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.withOpacity(0.15),
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: Colors.blueAccent.withOpacity(0.4), width: 0.8),
-                                        ),
-                                        child: const Text('Today', style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                                      ),
-                                    ),
                                 ],
                               ),
                               Row(
                                 children: [
+                                  IconButton(
+                                    tooltip: 'Bank Header Rules ⚙️',
+                                    icon: const Icon(Icons.settings_suggest_rounded, color: Colors.blueAccent, size: 22),
+                                    onPressed: () => _showCustomHeaderRulesDialog(context),
+                                  ),
                                   IconButton(
                                     tooltip: 'Sync Bank SMS',
                                     icon: _isScanningInbox
@@ -1757,239 +1744,244 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                     },
                     children: [
                       // PAGE 0: Transactions List View
-                      ListView(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        children: [
-                          // Pending Untagged Review Banner
-                          if (pendingUntagged.isNotEmpty) ...[
-                            Card(
-                              elevation: 3,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              color: Colors.amber.shade900.withOpacity(0.85),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.nightlight_round, color: Colors.white, size: 28),
-                                    const SizedBox(width: 14),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                      StreamBuilder<List<Map<String, String>>>(
+                        stream: _financeService.getCustomHeaderBankRulesStream(),
+                        builder: (context, headerSnap) {
+                          final customRules = headerSnap.data ?? [];
+                          final int extraHeaderCount = (pendingUntagged.isNotEmpty ? 1 : 0) + 1;
+                          final int totalItemCount = extraHeaderCount + (monthTransactions.isEmpty ? 1 : monthTransactions.length);
+
+                          return ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            itemCount: totalItemCount,
+                            itemBuilder: (context, index) {
+                              int currIdx = index;
+                              if (pendingUntagged.isNotEmpty) {
+                                if (currIdx == 0) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 14),
+                                    child: Card(
+                                      elevation: 3,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                      color: Colors.amber.shade900.withOpacity(0.85),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.nightlight_round, color: Colors.white, size: 28),
+                                            const SizedBox(width: 14),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '${pendingUntagged.length} Untagged Expenses',
+                                                    style: GoogleFonts.outfit(
+                                                      fontSize: 15,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  const Text(
+                                                    'Tap to tag reasons & sync your bank balances',
+                                                    style: TextStyle(color: Colors.white70, fontSize: 11),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.white,
+                                                foregroundColor: Colors.black87,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                              ),
+                                              onPressed: () {
+                                                showModalBottomSheet(
+                                                  context: context,
+                                                  isScrollControlled: true,
+                                                  backgroundColor: Colors.transparent,
+                                                  builder: (ctx) => NightlyExpenseTagSheet(pendingTransactions: pendingUntagged),
+                                                );
+                                              },
+                                              child: const Text('Review All', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+                                currIdx--;
+                              }
+
+                              if (currIdx == 0) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: Text(
+                                    '${DateFormat('MMMM').format(_smsMonthFilter)} Transactions (${monthTransactions.length})',
+                                    style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
+                                  ),
+                                );
+                              }
+                              currIdx--;
+
+                              if (monthTransactions.isEmpty) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 40),
+                                  child: Center(
+                                    child: Text(
+                                      'No SMS bank transactions recorded for ${DateFormat('MMMM yyyy').format(_smsMonthFilter)}.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(color: subtextColor),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              final tx = monthTransactions[currIdx];
+                              final isDebit = tx.type == 'Debit';
+                              final String cleanSender = tx.sender.trim().toUpperCase();
+                              String resolvedBankName = tx.bankName;
+
+                              for (final rule in customRules) {
+                                final pattern = (rule['pattern'] ?? '').toUpperCase();
+                                final bankName = rule['bankName'] ?? '';
+                                if (pattern.isNotEmpty && bankName.isNotEmpty && cleanSender.contains(pattern)) {
+                                  resolvedBankName = bankName;
+                                  break;
+                                }
+                              }
+
+                              final bool isGenericBank = resolvedBankName == 'Bank' || resolvedBankName.toLowerCase() == 'unknown';
+                              final effectiveTx = tx.copyWith(bankName: resolvedBankName);
+
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                color: cardBg,
+                                elevation: isDark ? 2 : 1,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  side: BorderSide(
+                                    color: isGenericBank ? Colors.redAccent : (isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                                    width: isGenericBank ? 1.8 : 1.0,
+                                  ),
+                                ),
+                                child: ListTile(
+                                  onTap: () {
+                                    showModalBottomSheet(
+                                      context: context,
+                                      isScrollControlled: true,
+                                      backgroundColor: Colors.transparent,
+                                      builder: (ctx) => NightlyExpenseTagSheet(pendingTransactions: [effectiveTx]),
+                                    );
+                                  },
+                                  leading: CircleAvatar(
+                                    backgroundColor: isDebit ? Colors.red.shade900.withOpacity(0.3) : Colors.green.shade900.withOpacity(0.3),
+                                    child: Icon(
+                                      isDebit ? Icons.arrow_upward : Icons.arrow_downward,
+                                      color: isDebit ? Colors.redAccent : Colors.green,
+                                    ),
+                                  ),
+                                  title: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
                                         children: [
                                           Text(
-                                            '${pendingUntagged.length} Untagged Expenses',
-                                            style: GoogleFonts.outfit(
-                                              fontSize: 15,
+                                            resolvedBankName,
+                                            style: TextStyle(
+                                              color: isGenericBank ? Colors.redAccent : textColor,
                                               fontWeight: FontWeight.bold,
-                                              color: Colors.white,
+                                              fontSize: 14,
                                             ),
                                           ),
-                                          const Text(
-                                            'Tap to tag reasons & sync your bank balances',
-                                            style: TextStyle(color: Colors.white70, fontSize: 11),
+                                          if (isGenericBank) ...[
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red.withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: const Text(
+                                                '⚠️ Assign Bank',
+                                                style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      Text(
+                                        '${isDebit ? '-' : '+'}${NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(tx.amount)}',
+                                        style: TextStyle(
+                                          color: isDebit ? Colors.redAccent : Colors.green,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 2),
+                                      Text('Payee: ${tx.payee}', style: TextStyle(color: subtextColor, fontSize: 12)),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            DateFormat('dd MMM, hh:mm a').format(tx.timestamp),
+                                            style: TextStyle(color: subtextColor, fontSize: 11),
+                                          ),
+                                          Row(
+                                            children: [
+                                              InkWell(
+                                                onTap: () => _showSmsDetailsDialog(context, tx),
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  margin: const EdgeInsets.only(right: 6),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.blue.withOpacity(0.15),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(color: Colors.blue.withOpacity(0.4), width: 0.8),
+                                                  ),
+                                                  child: const Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.sms_rounded, size: 11, color: Colors.blueAccent),
+                                                      SizedBox(width: 3),
+                                                      Text('SMS 📩', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: tx.isVerified ? Colors.green.withOpacity(0.2) : Colors.amber.withOpacity(0.2),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Text(
+                                                  tx.isVerified ? tx.category : 'Untagged (Tap to tag)',
+                                                  style: TextStyle(
+                                                    color: tx.isVerified ? (isDark ? Colors.greenAccent : Colors.green.shade800) : (isDark ? Colors.amberAccent : Colors.amber.shade900),
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),
-                                    ),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.white,
-                                        foregroundColor: Colors.black87,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                      ),
-                                      onPressed: () {
-                                        showModalBottomSheet(
-                                          context: context,
-                                          isScrollControlled: true,
-                                          backgroundColor: Colors.transparent,
-                                          builder: (ctx) => NightlyExpenseTagSheet(pendingTransactions: pendingUntagged),
-                                        );
-                                      },
-                                      child: const Text('Review All', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                          ],
-
-                          // Section Header
-                          Text(
-                            '${DateFormat('MMMM').format(_smsMonthFilter)} Transactions (${monthTransactions.length})',
-                            style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
-                          ),
-                          const SizedBox(height: 10),
-
-            const SizedBox(height: 10),
-
-            StreamBuilder<Map<String, String>>(
-              stream: _financeService.getUserHeaderBankMappingsStream(),
-              builder: (context, headerSnap) {
-                final headerMappings = headerSnap.data ?? {};
-
-                if (monthTransactions.isEmpty) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 40),
-                    child: Center(
-                      child: Text(
-                        'No SMS bank transactions recorded for ${DateFormat('MMMM yyyy').format(_smsMonthFilter)}.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: subtextColor),
-                      ),
-                    ),
-                  );
-                }
-
-                return Column(
-                  children: monthTransactions.map((tx) {
-                    final isDebit = tx.type == 'Debit';
-                    final String cleanSender = tx.sender.trim().toUpperCase();
-                    String resolvedBankName = tx.bankName;
-
-                    if (resolvedBankName == 'Bank' || resolvedBankName.toLowerCase() == 'unknown') {
-                      if (headerMappings.containsKey(cleanSender)) {
-                        resolvedBankName = headerMappings[cleanSender]!;
-                      } else if (cleanSender.contains('-')) {
-                        final codePart = cleanSender.split('-').last.replaceAll(' ', '');
-                        if (headerMappings.containsKey(codePart)) {
-                          resolvedBankName = headerMappings[codePart]!;
-                        }
-                      }
-                    }
-
-                    final bool isGenericBank = resolvedBankName == 'Bank' || resolvedBankName.toLowerCase() == 'unknown';
-                    final effectiveTx = tx.copyWith(bankName: resolvedBankName);
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      color: cardBg,
-                      elevation: isDark ? 2 : 1,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        side: BorderSide(
-                          color: isGenericBank ? Colors.redAccent : (isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
-                          width: isGenericBank ? 1.8 : 1.0,
-                        ),
-                      ),
-                      child: ListTile(
-                        onTap: () {
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (ctx) => NightlyExpenseTagSheet(pendingTransactions: [effectiveTx]),
+                              );
+                            },
                           );
                         },
-                        leading: CircleAvatar(
-                          backgroundColor: isDebit ? Colors.red.shade900.withOpacity(0.3) : Colors.green.shade900.withOpacity(0.3),
-                          child: Icon(
-                            isDebit ? Icons.arrow_upward : Icons.arrow_downward,
-                            color: isDebit ? Colors.redAccent : Colors.green,
-                          ),
-                        ),
-                        title: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  resolvedBankName,
-                                  style: TextStyle(
-                                    color: isGenericBank ? Colors.redAccent : textColor,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                if (isGenericBank) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.red.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: const Text(
-                                      '⚠️ Assign Bank',
-                                      style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            Text(
-                              '${isDebit ? '-' : '+'}${NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(tx.amount)}',
-                          style: TextStyle(
-                            color: isDebit ? Colors.redAccent : Colors.green,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 2),
-                        Text('Payee: ${tx.payee}', style: TextStyle(color: subtextColor, fontSize: 12)),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              DateFormat('dd MMM, hh:mm a').format(tx.timestamp),
-                              style: TextStyle(color: subtextColor, fontSize: 11),
-                            ),
-                            Row(
-                              children: [
-                                InkWell(
-                                  onTap: () => _showSmsDetailsDialog(context, tx),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    margin: const EdgeInsets.only(right: 6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: Colors.blue.withOpacity(0.4), width: 0.8),
-                                    ),
-                                    child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.sms_rounded, size: 11, color: Colors.blueAccent),
-                                        SizedBox(width: 3),
-                                        Text('SMS 📩', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: tx.isVerified ? Colors.green.withOpacity(0.2) : Colors.amber.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    tx.isVerified ? tx.category : 'Untagged (Tap to tag)',
-                                    style: TextStyle(
-                                      color: tx.isVerified ? (isDark ? Colors.greenAccent : Colors.green.shade800) : (isDark ? Colors.amberAccent : Colors.amber.shade900),
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            );
-          },
-        ),
-      ],
-    ),
+                      ),
 
     // PAGE 1: Analytics & Monthly Budget Dashboard View
     _buildAnalyticsAndBudgetTab(
@@ -2014,12 +2006,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   }
 
   void _showSmsSyncDialog() {
-    final String currentMonthName = DateFormat('MMMM').format(_smsMonthFilter);
-    final now = DateTime.now();
-    int daysInCurrentMonth = now.day;
-    if (_smsMonthFilter.year != now.year || _smsMonthFilter.month != now.month) {
-      daysInCurrentMonth = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1, 0).day;
-    }
+    final String currentMonthName = DateFormat('MMMM yyyy').format(_smsMonthFilter);
 
     showDialog(
       context: context,
@@ -2047,11 +2034,14 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 tileColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
                 leading: const Icon(Icons.calendar_month_rounded, color: Colors.indigoAccent),
-                title: Text('Current Selected Month ($currentMonthName)'),
-                subtitle: Text('Scan past $daysInCurrentMonth days of SMS'),
+                title: Text('Selected Month ($currentMonthName)'),
+                subtitle: const Text('Strictly scan 1st to end of selected month'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _runSmsScan(daysInCurrentMonth);
+                  final startCutoff = DateTime(_smsMonthFilter.year, _smsMonthFilter.month, 1, 0, 0, 0);
+                  final endCutoff = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1, 0, 23, 59, 59);
+                  final daysNeeded = DateTime.now().difference(startCutoff).inDays + 2;
+                  _runSmsScan(daysNeeded > 0 ? daysNeeded : 31, startCutoff: startCutoff, endCutoff: endCutoff);
                 },
               ),
               const SizedBox(height: 8),
@@ -2091,14 +2081,15 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     );
   }
 
-  Future<void> _runSmsScan(int days) async {
+  Future<void> _runSmsScan(int days, {DateTime? startCutoff, DateTime? endCutoff}) async {
     setState(() => _isScanningInbox = true);
-    final count = await _financeService.scanPastSmsInbox(days: days);
+    final count = await _financeService.scanPastSmsInbox(days: days, startCutoff: startCutoff, endCutoff: endCutoff);
     setState(() => _isScanningInbox = false);
     if (mounted) {
+      final rangeText = startCutoff != null ? DateFormat('MMMM yyyy').format(startCutoff) : 'past $days days';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(count > 0 ? 'Detected & saved $count new SMS transactions!' : 'No new bank SMS detected in past $days days.'),
+          content: Text(count > 0 ? 'Detected & saved $count new SMS transactions for $rangeText!' : 'No new bank SMS detected for $rangeText.'),
           backgroundColor: count > 0 ? Colors.green : Colors.blueGrey,
         ),
       );
@@ -2983,6 +2974,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   await _financeService.saveCategoryBudget(selectedCategory, amt);
                   if (dialogCtx.mounted) {
                     Navigator.pop(dialogCtx);
+                    _keepAnalyticsTabActive();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('Budget of ₹${amt.toStringAsFixed(0)} set for $selectedCategory!'), backgroundColor: Colors.green),
                     );
@@ -2995,6 +2987,13 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         ),
       ),
     );
+  }
+
+  void _keepAnalyticsTabActive() {
+    _smsSubTabNotifier.value = 1;
+    if (_smsPageController.hasClients && _smsPageController.page?.round() != 1) {
+      _smsPageController.jumpToPage(1);
+    }
   }
 
   void _showEditSingleBudgetDialog(BuildContext context, String category, double currentLimit) {
@@ -3016,7 +3015,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
           TextButton(
             onPressed: () async {
               await _financeService.saveCategoryBudget(category, 0);
-              if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+              if (dialogCtx.mounted) {
+                Navigator.pop(dialogCtx);
+                _keepAnalyticsTabActive();
+              }
             },
             child: const Text('Remove', style: TextStyle(color: Colors.redAccent)),
           ),
@@ -3025,7 +3027,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             onPressed: () async {
               final amt = double.tryParse(amountController.text.trim()) ?? 0.0;
               await _financeService.saveCategoryBudget(category, amt);
-              if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+              if (dialogCtx.mounted) {
+                Navigator.pop(dialogCtx);
+                _keepAnalyticsTabActive();
+              }
             },
             child: const Text('Save'),
           ),
@@ -3264,6 +3269,274 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _showCustomHeaderRulesDialog(BuildContext context) async {
+    final patternController = TextEditingController();
+    final bankNameController = TextEditingController();
+    String? selectedPopularBank;
+
+    final popularBanks = [
+      'Indian Bank',
+      'HDFC Bank',
+      'SBI',
+      'ICICI Bank',
+      'Axis Bank',
+      'Kotak Bank',
+      'Bank of Baroda',
+      'Canara Bank',
+      'Union Bank',
+      'PNB',
+      'IDFC FIRST Bank',
+      'IndusInd Bank',
+      'YES Bank',
+      'Federal Bank',
+      'Paytm Bank',
+      'PhonePe',
+      'Google Pay',
+    ];
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final bg = isDark ? const Color(0xFF1E293B) : Colors.white;
+        final textColor = isDark ? Colors.white : Colors.black87;
+        final subtextColor = isDark ? Colors.white70 : Colors.grey.shade600;
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.settings_suggest_rounded, color: Colors.blueAccent, size: 24),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Bank Header Rules ⚙️',
+                              style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      'Define custom keyword rules to auto-map SMS sender headers to banks (e.g. keyword "INDBNK" → "Indian Bank").',
+                      style: TextStyle(fontSize: 12, color: subtextColor),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // ADD NEW RULE FORM
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF0F172A) : Colors.blue.shade50.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text('Add New Rule ➕', style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: patternController,
+                            textCapitalization: TextCapitalization.characters,
+                            decoration: InputDecoration(
+                              labelText: 'SMS Header Keyword / Pattern',
+                              hintText: 'e.g. INDBNK, SBI, BOB',
+                              prefixIcon: const Icon(Icons.title_rounded, size: 20),
+                              isDense: true,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  value: selectedPopularBank,
+                                  isExpanded: true,
+                                  decoration: InputDecoration(
+                                    labelText: 'Select Bank',
+                                    prefixIcon: const Icon(Icons.account_balance_rounded, size: 20),
+                                    isDense: true,
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  items: popularBanks.map((b) => DropdownMenuItem(value: b, child: Text(b, style: const TextStyle(fontSize: 13)))).toList(),
+                                  onChanged: (val) {
+                                    setSheetState(() {
+                                      selectedPopularBank = val;
+                                      if (val != null) {
+                                        bankNameController.text = val;
+                                      }
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: bankNameController,
+                            decoration: InputDecoration(
+                              labelText: 'Or Custom Bank Name',
+                              hintText: 'e.g. Indian Bank, My Co-op Bank',
+                              prefixIcon: const Icon(Icons.edit_note_rounded, size: 20),
+                              isDense: true,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              final p = patternController.text.trim();
+                              final b = bankNameController.text.trim();
+                              if (p.isEmpty || b.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Please enter both pattern keyword and bank name')),
+                                );
+                                return;
+                              }
+
+                              await _financeService.addCustomHeaderBankRule(p, b);
+                              patternController.clear();
+                              bankNameController.clear();
+                              setSheetState(() {
+                                selectedPopularBank = null;
+                              });
+
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Rule saved for "$p" → "$b"'), backgroundColor: Colors.green),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.save_rounded, size: 18),
+                            label: const Text('Save Header Rule', style: TextStyle(fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blueAccent,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+                    Text('Active Rules List 📋', style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold, color: textColor)),
+                    const SizedBox(height: 8),
+
+                    // LIST OF EXISTING RULES
+                    Expanded(
+                      child: StreamBuilder<List<Map<String, String>>>(
+                        stream: _financeService.getCustomHeaderBankRulesStream(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+
+                          final rules = snapshot.data ?? [];
+                          if (rules.isEmpty) {
+                            return Center(
+                              child: Text(
+                                'No custom bank rules defined yet.\nAdd a rule above to map SMS headers.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: subtextColor, fontSize: 13),
+                              ),
+                            );
+                          }
+
+                          return ListView.builder(
+                            itemCount: rules.length,
+                            itemBuilder: (ctx, index) {
+                              final rule = rules[index];
+                              final p = rule['pattern'] ?? '';
+                              final b = rule['bankName'] ?? '';
+
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                color: isDark ? const Color(0xFF0F172A) : Colors.grey.shade100,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                child: ListTile(
+                                  dense: true,
+                                  title: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blueAccent.withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          p,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 12),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.arrow_forward_rounded, size: 14, color: Colors.grey),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          b,
+                                          style: TextStyle(fontWeight: FontWeight.bold, color: textColor, fontSize: 13),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                                    onPressed: () async {
+                                      await _financeService.deleteCustomHeaderBankRule(p);
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Deleted rule for "$p"')),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
