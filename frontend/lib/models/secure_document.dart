@@ -6,6 +6,7 @@ class SecureDocument {
   final Map<String, String> encryptedFields; // Map of custom field labels to encrypted values
   final List<String> encryptedAttachmentPaths; // Paths to files in Firebase Storage
   final DateTime lastUpdated;
+  final bool isPrivate;
 
   SecureDocument({
     required this.id,
@@ -15,6 +16,7 @@ class SecureDocument {
     required this.encryptedFields,
     required this.encryptedAttachmentPaths,
     required this.lastUpdated,
+    this.isPrivate = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -26,6 +28,7 @@ class SecureDocument {
       'encryptedFields': encryptedFields,
       'encryptedAttachmentPaths': encryptedAttachmentPaths,
       'lastUpdated': lastUpdated.toIso8601String(),
+      'isPrivate': isPrivate,
     };
   }
 
@@ -40,6 +43,7 @@ class SecureDocument {
       lastUpdated: map['lastUpdated'] != null
           ? DateTime.parse(map['lastUpdated'])
           : DateTime.now(),
+      isPrivate: map['isPrivate'] ?? false,
     );
   }
 }

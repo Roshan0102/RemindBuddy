@@ -44,6 +44,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
   bool _isSaving = false;
   String _savingStatus = '';
+  bool _isPrivate = false;
 
   @override
   void initState() {
@@ -56,6 +57,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       _categoryController.text = doc.category;
       _selectedMemberId = doc.memberId;
       _existingAttachmentPaths = List.from(doc.encryptedAttachmentPaths);
+      _isPrivate = doc.isPrivate;
 
       // Populating custom fields
       decDoc.fields.forEach((key, val) {
@@ -243,6 +245,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         newAttachmentsNames: _newAttachmentsNames,
         existingAttachmentPaths: _existingAttachmentPaths,
         targetOwnerUid: targetOwnerUid,
+        isPrivate: _isPrivate,
       );
 
       if (mounted) {
@@ -357,6 +360,31 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                   ),
                 );
               },
+            ),
+            const SizedBox(height: 12),
+
+            // 1.5 Document Privacy & Visibility Card
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: SwitchListTile(
+                title: const Text('Private Document (Only Me)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: Text(
+                  _isPrivate
+                      ? '🔒 Hidden from family members. Visible ONLY to you.'
+                      : '👨‍👩‍👧 Family Shared. Visible to family group members.',
+                  style: TextStyle(fontSize: 12, color: _isPrivate ? Colors.red.shade700 : Colors.indigo.shade700),
+                ),
+                secondary: Icon(
+                  _isPrivate ? Icons.lock_outlined : Icons.people_outline,
+                  color: _isPrivate ? Colors.red.shade700 : Colors.indigo.shade700,
+                ),
+                value: _isPrivate,
+                onChanged: (val) {
+                  setState(() {
+                    _isPrivate = val;
+                  });
+                },
+              ),
             ),
             const SizedBox(height: 12),
 

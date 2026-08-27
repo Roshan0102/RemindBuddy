@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/encryption_service.dart';
 import '../models/secure_document.dart';
 import '../models/vault_collaborator.dart';
@@ -37,6 +38,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   String _searchQuery = '';
   String? _selectedMemberId; // null means "All Members"
   String _selectedCategory = 'All'; // "All" or a specific category
+  String _vaultViewMode = 'family'; // 'family' (Family Shared), 'private' (My Private), 'all' (All)
 
   Map<String, VaultCollaborator> _collaboratorsMap = {};
   Map<String, VaultMemberProfile> _profilesMap = {};
@@ -44,6 +46,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSavedViewMode();
     _loadCollaborators();
     _loadProfiles();
     _searchController.addListener(() {
@@ -51,6 +54,24 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
         _searchQuery = _searchController.text.toLowerCase().trim();
       });
     });
+  }
+
+  Future<void> _loadSavedViewMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedMode = prefs.getString('vault_view_mode') ?? 'family';
+    if (mounted) {
+      setState(() {
+        _vaultViewMode = savedMode;
+      });
+    }
+  }
+
+  Future<void> _setSavedViewMode(String mode) async {
+    setState(() {
+      _vaultViewMode = mode;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('vault_view_mode', mode);
   }
 
   @override
@@ -387,8 +408,15 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                       _selectedCategory = 'All';
                     }
 
-                    // Apply filters (Selected Member, Category, Search Query)
+                    // Apply filters (Vault View Mode, Selected Member, Category, Search Query)
                     final filteredDocs = decDocs.where((doc) {
+                      // Filter by Privacy / Vault View Mode
+                      if (_vaultViewMode == 'private') {
+                        if (!doc.original.isPrivate) return false;
+                      } else if (_vaultViewMode == 'family') {
+                        if (doc.original.isPrivate) return false;
+                      }
+
                       // Filter by Member
                       if (_selectedMemberId != null && doc.original.memberId != _selectedMemberId) {
                         return false;
@@ -422,6 +450,61 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                             scrollDirection: Axis.horizontal,
                             child: Row(
                               children: [
+                                // 1. Vault View Mode Dropdown (Cached in SharedPreferences)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.indigo.shade50,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.indigo.shade200),
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _vaultViewMode,
+                                      icon: const Icon(Icons.tune_rounded, color: Colors.indigo),
+                                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo.shade900, fontSize: 13),
+                                      items: const [
+                                        DropdownMenuItem<String>(
+                                          value: 'family',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.people_alt_outlined, size: 18, color: Colors.indigo),
+                                              SizedBox(width: 6),
+                                              Text('Family Shared'),
+                                            ],
+                                          ),
+                                        ),
+                                        DropdownMenuItem<String>(
+                                          value: 'private',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.lock_outline, size: 18, color: Colors.red),
+                                              SizedBox(width: 6),
+                                              Text('My Private'),
+                                            ],
+                                          ),
+                                        ),
+                                        DropdownMenuItem<String>(
+                                          value: 'all',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.auto_awesome, size: 18, color: Colors.purple),
+                                              SizedBox(width: 6),
+                                              Text('All Documents'),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          _setSavedViewMode(val);
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+
                                 // Share All Button
                                 if (filteredDocs.isNotEmpty) ...[
                                   ElevatedButton.icon(

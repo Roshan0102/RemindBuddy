@@ -350,7 +350,11 @@ class VaultService {
                   .listen((snap) {
                 docsPerUser[userUid] = snap.docs
                     .map((d) => SecureDocument.fromMap(d.data()))
-                    .toList();
+                    .where((d) {
+                  // If document belongs to another user and is marked private, exclude it!
+                  if (userUid != uid && d.isPrivate) return false;
+                  return true;
+                }).toList();
                 updateCombinedDocs();
               }, onError: (e) {
                 print("VaultService: Error listening to docs for user $userUid: $e");
@@ -424,6 +428,7 @@ class VaultService {
     required List<String> newAttachmentsNames,
     required List<String> existingAttachmentPaths,
     String? targetOwnerUid,
+    bool isPrivate = false,
   }) async {
     final uid = _currentUserId;
     if (uid == null) throw Exception("User not authenticated.");
@@ -439,34 +444,18 @@ class VaultService {
       }
     }
 
-    // Determine target owner collection path in Firestore:
-    // If targetOwnerUid is provided and non-empty, use it.
-    // Otherwise, check if memberId is an approved collaborator UID.
-    // Default to current user's UID (for self and virtual family members).
     String effectiveTargetUid = uid;
     if (targetOwnerUid != null && targetOwnerUid.isNotEmpty) {
       effectiveTargetUid = targetOwnerUid;
-    } else if (memberId.isNotEmpty) {
-      try {
-        final collaborators = await getVaultCollaborators().first;
-        final isCollab = collaborators.any((c) => c.uid == memberId && !c.isSelf);
-        if (isCollab) {
-          effectiveTargetUid = memberId;
-        }
-      } catch (_) {}
     }
 
-    final docId = id ?? _firestore
-        .collection('users')
-        .doc(effectiveTargetUid)
-        .collection('secure_documents')
-        .doc()
-        .id;
+    final docId = id ?? _firestore.collection('users').doc(effectiveTargetUid).collection('secure_documents').doc().id;
 
-    final List<String> uploadedPaths = [...existingAttachmentPaths];
+    final List<String> uploadedPaths = List.from(existingAttachmentPaths);
+
     for (int i = 0; i < rawImagesToUpload.length; i++) {
-      final imageBytes = rawImagesToUpload[i];
-      final encryptedBytes = await encryptionService.encryptBytes(imageBytes);
+      final rawBytes = rawImagesToUpload[i];
+      final encryptedBytes = await encryptionService.encryptBytes(rawBytes);
 
       final originalName = newAttachmentsNames[i];
       final ext = originalName.contains('.') ? originalName.split('.').last : 'bin';
@@ -494,6 +483,7 @@ class VaultService {
       encryptedFields: encryptedFields,
       encryptedAttachmentPaths: uploadedPaths,
       lastUpdated: DateTime.now(),
+      isPrivate: isPrivate,
     );
 
     await _firestore
