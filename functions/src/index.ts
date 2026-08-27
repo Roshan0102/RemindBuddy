@@ -293,6 +293,7 @@ exports.autoSnoozeReminderCheckTask = functions.tasks
             const interval = rData.snoozeIntervalMinutes || 15;
 
             if (currentSnooze < maxSnooze) {
+                const nowKolkata = moment().tz('Asia/Kolkata');
                 const baseDate = rData.originalDate || rData.date;
                 const baseTime = rData.originalTime || rData.time;
                 const baseMoment = moment.tz(`${baseDate} ${baseTime}`, "YYYY-MM-DD HH:mm", "Asia/Kolkata");
@@ -302,11 +303,14 @@ exports.autoSnoozeReminderCheckTask = functions.tasks
 
                 if (baseMoment.isValid()) {
                     const totalSnoozeMinutes = (currentSnooze + 1) * interval;
-                    const nextTime = baseMoment.clone().add(totalSnoozeMinutes, 'minutes');
+                    let nextTime = baseMoment.clone().add(totalSnoozeMinutes, 'minutes');
+                    if (nextTime.isBefore(nowKolkata.clone().add(15, 'seconds'))) {
+                        nextTime = nowKolkata.clone().add(interval, 'minutes');
+                    }
                     dateStr = nextTime.format('YYYY-MM-DD');
                     timeStr = nextTime.format('HH:mm');
                 } else {
-                    const nextTime = moment().tz('Asia/Kolkata').add(interval, 'minutes');
+                    const nextTime = nowKolkata.clone().add(interval, 'minutes');
                     dateStr = nextTime.format('YYYY-MM-DD');
                     timeStr = nextTime.format('HH:mm');
                 }
@@ -391,13 +395,18 @@ exports.onCalendarReminderUpdated = functions.firestore
         const nowKolkata = moment().tz('Asia/Kolkata');
         const scheduledTime = moment.tz(`${after.date} ${after.time}`, "YYYY-MM-DD HH:mm", "Asia/Kolkata");
 
-        if (!scheduledTime.isValid() || scheduledTime.isBefore(nowKolkata.subtract(30, 'seconds'))) {
-            console.log(`Rescheduled reminder ${reminderId} is invalid or in the past. Marking as expired.`);
+        if (!scheduledTime.isValid()) {
+            console.log(`Rescheduled reminder ${reminderId} is invalid. Marking as expired.`);
             return change.after.ref.update({
                 status: "expired",
                 taskId: admin.firestore.FieldValue.delete(),
                 scheduledAtTimestamp: admin.firestore.FieldValue.delete()
             });
+        }
+
+        let taskScheduleUnix = scheduledTime.unix();
+        if (taskScheduleUnix <= nowKolkata.unix() + 5) {
+            taskScheduleUnix = nowKolkata.unix() + 10;
         }
 
         try {
@@ -426,7 +435,7 @@ exports.onCalendarReminderUpdated = functions.firestore
                         },
                     },
                     scheduleTime: {
-                        seconds: scheduledTime.unix(),
+                        seconds: taskScheduleUnix,
                     },
                 },
             };
@@ -434,12 +443,12 @@ exports.onCalendarReminderUpdated = functions.firestore
             const [response] = await tasksClient.createTask(taskRequest);
             const taskId = response.name;
             
-            console.log(`Successfully rescheduled task ${taskId} for reminder ${reminderId}`);
+            console.log(`Successfully rescheduled task ${taskId} for reminder ${reminderId} at unix ${taskScheduleUnix}`);
 
             return change.after.ref.update({
                 status: "scheduled",
                 taskId: taskId, 
-                scheduledAtTimestamp: admin.firestore.Timestamp.fromMillis(scheduledTime.valueOf())
+                scheduledAtTimestamp: new admin.firestore.Timestamp(taskScheduleUnix, 0)
             });
         } catch (error) {
             console.error("Rescheduling failed:", error);

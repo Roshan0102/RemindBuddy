@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
 import '../models/bank_account.dart';
 import '../models/finance_transaction.dart';
 import '../models/recurring_bill.dart';
@@ -978,7 +980,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
       {'name': 'Shopping', 'icon': Icons.shopping_bag, 'color': Colors.purple},
       {'name': 'Self Transfer', 'icon': Icons.swap_horiz_rounded, 'color': Colors.indigoAccent},
       {'name': 'Borrowed', 'icon': Icons.south_west_rounded, 'color': Colors.amber.shade700},
+      {'name': 'Borrowed Repaid', 'icon': Icons.check_circle_outline_rounded, 'color': Colors.orange.shade700},
       {'name': 'Lended', 'icon': Icons.north_east_rounded, 'color': Colors.teal},
+      {'name': 'Loan Repaid', 'icon': Icons.task_alt_rounded, 'color': Colors.green.shade700},
       {'name': 'Entertainment', 'icon': Icons.movie, 'color': Colors.pink},
       {'name': 'Personal Care', 'icon': Icons.spa, 'color': Colors.deepOrangeAccent},
       {'name': 'Ignored / Not Needed', 'icon': Icons.block_rounded, 'color': Colors.blueGrey},
@@ -1715,284 +1719,81 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                 ),
                 const SizedBox(height: 8),
 
-                // Swipeable PageView Body
+                // Swipeable PageView Body (Bidirectional Smooth Swiping)
                 Expanded(
                   child: PageView(
                     controller: _smsPageController,
+                    physics: const BouncingScrollPhysics(),
                     onPageChanged: (idx) {
-                      setState(() => _smsSubTabIndex = idx);
+                      if (_smsSubTabIndex != idx) {
+                        setState(() => _smsSubTabIndex = idx);
+                      }
                     },
                     children: [
-                      // PAGE 0: Transactions List
+                      // PAGE 0: Transactions List View
                       ListView(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                         children: [
-                // Admin-Controlled SMS Study Banner
-                if (isSmsStudyEnabled) ...[
-                  Card(
-                    elevation: isDark ? 3 : 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    color: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade50,
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.science_rounded, color: Colors.blueAccent, size: 28),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'SMS Study Sync (Admin Active)',
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: textColor,
-                                  ),
-                                ),
-                                Text(
-                                  'Sync last 15 days SMS samples to Cloud for AI pattern research',
-                                  style: TextStyle(color: subtextColor, fontSize: 11),
-                                ),
-                              ],
-                            ),
-                          ),
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blueAccent,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                            onPressed: _isSyncingStudySms
-                                ? null
-                                : () async {
-                                    setState(() => _isSyncingStudySms = true);
-                                    final count = await _financeService.uploadSmsStudySamples(days: 15);
-                                    setState(() => _isSyncingStudySms = false);
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Successfully uploaded $count SMS samples to Cloud for AI Study!'),
-                                          backgroundColor: Colors.green,
-                                        ),
-                                      );
-                                    }
-                                  },
-                            icon: _isSyncingStudySms
-                                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : const Icon(Icons.cloud_upload_rounded, size: 16),
-                            label: Text(_isSyncingStudySms ? 'Syncing...' : 'Sync 15 Days'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                ],
-
-                // Month Selector Bar with Sync & Month Delete Actions
-                Card(
-                  elevation: isDark ? 3 : 1,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  color: cardBg,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.chevron_left, color: Colors.blueAccent, size: 28),
-                              onPressed: () {
-                                setState(() {
-                                  _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month - 1);
-                                });
-                              },
-                            ),
-                            Text(
-                              DateFormat('MMMM yyyy').format(_smsMonthFilter),
-                              style: GoogleFonts.outfit(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: textColor,
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.chevron_right, color: Colors.blueAccent, size: 28),
-                              onPressed: () {
-                                setState(() {
-                                  _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1);
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            IconButton(
-                              tooltip: 'Sync Bank SMS',
-                              icon: _isScanningInbox
-                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
-                                  : const Icon(Icons.sync_rounded, color: Colors.blueAccent, size: 22),
-                              onPressed: _isScanningInbox ? null : _showSmsSyncDialog,
-                            ),
-                            IconButton(
-                              tooltip: 'Delete Month Transactions',
-                              icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 22),
-                              onPressed: () => _confirmDeleteMonthTransactions(context),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-            // Monthly Financial Summary & Spending Graph Card
-            Card(
-              elevation: isDark ? 4 : 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              color: summaryBg,
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Total Spent', style: TextStyle(color: subtextColor, fontSize: 12)),
-                            Text(
-                              NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(totalSpent),
-                              style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.redAccent),
-                            ),
-                          ],
-                        ),
-                        Container(width: 1, height: 35, color: isDark ? Colors.white12 : Colors.black12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Total Received', style: TextStyle(color: subtextColor, fontSize: 12)),
-                            Text(
-                              NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(totalReceived),
-                              style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-
-                    if (categoryTotals.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        'Spending Breakdown by Category',
-                        style: TextStyle(color: subtextColor, fontSize: 12, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 10),
-                      ...categoryTotals.entries.map((entry) {
-                        final double percentage = totalSpent > 0 ? (entry.value / totalSpent) : 0.0;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(entry.key, style: TextStyle(color: textColor, fontSize: 12)),
-                                  Text(
-                                    NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(entry.value),
-                                    style: TextStyle(color: subtextColor, fontSize: 12, fontWeight: FontWeight.bold),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: LinearProgressIndicator(
-                                  value: percentage.clamp(0.0, 1.0),
-                                  minHeight: 6,
-                                  backgroundColor: isDark ? Colors.white10 : Colors.black12,
-                                  color: Colors.blueAccent,
+                          // Pending Untagged Review Banner
+                          if (pendingUntagged.isNotEmpty) ...[
+                            Card(
+                              elevation: 3,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              color: Colors.amber.shade900.withOpacity(0.85),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.nightlight_round, color: Colors.white, size: 28),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '${pendingUntagged.length} Untagged Expenses',
+                                            style: GoogleFonts.outfit(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const Text(
+                                            'Tap to tag reasons & sync your bank balances',
+                                            style: TextStyle(color: Colors.white70, fontSize: 11),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.white,
+                                        foregroundColor: Colors.black87,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      ),
+                                      onPressed: () {
+                                        showModalBottomSheet(
+                                          context: context,
+                                          isScrollControlled: true,
+                                          backgroundColor: Colors.transparent,
+                                          builder: (ctx) => NightlyExpenseTagSheet(pendingTransactions: pendingUntagged),
+                                        );
+                                      },
+                                      child: const Text('Review All', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            // Pending Review Banner
-            if (pendingUntagged.isNotEmpty) ...[
-              Card(
-                elevation: 3,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                color: Colors.amber.shade900.withOpacity(0.85),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.nightlight_round, color: Colors.white, size: 28),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${pendingUntagged.length} Untagged Expenses',
-                              style: GoogleFonts.outfit(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
                             ),
-                            const Text(
-                              'Tap to tag reasons & sync your bank balances',
-                              style: TextStyle(color: Colors.white70, fontSize: 11),
-                            ),
+                            const SizedBox(height: 14),
                           ],
-                        ),
-                      ),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black87,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        onPressed: () {
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (ctx) => NightlyExpenseTagSheet(pendingTransactions: pendingUntagged),
-                          );
-                        },
-                        child: const Text('Review All', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-            ],
 
-            // Section Header
-            Text(
-              '${DateFormat('MMMM').format(_smsMonthFilter)} Transactions (${monthTransactions.length})',
-              style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
-            ),
-            const SizedBox(height: 10),
+                          // Section Header
+                          Text(
+                            '${DateFormat('MMMM').format(_smsMonthFilter)} Transactions (${monthTransactions.length})',
+                            style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
+                          ),
+                          const SizedBox(height: 10),
 
             const SizedBox(height: 10),
 
@@ -2634,7 +2435,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Category Expense Breakdown',
+                      'Category Expense Breakdown 📊',
                       style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
                     ),
                     const SizedBox(height: 14),
@@ -2645,7 +2446,30 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                           child: Text('No verified expenses for this month.', style: TextStyle(color: subtextColor, fontSize: 12)),
                         ),
                       )
-                    else
+                    else ...[
+                      // Visual Pie Chart Graph
+                      SizedBox(
+                        height: 180,
+                        child: PieChart(
+                          PieChartData(
+                            sectionsSpace: 3,
+                            centerSpaceRadius: 36,
+                            sections: categoryTotals.entries.map((entry) {
+                              final catName = entry.key;
+                              final amount = entry.value;
+                              final pct = totalSpent > 0 ? (amount / totalSpent * 100) : 0;
+                              return PieChartSectionData(
+                                color: _getCategoryColor(catName),
+                                value: amount,
+                                title: pct > 5 ? '${pct.toStringAsFixed(0)}%' : '',
+                                radius: 42,
+                                titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       ...categoryTotals.entries.map((entry) {
                         final catName = entry.key;
                         final amount = entry.value;
@@ -2659,7 +2483,20 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(catName, style: TextStyle(color: textColor, fontWeight: FontWeight.w600, fontSize: 13)),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 10,
+                                        height: 10,
+                                        decoration: BoxDecoration(
+                                          color: _getCategoryColor(catName),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(catName, style: TextStyle(color: textColor, fontWeight: FontWeight.w600, fontSize: 13)),
+                                    ],
+                                  ),
                                   Text(
                                     NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(amount),
                                     style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13),
@@ -2680,6 +2517,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                           ),
                         );
                       }),
+                    ],
                   ],
                 ),
               ),
@@ -2814,7 +2652,78 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             ),
             const SizedBox(height: 14),
 
-            // 4. Daily Spending Activity Bars Card
+            // 4. Monthly Spending Trend Curve Graph (Interactive Spline)
+            Card(
+              elevation: isDark ? 3 : 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              color: cardBg,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Monthly Spending Trend 📈',
+                          style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text('Interactive Curve', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (dailySpending.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Center(
+                          child: Text('No debit activity to map trend curve.', style: TextStyle(color: subtextColor, fontSize: 12)),
+                        ),
+                      )
+                    else
+                      SizedBox(
+                        height: 150,
+                        child: SfCartesianChart(
+                          margin: EdgeInsets.zero,
+                          plotAreaBorderWidth: 0,
+                          primaryXAxis: NumericAxis(
+                            majorGridLines: const MajorGridLines(width: 0),
+                            axisLine: const AxisLine(width: 0),
+                            labelStyle: TextStyle(color: subtextColor, fontSize: 10),
+                          ),
+                          primaryYAxis: const NumericAxis(isVisible: false),
+                          tooltipBehavior: TooltipBehavior(enable: true, header: '', format: 'Day point.x: ₹point.y'),
+                          series: <CartesianSeries>[
+                            SplineAreaSeries<MapEntry<int, double>, int>(
+                              dataSource: dailySpending.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
+                              xValueMapper: (MapEntry<int, double> data, _) => data.key,
+                              yValueMapper: (MapEntry<int, double> data, _) => data.value,
+                              gradient: LinearGradient(
+                                colors: [Colors.blueAccent.withOpacity(0.5), Colors.blueAccent.withOpacity(0.0)],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              ),
+                              borderColor: Colors.blueAccent,
+                              borderWidth: 2.5,
+                              markerSettings: const MarkerSettings(isVisible: true, width: 4, height: 4, color: Colors.blueAccent),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // 5. Daily Expense Bar Chart Distribution
             Card(
               elevation: isDark ? 3 : 1,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -2825,7 +2734,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Daily Spending Activity',
+                      'Daily Expense Distribution 📊',
                       style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
                     ),
                     const SizedBox(height: 14),
@@ -2838,44 +2747,65 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       )
                     else
                       SizedBox(
-                        height: 100,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: List.generate(31, (index) {
-                            final day = index + 1;
-                            final daySpent = dailySpending[day] ?? 0.0;
-                            final maxDaily = dailySpending.values.isEmpty
-                                ? 1.0
-                                : dailySpending.values.reduce((a, b) => a > b ? a : b);
-                            final heightRatio = maxDaily > 0 ? (daySpent / maxDaily) : 0.0;
-
-                            return Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    Container(
-                                      height: (heightRatio * 75).clamp(daySpent > 0 ? 4.0 : 0.0, 75.0),
-                                      decoration: BoxDecoration(
-                                        color: daySpent > 0 ? Colors.blueAccent : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '$day',
-                                      style: TextStyle(
-                                        fontSize: 8,
-                                        color: daySpent > 0 ? textColor : subtextColor.withOpacity(0.5),
-                                        fontWeight: daySpent > 0 ? FontWeight.bold : FontWeight.normal,
-                                      ),
-                                    ),
-                                  ],
+                        height: 160,
+                        child: BarChart(
+                          BarChartData(
+                            alignment: BarChartAlignment.spaceAround,
+                            maxY: (dailySpending.values.isEmpty ? 1.0 : dailySpending.values.reduce((a, b) => a > b ? a : b)) * 1.15,
+                            barTouchData: BarTouchData(
+                              enabled: true,
+                              touchTooltipData: BarTouchTooltipData(
+                                getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                                  final day = group.x.toInt();
+                                  final val = rod.toY;
+                                  return BarTooltipItem(
+                                    'Day $day\n₹${val.toStringAsFixed(0)}',
+                                    const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                  );
+                                },
+                              ),
+                            ),
+                            titlesData: FlTitlesData(
+                              show: true,
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  getTitlesWidget: (val, meta) {
+                                    final int day = val.toInt();
+                                    if (day == 1 || day == 5 || day == 10 || day == 15 || day == 20 || day == 25 || day == 30) {
+                                      return Text('$day', style: TextStyle(color: subtextColor, fontSize: 10));
+                                    }
+                                    return const SizedBox.shrink();
+                                  },
+                                  reservedSize: 20,
                                 ),
                               ),
-                            );
-                          }),
+                              leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            ),
+                            gridData: const FlGridData(show: false),
+                            borderData: FlBorderData(show: false),
+                            barGroups: List.generate(31, (index) {
+                              final day = index + 1;
+                              final daySpent = dailySpending[day] ?? 0.0;
+                              return BarChartGroupData(
+                                x: day,
+                                barRods: [
+                                  BarChartRodData(
+                                    toY: daySpent,
+                                    gradient: LinearGradient(
+                                      colors: daySpent > 0 ? [Colors.indigoAccent, Colors.blueAccent] : [Colors.grey.withOpacity(0.2), Colors.grey.withOpacity(0.2)],
+                                      begin: Alignment.bottomCenter,
+                                      end: Alignment.topCenter,
+                                    ),
+                                    width: 7,
+                                    borderRadius: const BorderRadius.only(topLeft: Radius.circular(4), topRight: Radius.circular(4)),
+                                  ),
+                                ],
+                              );
+                            }),
+                          ),
                         ),
                       ),
                   ],
@@ -2906,6 +2836,8 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         return Colors.indigoAccent;
       case 'Borrowed':
         return Colors.amber.shade700;
+      case 'Borrowed Repaid':
+        return Colors.orange.shade700;
       case 'Lended':
         return Colors.teal;
       case 'Loan Repaid':

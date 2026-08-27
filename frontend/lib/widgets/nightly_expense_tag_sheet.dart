@@ -38,6 +38,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     {'name': 'Personal Transfer', 'icon': Icons.swap_horiz_rounded, 'color': Colors.purpleAccent},
     {'name': 'Self Transfer', 'icon': Icons.sync_alt_rounded, 'color': Colors.indigoAccent},
     {'name': 'Borrowed', 'icon': Icons.south_west_rounded, 'color': Colors.amber.shade700},
+    {'name': 'Borrowed Repaid', 'icon': Icons.check_circle_outline_rounded, 'color': Colors.orange.shade700},
     {'name': 'Lended', 'icon': Icons.north_east_rounded, 'color': Colors.teal},
     {'name': 'Loan Repaid', 'icon': Icons.task_alt_rounded, 'color': Colors.green.shade700},
     {'name': 'Entertainment', 'icon': Icons.movie, 'color': Colors.pink},
@@ -104,20 +105,22 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
         }
       }
 
+      final personInput = _personNameControllers[tx.id]?.text.trim() ?? '';
+      final finalPersonName = personInput.isNotEmpty ? personInput : (tx.payee.isNotEmpty ? tx.payee : 'Friend');
+
       final updatedTx = tx.copyWith(
         isVerified: true,
         bankName: chosenBankName,
         category: category,
-        notes: notes.isNotEmpty ? notes : tx.payee,
+        payee: finalPersonName,
+        notes: notes.isNotEmpty ? notes : finalPersonName,
       );
 
       final destBankId = _targetBankIds[tx.id];
       await finance.updateSmsTransaction(updatedTx, destinationBankAccountId: destBankId);
 
-      // If category is Lended or Borrowed, create a DebtRecord entry!
+      // If category is Lended or Borrowed, create a single DebtRecord entry with the edited person name!
       if (category == 'Lended' || category == 'Borrowed') {
-        final personInput = _personNameControllers[tx.id]?.text.trim() ?? '';
-        final finalPersonName = personInput.isNotEmpty ? personInput : (tx.payee.isNotEmpty ? tx.payee : 'Friend');
         final debtType = category == 'Lended' ? 'lent' : 'borrowed';
 
         final debt = DebtRecord(
@@ -126,15 +129,15 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
           amount: tx.amount,
           type: debtType,
           date: tx.timestamp,
-          note: notes.isNotEmpty ? notes : 'Tracked from SMS (${tx.bankName})',
+          note: notes.isNotEmpty ? notes : 'Tracked from SMS (${chosenBankName})',
           isSettled: false,
           accountId: destBankId,
         );
         await finance.addDebt(debt, updateAccountBalance: false);
       }
 
-      // If category is Loan Repaid, mark target debt as settled!
-      if (category == 'Loan Repaid') {
+      // If category is Loan Repaid or Borrowed Repaid, mark target debt as settled!
+      if (category == 'Loan Repaid' || category == 'Borrowed Repaid') {
         final debtId = _targetDebtIds[tx.id];
         if (debtId != null && debtId.isNotEmpty) {
           await finance.settleDebtById(debtId);
@@ -594,16 +597,24 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                           },
                         ),
                       ],
-                      if (selectedCat == 'Loan Repaid') ...[
+                      if (selectedCat == 'Loan Repaid' || selectedCat == 'Borrowed Repaid') ...[
                         const SizedBox(height: 12),
                         StreamBuilder<List<DebtRecord>>(
                           stream: FinanceService().getDebtsStream(),
                           builder: (context, debtsSnap) {
-                            final activeDebts = (debtsSnap.data ?? []).where((d) => !d.isSettled).toList();
+                            final isLoanRepaid = selectedCat == 'Loan Repaid';
+                            final activeDebts = (debtsSnap.data ?? []).where((d) {
+                              if (d.isSettled) return false;
+                              return isLoanRepaid ? d.type == 'lent' : d.type == 'borrowed';
+                            }).toList();
+
                             if (activeDebts.isEmpty) {
-                              return const Padding(
-                                padding: EdgeInsets.all(8.0),
-                                child: Text('No active pending debts found to settle.', style: TextStyle(color: Colors.amber, fontSize: 12)),
+                              final noDebtsText = isLoanRepaid
+                                  ? 'No active pending lent money found to settle.'
+                                  : 'No active pending borrowed debts found to settle.';
+                              return Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Text(noDebtsText, style: const TextStyle(color: Colors.amber, fontSize: 12)),
                               );
                             }
 
@@ -614,14 +625,18 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                               decoration: BoxDecoration(
                                 color: inputBg,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.green.shade600),
+                                border: Border.all(color: isLoanRepaid ? Colors.green.shade600 : Colors.orange.shade700),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Select Pending Debt/Loan to Settle:',
-                                    style: TextStyle(color: Colors.green.shade600, fontSize: 11, fontWeight: FontWeight.bold),
+                                    isLoanRepaid ? 'Select Pending Lent Money to Settle:' : 'Select Pending Borrowed Debt to Settle:',
+                                    style: TextStyle(
+                                      color: isLoanRepaid ? Colors.green.shade600 : Colors.orange.shade700,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                   const SizedBox(height: 4),
                                   DropdownButton<String>(

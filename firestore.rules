@@ -33,8 +33,13 @@ service cloud.firestore {
       );
       allow create: if request.auth != null && (
         request.auth.uid == userId || (
-          exists(/databases/$(database)/documents/buddy_links/$(request.auth.uid + '_' + userId)) &&
-          get(/databases/$(database)/documents/buddy_links/$(request.auth.uid + '_' + userId)).data.status == 'approved'
+          (
+            exists(/databases/$(database)/documents/buddy_links/$(request.auth.uid + '_' + userId)) &&
+            get(/databases/$(database)/documents/buddy_links/$(request.auth.uid + '_' + userId)).data.status == 'approved'
+          ) || (
+            exists(/databases/$(database)/documents/buddy_links/$(userId + '_' + request.auth.uid)) &&
+            get(/databases/$(database)/documents/buddy_links/$(userId + '_' + request.auth.uid)).data.status == 'approved'
+          )
         )
       );
     }

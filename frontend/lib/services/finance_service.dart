@@ -558,26 +558,6 @@ class FinanceService {
       return;
     }
 
-    // Handle Borrowed & Lended: Create debt record in Debts & Lended Money feature
-    if (tx.category == 'Borrowed' || tx.category == 'Lended') {
-      final String debtType = (tx.category == 'Borrowed') ? 'borrowed' : 'lent';
-      final String personName = tx.payee.isNotEmpty && tx.payee != 'Unknown Merchant' ? tx.payee : 'Person';
-      final String noteText = (tx.notes.isNotEmpty && tx.notes != tx.payee) ? tx.notes : 'Auto-synced from Bank Tracker';
-
-      final debtRef = doc.collection('finance_debts').doc();
-      final debt = DebtRecord(
-        id: debtRef.id,
-        personName: personName,
-        type: debtType,
-        amount: tx.amount,
-        note: noteText,
-        date: tx.timestamp,
-        isSettled: false,
-        accountId: destinationBankAccountId,
-      );
-      await doc.collection('finance_debts').doc(debt.id).set(debt.toMap());
-    }
-
     // Normal Debit or Credit Sync to Bank Account
     for (final accountDoc in accountsSnap.docs) {
       final bank = BankAccount.fromMap(accountDoc.data(), accountDoc.id);
