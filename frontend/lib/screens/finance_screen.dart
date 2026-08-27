@@ -28,6 +28,8 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   bool _isScanningInbox = false;
   bool _isSyncingStudySms = false;
   DateTime _smsMonthFilter = DateTime.now();
+  int _smsSubTabIndex = 0;
+  final PageController _smsPageController = PageController();
 
   int? _selectedFeatureIndex;
 
@@ -59,6 +61,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   @override
   void dispose() {
     _tabController.dispose();
+    _smsPageController.dispose();
     super.dispose();
   }
 
@@ -1477,13 +1480,15 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               return const Center(child: CircularProgressIndicator());
             }
 
-            final allTransactions = snapshot.data ?? [];
+            final activeTransactions = (snapshot.data ?? []).where((tx) {
+              return tx.category != 'Ignored / Not Needed' && tx.category != 'Ignored';
+            }).toList();
 
-            final monthTransactions = allTransactions.where((tx) {
+            final monthTransactions = activeTransactions.where((tx) {
               return tx.timestamp.year == _smsMonthFilter.year && tx.timestamp.month == _smsMonthFilter.month;
             }).toList();
 
-            final pendingUntagged = allTransactions.where((t) => !t.isVerified).toList();
+            final pendingUntagged = activeTransactions.where((t) => !t.isVerified).toList();
 
             double totalSpent = 0.0;
             double totalReceived = 0.0;
@@ -1499,9 +1504,229 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               }
             }
 
-            return ListView(
-              padding: const EdgeInsets.all(16),
+            return Column(
               children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Column(
+                    children: [
+                      // Admin-Controlled SMS Study Banner
+                      if (isSmsStudyEnabled) ...[
+                        Card(
+                          elevation: isDark ? 3 : 1,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          color: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade50,
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.science_rounded, color: Colors.blueAccent, size: 28),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'SMS Study Sync (Admin Active)',
+                                        style: GoogleFonts.outfit(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: textColor,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Sync last 15 days SMS samples to Cloud for AI pattern research',
+                                        style: TextStyle(color: subtextColor, fontSize: 11),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blueAccent,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  onPressed: _isSyncingStudySms
+                                      ? null
+                                      : () async {
+                                          setState(() => _isSyncingStudySms = true);
+                                          final count = await _financeService.uploadSmsStudySamples(days: 15);
+                                          setState(() => _isSyncingStudySms = false);
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Successfully uploaded $count SMS samples to Cloud for AI Study!'),
+                                                backgroundColor: Colors.green,
+                                              ),
+                                            );
+                                          }
+                                        },
+                                  icon: _isSyncingStudySms
+                                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      : const Icon(Icons.cloud_upload_rounded, size: 16),
+                                  label: Text(_isSyncingStudySms ? 'Syncing...' : 'Sync 15 Days'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+
+                      // Static Month Selector Bar
+                      Card(
+                        elevation: isDark ? 3 : 1,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        color: cardBg,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.chevron_left, color: Colors.blueAccent, size: 28),
+                                    onPressed: () {
+                                      setState(() {
+                                        _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month - 1);
+                                      });
+                                    },
+                                  ),
+                                  Text(
+                                    DateFormat('MMMM yyyy').format(_smsMonthFilter),
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: textColor,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.chevron_right, color: Colors.blueAccent, size: 28),
+                                    onPressed: () {
+                                      setState(() {
+                                        _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1);
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Sync Bank SMS',
+                                    icon: _isScanningInbox
+                                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
+                                        : const Icon(Icons.sync_rounded, color: Colors.blueAccent, size: 22),
+                                    onPressed: _isScanningInbox ? null : _showSmsSyncDialog,
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Delete Month Transactions',
+                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 22),
+                                    onPressed: () => _confirmDeleteMonthTransactions(context),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Sub-Tab Selector Pills (Transactions List | Analytics & Budget)
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF0F172A) : Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() => _smsSubTabIndex = 0);
+                                  _smsPageController.animateToPage(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: _smsSubTabIndex == 0 ? Colors.blueAccent : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Center(
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.list_alt_rounded, size: 16, color: _smsSubTabIndex == 0 ? Colors.white : subtextColor),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Transactions (${monthTransactions.length})',
+                                          style: TextStyle(
+                                            color: _smsSubTabIndex == 0 ? Colors.white : subtextColor,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() => _smsSubTabIndex = 1);
+                                  _smsPageController.animateToPage(1, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: _smsSubTabIndex == 1 ? Colors.blueAccent : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Center(
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.insert_chart_outlined_rounded, size: 16, color: _smsSubTabIndex == 1 ? Colors.white : subtextColor),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Analytics & Budget',
+                                          style: TextStyle(
+                                            color: _smsSubTabIndex == 1 ? Colors.white : subtextColor,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Swipeable PageView Body
+                Expanded(
+                  child: PageView(
+                    controller: _smsPageController,
+                    onPageChanged: (idx) {
+                      setState(() => _smsSubTabIndex = idx);
+                    },
+                    children: [
+                      // PAGE 0: Transactions List
+                      ListView(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        children: [
                 // Admin-Controlled SMS Study Banner
                 if (isSmsStudyEnabled) ...[
                   Card(
@@ -1769,80 +1994,104 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             ),
             const SizedBox(height: 10),
 
-            if (monthTransactions.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 40),
-                child: Center(
-                  child: Text(
-                    'No SMS bank transactions recorded for ${DateFormat('MMMM yyyy').format(_smsMonthFilter)}.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: subtextColor),
-                  ),
-                ),
-              )
-            else
-              ...monthTransactions.map((tx) {
-                final isDebit = tx.type == 'Debit';
-                final bool isGenericBank = tx.bankName == 'Bank' || tx.bankName.toLowerCase() == 'unknown';
+            const SizedBox(height: 10),
 
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  color: cardBg,
-                  elevation: isDark ? 2 : 1,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    side: BorderSide(
-                      color: isGenericBank ? Colors.redAccent : (isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
-                      width: isGenericBank ? 1.8 : 1.0,
-                    ),
-                  ),
-                  child: ListTile(
-                    onTap: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (ctx) => NightlyExpenseTagSheet(pendingTransactions: [tx]),
-                      );
-                    },
-                    leading: CircleAvatar(
-                      backgroundColor: isDebit ? Colors.red.shade900.withOpacity(0.3) : Colors.green.shade900.withOpacity(0.3),
-                      child: Icon(
-                        isDebit ? Icons.arrow_upward : Icons.arrow_downward,
-                        color: isDebit ? Colors.redAccent : Colors.green,
+            StreamBuilder<Map<String, String>>(
+              stream: _financeService.getUserHeaderBankMappingsStream(),
+              builder: (context, headerSnap) {
+                final headerMappings = headerSnap.data ?? {};
+
+                if (monthTransactions.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: Text(
+                        'No SMS bank transactions recorded for ${DateFormat('MMMM yyyy').format(_smsMonthFilter)}.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: subtextColor),
                       ),
                     ),
-                    title: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              tx.bankName,
-                              style: TextStyle(
-                                color: isGenericBank ? Colors.redAccent : textColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                            if (isGenericBank) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: const Text(
-                                  '⚠️ Assign Bank',
-                                  style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ],
-                          ],
+                  );
+                }
+
+                return Column(
+                  children: monthTransactions.map((tx) {
+                    final isDebit = tx.type == 'Debit';
+                    final String cleanSender = tx.sender.trim().toUpperCase();
+                    String resolvedBankName = tx.bankName;
+
+                    if (resolvedBankName == 'Bank' || resolvedBankName.toLowerCase() == 'unknown') {
+                      if (headerMappings.containsKey(cleanSender)) {
+                        resolvedBankName = headerMappings[cleanSender]!;
+                      } else if (cleanSender.contains('-')) {
+                        final codePart = cleanSender.split('-').last.replaceAll(' ', '');
+                        if (headerMappings.containsKey(codePart)) {
+                          resolvedBankName = headerMappings[codePart]!;
+                        }
+                      }
+                    }
+
+                    final bool isGenericBank = resolvedBankName == 'Bank' || resolvedBankName.toLowerCase() == 'unknown';
+                    final effectiveTx = tx.copyWith(bankName: resolvedBankName);
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      color: cardBg,
+                      elevation: isDark ? 2 : 1,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                          color: isGenericBank ? Colors.redAccent : (isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                          width: isGenericBank ? 1.8 : 1.0,
                         ),
-                        Text(
-                          '${isDebit ? '-' : '+'}${NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(tx.amount)}',
+                      ),
+                      child: ListTile(
+                        onTap: () {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (ctx) => NightlyExpenseTagSheet(pendingTransactions: [effectiveTx]),
+                          );
+                        },
+                        leading: CircleAvatar(
+                          backgroundColor: isDebit ? Colors.red.shade900.withOpacity(0.3) : Colors.green.shade900.withOpacity(0.3),
+                          child: Icon(
+                            isDebit ? Icons.arrow_upward : Icons.arrow_downward,
+                            color: isDebit ? Colors.redAccent : Colors.green,
+                          ),
+                        ),
+                        title: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  resolvedBankName,
+                                  style: TextStyle(
+                                    color: isGenericBank ? Colors.redAccent : textColor,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                if (isGenericBank) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      '⚠️ Assign Bank',
+                                      style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            Text(
+                              '${isDebit ? '-' : '+'}${NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(tx.amount)}',
                           style: TextStyle(
                             color: isDebit ? Colors.redAccent : Colors.green,
                             fontWeight: FontWeight.bold,
@@ -1909,13 +2158,33 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   ),
                 );
               }).toList(),
-          ],
-        );
+            );
+          },
+        ),
+      ],
+    ),
+
+    // PAGE 1: Analytics & Monthly Budget Dashboard View
+    _buildAnalyticsAndBudgetTab(
+      monthTransactions: monthTransactions,
+      totalSpent: totalSpent,
+      totalReceived: totalReceived,
+      categoryTotals: categoryTotals,
+      isDark: isDark,
+      cardBg: cardBg,
+      textColor: textColor,
+      subtextColor: subtextColor,
+    ),
+  ],
+),
+),
+],
+);
       },
     );
   },
 );
-}
+  }
 
   void _showSmsSyncDialog() {
     final String currentMonthName = DateFormat('MMMM').format(_smsMonthFilter);
@@ -2226,6 +2495,536 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnalyticsAndBudgetTab({
+    required List<SmsTransaction> monthTransactions,
+    required double totalSpent,
+    required double totalReceived,
+    required Map<String, double> categoryTotals,
+    required bool isDark,
+    required Color cardBg,
+    required Color textColor,
+    required Color subtextColor,
+  }) {
+    final double netSavings = totalReceived - totalSpent;
+    final maxCategoryAmount = categoryTotals.values.isEmpty
+        ? 1.0
+        : categoryTotals.values.reduce((a, b) => a > b ? a : b);
+
+    final Map<int, double> dailySpending = {};
+    for (var tx in monthTransactions) {
+      if (tx.type == 'Debit') {
+        final day = tx.timestamp.day;
+        dailySpending[day] = (dailySpending[day] ?? 0.0) + tx.amount;
+      }
+    }
+
+    return StreamBuilder<Map<String, double>>(
+      stream: _financeService.getCategoryBudgetsStream(),
+      builder: (context, budgetSnap) {
+        final budgets = budgetSnap.data ?? {};
+
+        return ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          children: [
+            // 1. Monthly Cashflow Summary Card
+            Card(
+              elevation: isDark ? 3 : 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              color: cardBg,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Monthly Cashflow',
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: netSavings >= 0 ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            netSavings >= 0 ? 'Surplus +₹${netSavings.toStringAsFixed(0)}' : 'Deficit -₹${(-netSavings).toStringAsFixed(0)}',
+                            style: TextStyle(
+                              color: netSavings >= 0 ? Colors.green : Colors.redAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.arrow_upward, size: 14, color: Colors.redAccent),
+                                  const SizedBox(width: 4),
+                                  Text('Total Spent', style: TextStyle(color: subtextColor, fontSize: 11)),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(totalSpent),
+                                style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(height: 35, width: 1, color: isDark ? Colors.white12 : Colors.grey.shade300),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.arrow_downward, size: 14, color: Colors.green),
+                                    const SizedBox(width: 4),
+                                    Text('Total Received', style: TextStyle(color: subtextColor, fontSize: 11)),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(totalReceived),
+                                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // 2. Category Expense Breakdown Chart Card
+            Card(
+              elevation: isDark ? 3 : 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              color: cardBg,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Category Expense Breakdown',
+                      style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
+                    ),
+                    const SizedBox(height: 14),
+                    if (categoryTotals.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Center(
+                          child: Text('No verified expenses for this month.', style: TextStyle(color: subtextColor, fontSize: 12)),
+                        ),
+                      )
+                    else
+                      ...categoryTotals.entries.map((entry) {
+                        final catName = entry.key;
+                        final amount = entry.value;
+                        final ratio = (amount / maxCategoryAmount).clamp(0.05, 1.0);
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(catName, style: TextStyle(color: textColor, fontWeight: FontWeight.w600, fontSize: 13)),
+                                  Text(
+                                    NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(amount),
+                                    style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: LinearProgressIndicator(
+                                  value: ratio,
+                                  minHeight: 8,
+                                  backgroundColor: isDark ? Colors.white10 : Colors.grey.shade200,
+                                  valueColor: AlwaysStoppedAnimation<Color>(_getCategoryColor(catName)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // 3. Category Monthly Budget Tracker & Alerts Card
+            Card(
+              elevation: isDark ? 3 : 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              color: cardBg,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.track_changes_rounded, color: Colors.blueAccent, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Monthly Category Budgets',
+                              style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.blueAccent, size: 22),
+                          onPressed: () => _showSetBudgetDialog(context, budgets.keys.toList()),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (budgets.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white.withOpacity(0.04) : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline_rounded, color: Colors.amber, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'No monthly budgets set yet. Tap + to set budget limits for Food, Fuel, Shopping, etc.!',
+                                style: TextStyle(color: subtextColor, fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      ...budgets.entries.map((bEntry) {
+                        final cat = bEntry.key;
+                        final budgetLimit = bEntry.value;
+                        final spent = categoryTotals[cat] ?? 0.0;
+                        final isOver = spent > budgetLimit;
+                        final percent = budgetLimit > 0 ? (spent / budgetLimit).clamp(0.0, 1.0) : 1.0;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.white.withOpacity(0.03) : Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: isOver ? Colors.redAccent : (isDark ? Colors.white12 : Colors.grey.shade200),
+                              width: isOver ? 1.5 : 1.0,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(cat, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Spent ₹${spent.toStringAsFixed(0)} / ₹${budgetLimit.toStringAsFixed(0)}',
+                                        style: TextStyle(
+                                          color: isOver ? Colors.redAccent : subtextColor,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      InkWell(
+                                        onTap: () => _showEditSingleBudgetDialog(context, cat, budgetLimit),
+                                        child: const Icon(Icons.edit_rounded, size: 16, color: Colors.blueAccent),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: LinearProgressIndicator(
+                                  value: percent,
+                                  minHeight: 8,
+                                  backgroundColor: isDark ? Colors.white10 : Colors.grey.shade200,
+                                  valueColor: AlwaysStoppedAnimation<Color>(isOver ? Colors.redAccent : Colors.teal),
+                                ),
+                              ),
+                              if (isOver) ...[
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.warning_amber_rounded, size: 14, color: Colors.redAccent),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Exceeded monthly budget limit by ₹${(spent - budgetLimit).toStringAsFixed(0)}!',
+                                      style: const TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // 4. Daily Spending Activity Bars Card
+            Card(
+              elevation: isDark ? 3 : 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              color: cardBg,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Daily Spending Activity',
+                      style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
+                    ),
+                    const SizedBox(height: 14),
+                    if (dailySpending.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Center(
+                          child: Text('No daily debit transactions recorded this month.', style: TextStyle(color: subtextColor, fontSize: 12)),
+                        ),
+                      )
+                    else
+                      SizedBox(
+                        height: 100,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: List.generate(31, (index) {
+                            final day = index + 1;
+                            final daySpent = dailySpending[day] ?? 0.0;
+                            final maxDaily = dailySpending.values.isEmpty
+                                ? 1.0
+                                : dailySpending.values.reduce((a, b) => a > b ? a : b);
+                            final heightRatio = maxDaily > 0 ? (daySpent / maxDaily) : 0.0;
+
+                            return Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    Container(
+                                      height: (heightRatio * 75).clamp(daySpent > 0 ? 4.0 : 0.0, 75.0),
+                                      decoration: BoxDecoration(
+                                        color: daySpent > 0 ? Colors.blueAccent : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(3),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '$day',
+                                      style: TextStyle(
+                                        fontSize: 8,
+                                        color: daySpent > 0 ? textColor : subtextColor.withOpacity(0.5),
+                                        fontWeight: daySpent > 0 ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Color _getCategoryColor(String catName) {
+    switch (catName) {
+      case 'Food & Dining':
+        return Colors.orange;
+      case 'Fuel & Travel':
+        return Colors.redAccent;
+      case 'Groceries':
+        return Colors.green;
+      case 'Bills & Utilities':
+        return Colors.blue;
+      case 'Shopping':
+        return Colors.purple;
+      case 'Personal Transfer':
+        return Colors.purpleAccent;
+      case 'Self Transfer':
+        return Colors.indigoAccent;
+      case 'Borrowed':
+        return Colors.amber.shade700;
+      case 'Lended':
+        return Colors.teal;
+      case 'Loan Repaid':
+        return Colors.green.shade700;
+      case 'Entertainment':
+        return Colors.pink;
+      case 'Medical & Health':
+        return Colors.redAccent;
+      default:
+        return Colors.blueAccent;
+    }
+  }
+
+  void _showSetBudgetDialog(BuildContext context, List<String> existingBudgetCats) {
+    String selectedCategory = 'Food & Dining';
+    final amountController = TextEditingController();
+
+    final List<String> availableCategories = [
+      'Food & Dining',
+      'Fuel & Travel',
+      'Groceries',
+      'Bills & Utilities',
+      'Shopping',
+      'Personal Transfer',
+      'Entertainment',
+      'Medical & Health',
+      'Others',
+    ];
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.track_changes_rounded, color: Colors.blueAccent),
+              SizedBox(width: 8),
+              Text('Set Monthly Budget'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: selectedCategory,
+                decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+                items: availableCategories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                onChanged: (val) {
+                  if (val != null) setDialogState(() => selectedCategory = val);
+                },
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Monthly Limit (₹)',
+                  hintText: 'e.g. 5000',
+                  border: OutlineInputBorder(),
+                  prefixText: '₹ ',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
+              onPressed: () async {
+                final amt = double.tryParse(amountController.text.trim()) ?? 0.0;
+                if (amt > 0) {
+                  await _financeService.saveCategoryBudget(selectedCategory, amt);
+                  if (dialogCtx.mounted) {
+                    Navigator.pop(dialogCtx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Budget of ₹${amt.toStringAsFixed(0)} set for $selectedCategory!'), backgroundColor: Colors.green),
+                    );
+                  }
+                }
+              },
+              child: const Text('Save Budget'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditSingleBudgetDialog(BuildContext context, String category, double currentLimit) {
+    final amountController = TextEditingController(text: currentLimit.toStringAsFixed(0));
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text('Edit Budget: $category'),
+        content: TextField(
+          controller: amountController,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Monthly Limit (₹)',
+            border: OutlineInputBorder(),
+            prefixText: '₹ ',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await _financeService.saveCategoryBudget(category, 0);
+              if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+            },
+            child: const Text('Remove', style: TextStyle(color: Colors.redAccent)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
+            onPressed: () async {
+              final amt = double.tryParse(amountController.text.trim()) ?? 0.0;
+              await _financeService.saveCategoryBudget(category, amt);
+              if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+            },
+            child: const Text('Save'),
           ),
         ],
       ),

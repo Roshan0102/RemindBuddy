@@ -394,8 +394,8 @@ class _MainScreenState extends State<MainScreen> {
       'screen': const HomeScreen(),
       'name': 'Reminders',
       'destination': const NavigationDestination(
-        icon: Icon(Icons.calendar_today_outlined, color: Colors.indigo),
-        selectedIcon: Icon(Icons.calendar_today, color: Colors.indigo),
+        icon: Icon(Icons.calendar_today_outlined, color: Colors.indigoAccent),
+        selectedIcon: Icon(Icons.calendar_today, color: Colors.indigoAccent),
         label: 'Reminders',
       ),
     },
@@ -532,9 +532,10 @@ class _MainScreenState extends State<MainScreen> {
     final List<NavigationDestination> dests = [];
     final mIdx = _menuIndex;
 
-    const menuDest = NavigationDestination(
-      icon: Icon(Icons.apps_outlined, color: Colors.blueGrey),
-      selectedIcon: Icon(Icons.apps, color: Colors.blueGrey),
+    final menuColor = _isDarkMode ? Colors.white70 : Colors.blueGrey;
+    final menuDest = NavigationDestination(
+      icon: Icon(Icons.apps_outlined, color: menuColor),
+      selectedIcon: Icon(Icons.apps, color: menuColor),
       label: 'Menu',
     );
 
@@ -556,7 +557,11 @@ class _MainScreenState extends State<MainScreen> {
     Widget icon = dest.icon;
     Widget? selectedIcon = dest.selectedIcon;
 
-    if (id == 'notes') {
+    if (id == 'reminders') {
+      final Color remColor = _isDarkMode ? Colors.indigoAccent : Colors.indigo;
+      icon = Icon(Icons.calendar_today_outlined, color: remColor);
+      selectedIcon = Icon(Icons.calendar_today, color: remColor);
+    } else if (id == 'notes') {
       icon = NavigationIconWithBadge(
         icon: icon,
         stream: StorageService().getIncomingRequestsStream('note'),
@@ -1561,149 +1566,7 @@ class _MainScreenState extends State<MainScreen> {
                 ],
               ),
             ),
-            // Checklist feature integrated directly into Notes
-            if (_enabledModules.contains('reminders'))
-              ListTile(
-                leading: const Icon(Icons.calendar_today, color: Colors.indigo),
-                title: const Text('Reminders'),
-                selected: _isModuleSelected('reminders'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('reminders');
-                },
-              ),
-            if (_enabledModules.contains('notes'))
-              ListTile(
-                leading: const Icon(Icons.note_alt, color: Colors.teal),
-                title: const Text('Notes'),
-                selected: _isModuleSelected('notes'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('notes');
-                },
-              ),
-            if (_enabledModules.contains('gold'))
-              ListTile(
-                leading: const Icon(Icons.monetization_on, color: Colors.amber),
-                title: const Text('Gold Rates'),
-                selected: _isModuleSelected('gold'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('gold');
-                },
-              ),
-            if (_enabledModules.contains('job_assistant'))
-              ListTile(
-                leading: const Icon(Icons.work_outline, color: Colors.blueAccent),
-                title: const Text('AI Job Assistant'),
-                selected: _isModuleSelected('job_assistant'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('job_assistant');
-                },
-              ),
-            if (_enabledModules.contains('finance'))
-              ListTile(
-                leading: const Icon(Icons.account_balance_wallet_outlined, color: Colors.teal),
-                title: const Text('Finance'),
-                selected: _isModuleSelected('finance'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('finance');
-                },
-              ),
-            if (_enabledModules.contains('astro_calendar'))
-              ListTile(
-                leading: const Icon(Icons.sunny, color: Colors.orange),
-                title: const Text('Astro Calendar'),
-                selected: _isModuleSelected('astro_calendar'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('astro_calendar');
-                },
-              ),
-            if (_enabledModules.contains('gcp_cost'))
-              ListTile(
-                leading: const Icon(Icons.account_balance_wallet, color: Colors.green),
-                title: const Text('GCP Cost Tracker'),
-                selected: _isModuleSelected('gcp_cost'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('gcp_cost');
-                },
-              ),
-            if (_isVaultEnabled)
-              ListTile(
-                leading: const Icon(Icons.shield, color: Colors.blueAccent),
-                title: const Text('Secure Vault'),
-                selected: _isModuleSelected('vault'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('vault');
-                },
-              ),
-            const Divider(),
-            if (_enabledModules.contains('daily_reminders'))
-              ListTile(
-                leading: const Icon(Icons.alarm_on, color: Colors.blue),
-                title: const Text('Daily Reminders'),
-                subtitle: const Text('Recurring reminders'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
-                  );
-                },
-              ),
-            if (_enabledModules.contains('shifts'))
-              ListTile(
-                leading: const Icon(Icons.work_history, color: Colors.purple),
-                title: const Text('My Shifts'),
-                subtitle: const Text('Work schedule & reminders'),
-                selected: _isModuleSelected('shifts'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _selectTabOrPush('shifts');
-                },
-              ),
-            if (_enabledModules.contains('events'))
-              ListTile(
-                leading: const Icon(Icons.event, color: Colors.green),
-                title: const Text('Tech Events'),
-                subtitle: const Text('Local tech events & meetups'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)),
-                  );
-                },
-              ),
-            if (_enabledModules.contains('walkin'))
-              ListTile(
-                leading: const Icon(Icons.directions_walk, color: Colors.lightBlue),
-                title: const Text('Walk-In Drives'),
-                subtitle: const Text('DevOps/Cloud/SRE interviews'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)),
-                  );
-                },
-              ),
-            if (_enabledModules.contains('voice_assistant'))
-              ListTile(
-                leading: const Icon(Icons.mic, color: Colors.redAccent),
-                title: const Text('Voice Assistant'),
-                subtitle: const Text('Ask Gemini anything'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openVoiceAssistant();
-                },
-              ),
-            const Divider(),
+
             ListTile(
               leading: const Icon(Icons.history_toggle_off, color: Colors.deepPurple),
               title: const Text('Notification History'),

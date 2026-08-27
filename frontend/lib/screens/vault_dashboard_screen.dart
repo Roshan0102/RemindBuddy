@@ -99,6 +99,30 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
     Share.share('$label: $value', subject: 'Document Details');
   }
 
+  void _shareAllFilteredDocuments(List<DecryptedDocument> docs) {
+    if (docs.isEmpty) return;
+
+    final StringBuffer buffer = StringBuffer();
+    buffer.writeln('🔒 Shared Secure Vault Documents (${docs.length}):\n');
+
+    for (int i = 0; i < docs.length; i++) {
+      final d = docs[i];
+      final profileName = _profilesMap[d.original.memberId]?.name ?? 'Vault Profile';
+      buffer.writeln('${i + 1}. [${profileName.toUpperCase()}] - ${d.title}');
+      buffer.writeln('   Category: ${d.original.category}');
+
+      for (var entry in d.fields.entries) {
+        if (entry.value.trim().isNotEmpty) {
+          buffer.writeln('   • ${entry.key}: ${entry.value}');
+        }
+      }
+      buffer.writeln('');
+    }
+
+    // ignore: deprecated_member_use
+    Share.share(buffer.toString(), subject: 'Shared Vault Documents (${docs.length})');
+  }
+
   void _showChangePinDialog() {
     final currentPinController = TextEditingController();
     final newPinController = TextEditingController();
@@ -277,29 +301,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                 MaterialPageRoute(builder: (context) => const FamilyManagementScreen()),
               );
             },
-            tooltip: 'Family Profiles',
-          ),
-          StreamBuilder<List<VaultCollaborationRequest>>(
-            stream: _vaultService.getIncomingRequestsStream(),
-            builder: (context, snapshot) {
-              final requests = snapshot.data ?? [];
-              final hasRequests = requests.isNotEmpty;
-              return IconButton(
-                icon: hasRequests
-                    ? Badge(
-                        label: Text(requests.length.toString()),
-                        child: const Icon(Icons.person_add_alt_1_rounded),
-                      )
-                    : const Icon(Icons.person_add_alt_1_rounded),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const VaultCollaborationScreen()),
-                  );
-                },
-                tooltip: 'Vault Collaboration',
-              );
-            },
+            tooltip: 'Family Profiles & Group',
           ),
           IconButton(
             icon: const Icon(Icons.password_rounded),
@@ -408,6 +410,9 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                       return true;
                     }).toList();
 
+                    // Sort documents alphabetically by title (A-Z)
+                    filteredDocs.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+
                     return Column(
                       children: [
                         // Filters row
@@ -417,6 +422,22 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                             scrollDirection: Axis.horizontal,
                             child: Row(
                               children: [
+                                // Share All Button
+                                if (filteredDocs.isNotEmpty) ...[
+                                  ElevatedButton.icon(
+                                    onPressed: () => _shareAllFilteredDocuments(filteredDocs),
+                                    icon: const Icon(Icons.share_rounded, size: 16),
+                                    label: Text('Share All (${filteredDocs.length})'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.indigo.shade700,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+
                                 // Member Filter (Unified Profiles: Myself, Virtual Profiles, Collaborators)
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -454,7 +475,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                               ],
                                             ),
                                           );
-                                        }),
+                                        }).toList(),
                                       ],
                                       onChanged: (val) {
                                         setState(() {
@@ -464,8 +485,8 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                // Category Filter
+                                const SizedBox(width: 8),
+                                // Category Filter Dropdown
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10),
                                   decoration: BoxDecoration(
@@ -476,11 +497,11 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                   child: DropdownButtonHideUnderline(
                                     child: DropdownButton<String>(
                                       value: _selectedCategory,
-                                      icon: const Icon(Icons.arrow_drop_down, color: Colors.indigo),
+                                      icon: const Icon(Icons.category_outlined, color: Colors.indigo),
                                       items: dynamicCategories.map((c) {
                                         return DropdownMenuItem<String>(
                                           value: c,
-                                          child: Text('Category: $c'),
+                                          child: Text(c == 'All' ? 'All Categories' : c),
                                         );
                                       }).toList(),
                                       onChanged: (val) {

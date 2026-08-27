@@ -1941,10 +1941,21 @@ exports.getGcpMonthlyCost = functions.runWith({ timeoutSeconds: 60, memory: "256
 async function fetchAndStoreEventsForUserInternal(uid: string, triggerNotification: boolean): Promise<any> {
     const userDoc = await db.collection("users").doc(uid).get();
     let interests = ["Cloud", "Devops", "AI", "Agentic AI"];
+    let location = "Bengaluru, India";
+    let eventMode = "In-Person";
+
     if (userDoc.exists) {
         const data = userDoc.data();
-        if (data && data.eventInterests && Array.isArray(data.eventInterests) && data.eventInterests.length > 0) {
-            interests = data.eventInterests;
+        if (data) {
+            if (data.eventInterests && Array.isArray(data.eventInterests) && data.eventInterests.length > 0) {
+                interests = data.eventInterests;
+            }
+            if (data.eventLocation && typeof data.eventLocation === "string" && data.eventLocation.trim().length > 0) {
+                location = data.eventLocation.trim();
+            }
+            if (data.eventMode && typeof data.eventMode === "string" && data.eventMode.trim().length > 0) {
+                eventMode = data.eventMode.trim();
+            }
         }
     }
 
@@ -1961,11 +1972,23 @@ async function fetchAndStoreEventsForUserInternal(uid: string, triggerNotificati
     const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
     const endDateStr = today.clone().add(2, 'months').endOf('month').format('YYYY-MM-DD');
 
-    const prompt = `Find upcoming Tech events, meetups, workshops, hackathons happening in Bengaluru, India related to the following interests: ${interests.join(', ')}.
+    let modeConstraint = "";
+    if (eventMode === "In-Person") {
+        modeConstraint = `Include ONLY physical, in-person offline events hosted in or near ${location}. Do NOT include online webinars or virtual streams.`;
+    } else if (eventMode === "Online") {
+        modeConstraint = `Include ONLY online webinars, virtual workshops, or live streams accessible from ${location}. Do NOT include physical in-person events.`;
+    } else {
+        modeConstraint = `Include both physical in-person events in ${location} and online webinars/virtual workshops.`;
+    }
+
+    const prompt = `Find upcoming Tech events, meetups, workshops, hackathons happening in ${location} related to the following interests: ${interests.join(', ')}.
 The events must happen between ${startDateStr} and ${endDateStr}.
-Do NOT include large academic or commercial conferences. Focus on tech meetups, community workshops, tech talks, and hands-on hackathons.
-Use Google Search grounding to find real, current upcoming events. In addition to general Google searches, you MUST search for and check tech events on these platforms: luma.com, eventbrite.com, meetup.com, hackerearth.com, 10times.com, and linkedin.com.
-Provide a clean JSON list of events. The "registrationLink" property in the JSON should point directly to the specific event source page URL from where you found the event (e.g. the specific meetup, luma event page, eventbrite event page, etc.).
+CRITICAL CONSTRAINTS:
+1. ${modeConstraint}
+2. Do NOT include large academic or commercial sales conferences. Focus on tech meetups, community workshops, tech talks, and hands-on hackathons.
+3. Ensure events strictly match the user's specific tech interests (${interests.join(', ')}). Do NOT include non-technical commercial marketing or general HR events.
+Use Google Search grounding to find real, current upcoming events. Search luma.com, eventbrite.com, meetup.com, hackerearth.com, 10times.com, and linkedin.com.
+Provide a clean JSON list of events. The "registrationLink" property in the JSON should point directly to the specific event source page URL from where you found the event.
 
 If no events match the criteria, respond ONLY with an empty JSON array: []. Do not include any conversational explanation, preamble, or notes.
 Respond ONLY with a JSON array matching this schema:
@@ -2035,16 +2058,15 @@ Respond ONLY with a JSON array matching this schema:
         }
     }
 
-    // Deduplicate events by date and normalized title, excluding conferences
+    // Deduplicate events by normalized title, excluding conferences
     const seen = new Set<string>();
     const uniqueEvents: any[] = [];
     for (const event of parsedEvents) {
         if (!event.title || !event.date) continue;
         const normTitle = event.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
         if (normTitle.includes("conference") || /\bconf\b/.test(normTitle)) continue;
-        const key = `${event.date}_${normTitle}`;
-        if (!seen.has(key)) {
-            seen.add(key);
+        if (!seen.has(normTitle)) {
+            seen.add(normTitle);
             uniqueEvents.push(event);
         }
     }
@@ -2052,12 +2074,15 @@ Respond ONLY with a JSON array matching this schema:
     const eventsCol = db.collection("users").doc(uid).collection("events");
     const existingSnap = await eventsCol.get();
 
-    const existingKeys = new Set<string>();
+    // Map existing events by normTitle -> docRef & date for smart deduplication across all users
+    const existingMap = new Map<string, { id: string; ref: FirebaseFirestore.DocumentReference; date: string }>();
     existingSnap.forEach(doc => {
         const d = doc.data();
         const t = d.title || "";
         const normTitle = t.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-        existingKeys.add(`${d.date}_${normTitle}`);
+        if (normTitle) {
+            existingMap.set(normTitle, { id: doc.id, ref: doc.ref, date: d.date || "" });
+        }
     });
 
     // Mark all existing events as not new (isNew: false)
@@ -2071,9 +2096,18 @@ Respond ONLY with a JSON array matching this schema:
     const writeBatch = db.batch();
     for (const event of uniqueEvents) {
         const normTitle = event.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-        const key = `${event.date}_${normTitle}`;
+        if (!normTitle) continue;
 
-        if (!existingKeys.has(key)) {
+        if (existingMap.has(normTitle)) {
+            // Already exists in Firestore! Merge date info instead of creating duplicate document!
+            const existing = existingMap.get(normTitle)!;
+            if (existing.date && !existing.date.includes(event.date)) {
+                writeBatch.update(existing.ref, {
+                    date: `${existing.date}, ${event.date}`
+                });
+            }
+        } else {
+            // Brand new event title!
             const cleanTitle = event.title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
             const docId = `${event.date}_${cleanTitle.substring(0, 30)}`;
             const docRef = eventsCol.doc(docId);
@@ -2082,6 +2116,7 @@ Respond ONLY with a JSON array matching this schema:
                 isNew: true,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
+            existingMap.set(normTitle, { id: docId, ref: docRef, date: event.date });
             newCount++;
         }
     }

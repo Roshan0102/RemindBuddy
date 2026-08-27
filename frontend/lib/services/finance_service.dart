@@ -760,4 +760,159 @@ class FinanceService {
 
     await doc.set({'customTags': existingTags}, SetOptions(merge: true));
   }
+
+  // ============================================================================
+  // USER CUSTOM CATEGORIES (PERSISTENCE & SYNC)
+  // ============================================================================
+
+  Stream<List<String>> getUserCustomCategoriesStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    return doc.snapshots().map((snap) {
+      if (!snap.exists || snap.data() == null) return [];
+      final data = snap.data() as Map<String, dynamic>;
+      final List<dynamic> list = data['customCategories'] ?? [];
+      return list.map((e) => e.toString()).toList();
+    });
+  }
+
+  Future<void> saveUserCustomCategory(String name) async {
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) return;
+
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final snap = await doc.get();
+    List<String> existing = [];
+    if (snap.exists && snap.data() != null) {
+      final data = snap.data() as Map<String, dynamic>;
+      final List<dynamic> list = data['customCategories'] ?? [];
+      existing = list.map((e) => e.toString()).toList();
+    }
+
+    if (!existing.any((c) => c.toLowerCase() == cleanName.toLowerCase())) {
+      existing.add(cleanName);
+      await doc.set({'customCategories': existing}, SetOptions(merge: true));
+    }
+  }
+
+  // ============================================================================
+  // USER SMS HEADER -> BANK MAPPINGS (AUTO-LEARNING & PERSISTENCE)
+  // ============================================================================
+
+  Stream<Map<String, String>> getUserHeaderBankMappingsStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value({});
+
+    return doc.snapshots().map((snap) {
+      if (!snap.exists || snap.data() == null) return {};
+      final data = snap.data() as Map<String, dynamic>;
+      final Map<String, dynamic> rawMap = data['headerBankMappings'] ?? {};
+      final Map<String, String> result = {};
+      rawMap.forEach((key, value) {
+        result[key.toString().trim().toUpperCase()] = value.toString();
+      });
+      return result;
+    });
+  }
+
+  Future<void> saveUserHeaderBankMapping(String sender, String bankName) async {
+    final cleanSender = sender.trim().toUpperCase();
+    if (cleanSender.isEmpty || bankName.isEmpty || bankName == 'Bank' || bankName.toLowerCase() == 'unknown') return;
+
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final snap = await doc.get();
+    Map<String, dynamic> existingMappings = {};
+    if (snap.exists && snap.data() != null) {
+      final data = snap.data() as Map<String, dynamic>;
+      existingMappings = Map<String, dynamic>.from(data['headerBankMappings'] ?? {});
+    }
+
+    existingMappings[cleanSender] = bankName;
+
+    // Also extract code part (e.g. "BV-INDBNK-S" -> "INDBNK")
+    if (cleanSender.contains('-')) {
+      final parts = cleanSender.split('-');
+      if (parts.length > 1) {
+        final codePart = parts.last.replaceAll(' ', '');
+        if (codePart.isNotEmpty) {
+          existingMappings[codePart] = bankName;
+        }
+      }
+    }
+
+    await doc.set({'headerBankMappings': existingMappings}, SetOptions(merge: true));
+
+    // Update existing unassigned SMS transactions in Firestore matching this sender
+    try {
+      final unassignedSnap = await doc.collection('sms_transactions').get();
+      final batch = _db.batch();
+      int updateCount = 0;
+
+      for (final txDoc in unassignedSnap.docs) {
+        final data = txDoc.data();
+        final txSender = (data['sender'] ?? '').toString().trim().toUpperCase();
+        final currentBank = (data['bankName'] ?? '').toString();
+
+        if (txSender == cleanSender || (cleanSender.contains('-') && txSender.contains(cleanSender.split('-').last))) {
+          if (currentBank == 'Bank' || currentBank.toLowerCase() == 'unknown') {
+            batch.update(txDoc.reference, {'bankName': bankName});
+            updateCount++;
+          }
+        }
+      }
+
+      if (updateCount > 0) {
+        await batch.commit();
+      }
+    } catch (e) {
+      print('Error updating unassigned transactions for header $cleanSender: $e');
+    }
+  }
+
+  // ============================================================================
+  // USER CATEGORY BUDGETS (PERSISTENCE & SYNC)
+  // ============================================================================
+
+  Stream<Map<String, double>> getCategoryBudgetsStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value({});
+
+    return doc.snapshots().map((snap) {
+      if (!snap.exists || snap.data() == null) return {};
+      final data = snap.data() as Map<String, dynamic>;
+      final Map<String, dynamic> rawMap = data['categoryBudgets'] ?? {};
+      final Map<String, double> result = {};
+      rawMap.forEach((key, val) {
+        if (val is num) {
+          result[key] = val.toDouble();
+        }
+      });
+      return result;
+    });
+  }
+
+  Future<void> saveCategoryBudget(String category, double amount) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final snap = await doc.get();
+    Map<String, dynamic> existingBudgets = {};
+    if (snap.exists && snap.data() != null) {
+      final data = snap.data() as Map<String, dynamic>;
+      existingBudgets = Map<String, dynamic>.from(data['categoryBudgets'] ?? {});
+    }
+
+    if (amount <= 0) {
+      existingBudgets.remove(category);
+    } else {
+      existingBudgets[category] = amount;
+    }
+
+    await doc.set({'categoryBudgets': existingBudgets}, SetOptions(merge: true));
+  }
 }

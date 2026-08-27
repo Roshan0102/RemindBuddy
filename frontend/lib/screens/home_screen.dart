@@ -70,10 +70,6 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             tooltip: 'Link a Buddy',
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => setState(() {}),
-          ),
         ],
       ),
       body: StreamBuilder<List<CalendarReminder>>(

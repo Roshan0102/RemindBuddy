@@ -88,6 +88,16 @@ class RemindBuddyApp extends StatelessWidget {
                   seedColor: Colors.blue,
                   brightness: Brightness.light,
                 ),
+                checkboxTheme: CheckboxThemeData(
+                  checkColor: WidgetStateProperty.all(Colors.white),
+                  fillColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return Colors.blueAccent;
+                    }
+                    return null;
+                  }),
+                  side: const BorderSide(color: Colors.black54, width: 1.5),
+                ),
               ),
               darkTheme: ThemeData(
                 primarySwatch: Colors.blue,
@@ -96,6 +106,16 @@ class RemindBuddyApp extends StatelessWidget {
                 colorScheme: ColorScheme.fromSeed(
                   seedColor: Colors.blue,
                   brightness: Brightness.dark,
+                ),
+                checkboxTheme: CheckboxThemeData(
+                  checkColor: WidgetStateProperty.all(Colors.white),
+                  fillColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return Colors.blueAccent;
+                    }
+                    return Colors.white10;
+                  }),
+                  side: const BorderSide(color: Colors.white70, width: 1.5),
                 ),
               ),
               home: isLoggedIn ? const MainScreen() : const AuthScreen(),

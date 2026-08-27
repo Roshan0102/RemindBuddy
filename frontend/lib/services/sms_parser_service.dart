@@ -20,8 +20,21 @@ class SmsParserService {
   };
 
   /// Parses a single SMS body and returns an [SmsTransaction] if it's a valid bank transaction, or null otherwise.
-  static SmsTransaction? parseSms(String sender, String rawBody, int timestampMillis) {
+  static SmsTransaction? parseSms(String sender, String rawBody, int timestampMillis, [Map<String, String>? customHeaderMappings]) {
     if (rawBody.isEmpty) return null;
+
+    final String lowerRaw = rawBody.toLowerCase();
+    if (lowerRaw.contains('failed') ||
+        lowerRaw.contains('unsuccessful') ||
+        lowerRaw.contains('un-successful') ||
+        lowerRaw.contains('declined') ||
+        lowerRaw.contains('rejected') ||
+        lowerRaw.contains('transaction failed') ||
+        lowerRaw.contains('payment failed') ||
+        lowerRaw.contains('txn failed') ||
+        lowerRaw.contains('could not be processed')) {
+      return null;
+    }
 
     // Step A: Strip out common bank security & dispute footers (e.g. "Not You? Call 1800.../SMS BLOCK UPI to 7308080808")
     final String body = _stripDisputeFooters(rawBody);
@@ -111,7 +124,7 @@ class SmsParserService {
     }
 
     // 2. Extract Bank Name
-    final String bankName = _extractBankName(sender, body);
+    final String bankName = _extractBankName(sender, body, customHeaderMappings);
 
     // 3. Extract Amount
     double amount = 0.0;
@@ -194,9 +207,26 @@ class SmsParserService {
   }
 
   /// Extracted Bank Name from SMS sender header & body matching top 45+ Indian Banks & Financial Institutions
-  static String _extractBankName(String sender, String body) {
+  static String _extractBankName(String sender, String body, [Map<String, String>? customHeaderMappings]) {
+    final String cleanFullSender = sender.trim().toUpperCase();
+    if (customHeaderMappings != null && customHeaderMappings.isNotEmpty) {
+      if (customHeaderMappings.containsKey(cleanFullSender)) {
+        return customHeaderMappings[cleanFullSender]!;
+      }
+      String codePart = cleanFullSender;
+      if (codePart.contains('-')) {
+        final parts = codePart.split('-');
+        if (parts.length > 1) {
+          codePart = parts.last.replaceAll(' ', '');
+        }
+      }
+      if (customHeaderMappings.containsKey(codePart)) {
+        return customHeaderMappings[codePart]!;
+      }
+    }
+
     // Extract TRAI 6-character sender ID (e.g. "AD-HDFCBK" -> "HDFCBK", "AX-SBIBNK" -> "SBIBNK")
-    String headerCode = sender.toUpperCase().trim();
+    String headerCode = cleanFullSender;
     if (headerCode.contains('-')) {
       final parts = headerCode.split('-');
       if (parts.length > 1) {
@@ -212,7 +242,7 @@ class SmsParserService {
       _BankMatchRule('ICICI Bank', ['ICICIB', 'ICICI'], ['icici bank', 'icici']),
       _BankMatchRule('Axis Bank', ['AXISBK', 'UTIB', 'AXIS'], ['axis bank', 'axis']),
       _BankMatchRule('Kotak Bank', ['KOTAKB', 'KOTAK'], ['kotak mahindra', 'kotak bank', 'kotak']),
-      _BankMatchRule('Indian Bank', ['INDNBN', 'INDIBK', 'INDIANB', 'INDN', 'INDB', 'IBK'], ['indian bank', 'indianb', 'ind bank', 'indibk']),
+      _BankMatchRule('Indian Bank', ['INDNBN', 'INDIBK', 'INDIANB', 'INDN', 'INDB', 'IBK', 'INDBNK'], ['indian bank', 'indianb', 'ind bank', 'indibk', 'indbnk']),
       _BankMatchRule('Bank of Baroda', ['BOBTXT', 'BOB', 'BARODA'], ['bank of baroda', 'baroda bank', 'bob']),
       _BankMatchRule('Canara Bank', ['CANBNK', 'CNRB', 'CANARA'], ['canara bank', 'canara']),
       _BankMatchRule('Union Bank', ['UNIONB', 'UBOI', 'UNIN', 'UBIN', 'UBI'], ['union bank of india', 'union bank', 'uboi', 'ubin']),

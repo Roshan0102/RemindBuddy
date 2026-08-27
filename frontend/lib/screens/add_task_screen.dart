@@ -207,10 +207,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             String? targetUsername;
             if (recipientUid != _myUid) {
               final buddy = _approvedBuddies.firstWhere(
-                (b) => b['receiverUid'] == recipientUid,
+                (b) => b['receiverUid'] == recipientUid || b['uid'] == recipientUid || b['senderUid'] == recipientUid,
                 orElse: () => <String, dynamic>{},
               );
-              targetUsername = buddy['receiverUsername'] as String?;
+              targetUsername = (buddy['receiverUsername'] ?? buddy['username'] ?? buddy['senderUsername']) as String?;
             }
 
             await storage.insertCalendarReminder(
@@ -278,45 +278,29 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           style: TextStyle(color: Colors.grey, fontSize: 12),
                         ),
                         const SizedBox(height: 8),
-                        CheckboxListTile(
-                          title: const Text('Myself (You)'),
-                          value: _selectedRecipients.contains(_myUid),
-                          activeColor: Theme.of(context).primaryColor,
-                          onChanged: (bool? checked) {
-                            if (_myUid == null) return;
-                            setState(() {
-                              if (checked == true) {
-                                _selectedRecipients.add(_myUid!);
-                              } else {
-                                if (_selectedRecipients.length > 1) {
-                                  _selectedRecipients.remove(_myUid);
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('At least one recipient must be selected.')),
-                                  );
-                                }
-                              }
-                            });
-                          },
-                          controlAffinity: ListTileControlAffinity.leading,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        if (_approvedBuddies.isNotEmpty) ...[
-                          const Divider(),
-                          ..._approvedBuddies.map((buddy) {
-                            final buddyUid = buddy['receiverUid'] as String;
-                            final buddyUsername = buddy['receiverUsername'] as String? ?? 'User';
+                        Builder(
+                          builder: (context) {
+                            final bool isDark = Theme.of(context).brightness == Brightness.dark;
                             return CheckboxListTile(
-                              title: Text('@$buddyUsername'),
-                              value: _selectedRecipients.contains(buddyUid),
-                              activeColor: Theme.of(context).primaryColor,
+                              title: const Text('Myself (You)'),
+                              value: _selectedRecipients.contains(_myUid),
+                              activeColor: Colors.blueAccent,
+                              checkColor: Colors.white,
+                              side: BorderSide(color: isDark ? Colors.white70 : Colors.black45, width: 1.5),
+                              fillColor: WidgetStateProperty.resolveWith<Color?>((states) {
+                                if (states.contains(WidgetState.selected)) {
+                                  return Colors.blueAccent;
+                                }
+                                return isDark ? Colors.white10 : null;
+                              }),
                               onChanged: (bool? checked) {
+                                if (_myUid == null) return;
                                 setState(() {
                                   if (checked == true) {
-                                    _selectedRecipients.add(buddyUid);
+                                    _selectedRecipients.add(_myUid!);
                                   } else {
                                     if (_selectedRecipients.length > 1) {
-                                      _selectedRecipients.remove(buddyUid);
+                                      _selectedRecipients.remove(_myUid);
                                     } else {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(content: Text('At least one recipient must be selected.')),
@@ -327,6 +311,48 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                               },
                               controlAffinity: ListTileControlAffinity.leading,
                               contentPadding: EdgeInsets.zero,
+                            );
+                          },
+                        ),
+                        if (_approvedBuddies.isNotEmpty) ...[
+                          const Divider(),
+                          ..._approvedBuddies.map((buddy) {
+                            final buddyUid = buddy['receiverUid'] as String;
+                            final buddyUsername = buddy['receiverUsername'] as String? ?? 'User';
+                            return Builder(
+                              builder: (context) {
+                                final bool isDark = Theme.of(context).brightness == Brightness.dark;
+                                return CheckboxListTile(
+                                  title: Text('@$buddyUsername'),
+                                  value: _selectedRecipients.contains(buddyUid),
+                                  activeColor: Colors.blueAccent,
+                                  checkColor: Colors.white,
+                                  side: BorderSide(color: isDark ? Colors.white70 : Colors.black45, width: 1.5),
+                                  fillColor: WidgetStateProperty.resolveWith<Color?>((states) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      return Colors.blueAccent;
+                                    }
+                                    return isDark ? Colors.white10 : null;
+                                  }),
+                                  onChanged: (bool? checked) {
+                                    setState(() {
+                                      if (checked == true) {
+                                        _selectedRecipients.add(buddyUid);
+                                      } else {
+                                        if (_selectedRecipients.length > 1) {
+                                          _selectedRecipients.remove(buddyUid);
+                                        } else {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('At least one recipient must be selected.')),
+                                          );
+                                        }
+                                      }
+                                    });
+                                  },
+                                  controlAffinity: ListTileControlAffinity.leading,
+                                  contentPadding: EdgeInsets.zero,
+                                );
+                              },
                             );
                           }),
                         ],

@@ -24,7 +24,10 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
   final Map<String, String> _targetBankIds = {};
   final Map<String, String> _targetDebtIds = {};
   final Map<String, String> _selectedBankNames = {};
+  final Map<String, TextEditingController> _personNameControllers = {};
   List<String> _customTagRecommendations = [];
+  List<String> _userCustomCategories = [];
+  StreamSubscription<List<String>>? _customCategoriesSub;
 
   final List<Map<String, dynamic>> _categories = [
     {'name': 'Food & Dining', 'icon': Icons.fastfood, 'color': Colors.orange},
@@ -32,12 +35,13 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     {'name': 'Groceries', 'icon': Icons.shopping_basket, 'color': Colors.green},
     {'name': 'Bills & Utilities', 'icon': Icons.receipt_long, 'color': Colors.blue},
     {'name': 'Shopping', 'icon': Icons.shopping_bag, 'color': Colors.purple},
-    {'name': 'Self Transfer', 'icon': Icons.swap_horiz_rounded, 'color': Colors.indigoAccent},
+    {'name': 'Personal Transfer', 'icon': Icons.swap_horiz_rounded, 'color': Colors.purpleAccent},
+    {'name': 'Self Transfer', 'icon': Icons.sync_alt_rounded, 'color': Colors.indigoAccent},
     {'name': 'Borrowed', 'icon': Icons.south_west_rounded, 'color': Colors.amber.shade700},
     {'name': 'Lended', 'icon': Icons.north_east_rounded, 'color': Colors.teal},
     {'name': 'Loan Repaid', 'icon': Icons.task_alt_rounded, 'color': Colors.green.shade700},
     {'name': 'Entertainment', 'icon': Icons.movie, 'color': Colors.pink},
-    {'name': 'Personal Care', 'icon': Icons.spa, 'color': Colors.deepOrangeAccent},
+    {'name': 'Medical & Health', 'icon': Icons.medical_services_rounded, 'color': Colors.redAccent},
     {'name': 'Ignored / Not Needed', 'icon': Icons.block_rounded, 'color': Colors.blueGrey},
     {'name': 'Others', 'icon': Icons.more_horiz, 'color': Colors.grey},
   ];
@@ -52,6 +56,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
       _selectedCategories[tx.id] = tx.category == 'Uncategorized' ? 'Food & Dining' : tx.category;
       _noteControllers[tx.id] = TextEditingController(text: '');
       _selectedBankNames[tx.id] = tx.bankName;
+      _personNameControllers[tx.id] = TextEditingController(text: tx.payee.isNotEmpty ? tx.payee : '');
     }
     _customTagsSub = FinanceService().getUserCustomTagsStream().listen((tags) {
       if (mounted) {
@@ -60,12 +65,23 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
         });
       }
     });
+    _customCategoriesSub = FinanceService().getUserCustomCategoriesStream().listen((cats) {
+      if (mounted) {
+        setState(() {
+          _userCustomCategories = cats;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _customTagsSub?.cancel();
+    _customCategoriesSub?.cancel();
     for (var ctrl in _noteControllers.values) {
+      ctrl.dispose();
+    }
+    for (var ctrl in _personNameControllers.values) {
       ctrl.dispose();
     }
     super.dispose();
@@ -82,6 +98,12 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
         await finance.saveUserCustomTag(notes);
       }
 
+      if (chosenBankName != 'Bank' && chosenBankName.toLowerCase() != 'unknown') {
+        if (tx.sender.isNotEmpty) {
+          await finance.saveUserHeaderBankMapping(tx.sender, chosenBankName);
+        }
+      }
+
       final updatedTx = tx.copyWith(
         isVerified: true,
         bankName: chosenBankName,
@@ -91,6 +113,25 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
 
       final destBankId = _targetBankIds[tx.id];
       await finance.updateSmsTransaction(updatedTx, destinationBankAccountId: destBankId);
+
+      // If category is Lended or Borrowed, create a DebtRecord entry!
+      if (category == 'Lended' || category == 'Borrowed') {
+        final personInput = _personNameControllers[tx.id]?.text.trim() ?? '';
+        final finalPersonName = personInput.isNotEmpty ? personInput : (tx.payee.isNotEmpty ? tx.payee : 'Friend');
+        final debtType = category == 'Lended' ? 'lent' : 'borrowed';
+
+        final debt = DebtRecord(
+          id: '',
+          personName: finalPersonName,
+          amount: tx.amount,
+          type: debtType,
+          date: tx.timestamp,
+          note: notes.isNotEmpty ? notes : 'Tracked from SMS (${tx.bankName})',
+          isSettled: false,
+          accountId: destBankId,
+        );
+        await finance.addDebt(debt, updateAccountBalance: false);
+      }
 
       // If category is Loan Repaid, mark target debt as settled!
       if (category == 'Loan Repaid') {
@@ -123,15 +164,20 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     final Color inputBg = isDark ? const Color(0xFF1E293B) : Colors.grey.shade100;
     final Color chipBg = isDark ? const Color(0xFF1E293B) : Colors.grey.shade200;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.82,
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return AnimatedPadding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      duration: const Duration(milliseconds: 100),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.82,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Center(
             child: Container(
@@ -206,68 +252,84 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Icon(
-                                isDebit ? Icons.arrow_upward : Icons.arrow_downward,
-                                color: isDebit ? Colors.redAccent : Colors.greenAccent,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                currentBankName,
-                                style: TextStyle(
-                                  color: isUnassignedBank ? Colors.redAccent : textColor,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isDebit ? Icons.arrow_upward : Icons.arrow_downward,
+                                  color: isDebit ? Colors.redAccent : Colors.greenAccent,
+                                  size: 20,
                                 ),
-                              ),
-                              if (tx.accountLast4.isNotEmpty) ...[
-                                const SizedBox(width: 4),
-                                Text(
-                                  '(*${tx.accountLast4})',
-                                  style: TextStyle(color: subtextColor, fontSize: 12),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    currentBankName,
+                                    style: TextStyle(
+                                      color: isUnassignedBank ? Colors.redAccent : textColor,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
+                                if (tx.accountLast4.isNotEmpty) ...[
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '(*${tx.accountLast4})',
+                                    style: TextStyle(color: subtextColor, fontSize: 12),
+                                  ),
+                                ],
                               ],
-                              if (isUnassignedBank) ...[
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Text('⚠️ Assign Bank', style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-                                ),
-                              ],
-                              const SizedBox(width: 8),
-                              InkWell(
-                                onTap: () => _showSmsDetailsDialog(context, tx),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: Colors.blue.withOpacity(0.4), width: 0.8),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.sms_rounded, size: 11, color: Colors.blueAccent),
-                                      SizedBox(width: 3),
-                                      Text('SMS 📩', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
+                          const SizedBox(width: 8),
                           Text(
                             '${isDebit ? '-' : '+'}${NumberFormat.currency(symbol: '₹', decimalDigits: 2).format(tx.amount)}',
                             style: GoogleFonts.outfit(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: isDebit ? Colors.redAccent : Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+
+                      // Action Badges Row (Assign Bank & SMS)
+                      Row(
+                        children: [
+                          if (isUnassignedBank) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.redAccent.withOpacity(0.4), width: 0.8),
+                              ),
+                              child: const Text(
+                                '⚠️ Assign Bank',
+                                style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          InkWell(
+                            onTap: () => _showSmsDetailsDialog(context, tx),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.blue.withOpacity(0.4), width: 0.8),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.sms_rounded, size: 11, color: Colors.blueAccent),
+                                  SizedBox(width: 3),
+                                  Text('SMS 📩', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -335,6 +397,15 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                                           setState(() {
                                             _selectedBankNames[tx.id] = newBankName;
                                             _targetBankIds[tx.id] = selectedAcc.id;
+
+                                            if (tx.sender.isNotEmpty) {
+                                              for (var otherTx in _items) {
+                                                if (otherTx.sender.trim().toUpperCase() == tx.sender.trim().toUpperCase()) {
+                                                  _selectedBankNames[otherTx.id] = newBankName;
+                                                  _targetBankIds[otherTx.id] = selectedAcc.id;
+                                                }
+                                              }
+                                            }
                                           });
                                         }
                                       },
@@ -362,33 +433,110 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: _categories.map((cat) {
-                          final bool isSelected = selectedCat == cat['name'];
-                          final Color catColor = cat['color'] as Color;
+                        children: [
+                          ...[
+                            ..._categories,
+                            ..._userCustomCategories.map((c) => {
+                              'name': c,
+                              'icon': Icons.label_rounded,
+                              'color': Colors.indigoAccent,
+                            }),
+                          ].map((cat) {
+                            final bool isSelected = selectedCat == cat['name'];
+                            final Color catColor = cat['color'] as Color;
 
-                          return ChoiceChip(
-                            avatar: Icon(cat['icon'] as IconData, size: 16, color: isSelected ? Colors.white : catColor),
-                            label: Text(
-                              cat['name'] as String,
-                              style: TextStyle(
-                                color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
-                                fontSize: 12,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            return ChoiceChip(
+                              avatar: Icon(cat['icon'] as IconData, size: 16, color: isSelected ? Colors.white : catColor),
+                              label: Text(
+                                cat['name'] as String,
+                                style: TextStyle(
+                                  color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                  fontSize: 12,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                ),
                               ),
+                              selected: isSelected,
+                              selectedColor: catColor,
+                              backgroundColor: chipBg,
+                              onSelected: (selected) {
+                                if (selected) {
+                                  setState(() {
+                                    _selectedCategories[tx.id] = cat['name'] as String;
+                                  });
+                                }
+                              },
+                            );
+                          }),
+                          ActionChip(
+                            avatar: const Icon(Icons.add_rounded, size: 16, color: Colors.blueAccent),
+                            label: const Text(
+                              '+ Add Category',
+                              style: TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold),
                             ),
-                            selected: isSelected,
-                            selectedColor: catColor,
-                            backgroundColor: chipBg,
-                            onSelected: (selected) {
-                              if (selected) {
-                                setState(() {
-                                  _selectedCategories[tx.id] = cat['name'] as String;
-                                });
-                              }
-                            },
-                          );
-                        }).toList(),
+                            backgroundColor: Colors.blue.withOpacity(0.12),
+                            side: BorderSide(color: Colors.blueAccent.withOpacity(0.4), width: 1.0),
+                            onPressed: () => _showAddCustomCategoryDialog(context),
+                          ),
+                        ],
                       ),
+
+                      if (selectedCat == 'Lended' || selectedCat == 'Borrowed') ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: selectedCat == 'Lended' ? Colors.teal.withOpacity(0.12) : Colors.amber.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: selectedCat == 'Lended' ? Colors.teal : Colors.amber.shade700,
+                              width: 1.2,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    selectedCat == 'Lended' ? Icons.north_east_rounded : Icons.south_west_rounded,
+                                    size: 18,
+                                    color: selectedCat == 'Lended' ? Colors.teal : Colors.amber.shade700,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    selectedCat == 'Lended' ? 'Lended to (Person Name):' : 'Borrowed from (Person Name):',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: selectedCat == 'Lended' ? Colors.teal : Colors.amber.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: _personNameControllers.putIfAbsent(
+                                  tx.id,
+                                  () => TextEditingController(text: tx.payee.isNotEmpty ? tx.payee : ''),
+                                ),
+                                style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.w600),
+                                decoration: InputDecoration(
+                                  hintText: selectedCat == 'Lended' ? 'Enter recipient name (e.g. Rahul)' : 'Enter lender name (e.g. Suresh)',
+                                  hintStyle: TextStyle(color: subtextColor, fontSize: 12),
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  fillColor: inputBg,
+                                  filled: true,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
 
                       if (selectedCat == 'Self Transfer') ...[
                         const SizedBox(height: 12),
@@ -600,8 +748,9 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   void _showSmsDetailsDialog(BuildContext context, SmsTransaction tx) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -761,6 +910,54 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddCustomCategoryDialog(BuildContext context) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.category_rounded, color: Colors.blueAccent),
+            SizedBox(width: 8),
+            Text('Create Custom Category'),
+          ],
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Category Name',
+            hintText: 'e.g. Subscriptions / Investments',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
+            onPressed: () async {
+              final catName = controller.text.trim();
+              if (catName.isNotEmpty) {
+                await FinanceService().saveUserCustomCategory(catName);
+                if (dialogCtx.mounted) {
+                  Navigator.pop(dialogCtx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Category "$catName" created!'), backgroundColor: Colors.green),
+                  );
+                }
+              }
+            },
+            child: const Text('Save Category'),
           ),
         ],
       ),

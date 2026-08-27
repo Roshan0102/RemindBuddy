@@ -47,6 +47,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   bool _isFetchingEvents = false;
   bool _isFetchingWalkIns = false;
   List<String> _eventInterests = ['Cloud', 'Devops', 'AI', 'Agentic AI'];
+  String _eventLocation = 'Bengaluru';
+  String _eventMode = 'In-Person'; // 'In-Person', 'Online', 'Both'
   List<String> _walkinRoles = ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer'];
   DateTime? _eventsLastUpdated;
   DateTime? _walkinsLastUpdated;
@@ -70,7 +72,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       _isWalkInEnabled = true;
     }
     _loadShifts();
-    _listenToEventsPermission();
+    _listenToUserAndCounts();
   }
 
   @override
@@ -81,7 +83,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     super.dispose();
   }
 
-  void _listenToEventsPermission() {
+  void _listenToUserAndCounts() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -99,6 +101,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         .orderBy('date', descending: false)
         .snapshots();
 
+    _userSubscription?.cancel();
     _userSubscription = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
@@ -108,6 +111,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         final data = doc.data()!;
         final enabledModules = List<String>.from(data['enabledModules'] ?? ['gold']);
         final interests = List<String>.from(data['eventInterests'] ?? ['Cloud', 'Devops', 'AI', 'Agentic AI']);
+        final location = (data['eventLocation'] ?? 'Bengaluru').toString();
+        final mode = (data['eventMode'] ?? 'In-Person').toString();
         final walkinRoles = List<String>.from(data['walkinRoles'] ?? ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer']);
         
         final lastUpdatedVal = data['eventsLastUpdated'];
@@ -147,6 +152,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
             _isEventsEnabled = enabledModules.contains('events') || _selectedTab == 1;
             _isWalkInEnabled = enabledModules.contains('walkin') || _selectedTab == 2;
             _eventInterests = interests;
+            _eventLocation = location;
+            _eventMode = mode;
             _walkinRoles = walkinRoles;
             _eventsLastUpdated = lastUpdated;
             _walkinsLastUpdated = walkinsLastUpdated;
@@ -527,32 +534,79 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final controller = TextEditingController(text: _eventInterests.join(', '));
+    final interestsController = TextEditingController(text: _eventInterests.join(', '));
+    final locationController = TextEditingController(text: _eventLocation);
+    String selectedMode = _eventMode;
     bool isSavingInterests = false;
 
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Edit Tech Interests'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Enter tags you are interested in (comma separated):',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                decoration: const InputDecoration(
-                  labelText: 'Interests',
-                  hintText: 'e.g. Cloud, Devops, AI, Agentic AI, testing',
-                  border: OutlineInputBorder(),
+          title: const Text('Event Preferences 🎯'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  '1. Target Location / City:',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                TextField(
+                  controller: locationController,
+                  decoration: const InputDecoration(
+                    labelText: 'Location / City',
+                    hintText: 'e.g. Bengaluru, Chennai, Mumbai, Delhi, Hyderabad',
+                    prefixIcon: Icon(Icons.location_on_outlined, size: 20),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '2. Event Mode / Format:',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: ['In-Person', 'Online', 'Both'].map((mode) {
+                    final isSel = selectedMode == mode;
+                    return ChoiceChip(
+                      label: Text(mode == 'In-Person' ? '📍 In-Person (Offline)' : mode == 'Online' ? '🌐 Online (Virtual)' : '✨ Both'),
+                      selected: isSel,
+                      selectedColor: Theme.of(context).colorScheme.primary,
+                      labelStyle: TextStyle(
+                        color: isSel ? Colors.white : Theme.of(context).textTheme.bodyMedium?.color,
+                        fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                        fontSize: 12,
+                      ),
+                      onSelected: (val) {
+                        if (val) setDialogState(() => selectedMode = mode);
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '3. Tech Interests (comma-separated):',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: interestsController,
+                  decoration: const InputDecoration(
+                    labelText: 'Interests',
+                    hintText: 'e.g. Cloud, Devops, AI, Agentic AI, testing',
+                    prefixIcon: Icon(Icons.interests_outlined, size: 20),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -565,35 +619,42 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                   : () async {
                       setDialogState(() => isSavingInterests = true);
                       try {
-                        final list = controller.text
+                        final list = interestsController.text
                             .split(',')
                             .map((s) => s.trim())
                             .where((s) => s.isNotEmpty)
                             .toList();
                         
+                        final loc = locationController.text.trim().isEmpty ? 'Bengaluru' : locationController.text.trim();
+
                         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
                           'eventInterests': list,
+                          'eventLocation': loc,
+                          'eventMode': selectedMode,
                         }, SetOptions(merge: true));
 
                         setState(() {
                           _eventInterests = list;
+                          _eventLocation = loc;
+                          _eventMode = selectedMode;
                         });
 
                         Navigator.pop(context);
 
-                        // Prompt user to refresh
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Interests saved! Fetching new events...'),
+                            content: Text('Preferences saved! Fetching matching events...'),
                           ),
                         );
                         _triggerFetchEvents();
                       } catch (e) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to save interests: $e'), backgroundColor: Colors.red),
+                          SnackBar(content: Text('Failed to save preferences: $e'), backgroundColor: Colors.red),
                         );
                       } finally {
-                        setDialogState(() => isSavingInterests = false);
+                        if (mounted) {
+                          setDialogState(() => isSavingInterests = false);
+                        }
                       }
                     },
               child: isSavingInterests
@@ -1888,6 +1949,42 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
           if (dateStr.isEmpty) continue;
 
+          // 3. Location Filter: Must be physical offline event in Bangalore (exclude online/virtual webinars completely)
+          final loc = (data['location'] ?? '').toString().toLowerCase();
+          final isOnline = loc.contains('online') || loc.contains('virtual') || loc.contains('webinar') || loc.contains('zoom');
+          if (isOnline) continue;
+
+          final isBangalore = loc.contains('bengaluru') || loc.contains('bangalore') || loc.contains('blr') || loc.contains('electronic city') || loc.contains('hsr') || loc.contains('koramangala') || loc.contains('indiranagar') || loc.contains('manyata');
+          final isOtherCity = (loc.contains('mumbai') || loc.contains('delhi') || loc.contains('hyderabad') || loc.contains('pune') || loc.contains('chennai') || loc.contains('noida') || loc.contains('gurgaon')) && !isBangalore;
+          if (isOtherCity) continue;
+
+          // 4. Interest Relevance Filter: Match user interests or tech keywords
+          final desc = (data['description'] ?? '').toString().toLowerCase();
+          final combinedText = '$lowerTitle $desc $loc';
+          
+          final activeInterests = _eventInterests.map((i) => i.toLowerCase().trim()).where((i) => i.isNotEmpty).toList();
+          final coreKeywords = ['cloud', 'devops', 'ai', 'agentic', 'ml', 'llm', 'genai', 'sre', 'kubernetes', 'aws', 'gcp', 'azure', 'docker', 'rag', 'tech', 'developer', 'hiring', 'buildathon', 'hackathon'];
+          
+          bool isRelevant = false;
+          if (activeInterests.isNotEmpty) {
+            for (final interest in activeInterests) {
+              if (combinedText.contains(interest)) {
+                isRelevant = true;
+                break;
+              }
+            }
+          }
+          if (!isRelevant) {
+            for (final kw in coreKeywords) {
+              if (combinedText.contains(kw)) {
+                isRelevant = true;
+                break;
+              }
+            }
+          }
+
+          if (!isRelevant) continue;
+
           final key = title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
           groupsMap.putIfAbsent(key, () => []).add(doc);
         }
@@ -1959,9 +2056,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
             continue;
           }
 
-          // Filter by selected month: match if any date is in selected month OR if lastDate is on/after selected month
-          final matchesMonth = sortedDates.any((d) => d.startsWith(_selectedRosterMonth)) ||
-              lastDate.compareTo(_selectedRosterMonth) >= 0;
+          // Filter by selected month: match if any date is in selected month
+          final matchesMonth = sortedDates.any((d) => d.startsWith(_selectedRosterMonth));
           if (!matchesMonth) continue;
 
           groupedEvents.add({

@@ -45,25 +45,53 @@ void notificationTapBackground(NotificationResponse notificationResponse) async 
           final currentSnooze = data['currentSnoozeCount'] ?? 0;
           final maxSnooze = data['maxSnoozeCount'] ?? 3;
           final interval = data['snoozeIntervalMinutes'] ?? 15;
+          final pairedDocId = data['pairedDocId'] as String?;
+          final pairedUid = data['pairedUid'] as String?;
           
           if (currentSnooze < maxSnooze) {
             final nextTime = DateTime.now().add(Duration(minutes: interval));
             final dateStr = "${nextTime.year}-${nextTime.month.toString().padLeft(2, '0')}-${nextTime.day.toString().padLeft(2, '0')}";
             final timeStr = "${nextTime.hour.toString().padLeft(2, '0')}:${nextTime.minute.toString().padLeft(2, '0')}";
             
-            await docRef.update({
+            final updates = {
               'date': dateStr,
               'time': timeStr,
               'status': 'pending',
               'currentSnoozeCount': currentSnooze + 1,
-            });
+            };
+
+            await docRef.update(updates);
+
+            if (pairedDocId != null && pairedUid != null) {
+              try {
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(pairedUid)
+                    .collection('calendar_reminders')
+                    .doc(pairedDocId)
+                    .update(updates);
+              } catch (e) {
+                print("Error updating paired snooze reminder: $e");
+              }
+            }
             LogService.staticLog("BG Handler: Snoozed reminder $reminderId to $dateStr $timeStr (Snooze count: ${currentSnooze + 1}).");
           } else {
             final expireAt = DateTime.now().add(const Duration(days: 30));
-            await docRef.update({
+            final updates = {
               'status': 'completed',
               'expireAt': Timestamp.fromDate(expireAt),
-            });
+            };
+            await docRef.update(updates);
+            if (pairedDocId != null && pairedUid != null) {
+              try {
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(pairedUid)
+                    .collection('calendar_reminders')
+                    .doc(pairedDocId)
+                    .update(updates);
+              } catch (_) {}
+            }
             LogService.staticLog("BG Handler: Max snooze limit reached for $reminderId. Marked completed.");
           }
         }
@@ -164,25 +192,53 @@ class NotificationService {
                   final currentSnooze = data['currentSnoozeCount'] ?? 0;
                   final maxSnooze = data['maxSnoozeCount'] ?? 3;
                   final interval = data['snoozeIntervalMinutes'] ?? 15;
+                  final pairedDocId = data['pairedDocId'] as String?;
+                  final pairedUid = data['pairedUid'] as String?;
                   
                   if (currentSnooze < maxSnooze) {
                     final nextTime = DateTime.now().add(Duration(minutes: interval));
                     final dateStr = "${nextTime.year}-${nextTime.month.toString().padLeft(2, '0')}-${nextTime.day.toString().padLeft(2, '0')}";
                     final timeStr = "${nextTime.hour.toString().padLeft(2, '0')}:${nextTime.minute.toString().padLeft(2, '0')}";
                     
-                    await docRef.update({
+                    final updates = {
                       'date': dateStr,
                       'time': timeStr,
                       'status': 'pending',
                       'currentSnoozeCount': currentSnooze + 1,
-                    });
+                    };
+
+                    await docRef.update(updates);
+
+                    if (pairedDocId != null && pairedUid != null) {
+                      try {
+                        await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(pairedUid)
+                            .collection('calendar_reminders')
+                            .doc(pairedDocId)
+                            .update(updates);
+                      } catch (e) {
+                        print("Error updating paired snooze reminder: $e");
+                      }
+                    }
                     LogService.staticLog("FG Handler: Snoozed reminder $reminderId to $dateStr $timeStr.");
                   } else {
                     final expireAt = DateTime.now().add(const Duration(days: 30));
-                    await docRef.update({
+                    final updates = {
                       'status': 'completed',
                       'expireAt': Timestamp.fromDate(expireAt),
-                    });
+                    };
+                    await docRef.update(updates);
+                    if (pairedDocId != null && pairedUid != null) {
+                      try {
+                        await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(pairedUid)
+                            .collection('calendar_reminders')
+                            .doc(pairedDocId)
+                            .update(updates);
+                      } catch (_) {}
+                    }
                     LogService.staticLog("FG Handler: Max snooze limit reached for $reminderId.");
                   }
                 }

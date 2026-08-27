@@ -21,4 +21,27 @@ Call 18002586161/SMS BLOCK UPI to 7308080808''';
     expect(result.type, 'Debit');
     expect(result.payee, 'Pruthviraj K G');
   });
+
+  test('Parses unknown SMS header with custom user bank mapping', () {
+    const sender = 'BV-INDBNK-S';
+    const body = 'Debited Rs. 500.00 from A/C *1234 on 27/08/26 to SWIGGY.';
+    final customMappings = {'BV-INDBNK-S': 'Indian Bank'};
+
+    final result = SmsParserService.parseSms(sender, body, 1787680000000, customMappings);
+
+    expect(result, isNotNull);
+    expect(result!.bankName, 'Indian Bank');
+    expect(result.accountLast4, '1234');
+    expect(result.amount, 500.0);
+    expect(result.type, 'Debit');
+  });
+
+  test('Ignores failed or unsuccessful transaction SMS', () {
+    const sender = 'AD-ZEPTO';
+    const body = 'Payment of Rs 350.00 to ZEPTO failed on 26/08/26. Please try again.';
+
+    final result = SmsParserService.parseSms(sender, body, 1787680000000);
+
+    expect(result, isNull);
+  });
 }

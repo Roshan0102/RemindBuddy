@@ -631,6 +631,100 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
+  bool _isSendingAll = false;
+
+  Future<void> _sendAllEmails() async {
+    if (_extractedJobs.isEmpty) return;
+
+    if (_userEmail.isEmpty || _userAppPassword.isEmpty) {
+      _showEmailConfigDialog();
+      return;
+    }
+
+    setState(() {
+      _isSendingAll = true;
+    });
+
+    int sentCount = 0;
+    int failCount = 0;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Sending ${_extractedJobs.length} job application email(s) in background...'),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+
+    final jobsToProcess = List<JobApplication>.from(_extractedJobs);
+
+    for (int i = 0; i < jobsToProcess.length; i++) {
+      final originalApp = jobsToProcess[i];
+      final recipient = (_emailControllers[i]?.text ?? originalApp.recipientEmail).trim();
+      final subject = (_subjectControllers[i]?.text ?? originalApp.generatedSubject).trim();
+      final body = (_bodyControllers[i]?.text ?? originalApp.generatedCoverLetter).trim();
+
+      if (recipient.isEmpty) {
+        failCount++;
+        continue;
+      }
+
+      final appToSend = JobApplication(
+        id: originalApp.id,
+        jobTitle: originalApp.jobTitle,
+        companyName: originalApp.companyName,
+        recipientEmail: recipient,
+        extractedSkills: originalApp.extractedSkills,
+        generatedSubject: subject,
+        generatedCoverLetter: body,
+        status: originalApp.status,
+        appliedAt: originalApp.appliedAt,
+        posterImageUrls: originalApp.posterImageUrls,
+        errorMessage: originalApp.errorMessage,
+      );
+
+      try {
+        await _service.sendJobApplicationEmail(appToSend);
+        sentCount++;
+      } catch (e) {
+        debugPrint("Error sending email to $recipient: $e");
+        failCount++;
+      }
+    }
+
+    for (var ctrl in _emailControllers.values) {
+      ctrl.dispose();
+    }
+    for (var ctrl in _subjectControllers.values) {
+      ctrl.dispose();
+    }
+    for (var ctrl in _bodyControllers.values) {
+      ctrl.dispose();
+    }
+    for (var ctrl in _refinePromptControllers.values) {
+      ctrl.dispose();
+    }
+
+    setState(() {
+      _extractedJobs.clear();
+      _emailControllers.clear();
+      _subjectControllers.clear();
+      _bodyControllers.clear();
+      _refinePromptControllers.clear();
+      _refiningMap.clear();
+      _isSendingAll = false;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🚀 Successfully sent $sentCount job application email(s)!${failCount > 0 ? " ($failCount missing HR emails)" : ""}'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
   // ============================================================================
   // BUILD METHOD
   // ============================================================================
@@ -876,12 +970,32 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Extracted Applications (${_extractedJobs.length})',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  Expanded(
+                    child: Text(
+                      'Extracted Applications (${_extractedJobs.length})',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
                   ),
+                  ElevatedButton.icon(
+                    onPressed: _isSendingAll ? null : _sendAllEmails,
+                    icon: _isSendingAll
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
+                        : const Icon(Icons.send_rounded, size: 16),
+                    label: Text(_isSendingAll ? 'Sending All...' : 'SEND ALL (${_extractedJobs.length})'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   TextButton(
-                    onPressed: () => setState(() => _extractedJobs.clear()),
+                    onPressed: _isSendingAll ? null : () => setState(() => _extractedJobs.clear()),
                     child: const Text('Clear All'),
                   ),
                 ],

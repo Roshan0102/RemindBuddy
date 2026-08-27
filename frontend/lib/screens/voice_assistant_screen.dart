@@ -138,11 +138,14 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
     );
   }
 
+  bool _hasSentCurrentVoiceInput = false;
+
   Future<void> _startListening() async {
     await _flutterTts.stop();
     setState(() {
       _isSpeaking = false;
       _speakingWaveController.stop();
+      _hasSentCurrentVoiceInput = false;
     });
 
     if (!_speechEnabled) {
@@ -159,13 +162,15 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
       _speechTimeoutTimer?.cancel();
       await _speechToText.listen(
         onResult: (result) {
+          if (_hasSentCurrentVoiceInput) return;
+
           setState(() {
             _currentTranscribedText = result.recognizedWords;
           });
           
           _speechTimeoutTimer?.cancel();
           if (result.recognizedWords.trim().isNotEmpty) {
-            _speechTimeoutTimer = Timer(const Duration(milliseconds: 3500), () {
+            _speechTimeoutTimer = Timer(const Duration(milliseconds: 2500), () {
               debugPrint("STT: Inactivity timeout reached. Sending: $_currentTranscribedText");
               _stopListeningAndSend(_currentTranscribedText);
             });
@@ -178,7 +183,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
         },
         listenOptions: SpeechListenOptions(
           listenFor: const Duration(seconds: 30),
-          pauseFor: const Duration(milliseconds: 3500),
+          pauseFor: const Duration(milliseconds: 2500),
           cancelOnError: true,
           partialResults: true,
         ),
@@ -198,10 +203,15 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
   }
 
   void _stopListeningAndSend(String words) {
+    if (_hasSentCurrentVoiceInput) return;
+    _hasSentCurrentVoiceInput = true;
+
     _speechTimeoutTimer?.cancel();
     _stopListening();
-    if (words.trim().isNotEmpty) {
-      _sendMessage(words);
+    
+    final cleanWords = words.trim();
+    if (cleanWords.isNotEmpty) {
+      _sendMessage(cleanWords);
     }
   }
 
