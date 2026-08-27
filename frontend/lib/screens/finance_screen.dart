@@ -30,7 +30,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   bool _isScanningInbox = false;
   bool _isSyncingStudySms = false;
   DateTime _smsMonthFilter = DateTime.now();
-  int _smsSubTabIndex = 0;
+  final ValueNotifier<int> _smsSubTabNotifier = ValueNotifier<int>(0);
   final PageController _smsPageController = PageController();
 
   int? _selectedFeatureIndex;
@@ -38,7 +38,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    final now = DateTime.now();
+    _smsMonthFilter = DateTime(now.year, now.month);
+    _tabController = TabController(length: 2, vsync: this);
     _initSmsRealtimeListener();
     _financeService.checkAndProcessPendingBackgroundSms();
   }
@@ -64,6 +66,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   void dispose() {
     _tabController.dispose();
     _smsPageController.dispose();
+    _smsSubTabNotifier.dispose();
     super.dispose();
   }
 
@@ -1614,6 +1617,24 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                       });
                                     },
                                   ),
+                                  if (_smsMonthFilter.year != DateTime.now().year || _smsMonthFilter.month != DateTime.now().month)
+                                    InkWell(
+                                      onTap: () {
+                                        final now = DateTime.now();
+                                        setState(() {
+                                          _smsMonthFilter = DateTime(now.year, now.month);
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: Colors.blueAccent.withOpacity(0.4), width: 0.8),
+                                        ),
+                                        child: const Text('Today', style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                                      ),
+                                    ),
                                 ],
                               ),
                               Row(
@@ -1639,80 +1660,85 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       const SizedBox(height: 10),
 
                       // Sub-Tab Selector Pills (Transactions List | Analytics & Budget)
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF0F172A) : Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () {
-                                  setState(() => _smsSubTabIndex = 0);
-                                  _smsPageController.animateToPage(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: _smsSubTabIndex == 0 ? Colors.blueAccent : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Center(
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.list_alt_rounded, size: 16, color: _smsSubTabIndex == 0 ? Colors.white : subtextColor),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'Transactions (${monthTransactions.length})',
-                                          style: TextStyle(
-                                            color: _smsSubTabIndex == 0 ? Colors.white : subtextColor,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                          ),
+                      ValueListenableBuilder<int>(
+                        valueListenable: _smsSubTabNotifier,
+                        builder: (context, currentSubTab, _) {
+                          return Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF0F172A) : Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      _smsSubTabNotifier.value = 0;
+                                      _smsPageController.animateToPage(0, duration: const Duration(milliseconds: 250), curve: Curves.easeInOut);
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: currentSubTab == 0 ? Colors.blueAccent : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Center(
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.list_alt_rounded, size: 16, color: currentSubTab == 0 ? Colors.white : subtextColor),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              'Transactions (${monthTransactions.length})',
+                                              style: TextStyle(
+                                                color: currentSubTab == 0 ? Colors.white : subtextColor,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () {
-                                  setState(() => _smsSubTabIndex = 1);
-                                  _smsPageController.animateToPage(1, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: _smsSubTabIndex == 1 ? Colors.blueAccent : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Center(
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.insert_chart_outlined_rounded, size: 16, color: _smsSubTabIndex == 1 ? Colors.white : subtextColor),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'Analytics & Budget',
-                                          style: TextStyle(
-                                            color: _smsSubTabIndex == 1 ? Colors.white : subtextColor,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                          ),
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      _smsSubTabNotifier.value = 1;
+                                      _smsPageController.animateToPage(1, duration: const Duration(milliseconds: 250), curve: Curves.easeInOut);
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: currentSubTab == 1 ? Colors.blueAccent : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Center(
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.insert_chart_outlined_rounded, size: 16, color: currentSubTab == 1 ? Colors.white : subtextColor),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              'Analytics & Budget',
+                                              style: TextStyle(
+                                                color: currentSubTab == 1 ? Colors.white : subtextColor,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -1725,8 +1751,8 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                     controller: _smsPageController,
                     physics: const BouncingScrollPhysics(),
                     onPageChanged: (idx) {
-                      if (_smsSubTabIndex != idx) {
-                        setState(() => _smsSubTabIndex = idx);
+                      if (_smsSubTabNotifier.value != idx) {
+                        _smsSubTabNotifier.value = idx;
                       }
                     },
                     children: [
@@ -2574,78 +2600,123 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                           ],
                         ),
                       )
-                    else
-                      ...budgets.entries.map((bEntry) {
-                        final cat = bEntry.key;
-                        final budgetLimit = bEntry.value;
-                        final spent = categoryTotals[cat] ?? 0.0;
-                        final isOver = spent > budgetLimit;
-                        final percent = budgetLimit > 0 ? (spent / budgetLimit).clamp(0.0, 1.0) : 1.0;
+                    else ...[
+                      Builder(builder: (context) {
+                        final now = DateTime.now();
+                        final totalDaysInMonth = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1, 0).day;
+                        final isCurrentMonth = _smsMonthFilter.year == now.year && _smsMonthFilter.month == now.month;
+                        final daysPassed = isCurrentMonth ? now.day : totalDaysInMonth;
+                        final daysRemaining = (totalDaysInMonth - daysPassed + 1).clamp(1, totalDaysInMonth);
 
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: isDark ? Colors.white.withOpacity(0.03) : Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: isOver ? Colors.redAccent : (isDark ? Colors.white12 : Colors.grey.shade200),
-                              width: isOver ? 1.5 : 1.0,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        return Column(
+                          children: budgets.entries.map((bEntry) {
+                            final cat = bEntry.key;
+                            final budgetLimit = bEntry.value;
+                            final spent = categoryTotals[cat] ?? 0.0;
+                            final isOver = spent > budgetLimit;
+                            final percent = budgetLimit > 0 ? (spent / budgetLimit).clamp(0.0, 1.0) : 1.0;
+
+                            final dailyAllowance = budgetLimit > 0 ? (budgetLimit / totalDaysInMonth) : 0.0;
+                            final remainingBudget = budgetLimit - spent;
+                            final remainingDailyAllowance = (isCurrentMonth && remainingBudget > 0 && daysRemaining > 0)
+                                ? (remainingBudget / daysRemaining)
+                                : 0.0;
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isDark ? Colors.white.withOpacity(0.03) : Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: isOver ? Colors.redAccent : (isDark ? Colors.white12 : Colors.grey.shade200),
+                                  width: isOver ? 1.5 : 1.0,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(cat, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
                                   Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(
-                                        'Spent ₹${spent.toStringAsFixed(0)} / ₹${budgetLimit.toStringAsFixed(0)}',
-                                        style: TextStyle(
-                                          color: isOver ? Colors.redAccent : subtextColor,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      InkWell(
-                                        onTap: () => _showEditSingleBudgetDialog(context, cat, budgetLimit),
-                                        child: const Icon(Icons.edit_rounded, size: 16, color: Colors.blueAccent),
+                                      Text(cat, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            'Spent ₹${spent.toStringAsFixed(0)} / ₹${budgetLimit.toStringAsFixed(0)}',
+                                            style: TextStyle(
+                                              color: isOver ? Colors.redAccent : subtextColor,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          InkWell(
+                                            onTap: () => _showEditSingleBudgetDialog(context, cat, budgetLimit),
+                                            child: const Icon(Icons.edit_rounded, size: 16, color: Colors.blueAccent),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: LinearProgressIndicator(
-                                  value: percent,
-                                  minHeight: 8,
-                                  backgroundColor: isDark ? Colors.white10 : Colors.grey.shade200,
-                                  valueColor: AlwaysStoppedAnimation<Color>(isOver ? Colors.redAccent : Colors.teal),
-                                ),
-                              ),
-                              if (isOver) ...[
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.warning_amber_rounded, size: 14, color: Colors.redAccent),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Exceeded monthly budget limit by ₹${(spent - budgetLimit).toStringAsFixed(0)}!',
-                                      style: const TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                                  const SizedBox(height: 8),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: LinearProgressIndicator(
+                                      value: percent,
+                                      minHeight: 8,
+                                      backgroundColor: isDark ? Colors.white10 : Colors.grey.shade200,
+                                      valueColor: AlwaysStoppedAnimation<Color>(isOver ? Colors.redAccent : Colors.teal),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.calendar_today_rounded, size: 12, color: Colors.blueAccent),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Daily Budget: ₹${dailyAllowance.toStringAsFixed(0)}/day',
+                                            style: TextStyle(color: subtextColor, fontSize: 11, fontWeight: FontWeight.w600),
+                                          ),
+                                        ],
+                                      ),
+                                      if (isCurrentMonth && !isOver && remainingDailyAllowance > 0)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.withOpacity(0.12),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            'Rec: ₹${remainingDailyAllowance.toStringAsFixed(0)}/day left',
+                                            style: const TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  if (isOver) ...[
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.warning_amber_rounded, size: 14, color: Colors.redAccent),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Exceeded monthly budget limit by ₹${(spent - budgetLimit).toStringAsFixed(0)}!',
+                                          style: const TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
                                     ),
                                   ],
-                                ),
-                              ],
-                            ],
-                          ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
                         );
                       }),
+                    ],
                   ],
                 ),
               ),

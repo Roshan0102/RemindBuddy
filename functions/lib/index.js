@@ -280,7 +280,7 @@ exports.autoSnoozeReminderCheckTask = functions.tasks
         const currentSnooze = rData.currentSnoozeCount || 0;
         const maxSnooze = rData.maxSnoozeCount || 3;
         const interval = rData.snoozeIntervalMinutes || 15;
-        if (currentSnooze < maxSnooze) {
+        if (currentSnooze + 1 < maxSnooze) {
             const nowKolkata = moment().tz('Asia/Kolkata');
             const baseDate = rData.originalDate || rData.date;
             const baseTime = rData.originalTime || rData.time;
@@ -317,10 +317,20 @@ exports.autoSnoozeReminderCheckTask = functions.tasks
         else {
             const expireAt = new Date();
             expireAt.setDate(expireAt.getDate() + 30);
-            await reminderRef.update({
+            const updates = {
                 status: "completed",
                 expireAt: admin.firestore.Timestamp.fromDate(expireAt)
-            });
+            };
+            await reminderRef.update(updates);
+            if (rData.pairedUid && rData.pairedDocId) {
+                try {
+                    await db.collection("users").doc(rData.pairedUid).collection("calendar_reminders").doc(rData.pairedDocId).update(updates);
+                    console.log(`Auto-snooze check: Updated paired reminder ${rData.pairedDocId} to completed.`);
+                }
+                catch (pErr) {
+                    console.error("Error updating paired reminder on auto-snooze:", pErr);
+                }
+            }
             console.log(`Auto-snooze check: Max snooze reached for reminder ${reminderId}. Marked completed.`);
         }
     }
@@ -332,12 +342,28 @@ exports.onCalendarReminderDeleted = functions.firestore
     .document('users/{uid}/calendar_reminders/{reminderId}')
     .onDelete(async (snapshot, context) => {
     const data = snapshot.data();
-    if (data && data.taskId && data.status === "scheduled") {
+    if (!data)
+        return;
+    if (data.taskId && data.status === "scheduled") {
         try {
             await tasksClient.deleteTask({ name: data.taskId });
         }
         catch (error) {
             console.error("Failed to delete scheduled task:", error);
+        }
+    }
+    // Delete paired reminder document for recipient/creator if present
+    if (data.pairedUid && data.pairedDocId) {
+        try {
+            const pairedRef = db.collection('users').doc(data.pairedUid).collection('calendar_reminders').doc(data.pairedDocId);
+            const pairedDoc = await pairedRef.get();
+            if (pairedDoc.exists) {
+                await pairedRef.delete();
+                console.log(`Deleted paired reminder ${data.pairedDocId} for user ${data.pairedUid}`);
+            }
+        }
+        catch (error) {
+            console.error("Failed to delete paired reminder doc:", error);
         }
     }
 });
@@ -349,9 +375,41 @@ exports.onCalendarReminderUpdated = functions.firestore
     if (!before || !after)
         return;
     const { uid, reminderId } = context.params;
+    // Sync status & completion changes to paired document if present
+    if (after.pairedUid && after.pairedDocId) {
+        if (before.status !== after.status || before.date !== after.date || before.time !== after.time || before.currentSnoozeCount !== after.currentSnoozeCount) {
+            try {
+                const pairedRef = db.collection('users').doc(after.pairedUid).collection('calendar_reminders').doc(after.pairedDocId);
+                const pairedSnap = await pairedRef.get();
+                if (pairedSnap.exists) {
+                    const pData = pairedSnap.data();
+                    if (pData && (pData.status !== after.status || pData.date !== after.date || pData.time !== after.time || pData.currentSnoozeCount !== after.currentSnoozeCount)) {
+                        const syncPayload = {
+                            status: after.status
+                        };
+                        if (after.expireAt)
+                            syncPayload.expireAt = after.expireAt;
+                        if (after.notifiedAt)
+                            syncPayload.notifiedAt = after.notifiedAt;
+                        if (after.date)
+                            syncPayload.date = after.date;
+                        if (after.time)
+                            syncPayload.time = after.time;
+                        if (after.currentSnoozeCount !== undefined)
+                            syncPayload.currentSnoozeCount = after.currentSnoozeCount;
+                        await pairedRef.update(syncPayload);
+                        console.log(`Synced status '${after.status}' to paired document ${after.pairedDocId} for user ${after.pairedUid}`);
+                    }
+                }
+            }
+            catch (syncErr) {
+                console.error("Failed syncing update to paired doc:", syncErr);
+            }
+        }
+    }
     if (after.scheduledForUid && after.scheduledForUid !== uid) {
-        console.log(`Reminder update for creator copy. Setting status to scheduled without enqueuing task.`);
-        if (after.status !== "scheduled") {
+        console.log(`Reminder update for creator copy. Status is ${after.status}.`);
+        if (after.status === "pending") {
             return change.after.ref.update({ status: "scheduled" });
         }
         return;

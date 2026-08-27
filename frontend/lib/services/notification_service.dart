@@ -48,7 +48,7 @@ void notificationTapBackground(NotificationResponse notificationResponse) async 
           final pairedDocId = data['pairedDocId'] as String?;
           final pairedUid = data['pairedUid'] as String?;
           
-          if (currentSnooze < maxSnooze) {
+          if (currentSnooze + 1 < maxSnooze) {
             final nextTime = DateTime.now().add(Duration(minutes: interval));
             final dateStr = "${nextTime.year}-${nextTime.month.toString().padLeft(2, '0')}-${nextTime.day.toString().padLeft(2, '0')}";
             final timeStr = "${nextTime.hour.toString().padLeft(2, '0')}:${nextTime.minute.toString().padLeft(2, '0')}";
@@ -195,7 +195,7 @@ class NotificationService {
                   final pairedDocId = data['pairedDocId'] as String?;
                   final pairedUid = data['pairedUid'] as String?;
                   
-                  if (currentSnooze < maxSnooze) {
+                  if (currentSnooze + 1 < maxSnooze) {
                     final nextTime = DateTime.now().add(Duration(minutes: interval));
                     final dateStr = "${nextTime.year}-${nextTime.month.toString().padLeft(2, '0')}-${nextTime.day.toString().padLeft(2, '0')}";
                     final timeStr = "${nextTime.hour.toString().padLeft(2, '0')}:${nextTime.minute.toString().padLeft(2, '0')}";
