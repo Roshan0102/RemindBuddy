@@ -404,8 +404,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildGoldWidget() {
-    final price24k = _latestGoldPrice != null ? '₹${_latestGoldPrice!.price24k.toStringAsFixed(0)}' : '₹7,450';
-    final change = _latestGoldPrice != null ? '${_latestGoldPrice!.change >= 0 ? "+" : ""}₹${_latestGoldPrice!.change.toStringAsFixed(0)}' : '+₹25';
+    final priceStr = _latestGoldPrice != null ? '₹${_latestGoldPrice!.price.toStringAsFixed(0)}' : '₹7,450';
+    final change = _latestGoldPrice != null ? '${_latestGoldPrice!.priceChange >= 0 ? "+" : ""}₹${_latestGoldPrice!.priceChange.toStringAsFixed(0)}' : '+₹25';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -419,7 +419,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(height: 6),
-        Text(price24k, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.amber)),
+        Text(priceStr, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.amber)),
         const SizedBox(height: 2),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
