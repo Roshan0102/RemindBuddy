@@ -62,21 +62,28 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     );
   }
 
-  void _shareField(String label, String value) {
+  void _shareField(String docCategory, String profileName, String value) {
+    final String cleanCat = docCategory.trim().isNotEmpty ? docCategory.trim() : 'Document';
+    final String cleanProf = profileName.trim().isNotEmpty ? profileName.trim() : 'Myself';
     // ignore: deprecated_member_use
-    Share.share('$label: $value', subject: 'Secure Document Detail');
+    Share.share('$cleanCat\n$cleanProf: $value', subject: '$cleanCat Details');
   }
 
-  void _showFullscreenFile(Uint8List fileBytes, String storagePath, bool isPdf) {
-    final name = storagePath.split('/').last;
-    var cleanName = name.replaceAll('_-_', ' - ').replaceAll('_', ' ');
-    final extIndex = cleanName.lastIndexOf('.');
-    if (extIndex != -1) {
-      final ext = cleanName.substring(extIndex);
-      var nameWithoutExt = cleanName.substring(0, extIndex);
-      nameWithoutExt = nameWithoutExt.replaceAll(RegExp(r'\s\d+\s\d+$'), '');
-      cleanName = '$nameWithoutExt$ext';
-    }
+  void _showFullscreenFile(
+    Uint8List fileBytes,
+    String storagePath,
+    bool isPdf,
+    String profileName,
+    String docCategory,
+    int imgIdx,
+  ) {
+    final ext = storagePath.contains('.')
+        ? storagePath.substring(storagePath.lastIndexOf('.'))
+        : (isPdf ? '.pdf' : '.jpg');
+    final cleanProfile = profileName.replaceAll(RegExp(r'[^\w\s\-]'), '').trim();
+    final cleanCategory = docCategory.replaceAll(RegExp(r'[^\w\s\-]'), '').trim();
+    final indexSuffix = imgIdx > 0 ? '_${imgIdx + 1}' : '';
+    final cleanName = '$cleanProfile-$cleanCategory$indexSuffix$ext';
 
     Navigator.push(
       context,
@@ -90,17 +97,22 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     );
   }
 
-  void _shareFileDirectly(Uint8List fileBytes, String storagePath, bool isPdf) async {
+  void _shareFileDirectly(
+    Uint8List fileBytes,
+    String storagePath,
+    bool isPdf,
+    String profileName,
+    String docCategory,
+    int imgIdx,
+  ) async {
     try {
-      final name = storagePath.split('/').last;
-      var cleanName = name.replaceAll('_-_', ' - ').replaceAll('_', ' ');
-      final extIndex = cleanName.lastIndexOf('.');
-      if (extIndex != -1) {
-        final ext = cleanName.substring(extIndex);
-        var nameWithoutExt = cleanName.substring(0, extIndex);
-        nameWithoutExt = nameWithoutExt.replaceAll(RegExp(r'\s\d+\s\d+$'), '');
-        cleanName = '$nameWithoutExt$ext';
-      }
+      final ext = storagePath.contains('.')
+          ? storagePath.substring(storagePath.lastIndexOf('.'))
+          : (isPdf ? '.pdf' : '.jpg');
+      final cleanProfile = profileName.replaceAll(RegExp(r'[^\w\s\-]'), '').trim();
+      final cleanCategory = docCategory.replaceAll(RegExp(r'[^\w\s\-]'), '').trim();
+      final indexSuffix = imgIdx > 0 ? '_${imgIdx + 1}' : '';
+      final cleanName = '$cleanProfile-$cleanCategory$indexSuffix$ext';
 
       if (kIsWeb) {
         final mime = isPdf ? 'application/pdf' : 'image/jpeg';
@@ -184,297 +196,306 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_decDoc.title),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: _editDocument,
-            tooltip: 'Edit Document',
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete, color: Colors.redAccent),
-            onPressed: _deleteDocument,
-            tooltip: 'Delete Document',
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          // 1. Info Card (Category & Last Updated)
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.lock, color: Colors.blue, size: 28),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _rawDoc.category,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Last updated: ${_rawDoc.lastUpdated.day}/${_rawDoc.lastUpdated.month}/${_rawDoc.lastUpdated.year}',
-                          style: const TextStyle(color: Colors.grey, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+    return StreamBuilder<List<VaultMemberProfile>>(
+      stream: _vaultService.getMemberProfilesStream(),
+      builder: (context, profilesSnap) {
+        final profiles = profilesSnap.data ?? [];
+        final profilesMap = {for (var p in profiles) p.id: p};
+        final profile = profilesMap[_rawDoc.memberId];
+        final profileName = (profile != null && profile.rawName.isNotEmpty) ? profile.rawName : 'Myself';
+        final docCategory = _decDoc.original.category.isNotEmpty ? _decDoc.original.category : _decDoc.title;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(_decDoc.title),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: _editDocument,
+                tooltip: 'Edit Document',
               ),
-            ),
+              IconButton(
+                icon: const Icon(Icons.delete, color: Colors.redAccent),
+                onPressed: _deleteDocument,
+                tooltip: 'Delete Document',
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-
-          // 2. Custom Fields Card
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Document Credentials',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                  const Divider(height: 24),
-                  _decDoc.fields.isEmpty
-                      ? const Center(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 16.0),
-                            child: Text(
-                              'No credential fields saved for this document.',
-                              style: TextStyle(color: Colors.grey, fontSize: 14),
+          body: ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              // 1. Document Overview Header Card
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 28,
+                        backgroundColor: Colors.blueAccent.withOpacity(0.15),
+                        child: const Icon(Icons.description, color: Colors.blueAccent, size: 30),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _decDoc.title,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
                             ),
-                          ),
-                        )
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _decDoc.fields.length,
-                          itemBuilder: (context, index) {
-                            final key = _decDoc.fields.keys.elementAt(index);
-                            final val = _decDoc.fields[key]!;
-                            final isVisible = _fieldVisibility[key] ?? true;
+                            const SizedBox(height: 4),
+                            Text(
+                              'Category: ${_decDoc.original.category}',
+                              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                            ),
+                            Text(
+                              'Shared Mode: ${_decDoc.original.sharedMode.toUpperCase()}',
+                              style: const TextStyle(
+                                color: Colors.blueAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
 
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 20.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    key,
-                                    style: const TextStyle(
-                                        fontSize: 14, color: Colors.blueGrey, fontWeight: FontWeight.bold),
+              // 2. Decrypted Credentials/Fields Section
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Document Fields (Decrypted)',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                      const Divider(height: 24),
+                      _decDoc.fields.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8.0),
+                              child: Text('No credential fields available.', style: TextStyle(color: Colors.grey)),
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _decDoc.fields.length,
+                              itemBuilder: (context, index) {
+                                final key = _decDoc.fields.keys.elementAt(index);
+                                final val = _decDoc.fields[key]!;
+                                final isVisible = _fieldVisibility[key] ?? true;
+
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        key.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.grey.shade600,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade100,
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: SelectableText(
+                                                isVisible ? val : '••••••••••••••••',
+                                                style: TextStyle(
+                                                  fontSize: 20, // Large text for elderly parents
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.black87,
+                                                  fontFamily: isVisible ? null : 'monospace',
+                                                  letterSpacing: isVisible ? null : 2.0,
+                                                ),
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: Icon(isVisible ? Icons.visibility : Icons.visibility_off,
+                                                  color: Colors.grey),
+                                              onPressed: () => _toggleVisibility(key),
+                                              tooltip: 'Toggle Visibility',
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.copy, color: Colors.blueAccent),
+                                              onPressed: () => _copyToClipboard(key, val),
+                                              tooltip: 'Copy to Clipboard',
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.share, color: Colors.teal),
+                                              onPressed: () => _shareField(docCategory, profileName, val),
+                                              tooltip: 'Share Field',
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.shade50,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: Colors.grey.shade200),
-                                    ),
-                                    child: Row(
+                                );
+                              },
+                            ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // 3. Encrypted Attachments Section
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Attachments (Decrypted in Memory)',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                      const Divider(height: 24),
+                      _rawDoc.encryptedAttachmentPaths.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8.0),
+                              child: Text('No attachments linked to this document.', style: TextStyle(color: Colors.grey)),
+                            )
+                          : GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _rawDoc.encryptedAttachmentPaths.length,
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                mainAxisSpacing: 12,
+                                crossAxisSpacing: 12,
+                                childAspectRatio: 1.3,
+                              ),
+                              itemBuilder: (context, index) {
+                                final storagePath = _rawDoc.encryptedAttachmentPaths[index];
+                                final isPdf = storagePath.toLowerCase().endsWith('.pdf');
+                                return FutureBuilder<Uint8List?>(
+                                  future: _vaultService.downloadAndDecryptAttachment(storagePath),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState == ConnectionState.waiting) {
+                                      return Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade100,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: const Center(
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        ),
+                                      );
+                                    }
+
+                                    final bytes = snapshot.data;
+                                    if (bytes == null || bytes.isEmpty) {
+                                      return Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.shade50,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: const Center(
+                                          child: Icon(Icons.broken_image, color: Colors.red),
+                                        ),
+                                      );
+                                    }
+
+                                    return Stack(
+                                      fit: StackFit.expand,
                                       children: [
-                                        Expanded(
-                                          child: SelectableText(
-                                            isVisible ? val : '••••••••••••••••',
-                                            style: TextStyle(
-                                              fontSize: 20, // Large text for elderly parents
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.black87,
-                                              fontFamily: isVisible ? null : 'monospace',
-                                              letterSpacing: isVisible ? null : 2.0,
+                                        GestureDetector(
+                                          onTap: () => _showFullscreenFile(bytes, storagePath, isPdf, profileName, docCategory, index),
+                                          child: Hero(
+                                            tag: storagePath,
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(12),
+                                              child: isPdf
+                                                  ? Container(
+                                                      color: Colors.red.shade50,
+                                                      child: Column(
+                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        children: [
+                                                          const Icon(Icons.picture_as_pdf, color: Colors.red, size: 40),
+                                                          const SizedBox(height: 6),
+                                                          Padding(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                                            child: Text(
+                                                              storagePath.split('/').last.split('_-_').last,
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    )
+                                                  : Image.memory(
+                                                      bytes,
+                                                      fit: BoxFit.cover,
+                                                    ),
                                             ),
                                           ),
                                         ),
-                                        IconButton(
-                                          icon: Icon(isVisible ? Icons.visibility : Icons.visibility_off,
-                                              color: Colors.grey),
-                                          onPressed: () => _toggleVisibility(key),
-                                          tooltip: 'Toggle Visibility',
+                                        Positioned(
+                                          top: 8,
+                                          right: 8,
+                                          child: GestureDetector(
+                                            onTap: () => _shareFileDirectly(bytes, storagePath, isPdf, profileName, docCategory, index),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black.withOpacity(0.6),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(Icons.share, color: Colors.white, size: 16),
+                                            ),
+                                          ),
                                         ),
-                                        IconButton(
-                                          icon: const Icon(Icons.copy, color: Colors.blueAccent),
-                                          onPressed: () => _copyToClipboard(key, val),
-                                          tooltip: 'Copy to Clipboard',
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.share, color: Colors.teal),
-                                          onPressed: () => _shareField(key, val),
-                                          tooltip: 'Share Field',
+                                        Positioned(
+                                          bottom: 8,
+                                          right: 8,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withOpacity(0.6),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Icon(Icons.lock, color: Colors.greenAccent, size: 14),
+                                          ),
                                         ),
                                       ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // 3. Encrypted Attachments Section
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Attachments (Decrypted in Memory)',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                  const Divider(height: 24),
-                  _rawDoc.encryptedAttachmentPaths.isEmpty
-                      ? const Center(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 16.0),
-                            child: Text(
-                              'No attachments saved.',
-                              style: TextStyle(color: Colors.grey, fontSize: 14),
-                            ),
-                          ),
-                        )
-                      : GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _rawDoc.encryptedAttachmentPaths.length,
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 12,
-                            crossAxisSpacing: 12,
-                            childAspectRatio: 1.3,
-                          ),
-                          itemBuilder: (context, index) {
-                            final storagePath = _rawDoc.encryptedAttachmentPaths[index];
-                            final isPdf = storagePath.toLowerCase().endsWith('.pdf');
-                            return FutureBuilder<Uint8List?>(
-                              future: _vaultService.downloadAndDecryptAttachment(storagePath),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState == ConnectionState.waiting) {
-                                  return Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.shade100,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Center(
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    ),
-                                  );
-                                }
-
-                                final bytes = snapshot.data;
-                                if (bytes == null || bytes.isEmpty) {
-                                  return Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.red.shade50,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Center(
-                                      child: Icon(Icons.broken_image, color: Colors.red),
-                                    ),
-                                  );
-                                }
-
-                                return Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    GestureDetector(
-                                      onTap: () => _showFullscreenFile(bytes, storagePath, isPdf),
-                                      child: Hero(
-                                        tag: storagePath,
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(12),
-                                          child: isPdf
-                                              ? Container(
-                                                  color: Colors.red.shade50,
-                                                  child: Column(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    children: [
-                                                      const Icon(Icons.picture_as_pdf, color: Colors.red, size: 40),
-                                                      const SizedBox(height: 6),
-                                                      Padding(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                                        child: Text(
-                                                          storagePath.split('/').last.split('_-_').last,
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                          style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                )
-                                              : Image.memory(
-                                                  bytes,
-                                                  fit: BoxFit.cover,
-                                                ),
-                                        ),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      top: 8,
-                                      right: 8,
-                                      child: GestureDetector(
-                                        onTap: () => _shareFileDirectly(bytes, storagePath, isPdf),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(6),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black.withOpacity(0.6),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(Icons.share, color: Colors.white, size: 16),
-                                        ),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      bottom: 8,
-                                      right: 8,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withOpacity(0.6),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(Icons.zoom_out_map, color: Colors.white, size: 14),
-                                      ),
-                                    ),
-                                  ],
+                                    );
+                                  },
                                 );
                               },
-                            );
-                          },
-                        ),
-                ],
+                            ),
+                    ],
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-          const SizedBox(height: 32),
-        ],
-      ),
+        );
+      },
     );
   }
 }

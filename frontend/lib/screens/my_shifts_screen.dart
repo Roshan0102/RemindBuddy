@@ -18,8 +18,7 @@ import '../widgets/web_image_viewer.dart';
 
 
 class MyShiftsScreen extends StatefulWidget {
-  final int initialTab;
-  const MyShiftsScreen({super.key, this.initialTab = 0});
+  const MyShiftsScreen({super.key});
 
   @override
   State<MyShiftsScreen> createState() => _MyShiftsScreenState();
@@ -40,43 +39,10 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   DateTime _currentDate = DateTime.now();
   String get _selectedRosterMonth => DateFormat('yyyy-MM').format(_currentDate);
 
-  late int _selectedTab; // 0 for Schedule, 1 for Events, 2 for Walk-In
-  bool _showPastEvents = false;
-  bool _showPastWalkIns = false;
-  bool _isEventsEnabled = false;
-  bool _isWalkInEnabled = false;
-  bool _isFetchingEvents = false;
-  bool _isFetchingWalkIns = false;
-  bool _isEventsConfigured = false;
-  bool _isWalkInConfigured = false;
-  List<String> _eventInterests = [];
-  String _eventLocation = '';
-  String _eventMode = 'In-Person'; // 'In-Person', 'Online', 'Both'
-  List<String> _walkinRoles = [];
-  String _walkinLocation = '';
-  DateTime? _eventsLastUpdated;
-  DateTime? _walkinsLastUpdated;
-  DateTime? _eventsLastRan;
-  DateTime? _walkinsLastRan;
-  StreamSubscription<DocumentSnapshot>? _userSubscription;
-  Map<String, int> _eventCounts = {};
-  Map<String, int> _walkinCounts = {};
-  StreamSubscription<QuerySnapshot>? _eventsSubscription;
-  StreamSubscription<QuerySnapshot>? _walkinsSubscription;
-  Stream<QuerySnapshot>? _eventsStream;
-  Stream<QuerySnapshot>? _walkinsStream;
-
   @override
   void initState() {
     super.initState();
-    _selectedTab = widget.initialTab;
-    if (_selectedTab == 1) {
-      _isEventsEnabled = true;
-    } else if (_selectedTab == 2) {
-      _isWalkInEnabled = true;
-    }
     _loadShifts();
-    _listenToUserAndCounts();
   }
 
   @override
@@ -1836,81 +1802,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     );
   }
 
-  Widget _buildCustomTabBar() {
-    if (!_isEventsEnabled && !_isWalkInEnabled) {
-      return const SizedBox.shrink();
-    }
-    
-    final tabs = <Map<String, dynamic>>[
-      {'label': 'Schedule', 'index': 0, 'icon': Icons.calendar_today, 'color': Colors.teal},
-      if (_isEventsEnabled)
-        {'label': 'Events', 'index': 1, 'icon': Icons.event, 'color': Colors.green},
-      if (_isWalkInEnabled)
-        {'label': 'Walk-In', 'index': 2, 'icon': Icons.campaign, 'color': Colors.blue},
-    ];
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: tabs.map((tab) {
-          final isSelected = _selectedTab == tab['index'];
-          final color = tab['color'] as Color;
-          
-          return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedTab = tab['index'];
-                });
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeInOut,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: isSelected ? color : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      tab['icon'] as IconData,
-                      size: 16,
-                      color: isSelected ? Colors.white : color.withOpacity(0.8),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      tab['label'] as String,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: isSelected ? Colors.white : color.withOpacity(0.8),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
 
   Widget _buildDateShiftBadge(String dateStr) {
     String shiftLabel = 'no data';
@@ -3098,14 +2990,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _selectedTab == 0
-              ? 'My Shifts'
-              : (_selectedTab == 1 ? 'Tech Events' : 'Walk-In Drives'),
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: const Text('My Shifts', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
-          if (_selectedTab == 0 && _hasData) ...[
+          if (_hasData) ...[
             if (_rosterImageUrl != null) ...[
               IconButton(
                 icon: const Icon(Icons.visibility),
@@ -3123,60 +3010,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               onPressed: _clearData,
               tooltip: 'Clear All Roster Data',
             ),
-          ] else if (_selectedTab == 1) ...[
-            if (_isFetchingEvents)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green),
-                ),
-              )
-            else ...[
-              IconButton(
-                icon: const Icon(Icons.interests_outlined),
-                onPressed: _editInterestsDialog,
-                tooltip: 'Edit Tech Interests',
-              ),
-              IconButton(
-                icon: const Icon(Icons.sync),
-                onPressed: _triggerFetchEvents,
-                tooltip: 'Sync Events Now',
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
-                onPressed: _clearAllEventsDialog,
-                tooltip: 'Delete All Events',
-              ),
-            ]
-          ] else if (_selectedTab == 2) ...[
-            if (_isFetchingWalkIns)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.lightBlue),
-                ),
-              )
-            else ...[
-              IconButton(
-                icon: const Icon(Icons.interests_outlined),
-                onPressed: _editWalkInRolesDialog,
-                tooltip: 'Edit Walk-In Roles',
-              ),
-              IconButton(
-                icon: const Icon(Icons.sync),
-                onPressed: _triggerFetchWalkIns,
-                tooltip: 'Sync Walk-Ins Now',
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
-                onPressed: _clearAllWalkInsDialog,
-                tooltip: 'Delete All Walk-Ins',
-              ),
-            ]
           ],
         ],
       ),

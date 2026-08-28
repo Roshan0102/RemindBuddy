@@ -116,33 +116,85 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
     );
   }
 
-  void _shareField(String label, String value) {
+  void _shareField(String docCategory, String profileName, String value) {
+    final String cleanCat = docCategory.trim().isNotEmpty ? docCategory.trim() : 'Document';
+    final String cleanProf = profileName.trim().isNotEmpty ? profileName.trim() : 'Myself';
     // ignore: deprecated_member_use
-    Share.share('$label: $value', subject: 'Document Details');
+    Share.share('$cleanCat\n$cleanProf: $value', subject: '$cleanCat Details');
   }
 
   void _shareAllFilteredDocuments(List<DecryptedDocument> docs) {
     if (docs.isEmpty) return;
 
     final StringBuffer buffer = StringBuffer();
-    buffer.writeln('🔒 Shared Secure Vault Documents (${docs.length}):\n');
+    final String queryTitle = _searchQuery.trim().isNotEmpty
+        ? _searchQuery.trim().toUpperCase()
+        : 'SECURE VAULT';
 
-    for (int i = 0; i < docs.length; i++) {
-      final d = docs[i];
-      final profileName = _profilesMap[d.original.memberId]?.name ?? 'Vault Profile';
-      buffer.writeln('${i + 1}. [${profileName.toUpperCase()}] - ${d.title}');
-      buffer.writeln('   Category: ${d.original.category}');
+    buffer.writeln('📋 $queryTitle\n');
 
+    for (var d in docs) {
+      final profileName = _profilesMap[d.original.memberId]?.rawName ??
+          _profilesMap[d.original.memberId]?.name ??
+          'Profile';
+
+      final Map<String, String> validFields = {};
       for (var entry in d.fields.entries) {
         if (entry.value.trim().isNotEmpty) {
-          buffer.writeln('   • ${entry.key}: ${entry.value}');
+          validFields[entry.key] = entry.value.trim();
         }
       }
-      buffer.writeln('');
+
+      if (validFields.isNotEmpty) {
+        final content = validFields.entries.map((e) => '${e.key}: ${e.value}').join(', ');
+        buffer.writeln('• $profileName: $content');
+      } else {
+        buffer.writeln('• $profileName: ${d.title}');
+      }
     }
 
     // ignore: deprecated_member_use
-    Share.share(buffer.toString(), subject: 'Shared Vault Documents (${docs.length})');
+    Share.share(buffer.toString().trim(), subject: 'Shared Vault Details');
+  }
+
+  Widget _buildViewModeSegment(String modeKey, String label, IconData icon) {
+    final isSelected = _vaultViewMode == modeKey;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _setSavedViewMode(modeKey),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? (isDark ? Colors.indigo.shade700 : Colors.indigo.shade600)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: isSelected ? Colors.white : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                  color: isSelected ? Colors.white : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showChangePinDialog() {
@@ -614,7 +666,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                       child: Text(vp.name[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                                     ),
                                     title: Text(vp.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                    trailing: (isAdmin && vp.id != 'vp_self')
+                                    trailing: isAdmin
                                         ? IconButton(
                                             icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
                                             onPressed: () async {
@@ -647,14 +699,11 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                 final isCAdmin = family.adminUids.contains(cUid);
                                 final isMe = cUid == user.uid;
 
-                                return FutureBuilder<DocumentSnapshot>(
-                                  future: FirebaseFirestore.instance.collection('users').doc(cUid).get(),
+                                return FutureBuilder<String>(
+                                  future: _vaultService.getUsernameByUid(cUid),
                                   builder: (context, uSnap) {
-                                    String displayName = isMe ? 'You' : cUid;
-                                    if (uSnap.hasData && uSnap.data?.data() != null) {
-                                      final d = uSnap.data!.data() as Map<String, dynamic>;
-                                      displayName = (d['displayName'] ?? d['email'] ?? cUid).toString();
-                                    }
+                                    final username = uSnap.data ?? cUid;
+                                    final displayName = isMe ? '@$username (You)' : '@$username';
 
                                     return Card(
                                       margin: const EdgeInsets.only(bottom: 6),
@@ -666,7 +715,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                           backgroundColor: isCAdmin ? Colors.amber : Colors.blueAccent,
                                           child: Icon(isCAdmin ? Icons.star : Icons.person, color: Colors.white, size: 14),
                                         ),
-                                        title: Text(isMe ? '$displayName (You)' : displayName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                        title: Text(displayName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                                         subtitle: Text(isCAdmin ? 'Admin' : 'Member', style: const TextStyle(fontSize: 11)),
                                         trailing: (isAdmin && !isMe)
                                             ? PopupMenuButton<String>(
@@ -898,160 +947,115 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
 
                     return Column(
                       children: [
-                        // Filters row
+                        // Modern Non-Scrolling Filter Bar (Fits fully on single screen without scrolling!)
                         Padding(
-                          padding: const EdgeInsets.only(left: 12.0, right: 12.0, bottom: 8.0),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                // 1. Vault View Mode Dropdown (Cached in SharedPreferences)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.indigo.shade50,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.indigo.shade200),
-                                  ),
-                                  child: DropdownButtonHideUnderline(
-                                    child: DropdownButton<String>(
-                                      value: _vaultViewMode,
-                                      icon: const Icon(Icons.tune_rounded, color: Colors.indigo),
-                                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo.shade900, fontSize: 13),
-                                      items: const [
-                                        DropdownMenuItem<String>(
-                                          value: 'family',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.people_alt_outlined, size: 18, color: Colors.indigo),
-                                              SizedBox(width: 6),
-                                              Text('Family Shared'),
-                                            ],
-                                          ),
-                                        ),
-                                        DropdownMenuItem<String>(
-                                          value: 'private',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.lock_outline, size: 18, color: Colors.red),
-                                              SizedBox(width: 6),
-                                              Text('My Private'),
-                                            ],
-                                          ),
-                                        ),
-                                        DropdownMenuItem<String>(
-                                          value: 'all',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.auto_awesome, size: 18, color: Colors.purple),
-                                              SizedBox(width: 6),
-                                              Text('All Documents'),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                      onChanged: (val) {
-                                        if (val != null) {
-                                          _setSavedViewMode(val);
-                                        }
-                                      },
-                                    ),
-                                  ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // 1. Segmented View Mode Toggle: [👥 Family] | [🔒 Private] | [🌐 All Docs]
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                const SizedBox(width: 8),
+                                padding: const EdgeInsets.all(3),
+                                child: Row(
+                                  children: [
+                                    _buildViewModeSegment('family', 'Family', Icons.people_alt_rounded),
+                                    _buildViewModeSegment('private', 'Private', Icons.lock_rounded),
+                                    _buildViewModeSegment('all', 'All Docs', Icons.auto_awesome_rounded),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
 
-                                // Share All Button
-                                if (filteredDocs.isNotEmpty) ...[
-                                  ElevatedButton.icon(
-                                    onPressed: () => _shareAllFilteredDocuments(filteredDocs),
-                                    icon: const Icon(Icons.share_rounded, size: 16),
-                                    label: Text('Share All (${filteredDocs.length})'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.indigo.shade700,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              // 2. Member & Category Filter Dropdown Pills + Search Share Button
+                              Row(
+                                children: [
+                                  // Member Profile Filter Pill
+                                  Expanded(
+                                    child: Container(
+                                      height: 38,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.indigo.shade50,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: Colors.indigo.shade100),
+                                      ),
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<String>(
+                                          isExpanded: true,
+                                          value: _profilesMap.containsKey(_selectedMemberId) ? _selectedMemberId : null,
+                                          hint: const Text('All Profiles', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo)),
+                                          icon: const Icon(Icons.arrow_drop_down, color: Colors.indigo, size: 20),
+                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                                          items: [
+                                            const DropdownMenuItem<String>(
+                                              value: null,
+                                              child: Text('All Profiles', overflow: TextOverflow.ellipsis),
+                                            ),
+                                            ..._profilesMap.values.map((p) {
+                                              return DropdownMenuItem<String>(
+                                                value: p.id,
+                                                child: Text(p.name, overflow: TextOverflow.ellipsis),
+                                              );
+                                            }),
+                                          ],
+                                          onChanged: (val) => setState(() => _selectedMemberId = val),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                ],
 
-                                // Member Filter (Unified Profiles: Myself, Virtual Profiles, Collaborators)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.grey.shade300),
-                                  ),
-                                  child: DropdownButtonHideUnderline(
-                                    child: DropdownButton<String>(
-                                      value: _profilesMap.containsKey(_selectedMemberId) ? _selectedMemberId : null,
-                                      hint: const Text('All Vault Profiles'),
-                                      icon: const Icon(Icons.arrow_drop_down, color: Colors.indigo),
-                                      items: [
-                                        const DropdownMenuItem<String>(
-                                          value: null,
-                                          child: Text('All Vault Members & Profiles'),
+                                  // Category Filter Pill
+                                  Expanded(
+                                    child: Container(
+                                      height: 38,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.indigo.shade50,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: Colors.indigo.shade100),
+                                      ),
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<String>(
+                                          isExpanded: true,
+                                          value: _selectedCategory,
+                                          icon: const Icon(Icons.arrow_drop_down, color: Colors.indigo, size: 20),
+                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                                          items: dynamicCategories.map((c) {
+                                            return DropdownMenuItem<String>(
+                                              value: c,
+                                              child: Text(c == 'All' ? 'All Categories' : c, overflow: TextOverflow.ellipsis),
+                                            );
+                                          }).toList(),
+                                          onChanged: (val) => setState(() => _selectedCategory = val ?? 'All'),
                                         ),
-                                        ..._profilesMap.values.map((p) {
-                                          return DropdownMenuItem<String>(
-                                            value: p.id,
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                CircleAvatar(
-                                                  radius: 10,
-                                                  backgroundColor: Color(p.avatarColorValue),
-                                                  child: Text(
-                                                    p.rawName.isNotEmpty ? p.rawName[0].toUpperCase() : '?',
-                                                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Text(p.name),
-                                              ],
-                                            ),
-                                          );
-                                        }).toList(),
-                                      ],
-                                      onChanged: (val) {
-                                        setState(() {
-                                          _selectedMemberId = val;
-                                        });
-                                      },
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                // Category Filter Dropdown
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.grey.shade300),
-                                  ),
-                                  child: DropdownButtonHideUnderline(
-                                    child: DropdownButton<String>(
-                                      value: _selectedCategory,
-                                      icon: const Icon(Icons.category_outlined, color: Colors.indigo),
-                                      items: dynamicCategories.map((c) {
-                                        return DropdownMenuItem<String>(
-                                          value: c,
-                                          child: Text(c == 'All' ? 'All Categories' : c),
-                                        );
-                                      }).toList(),
-                                      onChanged: (val) {
-                                        setState(() {
-                                          _selectedCategory = val ?? 'All';
-                                        });
-                                      },
+
+                                  // Search-driven Share Results Button
+                                  if (_searchQuery.isNotEmpty && filteredDocs.isNotEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      height: 38,
+                                      decoration: BoxDecoration(
+                                        color: Colors.indigo.shade700,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: IconButton(
+                                        icon: const Icon(Icons.share_rounded, color: Colors.white, size: 18),
+                                        tooltip: 'Share Search Results',
+                                        onPressed: () => _shareAllFilteredDocuments(filteredDocs),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                                  ],
+                                ],
+                              ),
+                            ],
                           ),
                         ),
                         // List of documents
@@ -1100,6 +1104,8 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   }
 
   Widget _buildDocumentCard(DecryptedDocument decDoc, VaultMemberProfile? profile) {
+    final profileName = (profile != null && profile.rawName.isNotEmpty) ? profile.rawName : 'Myself';
+    final docCategory = decDoc.original.category.isNotEmpty ? decDoc.original.category : decDoc.title;
     final ownerName = profile != null ? profile.name : 'Myself';
     final avatarColor = profile?.avatarColorValue ?? 0xFF3F51B5;
 
@@ -1244,7 +1250,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                             ),
                             IconButton(
                               icon: const Icon(Icons.share, color: Colors.teal, size: 22),
-                              onPressed: () => _shareField(fKey, fVal),
+                              onPressed: () => _shareField(docCategory, profileName, fVal),
                               tooltip: 'Share',
                             ),
                           ],
@@ -1309,7 +1315,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                               fit: StackFit.expand,
                               children: [
                                 GestureDetector(
-                                  onTap: () => _showFullscreenFile(bytes, path, isPdf),
+                                  onTap: () => _showFullscreenFile(bytes, path, isPdf, profileName, docCategory, imgIdx),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(10),
                                     child: isPdf
@@ -1337,7 +1343,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                   top: 4,
                                   right: 4,
                                   child: GestureDetector(
-                                    onTap: () => _shareFileDirectly(bytes, path, isPdf),
+                                    onTap: () => _shareFileDirectly(bytes, path, isPdf, profileName, docCategory, imgIdx),
                                     child: Container(
                                       padding: const EdgeInsets.all(4),
                                       decoration: BoxDecoration(
@@ -1364,16 +1370,21 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
     );
   }
 
-  void _showFullscreenFile(Uint8List fileBytes, String storagePath, bool isPdf) {
-    final name = storagePath.split('/').last;
-    var cleanName = name.replaceAll('_-_', ' - ').replaceAll('_', ' ');
-    final extIndex = cleanName.lastIndexOf('.');
-    if (extIndex != -1) {
-      final ext = cleanName.substring(extIndex);
-      var nameWithoutExt = cleanName.substring(0, extIndex);
-      nameWithoutExt = nameWithoutExt.replaceAll(RegExp(r'\s\d+\s\d+$'), '');
-      cleanName = '$nameWithoutExt$ext';
-    }
+  void _showFullscreenFile(
+    Uint8List fileBytes,
+    String storagePath,
+    bool isPdf,
+    String profileName,
+    String docCategory,
+    int imgIdx,
+  ) {
+    final ext = storagePath.contains('.')
+        ? storagePath.substring(storagePath.lastIndexOf('.'))
+        : (isPdf ? '.pdf' : '.jpg');
+    final cleanProfile = profileName.replaceAll(RegExp(r'[^\w\s\-]'), '').trim();
+    final cleanCategory = docCategory.replaceAll(RegExp(r'[^\w\s\-]'), '').trim();
+    final indexSuffix = imgIdx > 0 ? '_${imgIdx + 1}' : '';
+    final cleanName = '$cleanProfile-$cleanCategory$indexSuffix$ext';
 
     Navigator.push(
       context,
@@ -1387,17 +1398,22 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
     );
   }
 
-  void _shareFileDirectly(Uint8List fileBytes, String storagePath, bool isPdf) async {
+  void _shareFileDirectly(
+    Uint8List fileBytes,
+    String storagePath,
+    bool isPdf,
+    String profileName,
+    String docCategory,
+    int imgIdx,
+  ) async {
     try {
-      final name = storagePath.split('/').last;
-      var cleanName = name.replaceAll('_-_', ' - ').replaceAll('_', ' ');
-      final extIndex = cleanName.lastIndexOf('.');
-      if (extIndex != -1) {
-        final ext = cleanName.substring(extIndex);
-        var nameWithoutExt = cleanName.substring(0, extIndex);
-        nameWithoutExt = nameWithoutExt.replaceAll(RegExp(r'\s\d+\s\d+$'), '');
-        cleanName = '$nameWithoutExt$ext';
-      }
+      final ext = storagePath.contains('.')
+          ? storagePath.substring(storagePath.lastIndexOf('.'))
+          : (isPdf ? '.pdf' : '.jpg');
+      final cleanProfile = profileName.replaceAll(RegExp(r'[^\w\s\-]'), '').trim();
+      final cleanCategory = docCategory.replaceAll(RegExp(r'[^\w\s\-]'), '').trim();
+      final indexSuffix = imgIdx > 0 ? '_${imgIdx + 1}' : '';
+      final cleanName = '$cleanProfile-$cleanCategory$indexSuffix$ext';
 
       if (kIsWeb) {
         final mime = isPdf ? 'application/pdf' : 'image/jpeg';

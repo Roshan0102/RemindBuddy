@@ -613,27 +613,16 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               '₹${NumberFormat('#,##,##0').format(bill.amount)}',
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.purple),
                             ),
-                            Switch(
-                              value: bill.isActive,
-                              onChanged: (val) {
-                                _financeService.updateBill(RecurringBill(
-                                  id: bill.id,
-                                  title: bill.title,
-                                  amount: bill.amount,
-                                  category: bill.category,
-                                  dueDate: bill.dueDate,
-                                  startDate: bill.startDate,
-                                  frequency: bill.frequency,
-                                  notifications: bill.notifications,
-                                  accountId: bill.accountId,
-                                  isActive: val,
-                                  notes: bill.notes,
-                                ));
-                              },
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, color: Colors.blueAccent),
+                              onPressed: () => _showAddBillDialog(context, existingBill: bill),
+                              tooltip: 'Edit Bill',
                             ),
                             IconButton(
                               icon: const Icon(Icons.delete_outline, color: Colors.red),
                               onPressed: () => _financeService.deleteBill(bill.id),
+                              tooltip: 'Delete Bill',
                             ),
                           ],
                         ),
@@ -1318,18 +1307,35 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     );
   }
 
-  void _showAddBillDialog(BuildContext context) {
-    final titleCtrl = TextEditingController();
-    final amountCtrl = TextEditingController();
-    final notesCtrl = TextEditingController();
+  void _showAddBillDialog(BuildContext context, {RecurringBill? existingBill}) {
+    final titleCtrl = TextEditingController(text: existingBill?.title ?? '');
+    final amountCtrl = TextEditingController(text: existingBill != null ? existingBill.amount.toString() : '');
+    final notesCtrl = TextEditingController(text: existingBill?.notes ?? '');
     final customDaysCtrl = TextEditingController(text: '15');
 
-    String dateSelectionMode = 'due_date';
-    DateTime selectedDate = DateTime.now().add(const Duration(days: 7));
+    String dateSelectionMode = existingBill?.startDate != null ? 'start_date' : 'due_date';
+    DateTime selectedDate = existingBill?.startDate ?? existingBill?.dueDate ?? DateTime.now().add(const Duration(days: 7));
     String selectedFrequency = 'monthly';
-    String category = 'Utilities';
+    if (existingBill != null) {
+      final f = existingBill.frequency.toLowerCase();
+      if (f.contains('15')) selectedFrequency = '15_days';
+      else if (f.contains('30')) selectedFrequency = '30_days';
+      else if (f.contains('45')) selectedFrequency = '45_days';
+      else if (f.contains('60')) selectedFrequency = '60_days';
+      else if (f.contains('weekly')) selectedFrequency = 'weekly';
+      else if (f.contains('yearly')) selectedFrequency = 'yearly';
+      else if (f.contains('monthly')) selectedFrequency = 'monthly';
+      else if (f.contains('days')) {
+        selectedFrequency = 'custom';
+        final match = RegExp(r'(\d+)').firstMatch(f);
+        if (match != null) customDaysCtrl.text = match.group(1)!;
+      }
+    }
 
-    List<String> notificationRules = ['On the day at 9 AM'];
+    String category = existingBill?.category ?? 'Utilities';
+    List<String> notificationRules = existingBill?.notifications != null
+        ? List<String>.from(existingBill!.notifications)
+        : ['On the day at 9 AM'];
 
     DateTime calculateNextDue(DateTime inputDate, String mode, String freq, int customDays) {
       if (mode == 'due_date') return inputDate;
@@ -1368,7 +1374,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
           final calculatedDue = calculateNextDue(selectedDate, dateSelectionMode, selectedFrequency, customDaysVal);
 
           return AlertDialog(
-            title: const Text('Add Recurring Bill / Subscription'),
+            title: Text(existingBill != null ? 'Edit Bill / Subscription' : 'Add Recurring Bill / Subscription'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1557,20 +1563,35 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
                   final finalDueDate = calculateNextDue(selectedDate, dateSelectionMode, selectedFrequency, customDaysVal);
 
-                  _financeService.addBill(RecurringBill(
-                    id: '',
-                    title: titleCtrl.text.trim(),
-                    amount: amt,
-                    category: category,
-                    dueDate: finalDueDate,
-                    startDate: dateSelectionMode == 'start_date' ? selectedDate : null,
-                    frequency: freqStr,
-                    notifications: notificationRules.isNotEmpty ? notificationRules : ['On the day at 9 AM'],
-                    notes: notesCtrl.text.trim(),
-                  ));
+                  if (existingBill != null) {
+                    _financeService.updateBill(RecurringBill(
+                      id: existingBill.id,
+                      title: titleCtrl.text.trim(),
+                      amount: amt,
+                      category: category,
+                      dueDate: finalDueDate,
+                      startDate: dateSelectionMode == 'start_date' ? selectedDate : existingBill.startDate,
+                      frequency: freqStr,
+                      notifications: notificationRules.isNotEmpty ? notificationRules : ['On the day at 9 AM'],
+                      notes: notesCtrl.text.trim(),
+                      isActive: existingBill.isActive,
+                    ));
+                  } else {
+                    _financeService.addBill(RecurringBill(
+                      id: '',
+                      title: titleCtrl.text.trim(),
+                      amount: amt,
+                      category: category,
+                      dueDate: finalDueDate,
+                      startDate: dateSelectionMode == 'start_date' ? selectedDate : null,
+                      frequency: freqStr,
+                      notifications: notificationRules.isNotEmpty ? notificationRules : ['On the day at 9 AM'],
+                      notes: notesCtrl.text.trim(),
+                    ));
+                  }
                   Navigator.pop(context);
                 },
-                child: const Text('Add Bill'),
+                child: Text(existingBill != null ? 'Update Bill' : 'Add Bill'),
               ),
             ],
           );

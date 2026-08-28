@@ -90,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
                   eventLoader: (day) {
                     final dateStr = DateFormat('yyyy-MM-dd').format(day);
-                    final dayReminders = allReminders.where((r) => r.date == dateStr && r.status == 'scheduled').toList();
+                    final dayReminders = allReminders.where((r) => r.date == dateStr && r.status != 'completed' && r.status != 'expired').toList();
                     return GroupedCalendarReminder.groupList(dayReminders);
                   },
                   onDaySelected: (selectedDay, focusedDay) {
@@ -295,7 +295,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildStatusIcon(String status) {
     switch (status) {
       case 'scheduled':
-        return const Icon(Icons.schedule, color: Colors.orange);
+      case 'pending':
+        return const Icon(Icons.alarm, color: Colors.blueAccent);
       case 'notified':
         return const Icon(Icons.help_outline, color: Colors.amber);
       case 'completed':
@@ -305,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'error':
         return const Icon(Icons.error_outline, color: Colors.red);
       default:
-        return const Icon(Icons.help_outline, color: Colors.amber);
+        return const Icon(Icons.alarm, color: Colors.blueAccent);
     }
   }
 

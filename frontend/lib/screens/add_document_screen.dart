@@ -180,8 +180,10 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
-    final targetMemberId = _selectedMemberId ?? FirebaseAuth.instance.currentUser?.uid;
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final targetMemberId = _isPrivate
+        ? currentUid
+        : (_selectedMemberId ?? currentUid);
     if (targetMemberId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select a member owner.')),
@@ -309,61 +311,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            // 1. Vault Member / Owner Selection Card
-            StreamBuilder<List<VaultMemberProfile>>(
-              stream: _vaultService.getUnifiedMemberProfiles(),
-              builder: (context, snapshot) {
-                final profiles = snapshot.data ?? [];
-                final currentUid = FirebaseAuth.instance.currentUser?.uid;
-                final activeValue = _selectedMemberId ?? currentUid;
-
-                return Card(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButtonFormField<String>(
-                        value: profiles.any((p) => p.id == activeValue) ? activeValue : null,
-                        decoration: const InputDecoration(
-                          labelText: 'Belongs to Vault Profile / Member',
-                          border: InputBorder.none,
-                          icon: Icon(Icons.family_restroom),
-                        ),
-                        validator: (val) => val == null ? 'Please select a member owner' : null,
-                        items: profiles.map((p) {
-                          return DropdownMenuItem(
-                            value: p.id,
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 12,
-                                  backgroundColor: Color(p.avatarColorValue),
-                                  child: Text(
-                                    p.rawName.isNotEmpty ? p.rawName[0].toUpperCase() : '?',
-                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  p.name,
-                                  style: const TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          setState(() => _selectedMemberId = val);
-                        },
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-
-            // 1.5 Document Privacy & Visibility Card
+            // 1. Document Privacy & Visibility Card
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: SwitchListTile(
@@ -387,6 +335,62 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
               ),
             ),
             const SizedBox(height: 12),
+
+            // 1.5 Vault Member / Owner Selection Card (Hidden when Private Document is enabled)
+            if (!_isPrivate) ...[
+              StreamBuilder<List<VaultMemberProfile>>(
+                stream: _vaultService.getUnifiedMemberProfiles(),
+                builder: (context, snapshot) {
+                  final profiles = snapshot.data ?? [];
+                  final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                  final activeValue = _selectedMemberId ?? currentUid;
+
+                  return Card(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButtonFormField<String>(
+                          value: profiles.any((p) => p.id == activeValue) ? activeValue : null,
+                          decoration: const InputDecoration(
+                            labelText: 'Belongs to Vault Profile / Member',
+                            border: InputBorder.none,
+                            icon: Icon(Icons.family_restroom),
+                          ),
+                          validator: (val) => val == null ? 'Please select a member owner' : null,
+                          items: profiles.map((p) {
+                            return DropdownMenuItem(
+                              value: p.id,
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 12,
+                                    backgroundColor: Color(p.avatarColorValue),
+                                    child: Text(
+                                      p.rawName.isNotEmpty ? p.rawName[0].toUpperCase() : '?',
+                                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    p.name,
+                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            setState(() => _selectedMemberId = val);
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
 
             // 2. Document Identity & Dynamic Category Card
             Card(

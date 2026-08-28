@@ -423,7 +423,8 @@ exports.onCalendarReminderUpdated = functions.firestore
         before.time !== after.time ||
         before.isRecurring !== after.isRecurring ||
         before.recurrenceValue !== after.recurrenceValue ||
-        before.recurrenceUnit !== after.recurrenceUnit;
+        before.recurrenceUnit !== after.recurrenceUnit ||
+        (before.status !== after.status && (after.status === "pending" || after.status === "scheduled"));
     if (!changed)
         return;
     if (before.taskId) {
@@ -1724,6 +1725,7 @@ exports.adminCreateUser = functions.runWith({ timeoutSeconds: 60, memory: "256MB
             emailVerified: true
         });
         const uid = userRecord.uid;
+        const allowedCollaborators = Array.isArray(data.allowedCollaborators) ? data.allowedCollaborators : [];
         await db.collection('usernames').doc(username).set({
             email: email,
             uid: uid,
@@ -1731,6 +1733,7 @@ exports.adminCreateUser = functions.runWith({ timeoutSeconds: 60, memory: "256MB
         });
         await db.collection('users').doc(uid).set({
             enabledModules: ['gold', 'reminders', 'notes', 'shifts', 'checklist'],
+            allowedCollaborators: allowedCollaborators,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
         return { success: true, uid: uid, username: username };

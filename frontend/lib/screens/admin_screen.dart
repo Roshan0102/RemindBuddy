@@ -337,20 +337,159 @@ class _AdminScreenState extends State<AdminScreen> {
       setState(() => _adminUserErrorMessage = 'Username and password are required.');
       return;
     }
+    if (password.length < 6) {
+      setState(() => _adminUserErrorMessage = 'Password must be at least 6 characters.');
+      return;
+    }
+
+    // Fetch existing usernames for the collaboration partner pop-up
+    final usernamesSnap = await FirebaseFirestore.instance.collection('usernames').get();
+    final existingUsernames = usernamesSnap.docs
+        .map((d) => d.id)
+        .where((u) => u.toLowerCase() != username.toLowerCase())
+        .toList();
+
+    List<String> selectedPartners = [];
+
+    if (existingUsernames.isNotEmpty) {
+      final result = await showDialog<List<String>>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          final List<String> tempSelected = List.from(existingUsernames);
+          return StatefulBuilder(
+            builder: (context, setPopState) {
+              return AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Row(
+                  children: [
+                    const Icon(Icons.people_alt, color: Colors.purple),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Allowed Partners for @$username',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Select which existing users this new user is authorized to collaborate with:',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              setPopState(() {
+                                tempSelected.clear();
+                                tempSelected.addAll(existingUsernames);
+                              });
+                            },
+                            child: const Text('Select All', style: TextStyle(fontSize: 12)),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setPopState(() {
+                                tempSelected.clear();
+                              });
+                            },
+                            child: const Text('Deselect All', style: TextStyle(fontSize: 12, color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 12),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: existingUsernames.map((u) {
+                              final isChecked = tempSelected.contains(u);
+                              return FilterChip(
+                                label: Text('@$u'),
+                                selected: isChecked,
+                                selectedColor: Colors.purple.shade100,
+                                checkmarkColor: Colors.purple,
+                                onSelected: (val) {
+                                  setPopState(() {
+                                    if (val) {
+                                      if (!tempSelected.contains(u)) tempSelected.add(u);
+                                    } else {
+                                      tempSelected.remove(u);
+                                    }
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, null),
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade800,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => Navigator.pop(context, tempSelected),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Create User'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (result == null) return; // User cancelled
+      selectedPartners = result;
+    }
+
     setState(() {
       _isAdminUserActionLoading = true;
       _adminUserErrorMessage = '';
       _adminUserSuccessMessage = '';
     });
     try {
-      await FirebaseFunctions.instance
+      final response = await FirebaseFunctions.instance
           .httpsCallable('adminCreateUser')
-          .call({'username': username, 'password': password});
+          .call({
+        'username': username,
+        'password': password,
+        'allowedCollaborators': selectedPartners,
+      });
+
+      final resData = response.data as Map<String, dynamic>?;
+      final uid = resData?['uid'] ?? '';
+      if (uid.toString().isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid.toString())
+            .set({
+          'allowedCollaborators': selectedPartners,
+        }, SetOptions(merge: true));
+      }
       
       _adminUserUsernameController.clear();
       _adminUserPasswordController.clear();
       setState(() {
-        _adminUserSuccessMessage = 'User "$username" created successfully!';
+        _adminUserSuccessMessage = 'User "$username" created with ${selectedPartners.length} allowed partner(s)!';
         _isAdminUserActionLoading = false;
       });
     } catch (e) {

@@ -101,7 +101,6 @@ class VaultService {
       throw Exception("You are already a member of a family. You cannot create multiple families.");
     }
 
-    final myUsername = await getCurrentUsername();
     final docRef = _firestore.collection('families').doc();
 
     final familyData = {
@@ -110,14 +109,36 @@ class VaultService {
       'adminUids': [uid],
       'collaboratorUids': [uid],
       'pendingInvites': [],
-      'virtualProfiles': [
-        {'id': 'vp_self', 'name': 'Self (@$myUsername)', 'createdBy': uid},
-      ],
+      'virtualProfiles': [],
       'createdAt': FieldValue.serverTimestamp(),
     };
 
     await docRef.set(familyData);
     await _firestore.collection('users').doc(uid).set({'familyId': docRef.id}, SetOptions(merge: true));
+  }
+
+  /// Fetch username for any given user UID
+  Future<String> getUsernameByUid(String targetUid) async {
+    if (targetUid.isEmpty) return 'User';
+    try {
+      final snap = await _firestore
+          .collection('usernames')
+          .where('uid', isEqualTo: targetUid)
+          .limit(1)
+          .get();
+      if (snap.docs.isNotEmpty) {
+        return snap.docs.first.id;
+      }
+    } catch (_) {}
+    try {
+      final uDoc = await _firestore.collection('users').doc(targetUid).get();
+      if (uDoc.exists && uDoc.data() != null) {
+        final data = uDoc.data()!;
+        final uname = (data['username'] ?? data['displayName'] ?? data['email'] ?? '').toString();
+        if (uname.isNotEmpty) return uname;
+      }
+    } catch (_) {}
+    return targetUid;
   }
 
   /// Invite an app user to the family by username
@@ -867,16 +888,14 @@ class VaultService {
       // 2. Add Family Virtual Profiles (from VaultFamily)
       if (activeVaultFamily != null) {
         for (var vp in activeVaultFamily!.virtualProfiles) {
-          if (vp.id != 'vp_self') {
-            profiles.add(VaultMemberProfile(
-              id: vp.id,
-              name: vp.name,
-              rawName: vp.name,
-              subtext: 'Family Virtual Profile',
-              avatarColorValue: VaultCollaborator.generateColorForUser(vp.name),
-              isVirtual: true,
-            ));
-          }
+          profiles.add(VaultMemberProfile(
+            id: vp.id,
+            name: vp.name,
+            rawName: vp.name,
+            subtext: 'Family Virtual Profile',
+            avatarColorValue: VaultCollaborator.generateColorForUser(vp.name),
+            isVirtual: true,
+          ));
         }
       }
 
