@@ -18,7 +18,9 @@ import '../widgets/web_image_viewer.dart';
 
 
 class MyShiftsScreen extends StatefulWidget {
-  const MyShiftsScreen({super.key});
+  final int initialTab;
+
+  const MyShiftsScreen({super.key, this.initialTab = 0});
 
   @override
   State<MyShiftsScreen> createState() => _MyShiftsScreenState();
@@ -70,6 +72,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedTab = widget.initialTab;
     _loadShifts();
   }
 
