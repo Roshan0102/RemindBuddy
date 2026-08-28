@@ -613,6 +613,8 @@ class _AdminScreenState extends State<AdminScreen> {
         );
       }
     }
+  }
+
   Future<void> _shareLatestApk() async {
     try {
       String? apkPath;
