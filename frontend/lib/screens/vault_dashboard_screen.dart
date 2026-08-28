@@ -428,45 +428,184 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   }
 
   void _showInviteMemberDialog(BuildContext parentContext, String familyId) {
-    final userCtrl = TextEditingController();
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
     showDialog(
       context: parentContext,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Invite Family Member', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: TextField(
-          controller: userCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Enter App Username (e.g. john_doe)',
-            prefixText: '@',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              if (userCtrl.text.trim().isEmpty) return;
-              try {
-                await _vaultService.inviteToFamily(familyId, userCtrl.text.trim());
-                if (ctx.mounted) {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    SnackBar(content: Text('Invitation sent to @${userCtrl.text.trim()}!'), backgroundColor: Colors.green),
-                  );
+      builder: (ctx) {
+        final List<String> selectedUsernames = [];
+        bool isLoading = true;
+        List<String> availableUsers = [];
+
+        return StatefulBuilder(
+          builder: (dialogCtx, setPopState) {
+            if (isLoading) {
+              () async {
+                try {
+                  final userDoc = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
+                  List<String> allowedList = [];
+                  if (userDoc.exists && userDoc.data() != null && userDoc.data()!.containsKey('allowedCollaborators')) {
+                    allowedList = List<String>.from(userDoc.data()!['allowedCollaborators'] ?? []);
+                  }
+
+                  if (allowedList.isEmpty) {
+                    final usernamesSnap = await FirebaseFirestore.instance.collection('usernames').get();
+                    final myUsernameDoc = await FirebaseFirestore.instance
+                        .collection('usernames')
+                        .where('uid', isEqualTo: currentUser.uid)
+                        .limit(1)
+                        .get();
+                    final myUsername = myUsernameDoc.docs.isNotEmpty ? myUsernameDoc.docs.first.id.toLowerCase() : '';
+
+                    allowedList = usernamesSnap.docs
+                        .map((d) => d.id)
+                        .where((u) => u.toLowerCase() != myUsername)
+                        .toList();
+                  }
+
+                  if (dialogCtx.mounted) {
+                    setPopState(() {
+                      availableUsers = allowedList;
+                      isLoading = false;
+                    });
+                  }
+                } catch (e) {
+                  if (dialogCtx.mounted) {
+                    setPopState(() => isLoading = false);
+                  }
                 }
-              } catch (e) {
-                if (ctx.mounted) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    SnackBar(content: Text('$e'), backgroundColor: Colors.red),
-                  );
-                }
-              }
-            },
-            child: const Text('Send Invite'),
-          ),
-        ],
-      ),
+              }();
+
+              return AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: const Text('Invite Family Member', style: TextStyle(fontWeight: FontWeight.bold)),
+                content: const SizedBox(
+                  height: 100,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              );
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.person_add_alt_1, color: Colors.indigo),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Invite Family Member', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Select authorized partners to invite to your family group:',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    if (availableUsers.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Text(
+                          'No allowed collaboration partners available to invite.',
+                          style: TextStyle(color: Colors.grey, fontSize: 13),
+                        ),
+                      )
+                    else ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              setPopState(() {
+                                selectedUsernames.clear();
+                                selectedUsernames.addAll(availableUsers);
+                              });
+                            },
+                            child: const Text('Select All', style: TextStyle(fontSize: 12)),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setPopState(() {
+                                selectedUsernames.clear();
+                              });
+                            },
+                            child: const Text('Deselect All', style: TextStyle(fontSize: 12, color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 12),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: availableUsers.map((username) {
+                              final isSelected = selectedUsernames.contains(username);
+                              return FilterChip(
+                                label: Text('@$username'),
+                                selected: isSelected,
+                                selectedColor: Colors.indigo.shade100,
+                                checkmarkColor: Colors.indigo,
+                                onSelected: (val) {
+                                  setPopState(() {
+                                    if (val) {
+                                      if (!selectedUsernames.contains(username)) selectedUsernames.add(username);
+                                    } else {
+                                      selectedUsernames.remove(username);
+                                    }
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.indigo,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: selectedUsernames.isEmpty
+                      ? null
+                      : () async {
+                          int sentCount = 0;
+                          for (final username in selectedUsernames) {
+                            try {
+                              await _vaultService.inviteToFamily(familyId, username);
+                              sentCount++;
+                            } catch (_) {}
+                          }
+                          if (dialogCtx.mounted) {
+                            Navigator.pop(dialogCtx);
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              SnackBar(
+                                content: Text('🎉 Invitation sent to $sentCount member(s)!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        },
+                  icon: const Icon(Icons.send, size: 16),
+                  label: Text('Send Invites (${selectedUsernames.length})'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 

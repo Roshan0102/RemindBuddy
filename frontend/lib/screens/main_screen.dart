@@ -861,7 +861,7 @@ class _MainScreenState extends State<MainScreen> {
                   'action': () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)),
+                      MaterialPageRoute(builder: (context) => const TechEventsScreen()),
                     );
                   },
                 },
@@ -874,7 +874,7 @@ class _MainScreenState extends State<MainScreen> {
                   'action': () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)),
+                      MaterialPageRoute(builder: (context) => const WalkinDrivesScreen()),
                     );
                   },
                 },
@@ -1318,7 +1318,7 @@ class _MainScreenState extends State<MainScreen> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)),
+                        MaterialPageRoute(builder: (context) => const TechEventsScreen()),
                       );
                     },
                   ),
@@ -1330,7 +1330,7 @@ class _MainScreenState extends State<MainScreen> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)),
+                        MaterialPageRoute(builder: (context) => const WalkinDrivesScreen()),
                       );
                     },
                   ),

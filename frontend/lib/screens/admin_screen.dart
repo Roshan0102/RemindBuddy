@@ -1,8 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../services/encryption_service.dart';
 import '../services/update_service.dart';
 
@@ -610,6 +613,60 @@ class _AdminScreenState extends State<AdminScreen> {
         );
       }
     }
+  Future<void> _shareLatestApk() async {
+    try {
+      String? apkPath;
+      if (!kIsWeb) {
+        final packageInfo = await PackageInfo.fromPlatform();
+        final version = packageInfo.version;
+
+        final candidateDirs = [
+          '/sdcard/Download',
+          '/storage/emulated/0/Download',
+        ];
+        
+        for (var dirPath in candidateDirs) {
+          final dir = Directory(dirPath);
+          if (await dir.exists()) {
+            final files = dir.listSync();
+            for (var file in files) {
+              if (file.path.endsWith('.apk') &&
+                  (file.path.contains('app-release') ||
+                   file.path.contains('RemindBuddy') ||
+                   file.path.contains('remindbuddy'))) {
+                apkPath = file.path;
+                break;
+              }
+            }
+          }
+          if (apkPath != null) break;
+        }
+
+        if (apkPath != null && await File(apkPath).exists()) {
+          await Share.shareXFiles(
+            [XFile(apkPath)],
+            text: '📥 RemindBuddy App APK (v$version)',
+            subject: 'RemindBuddy App APK',
+          );
+          return;
+        }
+      }
+
+      final packageInfo = await PackageInfo.fromPlatform();
+      final shareText = '''
+📱 *RemindBuddy App (v${packageInfo.version})*
+Download latest release APK:
+https://github.com/Roshan0102/RemindBuddy/releases/latest
+'''.trim();
+
+      await Share.share(shareText, subject: 'Download RemindBuddy App APK');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sharing APK: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -631,6 +688,11 @@ class _AdminScreenState extends State<AdminScreen> {
           title: const Text('⚙️ Admin Control Panel', style: TextStyle(fontWeight: FontWeight.bold)),
           centerTitle: true,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.share),
+              onPressed: _shareLatestApk,
+              tooltip: 'Share App APK',
+            ),
             IconButton(
               icon: const Icon(Icons.logout),
               onPressed: _handleLogout,
@@ -968,14 +1030,30 @@ class _AdminScreenState extends State<AdminScreen> {
                     },
                   ),
                   const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    onPressed: _updateAppUpdatesConfig,
-                    icon: const Icon(Icons.save),
-                    label: const Text('Save Release Config'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purple.shade700,
-                      foregroundColor: Colors.white,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _updateAppUpdatesConfig,
+                          icon: const Icon(Icons.save),
+                          label: const Text('Save Release Config'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.purple.shade700,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: _shareLatestApk,
+                        icon: const Icon(Icons.share),
+                        label: const Text('Share APK'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal.shade700,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
