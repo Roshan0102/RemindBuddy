@@ -3180,51 +3180,46 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
           ],
         ],
       ),
-      floatingActionButton: _selectedTab == 0
-          ? FloatingActionButton.extended(
-              onPressed: _uploadJSON,
-              icon: const Icon(Icons.upload_file),
-              label: Text(_hasData ? 'Update Roster' : 'Upload Roster'),
-            )
-          : null,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _uploadJSON,
+        icon: const Icon(Icons.upload_file),
+        label: Text(_hasData ? 'Update Roster' : 'Upload Roster'),
+      ),
       body: Column(
         children: [
-          _buildCustomTabBar(),
           _buildHeader(),
           Expanded(
-            child: _selectedTab == 0
-                ? (_isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : !_hasData
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.calendar_month, size: 80, color: Colors.grey[300]),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'No shift data yet',
-                                  style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Upload your roster JSON for this month',
-                                  style: TextStyle(color: Colors.grey[500]),
-                                ),
-                              ],
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : !_hasData
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.calendar_month, size: 80, color: Colors.grey[300]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No shift data yet',
+                              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
                             ),
-                          )
-                        : SingleChildScrollView(
-                            child: Column(
-                              children: [
-                                _buildStatisticsCard(),
-                                _buildUpcomingShifts(),
-                                _buildAllShiftsCalendar(),
-                                const SizedBox(height: 80), // Space for FAB
-                              ],
+                            const SizedBox(height: 8),
+                            Text(
+                              'Upload your roster JSON for this month',
+                              style: TextStyle(color: Colors.grey[500]),
                             ),
-                          ))
-                : (_selectedTab == 1 ? _buildEventsView() : _buildWalkInView()),
+                          ],
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            _buildStatisticsCard(),
+                            _buildUpcomingShifts(),
+                            _buildAllShiftsCalendar(),
+                            const SizedBox(height: 80), // Space for FAB
+                          ],
+                        ),
+                      ),
           ),
         ],
       ),

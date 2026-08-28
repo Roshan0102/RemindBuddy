@@ -154,10 +154,13 @@ exports.processCalendarReminderTask = functions.tasks
         else {
             console.log(`Skipping notification for calendar reminder ${reminderId} (user ${uid}): disabled.`);
         }
+        const currentSnoozeCount = (rData === null || rData === void 0 ? void 0 : rData.currentSnoozeCount) || 0;
+        const maxSnoozeCount = (rData === null || rData === void 0 ? void 0 : rData.maxSnoozeCount) || 3;
+        const isLastNotification = snoozeEnabled && (currentSnoozeCount + 1 >= maxSnoozeCount);
         const updateData = {
             notifiedAt: admin.firestore.FieldValue.serverTimestamp()
         };
-        if (!snoozeEnabled) {
+        if (!snoozeEnabled || isLastNotification) {
             const expireAt = new Date();
             expireAt.setDate(expireAt.getDate() + 30);
             updateData.status = "completed";
@@ -167,7 +170,7 @@ exports.processCalendarReminderTask = functions.tasks
             updateData.status = "notified";
         }
         await reminderRef.update(updateData);
-        if (snoozeEnabled) {
+        if (snoozeEnabled && !isLastNotification) {
             try {
                 const project = process.env.GCLOUD_PROJECT || admin.app().options.projectId;
                 const location = 'us-central1';
@@ -175,7 +178,7 @@ exports.processCalendarReminderTask = functions.tasks
                 const queuePath = tasksClient.queuePath(project, location, queue);
                 const url = `https://${location}-${project}.cloudfunctions.net/autoSnoozeReminderCheckTask`;
                 const serviceAccountEmail = `${project}@appspot.gserviceaccount.com`;
-                const runTime = moment().tz('Asia/Kolkata').add(50, 'seconds');
+                const runTime = moment().tz('Asia/Kolkata').add(30, 'seconds');
                 const checkRequest = {
                     parent: queuePath,
                     task: {
@@ -980,6 +983,86 @@ exports.checkGoldSources = functions.https.onCall(async () => {
     return { timestamp: moment().tz('Asia/Kolkata').format('hh:mm:ss A'), live_chennai: r[0], bank_bazaar: r[1] };
 });
 exports.forceGoldFetch = functions.https.onCall(() => internalPerformGoldFetch(true));
+async function internalCheckRecurringBillNotifications() {
+    try {
+        const nowKolkata = moment().tz('Asia/Kolkata');
+        const todayStr = nowKolkata.format('YYYY-MM-DD');
+        const currentTimeStr = nowKolkata.format('HH:mm');
+        const usersSnap = await db.collection("users").get();
+        for (const userDoc of usersSnap.docs) {
+            const uid = userDoc.id;
+            const billsSnap = await userDoc.ref.collection("bills").where("isActive", "==", true).get();
+            if (billsSnap.empty)
+                continue;
+            for (const billDoc of billsSnap.docs) {
+                const bill = billDoc.data();
+                if (!bill.dueDate)
+                    continue;
+                const dueMoment = moment(bill.dueDate.toDate ? bill.dueDate.toDate() : bill.dueDate).tz('Asia/Kolkata');
+                const dueDateStr = dueMoment.format('YYYY-MM-DD');
+                const notifications = bill.notifications || ['On the day at 9 AM'];
+                for (const notifRule of notifications) {
+                    let targetDateMoment = dueMoment.clone();
+                    let notifTime = "09:00";
+                    const timeMatch = notifRule.match(/at\s+(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i);
+                    if (timeMatch) {
+                        let h = parseInt(timeMatch[1], 10);
+                        const m = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+                        const ampm = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
+                        if (ampm === "PM" && h < 12)
+                            h += 12;
+                        if (ampm === "AM" && h === 12)
+                            h = 0;
+                        notifTime = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                    }
+                    if (notifRule.includes("On the day")) {
+                        targetDateMoment = dueMoment.clone();
+                    }
+                    else if (notifRule.includes("day before") || notifRule.includes("days before")) {
+                        const daysMatch = notifRule.match(/(\d+)\s+days?\s+before/i);
+                        const days = daysMatch ? parseInt(daysMatch[1], 10) : 1;
+                        targetDateMoment = dueMoment.clone().subtract(days, 'days');
+                    }
+                    else if (notifRule.includes("week before") || notifRule.includes("weeks before")) {
+                        const weeksMatch = notifRule.match(/(\d+)\s+weeks?\s+before/i);
+                        const weeks = weeksMatch ? parseInt(weeksMatch[1], 10) : 1;
+                        targetDateMoment = dueMoment.clone().subtract(weeks, 'weeks');
+                    }
+                    const targetDateStr = targetDateMoment.format('YYYY-MM-DD');
+                    if (todayStr === targetDateStr && currentTimeStr === notifTime) {
+                        const notifKey = `bill_notif_${billDoc.id}_${dueDateStr}_${notifRule.replace(/\s+/g, '_')}`;
+                        const notifRef = db.collection("users").doc(uid).collection("notification_logs").doc(notifKey);
+                        const notifDoc = await notifRef.get();
+                        if (notifDoc.exists)
+                            continue;
+                        const userAccountDoc = await db.collection("usernames").where("uid", "==", uid).limit(1).get();
+                        if (!userAccountDoc.empty) {
+                            const token = userAccountDoc.docs[0].data().fcmToken;
+                            if (token) {
+                                const title = `Bill Due Reminder 🧾: ${bill.title}`;
+                                const body = notifRule.includes("On the day")
+                                    ? `Your bill for ${bill.title} (₹${bill.amount}) is due today!`
+                                    : `Your bill for ${bill.title} (₹${bill.amount}) is due on ${dueMoment.format('MMM D, YYYY')}.`;
+                                await admin.messaging().send({
+                                    token,
+                                    notification: { title, body },
+                                    android: { notification: { channelId: "bill_reminder_channel" } },
+                                    data: { type: "BILL_REMINDER", billId: billDoc.id }
+                                });
+                                await logNotification(uid, title, body, "BILL_REMINDER");
+                                await notifRef.set({ sentAt: admin.firestore.FieldValue.serverTimestamp() });
+                                console.log(`Sent bill reminder notification for bill ${billDoc.id} to user ${uid}`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    catch (err) {
+        console.error("Error in internalCheckRecurringBillNotifications:", err);
+    }
+}
 // --- CONSOLIDATED MASTER SCHEDULERS (2 Schedulers total for 100% Free GCP Tier) ---
 // 1. Minute Master Runner (Replaces checkDailyReminders & checkPendingGoldChitNotifications)
 exports.masterMinuteRunner = functions.pubsub.schedule('* * * * *')
@@ -987,9 +1070,10 @@ exports.masterMinuteRunner = functions.pubsub.schedule('* * * * *')
     .onRun(async () => {
     await internalCheckDailyReminders();
     await internalCheckPendingGoldChitNotifications();
+    await internalCheckRecurringBillNotifications();
 });
-// 2. Periodic Master Runner (Runs every 30 minutes at :00 and :30, supporting any hourly or half-hour scheduled task)
-exports.masterHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory: "1GB" })
+// 2. Periodic Master Runner (Runs every 30 minutes at :00 and :30, supporting any hourly or half-hourly scheduled task)
+exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory: "1GB" })
     .pubsub.schedule('0,30 * * * *')
     .timeZone('Asia/Kolkata')
     .onRun(async () => {
@@ -997,86 +1081,86 @@ exports.masterHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory: "1
     const hour = nowKolkata.hour();
     const minute = nowKolkata.minute();
     const timeStr = nowKolkata.format('HH:mm');
-    console.log(`[masterHourlyRunner] Triggered check at ${timeStr} IST`);
+    console.log(`[masterHalfHourlyRunner] Triggered check at ${timeStr} IST`);
     // Check if running near the top of the hour (:00)
     if (minute < 15) {
         // 07:00 AM IST (Hour 7): Astro Calendar (New Moon / Full Moon) Alerts
         if (hour === 7) {
-            console.log("[masterHourlyRunner] Executing 07:00 AM tasks: Astro Calendar Lunar Phase Check...");
+            console.log("[masterHalfHourlyRunner] Executing 07:00 AM tasks: Astro Calendar Lunar Phase Check...");
             try {
                 await internalDailyAstroNotifier();
             }
             catch (err) {
-                console.error("Error in internalDailyAstroNotifier inside masterHourlyRunner:", err);
+                console.error("Error in internalDailyAstroNotifier inside masterHalfHourlyRunner:", err);
             }
         }
         // 11:00 AM IST (Hour 11): Gold Fetch & Market Forecast
         if (hour === 11) {
-            console.log("[masterHourlyRunner] Executing 11:00 AM tasks: Gold Fetch & AI Market Forecast...");
+            console.log("[masterHalfHourlyRunner] Executing 11:00 AM tasks: Gold Fetch & AI Market Forecast...");
             try {
                 await internalPerformGoldFetch();
             }
             catch (err) {
-                console.error("Error in internalPerformGoldFetch inside masterHourlyRunner:", err);
+                console.error("Error in internalPerformGoldFetch inside masterHalfHourlyRunner:", err);
             }
             try {
                 await runGoldAIPredictionInternal();
             }
             catch (err) {
-                console.error("Error in scheduledMarketForecast inside masterHourlyRunner:", err);
+                console.error("Error in scheduledMarketForecast inside masterHalfHourlyRunner:", err);
             }
         }
         // 06:00 PM IST (Hour 18): Interested Events Notifications
         if (hour === 18) {
-            console.log("[masterHourlyRunner] Executing 06:00 PM tasks: Interested Events Notifications...");
+            console.log("[masterHalfHourlyRunner] Executing 06:00 PM tasks: Interested Events Notifications...");
             try {
                 await internalCheckInterestedEventsNotifications();
             }
             catch (err) {
-                console.error("Error in internalCheckInterestedEventsNotifications inside masterHourlyRunner:", err);
+                console.error("Error in internalCheckInterestedEventsNotifications inside masterHalfHourlyRunner:", err);
             }
         }
         // 07:00 PM IST (Hour 19): Tech Events Fetcher & Evening Gold Fetch
         if (hour === 19) {
-            console.log("[masterHourlyRunner] Executing 07:00 PM tasks: Tech Events Fetcher & Evening Gold Fetch...");
+            console.log("[masterHalfHourlyRunner] Executing 07:00 PM tasks: Tech Events Fetcher & Evening Gold Fetch...");
             try {
                 await internalPerformGoldFetch();
             }
             catch (err) {
-                console.error("Error in internalPerformGoldFetch inside masterHourlyRunner:", err);
+                console.error("Error in internalPerformGoldFetch inside masterHalfHourlyRunner:", err);
             }
             try {
                 await internalDailyTechEventsFetcher();
             }
             catch (err) {
-                console.error("Error in internalDailyTechEventsFetcher inside masterHourlyRunner:", err);
+                console.error("Error in internalDailyTechEventsFetcher inside masterHalfHourlyRunner:", err);
             }
         }
         // 08:00 PM IST (Hour 20): Walk-Ins Fetcher
         if (hour === 20) {
-            console.log("[masterHourlyRunner] Executing 08:00 PM tasks: Walk-In Drives Fetcher...");
+            console.log("[masterHalfHourlyRunner] Executing 08:00 PM tasks: Walk-In Drives Fetcher...");
             try {
                 await internalDailyWalkInsFetcher();
             }
             catch (err) {
-                console.error("Error in internalDailyWalkInsFetcher inside masterHourlyRunner:", err);
+                console.error("Error in internalDailyWalkInsFetcher inside masterHalfHourlyRunner:", err);
             }
         }
         // 10:00 PM IST (Hour 22): Daily Shift Reminder
         if (hour === 22) {
-            console.log("[masterHourlyRunner] Executing 10:00 PM tasks: Daily Shift Reminders...");
+            console.log("[masterHalfHourlyRunner] Executing 10:00 PM tasks: Daily Shift Reminders...");
             try {
                 await internalDailyShiftReminder();
             }
             catch (err) {
-                console.error("Error in internalDailyShiftReminder inside masterHourlyRunner:", err);
+                console.error("Error in internalDailyShiftReminder inside masterHalfHourlyRunner:", err);
             }
         }
     }
     // Check if running near the half hour (:30)
     if (minute >= 15 && minute < 45) {
         // Future 30-minute scheduled tasks can be placed here effortlessly!
-        console.log(`[masterHourlyRunner] Half-hour check completed for ${timeStr} IST.`);
+        console.log(`[masterHalfHourlyRunner] Half-hour check completed for ${timeStr} IST.`);
     }
 });
 async function internalDailyShiftReminder() {

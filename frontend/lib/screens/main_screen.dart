@@ -28,6 +28,8 @@ import 'astro_calendar_screen.dart';
 import 'gcp_cost_screen.dart';
 import 'finance_screen.dart';
 import 'job_assistant_screen.dart';
+import 'tech_events_screen.dart';
+import 'walkin_drives_screen.dart';
 import 'all_features_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../main.dart';
@@ -471,6 +473,24 @@ class _MainScreenState extends State<MainScreen> {
         label: 'Job Assistant',
       ),
     },
+    'events': {
+      'screen': const TechEventsScreen(),
+      'name': 'Tech Events',
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.event_outlined, color: Colors.purpleAccent),
+        selectedIcon: Icon(Icons.event, color: Colors.purpleAccent),
+        label: 'Events',
+      ),
+    },
+    'walkins': {
+      'screen': const WalkInDrivesScreen(),
+      'name': 'Walk-In Drives',
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.directions_walk_outlined, color: Colors.deepOrange),
+        selectedIcon: Icon(Icons.directions_walk, color: Colors.deepOrange),
+        label: 'Walk-Ins',
+      ),
+    },
   };
 
   List<String> get _activeFeatures {
@@ -631,10 +651,10 @@ class _MainScreenState extends State<MainScreen> {
       Navigator.push(context, MaterialPageRoute(builder: (context) => const DailyRemindersScreen()));
       return;
     } else if (id == 'events') {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 1)));
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const TechEventsScreen()));
       return;
     } else if (id == 'walkins') {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const MyShiftsScreen(initialTab: 2)));
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const WalkInDrivesScreen()));
       return;
     } else if (id == 'voice_assistant') {
       _openVoiceAssistant();

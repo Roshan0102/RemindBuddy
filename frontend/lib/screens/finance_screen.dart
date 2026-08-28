@@ -622,7 +622,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                   amount: bill.amount,
                                   category: bill.category,
                                   dueDate: bill.dueDate,
+                                  startDate: bill.startDate,
                                   frequency: bill.frequency,
+                                  notifications: bill.notifications,
                                   accountId: bill.accountId,
                                   isActive: val,
                                   notes: bill.notes,
@@ -1153,118 +1155,426 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     );
   }
 
+  void _showAddNotificationOptionDialog(BuildContext parentContext, Function(String) onAdd) {
+    showDialog(
+      context: parentContext,
+      builder: (ctx) => SimpleDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        children: [
+          SimpleDialogOption(
+            onPressed: () {
+              onAdd('On the day at 9 AM');
+              Navigator.pop(ctx);
+            },
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('On the day at 9 AM', style: TextStyle(fontSize: 15)),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () {
+              onAdd('The day before at 9 AM');
+              Navigator.pop(ctx);
+            },
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('The day before at 9 AM', style: TextStyle(fontSize: 15)),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () {
+              onAdd('2 days before at 9 AM');
+              Navigator.pop(ctx);
+            },
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('2 days before at 9 AM', style: TextStyle(fontSize: 15)),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () {
+              onAdd('1 week before at 9 AM');
+              Navigator.pop(ctx);
+            },
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('1 week before at 9 AM', style: TextStyle(fontSize: 15)),
+            ),
+          ),
+          const Divider(height: 1),
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showCustomNotificationDialog(parentContext, onAdd);
+            },
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Custom...', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCustomNotificationDialog(BuildContext parentContext, Function(String) onAdd) {
+    final numCtrl = TextEditingController(text: '1');
+    String unit = 'Day before';
+    TimeOfDay selectedTime = const TimeOfDay(hour: 9, minute: 0);
+
+    showDialog(
+      context: parentContext,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setCustomState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Custom notification', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: numCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                RadioListTile<String>(
+                  title: const Text('Day before'),
+                  value: 'Day before',
+                  groupValue: unit,
+                  dense: true,
+                  onChanged: (val) {
+                    if (val != null) setCustomState(() => unit = val);
+                  },
+                ),
+                RadioListTile<String>(
+                  title: const Text('Week'),
+                  value: 'Week',
+                  groupValue: unit,
+                  dense: true,
+                  onChanged: (val) {
+                    if (val != null) setCustomState(() => unit = val);
+                  },
+                ),
+                const Divider(height: 16),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    'At ${selectedTime.format(context)}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  trailing: const Icon(Icons.access_time_rounded, color: Colors.blueAccent),
+                  onTap: () async {
+                    final picked = await showTimePicker(context: context, initialTime: selectedTime);
+                    if (picked != null) {
+                      setCustomState(() => selectedTime = picked);
+                    }
+                  },
+                ),
+                const Divider(height: 16),
+                RadioListTile<String>(
+                  title: const Text('As notification'),
+                  value: 'notification',
+                  groupValue: 'notification',
+                  dense: true,
+                  onChanged: (_) {},
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                final n = int.tryParse(numCtrl.text.trim()) ?? 1;
+                final formattedTime = selectedTime.format(context);
+                String rule = '';
+                if (unit == 'Day before') {
+                  if (n == 0) {
+                    rule = 'On the day at $formattedTime';
+                  } else if (n == 1) {
+                    rule = 'The day before at $formattedTime';
+                  } else {
+                    rule = '$n days before at $formattedTime';
+                  }
+                } else {
+                  if (n == 1) {
+                    rule = '1 week before at $formattedTime';
+                  } else {
+                    rule = '$n weeks before at $formattedTime';
+                  }
+                }
+                onAdd(rule);
+                Navigator.pop(ctx);
+              },
+              child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showAddBillDialog(BuildContext context) {
     final titleCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
     final notesCtrl = TextEditingController();
     final customDaysCtrl = TextEditingController(text: '15');
-    DateTime dueDate = DateTime.now().add(const Duration(days: 7));
+
+    String dateSelectionMode = 'due_date';
+    DateTime selectedDate = DateTime.now().add(const Duration(days: 7));
     String selectedFrequency = 'monthly';
     String category = 'Utilities';
+
+    List<String> notificationRules = ['On the day at 9 AM'];
+
+    DateTime calculateNextDue(DateTime inputDate, String mode, String freq, int customDays) {
+      if (mode == 'due_date') return inputDate;
+
+      final now = DateTime.now();
+      DateTime next = inputDate;
+      int intervalDays = 0;
+      if (freq == '15_days') intervalDays = 15;
+      else if (freq == '30_days') intervalDays = 30;
+      else if (freq == '45_days') intervalDays = 45;
+      else if (freq == '60_days') intervalDays = 60;
+      else if (freq == 'custom') intervalDays = customDays > 0 ? customDays : 30;
+
+      int safety = 0;
+      final todayTrunc = DateTime(now.year, now.month, now.day);
+      while (next.isBefore(todayTrunc) && safety < 1000) {
+        safety++;
+        if (freq == 'monthly') {
+          next = DateTime(next.year, next.month + 1, next.day);
+        } else if (freq == 'weekly') {
+          next = next.add(const Duration(days: 7));
+        } else if (freq == 'yearly') {
+          next = DateTime(next.year + 1, next.month, next.day);
+        } else {
+          next = next.add(Duration(days: intervalDays > 0 ? intervalDays : 30));
+        }
+      }
+      return next;
+    }
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add Recurring Bill / Subscription'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleCtrl,
-                  decoration: const InputDecoration(labelText: 'Title (e.g. Broadband, Rent, Netflix)'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amountCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Amount (₹)'),
-                ),
-                const SizedBox(height: 12),
-                ListTile(
-                  title: Text('Due Date: ${DateFormat('MMM d, yyyy').format(dueDate)}'),
-                  trailing: const Icon(Icons.calendar_today),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: dueDate,
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
-                    );
-                    if (picked != null) {
-                      setDialogState(() => dueDate = picked);
-                    }
-                  },
-                ),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedFrequency,
-                  decoration: const InputDecoration(labelText: 'Frequency'),
-                  items: const [
-                    DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
-                    DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
-                    DropdownMenuItem(value: 'yearly', child: Text('Yearly')),
-                    DropdownMenuItem(value: '15_days', child: Text('Every 15 Days')),
-                    DropdownMenuItem(value: '30_days', child: Text('Every 30 Days')),
-                    DropdownMenuItem(value: '45_days', child: Text('Every 45 Days')),
-                    DropdownMenuItem(value: '60_days', child: Text('Every 60 Days')),
-                    DropdownMenuItem(value: 'custom', child: Text('Custom Days Interval')),
-                  ],
-                  onChanged: (val) {
-                    setDialogState(() {
-                      selectedFrequency = val ?? 'monthly';
-                    });
-                  },
-                ),
-                if (selectedFrequency == 'custom') ...[
+        builder: (context, setDialogState) {
+          final customDaysVal = int.tryParse(customDaysCtrl.text.trim()) ?? 30;
+          final calculatedDue = calculateNextDue(selectedDate, dateSelectionMode, selectedFrequency, customDaysVal);
+
+          return AlertDialog(
+            title: const Text('Add Recurring Bill / Subscription'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: titleCtrl,
+                    decoration: const InputDecoration(labelText: 'Title (e.g. Broadband, Rent, Netflix)'),
+                  ),
                   const SizedBox(height: 12),
                   TextField(
-                    controller: customDaysCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Interval in Days (e.g. 15, 45, 90)',
-                      hintText: 'Enter number of days',
+                    controller: amountCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Amount (₹)'),
+                  ),
+                  const SizedBox(height: 14),
+
+                  const Text('Set Date By:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Next Due Date', style: TextStyle(fontSize: 11)),
+                          selected: dateSelectionMode == 'due_date',
+                          onSelected: (sel) {
+                            if (sel) {
+                              setDialogState(() {
+                                dateSelectionMode = 'due_date';
+                                selectedDate = DateTime.now().add(const Duration(days: 7));
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Start / Last Paid', style: TextStyle(fontSize: 11)),
+                          selected: dateSelectionMode == 'start_date',
+                          onSelected: (sel) {
+                            if (sel) {
+                              setDialogState(() {
+                                dateSelectionMode = 'start_date';
+                                selectedDate = DateTime.now();
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      dateSelectionMode == 'start_date'
+                          ? 'Start Date: ${DateFormat('MMM d, yyyy').format(selectedDate)}'
+                          : 'Due Date: ${DateFormat('MMM d, yyyy').format(selectedDate)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
+                    subtitle: dateSelectionMode == 'start_date'
+                        ? Text('Calculated Next Due: ${DateFormat('MMM d, yyyy').format(calculatedDue)}', style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.w600))
+                        : null,
+                    trailing: const Icon(Icons.calendar_today, color: Colors.blueAccent),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedDate,
+                        firstDate: dateSelectionMode == 'start_date' ? DateTime(2020) : DateTime.now().subtract(const Duration(days: 30)),
+                        lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+                      );
+                      if (picked != null) {
+                        setDialogState(() => selectedDate = picked);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedFrequency,
+                    decoration: const InputDecoration(labelText: 'Frequency'),
+                    items: const [
+                      DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
+                      DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
+                      DropdownMenuItem(value: 'yearly', child: Text('Yearly')),
+                      DropdownMenuItem(value: '15_days', child: Text('Every 15 Days')),
+                      DropdownMenuItem(value: '30_days', child: Text('Every 30 Days')),
+                      DropdownMenuItem(value: '45_days', child: Text('Every 45 Days')),
+                      DropdownMenuItem(value: '60_days', child: Text('Every 60 Days')),
+                      DropdownMenuItem(value: 'custom', child: Text('Custom Days Interval')),
+                    ],
+                    onChanged: (val) {
+                      setDialogState(() {
+                        selectedFrequency = val ?? 'monthly';
+                      });
+                    },
+                  ),
+                  if (selectedFrequency == 'custom') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: customDaysCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Interval in Days (e.g. 15, 45, 90)',
+                        hintText: 'Enter number of days',
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                  ],
+
+                  // NOTIFICATIONS SECTION (Google Calendar Style)
+                  const SizedBox(height: 16),
+                  const Row(
+                    children: [
+                      Icon(Icons.notifications_none_rounded, color: Colors.blueAccent, size: 20),
+                      SizedBox(width: 8),
+                      Text('Notifications', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ...notificationRules.map((rule) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(rule, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                              InkWell(
+                                onTap: () {
+                                  setDialogState(() {
+                                    notificationRules.remove(rule);
+                                  });
+                                },
+                                child: const Icon(Icons.close_rounded, size: 18, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      const SizedBox(height: 4),
+                      InkWell(
+                        onTap: () {
+                          _showAddNotificationOptionDialog(context, (newRule) {
+                            setDialogState(() {
+                              if (!notificationRules.contains(newRule)) {
+                                notificationRules.add(newRule);
+                              }
+                            });
+                          });
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                          child: Text(
+                            '+ Add notification',
+                            style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () {
-                if (titleCtrl.text.trim().isEmpty) return;
-                final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
-                String freqStr = selectedFrequency;
-                if (selectedFrequency == '15_days') {
-                  freqStr = 'Every 15 Days';
-                } else if (selectedFrequency == '30_days') {
-                  freqStr = 'Every 30 Days';
-                } else if (selectedFrequency == '45_days') {
-                  freqStr = 'Every 45 Days';
-                } else if (selectedFrequency == '60_days') {
-                  freqStr = 'Every 60 Days';
-                } else if (selectedFrequency == 'custom') {
-                  final days = int.tryParse(customDaysCtrl.text.trim()) ?? 30;
-                  freqStr = 'Every $days Days';
-                }
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () {
+                  if (titleCtrl.text.trim().isEmpty) return;
+                  final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+                  String freqStr = selectedFrequency;
+                  if (selectedFrequency == '15_days') {
+                    freqStr = 'Every 15 Days';
+                  } else if (selectedFrequency == '30_days') {
+                    freqStr = 'Every 30 Days';
+                  } else if (selectedFrequency == '45_days') {
+                    freqStr = 'Every 45 Days';
+                  } else if (selectedFrequency == '60_days') {
+                    freqStr = 'Every 60 Days';
+                  } else if (selectedFrequency == 'custom') {
+                    final days = int.tryParse(customDaysCtrl.text.trim()) ?? 30;
+                    freqStr = 'Every $days Days';
+                  }
 
-                _financeService.addBill(RecurringBill(
-                  id: '',
-                  title: titleCtrl.text.trim(),
-                  amount: amt,
-                  category: category,
-                  dueDate: dueDate,
-                  frequency: freqStr,
-                  notes: notesCtrl.text.trim(),
-                ));
-                Navigator.pop(context);
-              },
-              child: const Text('Add Bill'),
-            ),
-          ],
-        ),
+                  final finalDueDate = calculateNextDue(selectedDate, dateSelectionMode, selectedFrequency, customDaysVal);
+
+                  _financeService.addBill(RecurringBill(
+                    id: '',
+                    title: titleCtrl.text.trim(),
+                    amount: amt,
+                    category: category,
+                    dueDate: finalDueDate,
+                    startDate: dateSelectionMode == 'start_date' ? selectedDate : null,
+                    frequency: freqStr,
+                    notifications: notificationRules.isNotEmpty ? notificationRules : ['On the day at 9 AM'],
+                    notes: notesCtrl.text.trim(),
+                  ));
+                  Navigator.pop(context);
+                },
+                child: const Text('Add Bill'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2916,6 +3226,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   void _showSetBudgetDialog(BuildContext context, List<String> existingBudgetCats) {
     String selectedCategory = 'Food & Dining';
     final amountController = TextEditingController();
+    final customCategoryController = TextEditingController();
 
     final List<String> availableCategories = [
       'Food & Dining',
@@ -2951,6 +3262,19 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   if (val != null) setDialogState(() => selectedCategory = val);
                 },
               ),
+              if (selectedCategory == 'Others') ...[
+                const SizedBox(height: 14),
+                TextField(
+                  controller: customCategoryController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Custom Budget Name',
+                    hintText: 'e.g. Subscriptions, Gaming, Gifts',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.edit_note_rounded),
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               TextField(
                 controller: amountController,
@@ -2970,13 +3294,21 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
               onPressed: () async {
                 final amt = double.tryParse(amountController.text.trim()) ?? 0.0;
+                String categoryToSave = selectedCategory;
+                if (selectedCategory == 'Others') {
+                  final customName = customCategoryController.text.trim();
+                  if (customName.isNotEmpty) {
+                    categoryToSave = customName;
+                  }
+                }
+
                 if (amt > 0) {
-                  await _financeService.saveCategoryBudget(selectedCategory, amt);
+                  await _financeService.saveCategoryBudget(categoryToSave, amt);
                   if (dialogCtx.mounted) {
                     Navigator.pop(dialogCtx);
                     _keepAnalyticsTabActive();
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Budget of ₹${amt.toStringAsFixed(0)} set for $selectedCategory!'), backgroundColor: Colors.green),
+                      SnackBar(content: Text('Budget of ₹${amt.toStringAsFixed(0)} set for $categoryToSave!'), backgroundColor: Colors.green),
                     );
                   }
                 }

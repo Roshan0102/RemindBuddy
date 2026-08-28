@@ -7,6 +7,7 @@ import '../models/secure_document.dart';
 import '../models/vault_collaborator.dart';
 import '../models/family_member.dart';
 import '../models/vault_member_profile.dart';
+import '../models/vault_family.dart';
 import 'encryption_service.dart';
 
 class DecryptedDocument {
@@ -31,6 +32,281 @@ class VaultService {
   final _auth = FirebaseAuth.instance;
 
   String? get _currentUserId => _auth.currentUser?.uid;
+
+  // ==========================================
+  // VAULT FAMILY & SHARED ACCESS METHODS
+  // ==========================================
+
+  /// Stream of current user's active family (if any)
+  Stream<VaultFamily?> getFamilyStream() {
+    final uid = _currentUserId;
+    if (uid == null) return Stream.value(null);
+
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .asyncExpand((userSnap) {
+      if (!userSnap.exists || userSnap.data() == null) return Stream.value(null);
+      final familyId = (userSnap.data()!['familyId'] ?? '').toString();
+      if (familyId.isEmpty) return Stream.value(null);
+
+      return _firestore
+          .collection('families')
+          .doc(familyId)
+          .snapshots()
+          .map((famSnap) {
+        if (!famSnap.exists || famSnap.data() == null) return null;
+        return VaultFamily.fromMap(famSnap.id, famSnap.data()!);
+      });
+    });
+  }
+
+  /// Stream of pending family invites for current user
+  Stream<List<Map<String, dynamic>>> getPendingFamilyInvitesStream() {
+    final uid = _currentUserId;
+    if (uid == null) return Stream.value([]);
+
+    return _firestore
+        .collection('families')
+        .snapshots()
+        .map((snap) {
+      final List<Map<String, dynamic>> invites = [];
+      for (var doc in snap.docs) {
+        final data = doc.data();
+        final pending = List<Map<String, dynamic>>.from(data['pendingInvites'] ?? []);
+        for (var p in pending) {
+          if (p['uid'] == uid) {
+            invites.add({
+              'familyId': doc.id,
+              'familyName': data['name'] ?? 'Family',
+              'senderUsername': p['senderUsername'] ?? 'User',
+              'senderUid': p['senderUid'] ?? '',
+            });
+          }
+        }
+      }
+      return invites;
+    });
+  }
+
+  /// Create a new family
+  Future<void> createFamily(String familyName) async {
+    final uid = _currentUserId;
+    if (uid == null) throw Exception("User not authenticated.");
+
+    final userDoc = await _firestore.collection('users').doc(uid).get();
+    final existingFamilyId = (userDoc.data()?['familyId'] ?? '').toString();
+    if (existingFamilyId.isNotEmpty) {
+      throw Exception("You are already a member of a family. You cannot create multiple families.");
+    }
+
+    final myUsername = await getCurrentUsername();
+    final docRef = _firestore.collection('families').doc();
+
+    final familyData = {
+      'id': docRef.id,
+      'name': familyName.trim(),
+      'adminUids': [uid],
+      'collaboratorUids': [uid],
+      'pendingInvites': [],
+      'virtualProfiles': [
+        {'id': 'vp_self', 'name': 'Self (@$myUsername)', 'createdBy': uid},
+      ],
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+
+    await docRef.set(familyData);
+    await _firestore.collection('users').doc(uid).set({'familyId': docRef.id}, SetOptions(merge: true));
+  }
+
+  /// Invite an app user to the family by username
+  Future<void> inviteToFamily(String familyId, String targetUsername) async {
+    final uid = _currentUserId;
+    if (uid == null) throw Exception("User not authenticated.");
+
+    final familySnap = await _firestore.collection('families').doc(familyId).get();
+    if (!familySnap.exists) throw Exception("Family not found.");
+    final familyData = familySnap.data()!;
+
+    final adminUids = List<String>.from(familyData['adminUids'] ?? []);
+    if (!adminUids.contains(uid)) {
+      throw Exception("Only Family Admins can invite new members.");
+    }
+
+    final cleanUsername = targetUsername.trim();
+    if (cleanUsername.isEmpty) throw Exception("Please enter a username.");
+
+    final myUsername = await getCurrentUsername();
+    if (cleanUsername.toLowerCase() == myUsername.toLowerCase()) {
+      throw Exception("You cannot invite yourself.");
+    }
+
+    final userSnap = await _firestore.collection('usernames').doc(cleanUsername).get();
+    if (!userSnap.exists) {
+      throw Exception("User '@$cleanUsername' not found.");
+    }
+
+    final targetUid = (userSnap.data()?['uid'] ?? '').toString();
+    if (targetUid.isEmpty) throw Exception("User '@$cleanUsername' has no valid account.");
+
+    final collabs = List<String>.from(familyData['collaboratorUids'] ?? []);
+    if (collabs.contains(targetUid)) {
+      throw Exception("User '@$cleanUsername' is already a member of your family.");
+    }
+
+    final pending = List<Map<String, dynamic>>.from(familyData['pendingInvites'] ?? []);
+    if (pending.any((p) => p['uid'] == targetUid)) {
+      throw Exception("An invitation has already been sent to @$cleanUsername.");
+    }
+
+    final targetUserDoc = await _firestore.collection('users').doc(targetUid).get();
+    final targetFamilyId = (targetUserDoc.data()?['familyId'] ?? '').toString();
+    if (targetFamilyId.isNotEmpty) {
+      throw Exception("User '@$cleanUsername' is already a member of another family.");
+    }
+
+    pending.add({
+      'uid': targetUid,
+      'username': cleanUsername,
+      'senderUid': uid,
+      'senderUsername': myUsername,
+    });
+
+    await _firestore.collection('families').doc(familyId).update({'pendingInvites': pending});
+  }
+
+  /// Respond to a family invitation (Accept or Reject)
+  Future<void> respondToFamilyInvite(String familyId, bool accept) async {
+    final uid = _currentUserId;
+    if (uid == null) throw Exception("User not authenticated.");
+
+    final familySnap = await _firestore.collection('families').doc(familyId).get();
+    if (!familySnap.exists) throw Exception("Family invitation no longer exists.");
+
+    final familyData = familySnap.data()!;
+    final pending = List<Map<String, dynamic>>.from(familyData['pendingInvites'] ?? []);
+
+    if (accept) {
+      final userDoc = await _firestore.collection('users').doc(uid).get();
+      final existingFamilyId = (userDoc.data()?['familyId'] ?? '').toString();
+      if (existingFamilyId.isNotEmpty) {
+        throw Exception("You are already a member of a family. You cannot join multiple families.");
+      }
+
+      final collabs = List<String>.from(familyData['collaboratorUids'] ?? []);
+      if (!collabs.contains(uid)) collabs.add(uid);
+
+      pending.removeWhere((p) => p['uid'] == uid);
+
+      await _firestore.collection('families').doc(familyId).update({
+        'collaboratorUids': collabs,
+        'pendingInvites': pending,
+      });
+
+      await _firestore.collection('users').doc(uid).set({'familyId': familyId}, SetOptions(merge: true));
+    } else {
+      pending.removeWhere((p) => p['uid'] == uid);
+      await _firestore.collection('families').doc(familyId).update({
+        'pendingInvites': pending,
+      });
+    }
+  }
+
+  /// Add a virtual profile to family
+  Future<void> addVirtualProfile(String familyId, String profileName) async {
+    final uid = _currentUserId;
+    if (uid == null) throw Exception("User not authenticated.");
+
+    final familySnap = await _firestore.collection('families').doc(familyId).get();
+    if (!familySnap.exists) throw Exception("Family not found.");
+
+    final profiles = List<Map<String, dynamic>>.from(familySnap.data()!['virtualProfiles'] ?? []);
+    final id = 'vp_${DateTime.now().millisecondsSinceEpoch}';
+
+    profiles.add({
+      'id': id,
+      'name': profileName.trim(),
+      'createdBy': uid,
+    });
+
+    await _firestore.collection('families').doc(familyId).update({'virtualProfiles': profiles});
+  }
+
+  /// Delete a virtual profile from family
+  Future<void> deleteVirtualProfile(String familyId, String profileId) async {
+    final uid = _currentUserId;
+    if (uid == null) throw Exception("User not authenticated.");
+
+    final familySnap = await _firestore.collection('families').doc(familyId).get();
+    if (!familySnap.exists) return;
+
+    final profiles = List<Map<String, dynamic>>.from(familySnap.data()!['virtualProfiles'] ?? []);
+    profiles.removeWhere((p) => p['id'] == profileId);
+
+    await _firestore.collection('families').doc(familyId).update({'virtualProfiles': profiles});
+  }
+
+  /// Remove a collaborator from family (Admin only)
+  Future<void> removeCollaboratorFromFamily(String familyId, String targetUid) async {
+    final uid = _currentUserId;
+    if (uid == null) throw Exception("User not authenticated.");
+
+    final familySnap = await _firestore.collection('families').doc(familyId).get();
+    if (!familySnap.exists) throw Exception("Family not found.");
+
+    final adminUids = List<String>.from(familySnap.data()!['adminUids'] ?? []);
+    if (!adminUids.contains(uid)) throw Exception("Only Family Admins can remove members.");
+
+    final collabs = List<String>.from(familySnap.data()!['collaboratorUids'] ?? []);
+    collabs.remove(targetUid);
+    adminUids.remove(targetUid);
+
+    await _firestore.collection('families').doc(familyId).update({
+      'collaboratorUids': collabs,
+      'adminUids': adminUids,
+    });
+
+    await _firestore.collection('users').doc(targetUid).update({'familyId': FieldValue.delete()});
+  }
+
+  /// Promote collaborator to Admin (Admin only)
+  Future<void> promoteToAdmin(String familyId, String targetUid) async {
+    final uid = _currentUserId;
+    if (uid == null) throw Exception("User not authenticated.");
+
+    final familySnap = await _firestore.collection('families').doc(familyId).get();
+    if (!familySnap.exists) throw Exception("Family not found.");
+
+    final adminUids = List<String>.from(familySnap.data()!['adminUids'] ?? []);
+    if (!adminUids.contains(uid)) throw Exception("Only Family Admins can promote members.");
+
+    if (!adminUids.contains(targetUid)) {
+      adminUids.add(targetUid);
+      await _firestore.collection('families').doc(familyId).update({'adminUids': adminUids});
+    }
+  }
+
+  /// Delete family (Admin only)
+  Future<void> deleteFamily(String familyId) async {
+    final uid = _currentUserId;
+    if (uid == null) throw Exception("User not authenticated.");
+
+    final familySnap = await _firestore.collection('families').doc(familyId).get();
+    if (!familySnap.exists) return;
+
+    final familyData = familySnap.data()!;
+    final adminUids = List<String>.from(familyData['adminUids'] ?? []);
+    if (!adminUids.contains(uid)) throw Exception("Only Family Admins can delete the family.");
+
+    final collabs = List<String>.from(familyData['collaboratorUids'] ?? []);
+
+    for (var cUid in collabs) {
+      await _firestore.collection('users').doc(cUid).update({'familyId': FieldValue.delete()});
+    }
+
+    await _firestore.collection('families').doc(familyId).delete();
+  }
 
   // ==========================================
   // USERNAME & COLLABORATION METHODS
@@ -565,9 +841,11 @@ class VaultService {
     late StreamController<List<VaultMemberProfile>> controller;
     StreamSubscription? collabSub;
     StreamSubscription? familySub;
+    StreamSubscription? vaultFamilySub;
 
     List<VaultCollaborator> collabs = [];
     List<FamilyMember> familyMembers = [];
+    VaultFamily? activeVaultFamily;
 
     void emitProfiles() {
       final List<VaultMemberProfile> profiles = [];
@@ -586,7 +864,23 @@ class VaultService {
         }
       }
 
-      // 2. Add Virtual Family Members
+      // 2. Add Family Virtual Profiles (from VaultFamily)
+      if (activeVaultFamily != null) {
+        for (var vp in activeVaultFamily!.virtualProfiles) {
+          if (vp.id != 'vp_self') {
+            profiles.add(VaultMemberProfile(
+              id: vp.id,
+              name: vp.name,
+              rawName: vp.name,
+              subtext: 'Family Virtual Profile',
+              avatarColorValue: VaultCollaborator.generateColorForUser(vp.name),
+              isVirtual: true,
+            ));
+          }
+        }
+      }
+
+      // 3. Add Legacy Virtual Family Members
       for (var fm in familyMembers) {
         profiles.add(VaultMemberProfile(
           id: fm.id,
@@ -598,7 +892,7 @@ class VaultService {
         ));
       }
 
-      // 3. Add Real App Collaborators
+      // 4. Add Real App Collaborators
       for (var c in collabs) {
         if (!c.isSelf) {
           profiles.add(VaultMemberProfile(
@@ -628,10 +922,16 @@ class VaultService {
           familyMembers = list;
           emitProfiles();
         });
+
+        vaultFamilySub = getFamilyStream().listen((fam) {
+          activeVaultFamily = fam;
+          emitProfiles();
+        });
       },
       onCancel: () {
         collabSub?.cancel();
         familySub?.cancel();
+        vaultFamilySub?.cancel();
       },
     );
 
