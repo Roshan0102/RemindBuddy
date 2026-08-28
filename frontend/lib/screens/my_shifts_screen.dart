@@ -41,6 +41,11 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   DateTime? _walkinsLastUpdated;
   DateTime? _walkinsLastRan;
   bool _showPastWalkIns = false;
+  bool _showPastEvents = false;
+  bool _isFetchingEvents = false;
+  bool _isFetchingWalkIns = false;
+  Map<String, int> _eventCounts = {};
+  Map<String, int> _walkinCounts = {};
   bool _isEventsEnabled = false;
   bool _isWalkInEnabled = false;
   bool _isEventsConfigured = false;
