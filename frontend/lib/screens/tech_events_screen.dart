@@ -585,13 +585,13 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                                   Wrap(
                                     spacing: 6,
                                     runSpacing: 4,
-                                    children: sortedDates.map((d) {
+                                    children: sortedDates.map<Widget>((d) {
                                       final dt = DateTime.tryParse(d);
                                       final formatted = dt != null ? DateFormat('MMM d, yyyy').format(dt) : d;
                                       return Chip(
                                         label: Text(formatted, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                                         backgroundColor: Colors.blueAccent.withOpacity(0.1),
-                                        dense: true,
+                                        visualDensity: VisualDensity.compact,
                                       );
                                     }).toList(),
                                   ),

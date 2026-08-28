@@ -442,9 +442,9 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                 final family = famSnapshot.data;
 
                 return StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: _vaultService.getPendingFamilyInvitesStream(),
                   builder: (context, invitesSnapshot) {
                     final pendingInvites = invitesSnapshot.data ?? [];
+                    final isAdmin = family != null && family.adminUids.contains(user.uid);
 
                     return Container(
                       constraints: const BoxConstraints(maxWidth: 500, maxHeight: 650),
@@ -562,8 +562,6 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                               ),
                             ] else ...[
                               // STATE B: FAMILY ACTIVE
-                              final isAdmin = family.adminUids.contains(user.uid);
-
                               // Admin Badge Card
                               Container(
                                 width: double.infinity,
