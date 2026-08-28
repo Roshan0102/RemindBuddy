@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/secure_document.dart';
+import '../models/vault_member_profile.dart';
 import '../services/vault_service.dart';
 import 'add_document_screen.dart';
 
@@ -197,7 +198,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<VaultMemberProfile>>(
-      stream: _vaultService.getMemberProfilesStream(),
+      stream: _vaultService.getUnifiedMemberProfiles(),
       builder: (context, profilesSnap) {
         final profiles = profilesSnap.data ?? [];
         final profilesMap = {for (var p in profiles) p.id: p};
@@ -252,7 +253,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                               style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
                             ),
                             Text(
-                              'Shared Mode: ${_decDoc.original.sharedMode.toUpperCase()}',
+                              'Shared Mode: ${_decDoc.original.isPrivate ? 'PRIVATE' : 'FAMILY SHARED'}',
                               style: const TextStyle(
                                 color: Colors.blueAccent,
                                 fontSize: 12,

@@ -35,6 +35,29 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   bool _hasData = false;
   String? _rosterImageUrl;
   
+  // State & Subscriptions
+  DateTime? _eventsLastUpdated;
+  DateTime? _eventsLastRan;
+  DateTime? _walkinsLastUpdated;
+  DateTime? _walkinsLastRan;
+  bool _showPastWalkIns = false;
+  bool _isEventsEnabled = false;
+  bool _isWalkInEnabled = false;
+  bool _isEventsConfigured = false;
+  bool _isWalkInConfigured = false;
+  List<String> _eventInterests = [];
+  String _eventLocation = '';
+  String _eventMode = '';
+  List<String> _walkinRoles = [];
+  String _walkinLocation = '';
+  int _selectedTab = 0;
+
+  StreamSubscription? _userSubscription;
+  StreamSubscription? _eventsSubscription;
+  StreamSubscription? _walkinsSubscription;
+  Stream<QuerySnapshot>? _eventsStream;
+  Stream<QuerySnapshot>? _walkinsStream;
+
   // Multi-month support
   DateTime _currentDate = DateTime.now();
   String get _selectedRosterMonth => DateFormat('yyyy-MM').format(_currentDate);
