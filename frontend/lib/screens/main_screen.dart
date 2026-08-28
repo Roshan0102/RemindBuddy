@@ -874,7 +874,7 @@ class _MainScreenState extends State<MainScreen> {
                   'action': () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const WalkinDrivesScreen()),
+                      MaterialPageRoute(builder: (context) => const WalkInDrivesScreen()),
                     );
                   },
                 },
@@ -1330,7 +1330,7 @@ class _MainScreenState extends State<MainScreen> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const WalkinDrivesScreen()),
+                        MaterialPageRoute(builder: (context) => const WalkInDrivesScreen()),
                       );
                     },
                   ),
