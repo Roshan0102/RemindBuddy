@@ -655,10 +655,11 @@ class _AdminScreenState extends State<AdminScreen> {
       }
 
       final packageInfo = await PackageInfo.fromPlatform();
+      const firebaseApkUrl = 'https://firebasestorage.googleapis.com/v0/b/remindbuddy-b68f9.firebasestorage.app/o/releases%2Flatest-release.apk?alt=media';
       final shareText = '''
 📱 *RemindBuddy App (v${packageInfo.version})*
 Download latest release APK:
-https://github.com/Roshan0102/RemindBuddy/releases/latest
+$firebaseApkUrl
 '''.trim();
 
       await Share.share(shareText, subject: 'Download RemindBuddy App APK');
@@ -1032,30 +1033,14 @@ https://github.com/Roshan0102/RemindBuddy/releases/latest
                     },
                   ),
                   const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _updateAppUpdatesConfig,
-                          icon: const Icon(Icons.save),
-                          label: const Text('Save Release Config'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.purple.shade700,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed: _shareLatestApk,
-                        icon: const Icon(Icons.share),
-                        label: const Text('Share APK'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.teal.shade700,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ],
+                  ElevatedButton.icon(
+                    onPressed: _updateAppUpdatesConfig,
+                    icon: const Icon(Icons.save),
+                    label: const Text('Save Release Config'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple.shade700,
+                      foregroundColor: Colors.white,
+                    ),
                   ),
                 ],
               ),

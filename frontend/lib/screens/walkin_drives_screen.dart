@@ -312,6 +312,17 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
         .update({'isInterested': !currentlyInterested});
   }
 
+  Future<void> _markWalkinNotInterested(String docId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('walkins')
+        .doc(docId)
+        .update({'notInterested': true});
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -324,7 +335,7 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: Text('Walk-In Job Drives 💼', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        title: Text('Walk-In Drives', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         elevation: 0,
         actions: [
           IconButton(
@@ -527,22 +538,74 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
                                       ],
                                     ),
                                   ],
-                                  if (link.isNotEmpty) ...[
-                                    const SizedBox(height: 10),
-                                    Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton.icon(
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: isInterested ? Colors.amber.shade900 : Colors.blue.shade700,
+                                            side: BorderSide(color: isInterested ? Colors.amber : Colors.blue.shade400),
+                                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                                          ),
+                                          onPressed: () => _toggleWalkinInterested(doc.id, isInterested),
+                                          icon: Icon(
+                                            isInterested ? Icons.star : Icons.star_border,
+                                            size: 18,
+                                            color: isInterested ? Colors.amber.shade800 : Colors.blue.shade700,
+                                          ),
+                                          label: Text(
+                                            isInterested ? 'Interested ⭐' : 'Mark Interested',
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: Colors.red.shade700,
+                                          side: BorderSide(color: Colors.red.shade200),
+                                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                                        ),
                                         onPressed: () async {
-                                          final uri = Uri.parse(link);
-                                          if (await canLaunchUrl(uri)) {
-                                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                          final confirm = await showDialog<bool>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              title: const Text('Hide Drive'),
+                                              content: const Text('Mark this walk-in drive as Not Interested? It will be hidden from your list.'),
+                                              actions: [
+                                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hide', style: TextStyle(color: Colors.red))),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm == true) {
+                                            await _markWalkinNotInterested(doc.id);
                                           }
                                         },
-                                        icon: const Icon(Icons.open_in_new, size: 16),
-                                        label: const Text('View Drive Details'),
+                                        icon: const Icon(Icons.block, size: 16, color: Colors.red),
+                                        label: const Text('Ignore', style: TextStyle(fontSize: 12)),
                                       ),
-                                    ),
-                                  ],
+                                      if (link.isNotEmpty) ...[
+                                        const SizedBox(width: 8),
+                                        ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.blue.shade700,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                                          ),
+                                          onPressed: () async {
+                                            final uri = Uri.parse(link);
+                                            if (await canLaunchUrl(uri)) {
+                                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                            }
+                                          },
+                                          icon: const Icon(Icons.open_in_new, size: 14),
+                                          label: const Text('Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),

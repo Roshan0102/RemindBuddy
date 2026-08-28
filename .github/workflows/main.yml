@@ -46,6 +46,17 @@ jobs:
           name: RemindBuddy-v1.8.5-APK
           path: frontend/build/app/outputs/flutter-apk/app-release.apk
 
+      - name: Authenticate to Google Cloud / Firebase
+        uses: google-github-actions/auth@v2
+        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY != '' }}
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+
+      - name: Overwrite Latest APK in Firebase Storage
+        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY != '' }}
+        run: |
+          gcloud storage cp frontend/build/app/outputs/flutter-apk/app-release.apk gs://remindbuddy-b68f9.firebasestorage.app/releases/latest-release.apk
+
       - name: Extract version from pubspec.yaml
         id: get_version
         working-directory: ./frontend

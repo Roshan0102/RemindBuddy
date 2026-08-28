@@ -213,6 +213,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
     String tempLocation = _eventLocation.isEmpty ? 'Bengaluru' : _eventLocation;
     String tempMode = _eventMode;
     final locationController = TextEditingController(text: tempLocation);
+    final interestsController = TextEditingController(text: _eventInterests.join(', '));
     bool isSavingInterests = false;
 
     await showDialog(
@@ -222,7 +223,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Row(
             children: [
-              const Icon(Icons.tune_rounded, color: Colors.blueAccent),
+              Icon(Icons.tune_rounded, color: Colors.green.shade700),
               const SizedBox(width: 8),
               Text('Tech Event Preferences', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18)),
             ],
@@ -232,7 +233,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Location', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const Text('Preferred Location', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 6),
                 TextField(
                   controller: locationController,
@@ -262,28 +263,17 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                   },
                 ),
                 const SizedBox(height: 14),
-                const Text('Topics & Technologies', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const Text('Preferred Topics & Technologies (comma-separated)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: availableInterests.map((interest) {
-                    final isSel = tempSelected.contains(interest);
-                    return FilterChip(
-                      label: Text(interest, style: TextStyle(fontSize: 12, color: isSel ? Colors.white : Colors.black87)),
-                      selected: isSel,
-                      selectedColor: Colors.blueAccent,
-                      onSelected: (selected) {
-                        setDialogState(() {
-                          if (selected) {
-                            tempSelected.add(interest);
-                          } else {
-                            tempSelected.remove(interest);
-                          }
-                        });
-                      },
-                    );
-                  }).toList(),
+                TextField(
+                  controller: interestsController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. Flutter, AI/ML, Cloud Computing, DevOps, Web3, Python',
+                    prefixIcon: Icon(Icons.category_outlined, size: 20),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
                 ),
               ],
             ),
@@ -294,21 +284,31 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+              ),
               onPressed: isSavingInterests
                   ? null
                   : () async {
                       setDialogState(() => isSavingInterests = true);
                       try {
+                        final list = interestsController.text
+                            .split(',')
+                            .map((s) => s.trim())
+                            .where((s) => s.isNotEmpty)
+                            .toList();
+
                         final loc = locationController.text.trim().isEmpty ? 'Bengaluru' : locationController.text.trim();
                         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-                          'eventInterests': tempSelected,
+                          'eventInterests': list,
                           'eventLocation': loc,
                           'eventMode': tempMode,
                           'isEventsConfigured': true,
                         }, SetOptions(merge: true));
 
                         setState(() {
-                          _eventInterests = tempSelected;
+                          _eventInterests = list;
                           _eventLocation = loc;
                           _eventMode = tempMode;
                           _isEventsConfigured = true;
@@ -376,7 +376,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: Text('Tech Events & Meetups', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        title: Text('Tech Events', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         elevation: 0,
         actions: [
           IconButton(
@@ -589,8 +589,8 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                                       final dt = DateTime.tryParse(d);
                                       final formatted = dt != null ? DateFormat('MMM d, yyyy').format(dt) : d;
                                       return Chip(
-                                        label: Text(formatted, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                                        backgroundColor: Colors.blueAccent.withOpacity(0.1),
+                                        label: Text(formatted, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green.shade800)),
+                                        backgroundColor: Colors.green.shade50,
                                         visualDensity: VisualDensity.compact,
                                       );
                                     }).toList(),
@@ -599,7 +599,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                                   if (location.isNotEmpty)
                                     Row(
                                       children: [
-                                        const Icon(Icons.location_on_outlined, size: 16, color: Colors.blueAccent),
+                                        Icon(Icons.location_on_outlined, size: 16, color: Colors.green.shade700),
                                         const SizedBox(width: 4),
                                         Expanded(
                                           child: Text(location, style: TextStyle(fontSize: 13, color: subtextColor)),
@@ -616,22 +616,74 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                                       ],
                                     ),
                                   ],
-                                  if (regLink.isNotEmpty) ...[
-                                    const SizedBox(height: 10),
-                                    Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton.icon(
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: isInterested ? Colors.amber.shade900 : Colors.green.shade700,
+                                            side: BorderSide(color: isInterested ? Colors.amber : Colors.green.shade400),
+                                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                                          ),
+                                          onPressed: () => _toggleGroupInterested(docIds, isInterested),
+                                          icon: Icon(
+                                            isInterested ? Icons.star : Icons.star_border,
+                                            size: 18,
+                                            color: isInterested ? Colors.amber.shade800 : Colors.green.shade700,
+                                          ),
+                                          label: Text(
+                                            isInterested ? 'Interested ⭐' : 'Mark Interested',
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: Colors.red.shade700,
+                                          side: BorderSide(color: Colors.red.shade200),
+                                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                                        ),
                                         onPressed: () async {
-                                          final uri = Uri.parse(regLink);
-                                          if (await canLaunchUrl(uri)) {
-                                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                          final confirm = await showDialog<bool>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              title: const Text('Hide Event'),
+                                              content: const Text('Mark this event as Not Interested? It will be hidden from your list.'),
+                                              actions: [
+                                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hide', style: TextStyle(color: Colors.red))),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm == true) {
+                                            await _markNotInterested(docIds);
                                           }
                                         },
-                                        icon: const Icon(Icons.open_in_new, size: 16),
-                                        label: const Text('Event Details / Register'),
+                                        icon: const Icon(Icons.block, size: 16, color: Colors.red),
+                                        label: const Text('Ignore', style: TextStyle(fontSize: 12)),
                                       ),
-                                    ),
-                                  ],
+                                      if (regLink.isNotEmpty) ...[
+                                        const SizedBox(width: 8),
+                                        ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.green.shade700,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                                          ),
+                                          onPressed: () async {
+                                            final uri = Uri.parse(regLink);
+                                            if (await canLaunchUrl(uri)) {
+                                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                            }
+                                          },
+                                          icon: const Icon(Icons.open_in_new, size: 14),
+                                          label: const Text('Register', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),

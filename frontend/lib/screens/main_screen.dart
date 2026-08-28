@@ -43,6 +43,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
+  String _activeFeatureOverride = 'home';
   bool _isDarkMode = false;
   List<String> _enabledModules = [
     'gold',
@@ -383,6 +384,15 @@ class _MainScreenState extends State<MainScreen> {
 
 
   final Map<String, Map<String, dynamic>> _moduleRegistry = {
+    'home': {
+      'screen': HomeScreen(onNavigateToFeature: (id) => _selectTabOrPush(id)),
+      'name': 'Home',
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.home_outlined, color: Colors.blueAccent),
+        selectedIcon: Icon(Icons.home, color: Colors.blueAccent),
+        label: 'Home',
+      ),
+    },
     'gold': {
       'screen': const GoldScreen(),
       'name': 'Gold Rates',
@@ -393,7 +403,7 @@ class _MainScreenState extends State<MainScreen> {
       ),
     },
     'reminders': {
-      'screen': const HomeScreen(),
+      'screen': const DailyRemindersScreen(),
       'name': 'Reminders',
       'destination': const NavigationDestination(
         icon: Icon(Icons.calendar_today_outlined, color: Colors.indigoAccent),
@@ -647,16 +657,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _selectTabOrPush(String id) {
-    if (id == 'daily_reminders') {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const DailyRemindersScreen()));
-      return;
-    } else if (id == 'events') {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const TechEventsScreen()));
-      return;
-    } else if (id == 'walkins') {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const WalkInDrivesScreen()));
-      return;
-    } else if (id == 'voice_assistant') {
+    if (id == 'voice_assistant') {
       _openVoiceAssistant();
       return;
     } else if (id == 'notifications') {
@@ -667,28 +668,17 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
 
-    final isLargeScreen = MediaQuery.of(context).size.width >= 768;
-    if (isLargeScreen) {
-      final desktop = _desktopActiveModules;
-      final idx = desktop.indexOf(id);
-      if (idx != -1) {
-        setState(() => _selectedIndex = idx);
-        return;
-      }
-    }
-
     final active = _activeFeatures;
     final idx = active.indexOf(id);
     if (idx != -1) {
-      setState(() => _selectedIndex = idx);
-    } else {
-      final screen = _moduleRegistry[id]?['screen'] as Widget?;
-      if (screen != null) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => screen),
-        );
-      }
+      setState(() {
+        _selectedIndex = idx;
+        _activeFeatureOverride = id;
+      });
+    } else if (_moduleRegistry.containsKey(id)) {
+      setState(() {
+        _activeFeatureOverride = id;
+      });
     }
   }
 
@@ -941,11 +931,11 @@ class _MainScreenState extends State<MainScreen> {
                   },
                 },
               {
-                'id': 'customize',
-                'name': 'Customize Bar',
-                'icon': Icons.dashboard_customize,
-                'color': Colors.purple,
-                'action': () => _showCustomizeBottomBarDialog(),
+                'id': 'home',
+                'name': 'Home',
+                'icon': Icons.home,
+                'color': Colors.blueAccent,
+                'action': () => _selectTabOrPush('home'),
               },
               {
                 'id': 'admin',
@@ -1120,9 +1110,13 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    final active = _activeFeatures;
+    if (index >= 0 && index < active.length) {
+      setState(() {
+        _selectedIndex = index;
+        _activeFeatureOverride = active[index];
+      });
+    }
   }
 
   @override
@@ -1511,17 +1505,14 @@ class _MainScreenState extends State<MainScreen> {
     }
 
     final activeModules = _activeFeatures;
-    if (_selectedIndex >= activeModules.length) {
-      _selectedIndex = 0;
+    Widget mainBody;
+    if (_moduleRegistry.containsKey(_activeFeatureOverride)) {
+      mainBody = _moduleRegistry[_activeFeatureOverride]!['screen'] as Widget;
+    } else if (_selectedIndex < activeModules.length) {
+      mainBody = _moduleRegistry[activeModules[_selectedIndex]]!['screen'] as Widget;
+    } else {
+      mainBody = HomeScreen(onNavigateToFeature: (id) => _selectTabOrPush(id));
     }
-    final int displayIndex = _selectedIndex;
-
-    final mainBody = IndexedStack(
-      index: displayIndex,
-      children: activeModules
-          .map((id) => _moduleRegistry[id]!['screen'] as Widget)
-          .toList(),
-    );
 
     return Scaffold(
       appBar: AppBar(
