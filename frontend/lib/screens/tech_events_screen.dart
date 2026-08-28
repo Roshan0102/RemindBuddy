@@ -342,15 +342,19 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
     );
   }
 
-  Future<void> _markNotInterested(String eventDocId) async {
+  Future<void> _markNotInterested(List<String> eventDocIds) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('events')
-        .doc(eventDocId)
-        .update({'notInterested': true});
+    final batch = FirebaseFirestore.instance.batch();
+    for (var id in eventDocIds) {
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('events')
+          .doc(id);
+      batch.update(docRef, {'notInterested': true});
+    }
+    await batch.commit();
   }
 
   Future<void> _toggleGroupInterested(List<String> eventDocIds, bool currentlyInterested) async {

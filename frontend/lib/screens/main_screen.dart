@@ -383,7 +383,7 @@ class _MainScreenState extends State<MainScreen> {
 
 
 
-  final Map<String, Map<String, dynamic>> _moduleRegistry = {
+  Map<String, Map<String, dynamic>> get _moduleRegistry => {
     'home': {
       'screen': HomeScreen(onNavigateToFeature: (id) => _selectTabOrPush(id)),
       'name': 'Home',

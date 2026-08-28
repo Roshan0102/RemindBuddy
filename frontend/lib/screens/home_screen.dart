@@ -6,7 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../services/storage_service.dart';
-import '../services/gold_service.dart';
+import '../services/gold_price_service.dart';
+import '../models/gold_price.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(String featureId)? onNavigateToFeature;
@@ -19,21 +20,23 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final StorageService _storage = StorageService();
-  final GoldService _goldService = GoldService();
+  final GoldPriceService _goldPriceService = GoldPriceService();
 
   // 8 Grid Slot widget IDs saved in SharedPreferences
   List<String?> _slotWidgets = List.filled(8, null);
   bool _isLoadingSlots = true;
 
-  // Live Data Streams / Snapshots
-  Map<String, dynamic>? _goldData;
+  // Live Data State
+  GoldPrice? _latestGoldPrice;
   List<Map<String, dynamic>> _bankAccounts = [];
-  Map<String, double> _todayExpenses = {'sent': 0.0, 'received': 0.0};
+  double _todaySpent = 0.0;
   Map<String, dynamic>? _nextShift;
   int _upcomingEventsCount = 0;
   int _upcomingWalkinsCount = 0;
 
+  StreamSubscription? _goldSub;
   StreamSubscription? _accountsSub;
+  StreamSubscription? _txSub;
   StreamSubscription? _eventsSub;
   StreamSubscription? _walkinsSub;
   StreamSubscription? _shiftsSub;
@@ -58,7 +61,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _goldSub?.cancel();
     _accountsSub?.cancel();
+    _txSub?.cancel();
     _eventsSub?.cancel();
     _walkinsSub?.cancel();
     _shiftsSub?.cancel();
@@ -103,49 +108,68 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // 1. Fetch Gold Rate
-    _goldService.getLatestGoldPrice().then((data) {
-      if (mounted) setState(() => _goldData = data);
+    // 1. Fetch Gold Rate Stream
+    _goldSub = _goldPriceService.getGlobalGoldPricesStream().listen((prices) {
+      if (prices.isNotEmpty && mounted) {
+        setState(() => _latestGoldPrice = prices.first);
+      }
     });
 
-    // 2. Fetch Bank Accounts
-    _accountsSub = _storage.getBankAccountsStream().listen((accounts) {
+    // 2. Fetch Bank Accounts Stream from Firestore
+    _accountsSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('bank_accounts')
+        .snapshots()
+        .listen((snap) {
       if (mounted) {
         setState(() {
-          _bankAccounts = accounts.map((a) => a.toMap()).toList();
+          _bankAccounts = snap.docs.map((d) => d.data()).toList();
         });
       }
     });
 
-    // 3. Fetch Today Expenses
+    // 3. Fetch Today's Spent Stream from Firestore
     final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    _storage.getFinanceTransactionsStream().listen((txs) {
-      double sent = 0.0;
-      double received = 0.0;
-      for (final tx in txs) {
-        if (tx.date == todayStr) {
-          if (tx.type == 'debit' || tx.type == 'expense' || tx.type == 'sent') {
-            sent += tx.amount;
-          } else if (tx.type == 'credit' || tx.type == 'income' || tx.type == 'received') {
-            received += tx.amount;
-          }
+    _txSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('finance_transactions')
+        .snapshots()
+        .listen((snap) {
+      double spent = 0.0;
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final date = (data['date'] ?? '').toString();
+        final type = (data['type'] ?? '').toString().toLowerCase();
+        if (date.startsWith(todayStr) && (type == 'debit' || type == 'expense' || type == 'sent')) {
+          spent += (data['amount'] as num? ?? 0.0).toDouble();
         }
       }
       if (mounted) {
         setState(() {
-          _todayExpenses = {'sent': sent, 'received': received};
+          _todaySpent = spent;
         });
       }
     });
 
-    // 4. Fetch Next Shift
-    _shiftsSub = _storage.getShiftsStream().listen((shifts) {
+    // 4. Fetch Next Work Shift
+    _shiftsSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('shifts')
+        .snapshots()
+        .listen((snap) {
       final nowStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final upcoming = shifts.where((s) => s.date.compareTo(nowStr) >= 0).toList();
-      upcoming.sort((a, b) => a.date.compareTo(b.date));
+      final upcomingDocs = snap.docs.where((d) {
+        final date = (d.data()['date'] ?? '').toString();
+        return date.compareTo(nowStr) >= 0;
+      }).toList();
+      upcomingDocs.sort((a, b) => (a.data()['date'] ?? '').toString().compareTo((b.data()['date'] ?? '').toString()));
+      
       if (mounted) {
         setState(() {
-          _nextShift = upcoming.isNotEmpty ? upcoming.first.toMap() : null;
+          _nextShift = upcomingDocs.isNotEmpty ? upcomingDocs.first.data() : null;
         });
       }
     });
@@ -380,8 +404,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildGoldWidget() {
-    final price24k = _goldData?['rate24k'] ?? '₹7,450';
-    final change = _goldData?['change'] ?? '+₹25';
+    final price24k = _latestGoldPrice != null ? '₹${_latestGoldPrice!.price24k.toStringAsFixed(0)}' : '₹7,450';
+    final change = _latestGoldPrice != null ? '${_latestGoldPrice!.change >= 0 ? "+" : ""}₹${_latestGoldPrice!.change.toStringAsFixed(0)}' : '+₹25';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -395,7 +419,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(height: 6),
-        Text(price24k, style: const TextStyle(fontWeight: FontWeight.extrabold, fontSize: 16, color: Colors.amber)),
+        Text(price24k, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.amber)),
         const SizedBox(height: 2),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -428,7 +452,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(height: 6),
-        Text(formattedTotal, style: const TextStyle(fontWeight: FontWeight.extrabold, fontSize: 16, color: Colors.indigo)),
+        Text(formattedTotal, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.indigo)),
         const SizedBox(height: 2),
         Text('${_bankAccounts.length} Connected Accounts', style: const TextStyle(color: Colors.grey, fontSize: 10)),
       ],
@@ -436,8 +460,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildExpensesWidget() {
-    final sent = _todayExpenses['sent'] ?? 0.0;
-    final formattedSent = NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(sent);
+    final formattedSent = NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(_todaySpent);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,7 +474,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(height: 6),
-        Text(formattedSent, style: const TextStyle(fontWeight: FontWeight.extrabold, fontSize: 16, color: Colors.redAccent)),
+        Text(formattedSent, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.redAccent)),
         const SizedBox(height: 2),
         Text('Outgoing Today', style: const TextStyle(color: Colors.grey, fontSize: 10)),
       ],
