@@ -14,6 +14,7 @@ class PaymentNotificationListener : NotificationListenerService() {
 
         // Whitelist of Top Indian UPI & Payment App package IDs
         val SUPPORTED_UPI_PACKAGES = mapOf(
+            "com.google.android.apps.nbu.paisa.user" to "GPay", // Official Google Pay India (Tez)
             "com.google.android.apps.npx" to "GPay",
             "com.google.android.apps.walletnfcrel" to "GPay",
             "com.phonepe.app" to "PhonePe",
@@ -24,10 +25,21 @@ class PaymentNotificationListener : NotificationListenerService() {
             "in.amazon.mShop.android.shopping" to "Amazon Pay",
             "com.amazon.mShop.android.shopping" to "Amazon Pay",
             "com.naviapp" to "Navi",
+            "tech.fyle.navi" to "Navi",
             "money.jupiter" to "Jupiter",
             "com.tatadigital.tcp" to "Tata Neu",
+            "com.whatsapp" to "WhatsApp Pay",
+            "com.whatsapp.w4b" to "WhatsApp Pay",
             "com.freecharge.android" to "Freecharge",
-            "com.mobikwik_new" to "MobiKwik"
+            "com.mobikwik_new" to "MobiKwik",
+            "money.fi.banking" to "Fi Money",
+            "org.cosmic.slice" to "Slice",
+            "indwin.c3.shareapp" to "Slice",
+            "com.slice" to "Slice",
+            "com.myairtelapp" to "Airtel Pay",
+            "com.samsung.android.spay" to "Samsung Wallet",
+            "com.samsung.android.spaymini" to "Samsung Wallet",
+            "com.jio.myjio" to "JioPay"
         )
     }
 

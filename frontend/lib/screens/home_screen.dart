@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import '../services/gold_price_service.dart';
 import '../services/home_widget_service.dart';
+import '../services/app_permission_service.dart';
 import '../models/gold_price.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -34,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Live Data State
   GoldPrice? _latestGoldPrice;
+  List<Map<String, dynamic>> _bankAccounts = [];
   double _totalBalance = 0.0;
   double _todayCredited = 0.0;
   double _todayDebited = 0.0;
@@ -47,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Weather state
   String _weatherTemp = '--°C';
-  String _weatherCity = 'Chennai';
+  String _weatherCity = 'Bengaluru';
   String _weatherCondition = 'Partly Cloudy';
   IconData _weatherIcon = Icons.wb_sunny_rounded;
 
@@ -66,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final Map<String, Map<String, dynamic>> _widgetMetadata = {
     'gold_price': {
-      'title': 'Gold Rates (24K & 22K)',
+      'title': 'Gold Rates (22K)',
       'module': 'gold',
       'icon': Icons.monetization_on_rounded,
       'color': Colors.amber,
@@ -78,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
       'color': Colors.lightBlueAccent,
     },
     'expenses': {
-      'title': 'Today\'s Cashflow',
+      'title': 'Cumulative Cashflow',
       'module': 'finance',
       'icon': Icons.swap_vert_rounded,
       'color': const Color(0xFFF43F5E),
@@ -134,6 +136,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadDashboardData();
     _fetchWeather();
     HomeWidgetService().syncAllWidgets();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppPermissionService().checkAndPromptInitialPermissions(context);
+    });
   }
 
   @override
@@ -163,7 +168,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (savedWidgets != null && savedWidgets.isNotEmpty) {
-      _activeWidgets = savedWidgets;
+      _activeWidgets = savedWidgets.where(_isWidgetAllowed).toList();
     } else {
       _computeDefaultActiveWidgets();
     }
@@ -208,8 +213,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _fetchWeather() async {
     try {
+      double lat = 12.9716; // default Bengaluru
+      double lon = 77.5946;
+      String city = 'Bengaluru';
+
+      try {
+        final ipRes = await http.get(Uri.parse('http://ip-api.com/json')).timeout(const Duration(seconds: 3));
+        if (ipRes.statusCode == 200) {
+          final ipData = json.decode(ipRes.body);
+          if (ipData['status'] == 'success') {
+            lat = (ipData['lat'] as num).toDouble();
+            lon = (ipData['lon'] as num).toDouble();
+            city = ipData['city']?.toString() ?? 'Bengaluru';
+          }
+        }
+      } catch (_) {}
+
       final response = await http
-          .get(Uri.parse('https://api.open-meteo.com/v1/forecast?latitude=13.0827&longitude=80.2707&current_weather=true'))
+          .get(Uri.parse('https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current_weather=true'))
           .timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
@@ -237,7 +258,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (mounted) {
           setState(() {
-            _weatherCity = 'Chennai';
+            _weatherCity = city;
             _weatherTemp = '$temp°C';
             _weatherCondition = condition;
             _weatherIcon = icon;
@@ -263,7 +284,6 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) {
           setState(() {
             _enabledModules = mods;
-            // Clean up active widgets if module was revoked
             _activeWidgets.removeWhere((w) => !_isWidgetAllowed(w));
             if (!_isWidgetAllowed(_heroWidget)) {
               _heroWidget = _activeWidgets.isNotEmpty ? _activeWidgets.first : 'gold_price';
@@ -287,7 +307,7 @@ class _HomeScreenState extends State<HomeScreen> {
           rate24k: rate24k,
           rate22k: rate22k,
           changeToday: latest.priceChange,
-          city: 'Chennai',
+          city: _weatherCity,
         );
       }
     });
@@ -308,6 +328,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (mounted) {
         setState(() {
+          _bankAccounts = accs;
           _totalBalance = total;
           _activeBankName = accs.length == 1
               ? (accs.first['name'] ?? 'Active Bank')
@@ -513,6 +534,9 @@ class _HomeScreenState extends State<HomeScreen> {
           final allowedKeys = _widgetMetadata.keys.where(_isWidgetAllowed).toList();
 
           return Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
             padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(
               color: sheetBg,
@@ -548,10 +572,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Select which modules appear on your home screen and pick your Primary Hero Card.',
+                  'Pick your Featured Hero Card & drag/toggle cards to display below.',
                   style: TextStyle(fontSize: 13, color: isDark ? Colors.white60 : Colors.grey[600]),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
                 Text(
                   'FEATURED HERO CARD',
                   style: GoogleFonts.outfit(
@@ -565,17 +589,29 @@ class _HomeScreenState extends State<HomeScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _activeWidgets.map((wKey) {
+                  children: allowedKeys.map((wKey) {
                     final meta = _widgetMetadata[wKey]!;
                     final isHero = _heroWidget == wKey;
+                    final col = meta['color'] as Color;
                     return ChoiceChip(
+                      avatar: Icon(meta['icon'] as IconData, size: 14, color: isHero ? Colors.white : col),
                       label: Text(meta['title'] as String),
                       selected: isHero,
-                      selectedColor: Colors.blueAccent.withValues(alpha: 0.25),
+                      selectedColor: col.withValues(alpha: 0.8),
+                      labelStyle: TextStyle(
+                        color: isHero ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                       onSelected: (selected) {
                         if (selected) {
-                          setSheetState(() => _heroWidget = wKey);
-                          setState(() => _heroWidget = wKey);
+                          setSheetState(() {
+                            _heroWidget = wKey;
+                            if (!_activeWidgets.contains(wKey)) {
+                              _activeWidgets.insert(0, wKey);
+                            }
+                          });
+                          setState(() {});
                           _saveDashboardConfig();
                         }
                       },
@@ -583,14 +619,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   }).toList(),
                 ),
                 const SizedBox(height: 18),
-                Text(
-                  'ENABLED MODULE CARDS',
-                  style: GoogleFonts.outfit(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.1,
-                    color: isDark ? Colors.white60 : Colors.grey[700],
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'ENABLED CARDS (DRAG TO REORDER)',
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.1,
+                        color: isDark ? Colors.white60 : Colors.grey[700],
+                      ),
+                    ),
+                    Text(
+                      '${_activeWidgets.length} Active',
+                      style: const TextStyle(fontSize: 11, color: Colors.blueAccent, fontWeight: FontWeight.bold),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Flexible(
@@ -602,6 +647,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       final key = allowedKeys[idx];
                       final meta = _widgetMetadata[key]!;
                       final isSelected = _activeWidgets.contains(key);
+                      final isHero = _heroWidget == key;
                       final Color col = meta['color'] as Color;
 
                       return SwitchListTile(
@@ -615,7 +661,22 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           child: Icon(meta['icon'] as IconData, color: col, size: 18),
                         ),
-                        title: Text(meta['title'] as String, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                        title: Row(
+                          children: [
+                            Text(meta['title'] as String, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                            if (isHero) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.blueAccent.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text('HERO', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                              ),
+                            ],
+                          ],
+                        ),
                         onChanged: (val) {
                           setSheetState(() {
                             if (val) {
@@ -657,7 +718,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // Filter secondary widgets (all active except the hero)
+    // Filter secondary widgets (whatever is chosen as Hero card is NOT duplicated below)
     final secondaryWidgets = _activeWidgets.where((w) => w != _heroWidget).toList();
 
     return Scaffold(
@@ -675,7 +736,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
 
             // 2. Primary Hero Bento Card (Wide 2-Span)
-            if (_activeWidgets.contains(_heroWidget))
+            if (_isWidgetAllowed(_heroWidget))
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
@@ -683,7 +744,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-            // 3. Dynamic Secondary Bento Grid (2-Column Flow)
+            // 3. Dynamic Secondary Bento Grid (2-Column Flow with Themed Borders)
             if (secondaryWidgets.isNotEmpty)
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
@@ -796,7 +857,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          // Weather Status Pill
+          // Weather Status Pill (Auto Location)
           InkWell(
             onTap: _fetchWeather,
             borderRadius: BorderRadius.circular(14),
@@ -811,11 +872,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   Icon(_weatherIcon, color: Colors.blueAccent, size: 16),
                   const SizedBox(width: 6),
                   Text(
-                    _weatherTemp,
+                    '$_weatherCity • $_weatherTemp',
                     style: GoogleFonts.outfit(
                       color: Colors.blueAccent,
                       fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                      fontSize: 12,
                     ),
                   ),
                 ],
@@ -828,29 +889,46 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ==========================================
-  // 🌟 2. Featured Hero Bento Card (Wide 2-Span)
+  // 🌟 2. Dedicated Featured Hero Bento Cards (For ALL Categories)
   // ==========================================
   Widget _buildHeroBentoCard(String widgetKey, bool isDark) {
-    Widget content;
-    Color glowColor;
+    final meta = _widgetMetadata[widgetKey] ?? _widgetMetadata['gold_price']!;
+    final glowColor = meta['color'] as Color;
 
+    Widget content;
     switch (widgetKey) {
       case 'gold_price':
         content = _buildHeroGoldContent(isDark);
-        glowColor = Colors.amber;
         break;
       case 'bank_accounts':
+        content = _buildHeroBankAccountsContent(isDark);
+        break;
       case 'expenses':
-        content = _buildHeroFinanceContent(isDark);
-        glowColor = Colors.lightBlueAccent;
+        content = _buildHeroExpensesContent(isDark);
         break;
       case 'shifts':
         content = _buildHeroShiftContent(isDark);
-        glowColor = Colors.purpleAccent;
+        break;
+      case 'events_walkins':
+        content = _buildHeroEventsWalkinsContent(isDark);
+        break;
+      case 'reminders':
+        content = _buildHeroRemindersContent(isDark);
+        break;
+      case 'daily_reminders':
+        content = _buildHeroDailyRemindersContent(isDark);
+        break;
+      case 'notes':
+        content = _buildHeroNotesContent(isDark);
+        break;
+      case 'weather':
+        content = _buildHeroWeatherContent(isDark);
+        break;
+      case 'voice_assistant':
+        content = _buildHeroVoiceAssistantContent(isDark);
         break;
       default:
         content = _buildHeroGoldContent(isDark);
-        glowColor = Colors.amber;
     }
 
     return Container(
@@ -858,12 +936,12 @@ class _HomeScreenState extends State<HomeScreen> {
         color: isDark ? const Color(0xFF131C2E) : Colors.white,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: glowColor.withValues(alpha: 0.35),
-          width: 1.5,
+          color: glowColor.withValues(alpha: 0.45),
+          width: 1.8,
         ),
         boxShadow: [
           BoxShadow(
-            color: glowColor.withValues(alpha: isDark ? 0.12 : 0.06),
+            color: glowColor.withValues(alpha: isDark ? 0.16 : 0.08),
             blurRadius: 20,
             spreadRadius: 2,
             offset: const Offset(0, 4),
@@ -888,10 +966,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // 1. Gold Hero (22K Standard Only, No 24K)
   Widget _buildHeroGoldContent(bool isDark) {
     final price22k = _latestGoldPrice?.price ?? 7200.0;
-    final price24k = price22k > 0 ? (price22k / 22 * 24) : 7850.0;
-    final sovereign = price22k * 8; // 1 Pavan (8g)
+    final sovereign = price22k * 8; // 1 Pavan (8g 22K)
     final changeVal = _latestGoldPrice?.priceChange ?? 25.0;
     final isPos = changeVal >= 0;
 
@@ -913,7 +991,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Live Gold Market Rates',
+                  'Live Gold Rate (22K Standard)',
                   style: GoogleFonts.outfit(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
@@ -952,62 +1030,49 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        // Big Price Display Row
+        // Big 22K Display
         Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('24K Pure Gold (1g)', style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text(
-                    '₹${price24k.toStringAsFixed(0)}',
-                    style: GoogleFonts.outfit(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.amber,
-                    ),
-                  ),
-                ],
+            Text(
+              '₹${NumberFormat('#,##,##0').format(price22k)}',
+              style: GoogleFonts.outfit(
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                color: Colors.amber,
+                letterSpacing: -0.5,
               ),
             ),
-            Container(width: 1, height: 36, color: isDark ? Colors.white12 : Colors.black12),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('22K Standard (1g)', style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text(
-                    '₹${price22k.toStringAsFixed(0)}',
-                    style: GoogleFonts.outfit(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
-                  ),
-                ],
-              ),
+            const SizedBox(width: 6),
+            const Text(
+              '/ gram (22K)',
+              style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w600),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        // Sovereign (8g) Banner
+        // 8g Sovereign (Pavan) calculation for 22K
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.amber.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
+            color: Colors.amber.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.amber.withValues(alpha: 0.25)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('8g Sovereign (Pavan)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              const Row(
+                children: [
+                  Icon(Icons.workspace_premium_rounded, color: Colors.amber, size: 16),
+                  SizedBox(width: 6),
+                  Text('8g Sovereign (1 Pavan • 22K)', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                ],
+              ),
               Text(
                 '₹${NumberFormat('#,##,##0').format(sovereign)}',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.amber),
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.amber),
               ),
             ],
           ),
@@ -1016,7 +1081,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildHeroFinanceContent(bool isDark) {
+  // 2. Bank Accounts Breakdown Hero (All Registered Banks & Balances)
+  Widget _buildHeroBankAccountsContent(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1035,15 +1101,89 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Total Net Bank Balance',
+                  'Bank Balances (${_bankAccounts.length} Connected)',
                   style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             Text(
-              _activeBankName,
-              style: const TextStyle(fontSize: 11, color: Colors.lightBlueAccent, fontWeight: FontWeight.bold),
+              'Total: ₹${NumberFormat('#,##,##0').format(_totalBalance)}',
+              style: const TextStyle(fontSize: 12, color: Colors.lightBlueAccent, fontWeight: FontWeight.bold),
             ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (_bankAccounts.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Text('No bank accounts configured yet. Tap to connect accounts.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+          )
+        else
+          Column(
+            children: _bankAccounts.take(4).map((acc) {
+              final name = (acc['name'] ?? 'Bank Account').toString();
+              final bal = (acc['currentBalance'] as num? ?? acc['balance'] as num? ?? 0.0).toDouble();
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      '₹${NumberFormat('#,##,##0.00').format(bal)}',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Colors.lightBlueAccent,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+      ],
+    );
+  }
+
+  // 3. Cumulative Balance & Daily Cashflow Hero
+  Widget _buildHeroExpensesContent(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF43F5E).withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.swap_vert_rounded, color: Color(0xFFF43F5E), size: 18),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Cumulative Balance & Cashflow',
+                  style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const Text('Live Flow', style: TextStyle(fontSize: 11, color: Color(0xFFF43F5E), fontWeight: FontWeight.bold)),
           ],
         ),
         const SizedBox(height: 12),
@@ -1052,7 +1192,7 @@ class _HomeScreenState extends State<HomeScreen> {
           style: GoogleFonts.outfit(
             fontSize: 28,
             fontWeight: FontWeight.w900,
-            color: Colors.lightBlueAccent,
+            color: isDark ? Colors.white : Colors.black87,
           ),
         ),
         const SizedBox(height: 14),
@@ -1105,6 +1245,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // 4. Shift Hero
   Widget _buildHeroShiftContent(bool isDark) {
     String title = 'NO SHIFT TODAY';
     String timing = 'Off Duty • Enjoy your day';
@@ -1155,11 +1296,269 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // 5. Events & Walk-ins Hero
+  Widget _buildHeroEventsWalkinsContent(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: Colors.tealAccent.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.rocket_launch_rounded, color: Colors.tealAccent, size: 18),
+                ),
+                const SizedBox(width: 8),
+                Text('Tech Events & Walk-In Drives', style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const Text('Hiring & Meetups', style: TextStyle(fontSize: 11, color: Colors.tealAccent, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Tech Events', style: TextStyle(fontSize: 11, color: Colors.teal, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text('$_todayEventsCount Today', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.teal)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Walk-Ins', style: TextStyle(fontSize: 11, color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text('$_todayWalkinsCount Today', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.blueAccent)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // 6. Calendar Reminders Hero
+  Widget _buildHeroRemindersContent(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: Colors.indigoAccent.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.calendar_month_rounded, color: Colors.indigoAccent, size: 18),
+                ),
+                const SizedBox(width: 8),
+                Text('Today\'s Calendar Tasks', style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            Text('$_todayRemindersCount Due', style: const TextStyle(fontSize: 11, color: Colors.indigoAccent, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          '$_todayRemindersCount Tasks Scheduled',
+          style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.indigoAccent),
+        ),
+        const SizedBox(height: 4),
+        Text('Tap to open Calendar & Agenda', style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.grey[700])),
+      ],
+    );
+  }
+
+  // 7. Daily Habits Hero
+  Widget _buildHeroDailyRemindersContent(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: Colors.orangeAccent.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.alarm_on_rounded, color: Colors.orangeAccent, size: 18),
+                ),
+                const SizedBox(width: 8),
+                Text('Daily Habits & Routines', style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            Text('$_dailyRemindersCount Active', style: const TextStyle(fontSize: 11, color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          '$_dailyRemindersCount Habit Check-ins Active',
+          style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.orangeAccent),
+        ),
+        const SizedBox(height: 4),
+        Text('Manage daily alarms, hydration & medicine alerts', style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.grey[700])),
+      ],
+    );
+  }
+
+  // 8. Notes Hero
+  Widget _buildHeroNotesContent(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: Colors.cyanAccent.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.note_alt_rounded, color: Colors.cyanAccent, size: 18),
+                ),
+                const SizedBox(width: 8),
+                Text('Quick Notes & Workspace', style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            Text('$_totalNotesCount Notes', style: const TextStyle(fontSize: 11, color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          '$_totalNotesCount Personal Drafts & Notes',
+          style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.cyanAccent),
+        ),
+        const SizedBox(height: 4),
+        Text('Tap to write or review pinned notes', style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.grey[700])),
+      ],
+    );
+  }
+
+  // 9. Weather Hero
+  Widget _buildHeroWeatherContent(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(_weatherIcon, color: Colors.blueAccent, size: 18),
+                ),
+                const SizedBox(width: 8),
+                Text('Atmospheric Weather', style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            Text('$_weatherCity (Auto)', style: const TextStyle(fontSize: 11, color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          '$_weatherCity • $_weatherTemp',
+          style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.blueAccent),
+        ),
+        const SizedBox(height: 4),
+        Text('$_weatherCondition • Tap to refresh forecast', style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.grey[700])),
+      ],
+    );
+  }
+
+  // 10. Voice Assistant Hero
+  Widget _buildHeroVoiceAssistantContent(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.mic_rounded, color: Colors.redAccent, size: 18),
+                ),
+                const SizedBox(width: 8),
+                Text('Ask Buddy (AI Voice Assistant)', style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const Text('AI Ready', style: TextStyle(fontSize: 11, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [Color(0xFFEF4444), Color(0xFFDC2626)]),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.mic, color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Text('Tap to speak with Buddy...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // ==========================================
-  // 🌟 3. Compact Bento Cards (2-Column Grid)
+  // 🌟 3. Compact Bento Cards (With Glowing Themed Borders)
   // ==========================================
   Widget _buildCompactBentoCard(String type, bool isDark) {
-    final meta = _widgetMetadata[type]!;
+    final meta = _widgetMetadata[type] ?? _widgetMetadata['gold_price']!;
     final Color col = meta['color'] as Color;
     final IconData icon = meta['icon'] as IconData;
     final String title = meta['title'] as String;
@@ -1168,135 +1567,190 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (type) {
       case 'gold_price':
         final price = _latestGoldPrice?.price ?? 7200.0;
-        body = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('₹${price.toStringAsFixed(0)}',
-                style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w900, color: Colors.amber)),
-            const SizedBox(height: 2),
-            Text('22K / 1 gram', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
-          ],
-        );
-        break;
-      case 'bank_accounts':
-        body = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('₹${NumberFormat('#,##,##0').format(_totalBalance)}',
-                style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.lightBlueAccent)),
-            const SizedBox(height: 2),
-            Text(_activeBankName, style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600]), maxLines: 1),
-          ],
-        );
-        break;
-      case 'expenses':
-        body = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('-₹${NumberFormat('#,##,##0').format(_todayDebited)}',
-                style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w900, color: const Color(0xFFF43F5E))),
-            const SizedBox(height: 2),
-            Text('+₹${NumberFormat('#,##,##0').format(_todayCredited)} Inflow',
-                style: const TextStyle(fontSize: 10.5, color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
-          ],
-        );
-        break;
-      case 'shifts':
-        body = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              _todayShift != null ? 'Active Shift' : 'Week Off 🏖️',
-              style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.purpleAccent),
-            ),
-            const SizedBox(height: 2),
-            Text('Tap to check calendar', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
-          ],
-        );
-        break;
-      case 'events_walkins':
-        body = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('$_todayEventsCount Events',
-                style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.tealAccent)),
-            const SizedBox(height: 2),
-            Text('$_todayWalkinsCount Walk-Ins Today', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
-          ],
-        );
-        break;
-      case 'reminders':
-        body = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('$_todayRemindersCount Due',
-                style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.indigoAccent)),
-            const SizedBox(height: 2),
-            Text('Scheduled Tasks', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
-          ],
-        );
-        break;
-      case 'daily_reminders':
-        body = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('$_dailyRemindersCount Habits',
-                style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.orangeAccent)),
-            const SizedBox(height: 2),
-            Text('Daily Check-ins Active', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
-          ],
-        );
-        break;
-      case 'notes':
-        body = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('$_totalNotesCount Notes',
-                style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
-            const SizedBox(height: 2),
-            Text('Pinned & Drafts', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
-          ],
-        );
-        break;
-      case 'weather':
-        body = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('$_weatherCity • $_weatherTemp',
-                style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-            const SizedBox(height: 2),
-            Text(_weatherCondition, style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
-          ],
-        );
-        break;
-      case 'voice_assistant':
-        body = Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [Color(0xFFEF4444), Color(0xFFDC2626)]),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
+        body = Center(
+          child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Icon(Icons.mic, color: Colors.white, size: 14),
-              const SizedBox(width: 4),
-              Text('Ask Buddy', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
+              Text('₹${price.toStringAsFixed(0)}',
+                  style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w900, color: Colors.amber)),
+              const SizedBox(height: 2),
+              Text('22K / 1 gram', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
             ],
           ),
         );
         break;
+      case 'bank_accounts':
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text('₹${NumberFormat('#,##,##0').format(_totalBalance)}',
+                  style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.lightBlueAccent)),
+              const SizedBox(height: 2),
+              Text(_activeBankName, style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600]), maxLines: 1),
+            ],
+          ),
+        );
+        break;
+      case 'expenses':
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '+₹${NumberFormat('#,##,##0').format(_todayCredited)}',
+                    style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.bold, color: const Color(0xFF10B981)),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '-₹${NumberFormat('#,##,##0').format(_todayDebited)}',
+                    style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.bold, color: const Color(0xFFF43F5E)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text('Today Inflow • Outflow', style: TextStyle(fontSize: 10, color: isDark ? Colors.white60 : Colors.grey[600])),
+            ],
+          ),
+        );
+        break;
+      case 'shifts':
+        String shiftTitle = 'Week Off 🏖️';
+        String shiftTime = 'Tap for roster';
+        if (_todayShift != null) {
+          final raw = (_todayShift!['shift_type'] ?? _todayShift!['shiftType'] ?? '').toString().toLowerCase();
+          if (!raw.contains('off') && raw.isNotEmpty) {
+            shiftTitle = '${raw.toUpperCase().replaceAll('_', ' ')} SHIFT';
+            final start = (_todayShift!['start_time'] ?? _todayShift!['startTime'] ?? '').toString();
+            final end = (_todayShift!['end_time'] ?? _todayShift!['endTime'] ?? '').toString();
+            if (start.isNotEmpty && end.isNotEmpty) {
+              shiftTime = '$start - $end';
+            } else {
+              shiftTime = 'On Duty Today';
+            }
+          }
+        }
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                shiftTitle,
+                style: GoogleFonts.outfit(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.purpleAccent),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                shiftTime,
+                style: TextStyle(fontSize: 10, color: isDark ? Colors.white60 : Colors.grey[600]),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        );
+        break;
+      case 'events_walkins':
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text('$_todayEventsCount Events • $_todayWalkinsCount Drives',
+                  style: GoogleFonts.outfit(fontSize: 14.5, fontWeight: FontWeight.bold, color: Colors.tealAccent)),
+              const SizedBox(height: 2),
+              Text('Active Opportunities Today', style: TextStyle(fontSize: 10, color: isDark ? Colors.white60 : Colors.grey[600])),
+            ],
+          ),
+        );
+        break;
+      case 'reminders':
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text('$_todayRemindersCount Due',
+                  style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.indigoAccent)),
+              const SizedBox(height: 2),
+              Text('Scheduled Tasks', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+            ],
+          ),
+        );
+        break;
+      case 'daily_reminders':
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text('$_dailyRemindersCount Habits',
+                  style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.orangeAccent)),
+              const SizedBox(height: 2),
+              Text('Daily Check-ins Active', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+            ],
+          ),
+        );
+        break;
+      case 'notes':
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text('$_totalNotesCount Notes',
+                  style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+              const SizedBox(height: 2),
+              Text('Pinned & Drafts', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+            ],
+          ),
+        );
+        break;
+      case 'weather':
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text('$_weatherCity • $_weatherTemp',
+                  style: GoogleFonts.outfit(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+              const SizedBox(height: 2),
+              Text(_weatherCondition, style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+            ],
+          ),
+        );
+        break;
+      case 'voice_assistant':
+        body = Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFFEF4444), Color(0xFFDC2626)]),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.mic, color: Colors.white, size: 14),
+                const SizedBox(width: 4),
+                Text('Ask Buddy', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
+              ],
+            ),
+          ),
+        );
+        break;
       default:
-        body = const Text('Tap to open');
+        body = const Center(child: Text('Tap to open'));
     }
 
     return Container(
@@ -1304,12 +1758,13 @@ class _HomeScreenState extends State<HomeScreen> {
         color: isDark ? const Color(0xFF131C2E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+          color: col.withValues(alpha: isDark ? 0.35 : 0.22),
+          width: 1.3,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
-            blurRadius: 8,
+            color: col.withValues(alpha: isDark ? 0.12 : 0.04),
+            blurRadius: 10,
             offset: const Offset(0, 3),
           ),
         ],

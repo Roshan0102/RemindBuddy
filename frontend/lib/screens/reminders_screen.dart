@@ -115,6 +115,29 @@ class _RemindersScreenState extends State<RemindersScreen> {
                       });
                     },
                     calendarStyle: CalendarStyle(
+                      defaultTextStyle: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      weekendTextStyle: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF1E293B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                      outsideTextStyle: TextStyle(
+                        color: isDark ? Colors.white30 : Colors.black26,
+                        fontWeight: FontWeight.normal,
+                      ),
+                      disabledTextStyle: TextStyle(
+                        color: isDark ? Colors.white24 : Colors.black26,
+                      ),
+                      todayTextStyle: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      selectedTextStyle: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                       markerDecoration: const BoxDecoration(
                         color: Colors.orangeAccent,
                         shape: BoxShape.circle,
@@ -122,12 +145,24 @@ class _RemindersScreenState extends State<RemindersScreen> {
                       markerSize: 6,
                       markersAlignment: Alignment.bottomCenter,
                       todayDecoration: BoxDecoration(
-                        color: Theme.of(context).primaryColor.withValues(alpha: 0.3),
+                        color: Theme.of(context).primaryColor.withValues(alpha: 0.35),
                         shape: BoxShape.circle,
                       ),
                       selectedDecoration: BoxDecoration(
                         color: Theme.of(context).primaryColor,
                         shape: BoxShape.circle,
+                      ),
+                    ),
+                    daysOfWeekStyle: DaysOfWeekStyle(
+                      weekdayStyle: TextStyle(
+                        color: isDark ? Colors.white70 : Colors.black87,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                      weekendStyle: TextStyle(
+                        color: isDark ? const Color(0xFFFDBA74) : Colors.deepOrange,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
                       ),
                     ),
                     headerStyle: HeaderStyle(

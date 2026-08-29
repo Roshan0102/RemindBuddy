@@ -1164,20 +1164,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          '🎯 Target Roles, Locations & Experience',
-                          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
-                        if (_isSavingAutoSettings)
-                          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        else
-                          TextButton.icon(
-                            onPressed: _saveAutoApplySettings,
-                            icon: const Icon(Icons.save_outlined, size: 16),
-                            label: const Text('Save Settings', style: TextStyle(fontSize: 12)),
+                        const Icon(Icons.tune_rounded, color: Colors.blueAccent, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '🎯 Target Roles, Locations & Exp',
+                            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
                           ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -1297,6 +1292,28 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         ),
                       ],
                     ),
+                    const SizedBox(height: 16),
+                    // Dedicated In-Card Save Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: ElevatedButton.icon(
+                        onPressed: _isSavingAutoSettings ? null : _saveAutoApplySettings,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
+                        icon: _isSavingAutoSettings
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.save_rounded, size: 18),
+                        label: Text(
+                          _isSavingAutoSettings ? 'Saving Settings...' : '💾 Save Target Preferences',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1405,6 +1422,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Widget _buildAutoAppCard(JobApplication app, bool isDark) {
+    final String source = (app.sourcePlatform != null && app.sourcePlatform!.isNotEmpty)
+        ? app.sourcePlatform!
+        : 'LinkedIn';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1428,8 +1449,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               '${app.companyName} • ${app.recipientEmail}',
               style: TextStyle(fontSize: 11.5, color: isDark ? Colors.white70 : Colors.grey[700]),
             ),
-            const SizedBox(height: 3),
-            Row(
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
@@ -1439,7 +1462,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   ),
                   child: const Text('Sent with Resume PDF', style: TextStyle(fontSize: 9.5, color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
                 ),
-                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: Colors.indigo.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.language_rounded, size: 10, color: Colors.indigoAccent),
+                      const SizedBox(width: 3),
+                      Text('Source: $source', style: const TextStyle(fontSize: 9.5, color: Colors.indigoAccent, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
                 Text(
                   '${app.appliedAt.day}/${app.appliedAt.month} ${app.appliedAt.hour.toString().padLeft(2, '0')}:${app.appliedAt.minute.toString().padLeft(2, '0')}',
                   style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.grey[500]),

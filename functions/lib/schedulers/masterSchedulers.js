@@ -11,6 +11,7 @@ const astroNotifications_1 = require("../modules/astro/astroNotifications");
 const techEvents_1 = require("../modules/events/techEvents");
 const walkinDrives_1 = require("../modules/events/walkinDrives");
 const shiftNotifications_1 = require("../modules/shifts/shiftNotifications");
+const nightlyExpenseNotifier_1 = require("../modules/finance/nightlyExpenseNotifier");
 const jobDiscoveryAI_1 = require("../modules/job_assistant/jobDiscoveryAI");
 // --- CONSOLIDATED MASTER SCHEDULERS (2 Schedulers total for 100% Free GCP Tier) ---
 // 1. Minute Master Runner (Replaces checkDailyReminders & checkPendingGoldChitNotifications)
@@ -105,9 +106,9 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
                 console.error("Error in internalDailyWalkInsFetcher inside masterHalfHourlyRunner:", err);
             }
         }
-        // 10:00 PM IST (Hour 22): Automated AI Job Discovery & Email Applicant Agent (Night Run) & Daily Shift Reminders
+        // 10:00 PM IST (Hour 22): Automated AI Job Discovery, Daily Shift Reminders & Nightly Untagged Expense Tagging
         if (hour === 22) {
-            console.log("[masterHalfHourlyRunner] Executing 10:00 PM tasks: Automated Job Discovery & Daily Shift Reminders...");
+            console.log("[masterHalfHourlyRunner] Executing 10:00 PM tasks: Job Discovery, Shift Reminders & Nightly Expense Tagging...");
             try {
                 await (0, jobDiscoveryAI_1.internalAutoJobDiscoveryAndApply)();
             }
@@ -119,6 +120,12 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
             }
             catch (err) {
                 console.error("Error in internalDailyShiftReminder inside masterHalfHourlyRunner:", err);
+            }
+            try {
+                await (0, nightlyExpenseNotifier_1.internalDailyUntaggedExpenseNotifier)();
+            }
+            catch (err) {
+                console.error("Error in internalDailyUntaggedExpenseNotifier inside masterHalfHourlyRunner:", err);
             }
         }
     }

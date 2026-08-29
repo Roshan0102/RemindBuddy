@@ -3,6 +3,7 @@ import '../models/sms_transaction.dart';
 class UpiNotificationParserService {
   /// Known Indian UPI app package identifiers mapped to display names
   static const Map<String, String> supportedPackages = {
+    'com.google.android.apps.nbu.paisa.user': 'GPay',
     'com.google.android.apps.npx': 'GPay',
     'com.google.android.apps.walletnfcrel': 'GPay',
     'com.phonepe.app': 'PhonePe',
@@ -13,10 +14,15 @@ class UpiNotificationParserService {
     'in.amazon.mShop.android.shopping': 'Amazon Pay',
     'com.amazon.mShop.android.shopping': 'Amazon Pay',
     'com.naviapp': 'Navi',
+    'tech.fyle.navi': 'Navi',
     'money.jupiter': 'Jupiter',
     'com.tatadigital.tcp': 'Tata Neu',
+    'com.whatsapp': 'WhatsApp Pay',
+    'com.whatsapp.w4b': 'WhatsApp Pay',
     'com.freecharge.android': 'Freecharge',
     'com.mobikwik_new': 'MobiKwik',
+    'money.fi.banking': 'Fi Money',
+    'org.cosmic.slice': 'Slice',
   };
 
   /// Parses an incoming Android status bar notification payload into a verified [SmsTransaction]
@@ -46,6 +52,7 @@ class UpiNotificationParserService {
 
     // 2. Extract Amount
     final double? parsedAmount = _extractAmount(combined);
+    if (parsedAmount == null || parsedAmount <= 0) return null;
 
     // 3. Extract Payee / Sender Name
     final String payee = _extractPayeeName(title, body, type, displayAppName);
@@ -53,7 +60,7 @@ class UpiNotificationParserService {
     // 4. Extract UPI Reference Number / UTR if present
     final String upiRef = _extractUpiReference(combined);
 
-    final double finalAmount = parsedAmount ?? 0.0;
+    final double finalAmount = parsedAmount;
     final String txId = 'notif_${timestamp.millisecondsSinceEpoch}_${finalAmount.toInt()}';
 
     return SmsTransaction(
@@ -65,8 +72,8 @@ class UpiNotificationParserService {
       amount: finalAmount,
       payee: payee.isNotEmpty ? payee : 'UPI Transfer',
       timestamp: timestamp,
-      isVerified: finalAmount > 0,
-      category: finalAmount > 0 ? 'UPI Transfer' : 'Action Needed',
+      isVerified: true,
+      category: 'UPI Transfer',
       notes: body.isNotEmpty ? body : title,
       source: 'notification',
       sourceApp: displayAppName,
@@ -163,11 +170,16 @@ class UpiNotificationParserService {
   static String _extractPayeeName(String title, String body, String type, String appName) {
     final fullText = '$title. $body';
 
-    // Patterns for Credit: "Rahul Sharma paid you ₹500", "Received ₹500 from Priya Patel", "Alex sent you ₹200"
+    // Patterns for Credit: "Rahul Sharma paid you ₹500", "Received ₹500 from Priya Patel", "Alex sent you ₹200", "Rahul has sent you ₹50"
     if (type == 'Credit') {
-      final p1 = RegExp(r'^(.*?)\s+paid you', caseSensitive: false).firstMatch(body);
-      if (p1 != null && p1.group(1)!.trim().isNotEmpty) {
-        return _cleanName(p1.group(1)!);
+      final p1Body = RegExp(r'^(.*?)\s+(?:has\s+)?(?:paid|sent)\s+you', caseSensitive: false).firstMatch(body);
+      if (p1Body != null && p1Body.group(1)!.trim().isNotEmpty) {
+        return _cleanName(p1Body.group(1)!);
+      }
+
+      final p1Title = RegExp(r'^(.*?)\s+(?:has\s+)?(?:paid|sent)\s+you', caseSensitive: false).firstMatch(title);
+      if (p1Title != null && p1Title.group(1)!.trim().isNotEmpty) {
+        return _cleanName(p1Title.group(1)!);
       }
 
       final p2 = RegExp(r'from\s+([A-Za-z0-9\s]{2,40}?)(?:\.|\,|\s+(?:via|using|in|for|on|with|upi|ref)|$)', caseSensitive: false).firstMatch(fullText);
@@ -175,7 +187,7 @@ class UpiNotificationParserService {
         return _cleanName(p2.group(1)!);
       }
 
-      final p3 = RegExp(r'^(.*?)\s+sent you', caseSensitive: false).firstMatch(body);
+      final p3 = RegExp(r'(?:^|[\.\,\;\n\r])\s*(.*?)\s+(?:has\s+)?sent\s+you', caseSensitive: false).firstMatch(fullText);
       if (p3 != null && p3.group(1)!.trim().isNotEmpty) {
         return _cleanName(p3.group(1)!);
       }
@@ -183,19 +195,22 @@ class UpiNotificationParserService {
 
     // Patterns for Debit: "You paid ₹500 to Swiggy", "Paid ₹120 to Chai Point", "Payment of ₹450 to Uber"
     if (type == 'Debit') {
-      final p1 = RegExp(r'to\s+([A-Za-z0-9\s]{2,40}?)(?:\.|\,|\s+(?:was|is|using|via|on|for|with|upi)|$)', caseSensitive: false).firstMatch(body);
+      final p1 = RegExp(r'to\s+([A-Za-z0-9\s]{2,40}?)(?:\.|\,|\s+(?:was|is|using|via|on|for|with|upi)|$)', caseSensitive: false).firstMatch(fullText);
       if (p1 != null && p1.group(1)!.trim().isNotEmpty) {
         return _cleanName(p1.group(1)!);
       }
 
-      final p2 = RegExp(r'at\s+([A-Za-z0-9\s]{2,40}?)(?:\.|\,|\s+(?:was|is|using|via|\.|$)|$)', caseSensitive: false).firstMatch(body);
+      final p2 = RegExp(r'at\s+([A-Za-z0-9\s]{2,40}?)(?:\.|\,|\s+(?:was|is|using|via|\.|$)|$)', caseSensitive: false).firstMatch(fullText);
       if (p2 != null && p2.group(1)!.trim().isNotEmpty) {
         return _cleanName(p2.group(1)!);
       }
     }
 
     // Fallback to title if title is a person's name or merchant
-    if (title.isNotEmpty && !title.toLowerCase().contains('payment') && !title.toLowerCase().contains('money') && !title.toLowerCase().contains(appName.toLowerCase())) {
+    if (title.isNotEmpty &&
+        !title.toLowerCase().contains('payment') &&
+        !title.toLowerCase().contains('money') &&
+        !title.toLowerCase().contains(appName.toLowerCase())) {
       return _cleanName(title);
     }
 
@@ -207,7 +222,6 @@ class UpiNotificationParserService {
     // Remove unwanted leading/trailing words
     clean = clean.replaceAll(RegExp(r'^(payment of|payment to|paid to|money sent to|sent to|received from|from|to)\s+', caseSensitive: false), '');
     clean = clean.replaceAll(RegExp(r'\s+(was successful|successful|completed|successful\.?)$', caseSensitive: false), '');
-    // Capitalize words nicely
     if (clean.length > 25) {
       clean = clean.substring(0, 25).trim();
     }

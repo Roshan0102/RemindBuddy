@@ -8,6 +8,7 @@ import { internalDailyAstroNotifier } from "../modules/astro/astroNotifications"
 import { internalCheckInterestedEventsNotifications, internalDailyTechEventsFetcher } from "../modules/events/techEvents";
 import { internalDailyWalkInsFetcher } from "../modules/events/walkinDrives";
 import { internalDailyShiftReminder } from "../modules/shifts/shiftNotifications";
+import { internalDailyUntaggedExpenseNotifier } from "../modules/finance/nightlyExpenseNotifier";
 import { internalAutoJobDiscoveryAndApply } from "../modules/job_assistant/jobDiscoveryAI";
 
 // --- CONSOLIDATED MASTER SCHEDULERS (2 Schedulers total for 100% Free GCP Tier) ---
@@ -105,9 +106,9 @@ export const masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, m
                 }
             }
 
-            // 10:00 PM IST (Hour 22): Automated AI Job Discovery & Email Applicant Agent (Night Run) & Daily Shift Reminders
+            // 10:00 PM IST (Hour 22): Automated AI Job Discovery, Daily Shift Reminders & Nightly Untagged Expense Tagging
             if (hour === 22) {
-                console.log("[masterHalfHourlyRunner] Executing 10:00 PM tasks: Automated Job Discovery & Daily Shift Reminders...");
+                console.log("[masterHalfHourlyRunner] Executing 10:00 PM tasks: Job Discovery, Shift Reminders & Nightly Expense Tagging...");
                 try {
                     await internalAutoJobDiscoveryAndApply();
                 } catch (err) {
@@ -117,6 +118,11 @@ export const masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, m
                     await internalDailyShiftReminder();
                 } catch (err) {
                     console.error("Error in internalDailyShiftReminder inside masterHalfHourlyRunner:", err);
+                }
+                try {
+                    await internalDailyUntaggedExpenseNotifier();
+                } catch (err) {
+                    console.error("Error in internalDailyUntaggedExpenseNotifier inside masterHalfHourlyRunner:", err);
                 }
             }
         }

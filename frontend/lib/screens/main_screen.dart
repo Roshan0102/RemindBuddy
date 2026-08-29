@@ -1688,6 +1688,58 @@ class _MainScreenState extends State<MainScreen> {
                 }
               },
             ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+              title: const Text('Log Out', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+              subtitle: Text(
+                FirebaseAuth.instance.currentUser?.email ?? 'Signed in',
+                style: TextStyle(fontSize: 11, color: _isDarkMode ? Colors.white54 : Colors.black54),
+              ),
+              onTap: () async {
+                Navigator.pop(context);
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    title: Row(
+                      children: [
+                        const Icon(Icons.logout_rounded, color: Colors.redAccent),
+                        const SizedBox(width: 8),
+                        Text('Log Out', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    content: const Text('Are you sure you want to log out of RemindBuddy?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel'),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.redAccent,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Log Out'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true) {
+                  await FirebaseAuth.instance.signOut();
+                  if (context.mounted) {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AuthScreen()),
+                      (route) => false,
+                    );
+                  }
+                }
+              },
+            ),
           ],
         ),
       ),

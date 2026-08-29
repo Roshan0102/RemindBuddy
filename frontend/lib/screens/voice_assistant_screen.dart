@@ -4,6 +4,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'dart:async';
+import '../services/app_permission_service.dart';
 
 class VoiceAssistantScreen extends StatefulWidget {
   const VoiceAssistantScreen({super.key});
@@ -141,6 +142,12 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
   bool _hasSentCurrentVoiceInput = false;
 
   Future<void> _startListening() async {
+    final hasMic = await AppPermissionService().ensureMicrophonePermission(context);
+    if (!hasMic) {
+      _showErrorSnackBar("Microphone permission is required to use Voice Assistant.");
+      return;
+    }
+
     await _flutterTts.stop();
     setState(() {
       _isSpeaking = false;

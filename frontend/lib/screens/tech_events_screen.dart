@@ -22,9 +22,27 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
   String _eventLocation = '';
   String _eventMode = 'In-Person'; // 'In-Person', 'Online', 'Both'
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime? _lastRan;
+  DateTime? _lastUpdated;
 
   StreamSubscription<DocumentSnapshot>? _userSubscription;
   Stream<QuerySnapshot>? _eventsStream;
+
+  String _formatTimestamp(DateTime? dt) {
+    if (dt == null) return 'Never';
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (dt.day == now.day && dt.month == now.month && dt.year == now.year) {
+      return 'Today at ${DateFormat('hh:mm a').format(dt)}';
+    }
+    final yesterday = now.subtract(const Duration(days: 1));
+    if (dt.day == yesterday.day && dt.month == yesterday.month && dt.year == yesterday.year) {
+      return 'Yesterday at ${DateFormat('hh:mm a').format(dt)}';
+    }
+    return DateFormat('dd MMM, hh:mm a').format(dt);
+  }
 
   @override
   void initState() {
@@ -84,11 +102,25 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
         final location = (data['eventLocation'] ?? '').toString();
         final mode = (data['eventMode'] ?? 'In-Person').toString();
 
+        DateTime? lastRan;
+        final ranVal = data['eventsLastRan'];
+        if (ranVal is Timestamp) {
+          lastRan = ranVal.toDate();
+        }
+
+        DateTime? lastUpdated;
+        final updatedVal = data['eventsLastUpdated'];
+        if (updatedVal is Timestamp) {
+          lastUpdated = updatedVal.toDate();
+        }
+
         if (mounted) {
           setState(() {
             _eventInterests = interests;
             _eventLocation = location;
             _eventMode = mode;
+            _lastRan = lastRan;
+            _lastUpdated = lastUpdated;
           });
         }
       }
@@ -472,6 +504,38 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                             value: _showPastEvents,
                             activeThumbColor: Colors.blueAccent,
                             onChanged: (val) => setState(() => _showPastEvents = val),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF161F30) : const Color(0xFFEFF6FF),
+                    border: Border(bottom: BorderSide(color: isDark ? Colors.white10 : Colors.blue.shade100)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.history_toggle_off_rounded, size: 13, color: isDark ? Colors.white60 : Colors.blueGrey),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Last Ran: ${_formatTimestamp(_lastRan)}',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.blueGrey.shade700),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Icon(Icons.update_rounded, size: 13, color: isDark ? Colors.tealAccent : const Color(0xFF0D9488)),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Last Updated: ${_formatTimestamp(_lastUpdated)}',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? Colors.tealAccent : const Color(0xFF0D9488)),
                           ),
                         ],
                       ),

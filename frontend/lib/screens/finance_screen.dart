@@ -15,6 +15,7 @@ import '../models/sms_transaction.dart';
 import '../services/finance_service.dart';
 import '../services/sms_parser_service.dart';
 import '../services/payment_notification_tracker_service.dart';
+import '../services/app_permission_service.dart';
 import '../widgets/nightly_expense_tag_sheet.dart';
 
 class FinanceScreen extends StatefulWidget {
@@ -1934,30 +1935,37 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         color: cardBg,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
-                                    icon: const Icon(Icons.chevron_left, color: Colors.blueAccent, size: 28),
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: EdgeInsets.zero,
+                                    icon: const Icon(Icons.chevron_left, color: Colors.blueAccent, size: 24),
                                     onPressed: () {
                                       setState(() {
                                         _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month - 1);
                                       });
                                     },
                                   ),
+                                  const SizedBox(width: 2),
                                   Text(
-                                    DateFormat('MMMM yyyy').format(_smsMonthFilter),
+                                    DateFormat('MMM yyyy').format(_smsMonthFilter),
                                     style: GoogleFonts.outfit(
-                                      fontSize: 16,
+                                      fontSize: 15,
                                       fontWeight: FontWeight.bold,
                                       color: textColor,
                                     ),
                                   ),
+                                  const SizedBox(width: 2),
                                   IconButton(
-                                    icon: const Icon(Icons.chevron_right, color: Colors.blueAccent, size: 28),
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: EdgeInsets.zero,
+                                    icon: const Icon(Icons.chevron_right, color: Colors.blueAccent, size: 24),
                                     onPressed: () {
                                       setState(() {
                                         _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1);
@@ -1967,27 +1975,36 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                 ],
                               ),
                               Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
+                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                    padding: const EdgeInsets.all(4),
                                     tooltip: 'UPI Notification Tracker 🔔',
-                                    icon: const Icon(Icons.notifications_active_outlined, color: Colors.purpleAccent, size: 22),
+                                    icon: const Icon(Icons.notifications_active_outlined, color: Colors.purpleAccent, size: 20),
                                     onPressed: () => _showUpiNotificationSettingsDialog(context),
                                   ),
                                   IconButton(
+                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                    padding: const EdgeInsets.all(4),
                                     tooltip: 'Bank Header Rules ⚙️',
-                                    icon: const Icon(Icons.settings_suggest_rounded, color: Colors.blueAccent, size: 22),
+                                    icon: const Icon(Icons.settings_suggest_rounded, color: Colors.blueAccent, size: 20),
                                     onPressed: () => _showCustomHeaderRulesDialog(context),
                                   ),
                                   IconButton(
+                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                    padding: const EdgeInsets.all(4),
                                     tooltip: 'Sync Bank SMS',
                                     icon: _isScanningInbox
-                                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
-                                        : const Icon(Icons.sync_rounded, color: Colors.blueAccent, size: 22),
+                                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
+                                        : const Icon(Icons.sync_rounded, color: Colors.blueAccent, size: 20),
                                     onPressed: _isScanningInbox ? null : _showSmsSyncDialog,
                                   ),
                                   IconButton(
+                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                    padding: const EdgeInsets.all(4),
                                     tooltip: 'Delete Month Transactions',
-                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 22),
+                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
                                     onPressed: () => _confirmDeleteMonthTransactions(context),
                                   ),
                                 ],
@@ -2395,7 +2412,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 );
   }
 
-  void _showSmsSyncDialog() {
+  Future<void> _showSmsSyncDialog() async {
+    final hasSms = await AppPermissionService().ensureSmsPermissionWithRestrictedGuide(context);
+    if (!hasSms || !mounted) return;
+
     final String currentMonthName = DateFormat('MMMM yyyy').format(_smsMonthFilter);
 
     showDialog(

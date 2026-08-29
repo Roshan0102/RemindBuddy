@@ -19,9 +19,10 @@ class PaymentNotificationTrackerService {
   StreamSubscription? _streamSubscription;
   bool _isInitialized = false;
 
-  /// Top 10 Supported Indian UPI Apps with package names & display labels
+  /// Top Supported Indian UPI Apps with package names & display labels
   static const List<Map<String, String>> supportedUpiApps = [
-    {'id': 'com.google.android.apps.npx', 'name': 'Google Pay (GPay)', 'icon': 'gpay'},
+    {'id': 'com.google.android.apps.nbu.paisa.user', 'name': 'Google Pay (GPay)', 'icon': 'gpay'},
+    {'id': 'com.google.android.apps.npx', 'name': 'Google Pay (Legacy)', 'icon': 'gpay'},
     {'id': 'com.phonepe.app', 'name': 'PhonePe', 'icon': 'phonepe'},
     {'id': 'net.one97.paytm', 'name': 'Paytm', 'icon': 'paytm'},
     {'id': 'com.dreamplug.androidapp', 'name': 'CRED UPI & Pay', 'icon': 'cred'},
@@ -31,6 +32,12 @@ class PaymentNotificationTrackerService {
     {'id': 'com.naviapp', 'name': 'Navi UPI', 'icon': 'navi'},
     {'id': 'money.jupiter', 'name': 'Jupiter Money', 'icon': 'jupiter'},
     {'id': 'com.tatadigital.tcp', 'name': 'Tata Neu UPI', 'icon': 'tataneu'},
+    {'id': 'com.whatsapp', 'name': 'WhatsApp Pay', 'icon': 'whatsapp'},
+    {'id': 'money.fi.banking', 'name': 'Fi Money', 'icon': 'fi'},
+    {'id': 'org.cosmic.slice', 'name': 'Slice', 'icon': 'slice'},
+    {'id': 'com.myairtelapp', 'name': 'Airtel Pay', 'icon': 'airtel'},
+    {'id': 'com.samsung.android.spay', 'name': 'Samsung Wallet', 'icon': 'samsung'},
+    {'id': 'com.jio.myjio', 'name': 'JioPay', 'icon': 'jio'},
   ];
 
   /// Initialize the Payment Notification Tracker service
@@ -136,7 +143,11 @@ class PaymentNotificationTrackerService {
 
     final String packageName = map['packageName']?.toString() ?? '';
     final enabledPackages = await getEnabledUpiPackages();
-    if (!enabledPackages.contains(packageName) && !enabledPackages.contains('all')) {
+    bool isPackageAllowed = enabledPackages.contains(packageName) || enabledPackages.contains('all');
+    if (!isPackageAllowed && (packageName.contains('nbu.paisa') || packageName.contains('npx') || packageName.contains('walletnfcrel'))) {
+      isPackageAllowed = enabledPackages.any((p) => p.contains('nbu.paisa') || p.contains('npx') || p.contains('walletnfcrel'));
+    }
+    if (!isPackageAllowed) {
       return; // App is unselected by user
     }
 

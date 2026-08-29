@@ -212,6 +212,32 @@ class MainActivity: FlutterActivity() {
             }
         }
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/permissions").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "checkPermission" -> {
+                    val perm = call.argument<String>("permission") ?: ""
+                    result.success(checkAppPermission(perm))
+                }
+                "requestPermission" -> {
+                    val perm = call.argument<String>("permission") ?: ""
+                    requestAppPermission(perm, result)
+                }
+                "openAppSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", packageName, null)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SETTINGS_ERROR", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/sleep_tracker").setMethodCallHandler { call, result ->
             when (call.method) {
                 "checkPermission" -> {
@@ -374,10 +400,86 @@ class MainActivity: FlutterActivity() {
         }
     }
 
+    private val APP_PERMISSIONS_REQUEST_CODE = 1002
+
+    private fun checkAppPermission(permission: String): Boolean {
+        return when (permission.lowercase()) {
+            "notification" -> {
+                NotificationManagerCompat.from(this).areNotificationsEnabled()
+            }
+            "location" -> {
+                val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                fine || coarse
+            }
+            "microphone" -> {
+                ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            }
+            "sms" -> {
+                val read = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+                val receive = ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+                read && receive
+            }
+            "notification_listener" -> {
+                val enabledPackages = NotificationManagerCompat.getEnabledListenerPackages(this)
+                enabledPackages.contains(packageName)
+            }
+            else -> false
+        }
+    }
+
+    private fun requestAppPermission(permission: String, result: MethodChannel.Result) {
+        if (checkAppPermission(permission)) {
+            result.success(true)
+            return
+        }
+
+        permissionResult = result
+        when (permission.lowercase()) {
+            "notification" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    ActivityCompat.requestPermissions(
+                        this,
+                        arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                        APP_PERMISSIONS_REQUEST_CODE
+                    )
+                } else {
+                    result.success(NotificationManagerCompat.from(this).areNotificationsEnabled())
+                    permissionResult = null
+                }
+            }
+            "location" -> {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                    APP_PERMISSIONS_REQUEST_CODE
+                )
+            }
+            "microphone" -> {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.RECORD_AUDIO),
+                    APP_PERMISSIONS_REQUEST_CODE
+                )
+            }
+            "sms" -> {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS),
+                    APP_PERMISSIONS_REQUEST_CODE
+                )
+            }
+            else -> {
+                result.success(false)
+                permissionResult = null
+            }
+        }
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == ACTIVITY_RECOGNITION_REQUEST_CODE) {
-            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        if (requestCode == ACTIVITY_RECOGNITION_REQUEST_CODE || requestCode == APP_PERMISSIONS_REQUEST_CODE) {
+            val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
             permissionResult?.success(granted)
             permissionResult = null
         }

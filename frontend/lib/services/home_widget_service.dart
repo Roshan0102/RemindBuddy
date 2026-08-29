@@ -89,11 +89,9 @@ class HomeWidgetService {
   /// Pulls the latest live state from Firestore & caches, pushing updates to all widgets
   Future<void> syncAllWidgets() async {
     if (kIsWeb) return;
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
 
     try {
-      // 1. Sync Gold Widget
+      // 1. Sync Gold Widget (Available globally, doesn't require user auth)
       final goldSnap = await FirebaseFirestore.instance
           .collection('gold_prices')
           .orderBy('timestamp', descending: true)
@@ -104,7 +102,7 @@ class HomeWidgetService {
         final latest = goldSnap.docs.first.data();
         final double rate24k = (latest['rate24k'] as num?)?.toDouble() ?? 7850.0;
         final double rate22k = (latest['rate22k'] as num?)?.toDouble() ?? 7200.0;
-        final String city = latest['city']?.toString() ?? 'Chennai';
+        final String city = latest['city']?.toString() ?? 'Bengaluru';
 
         double change = 0.0;
         if (goldSnap.docs.length > 1) {
@@ -119,9 +117,19 @@ class HomeWidgetService {
           changeToday: change,
           city: city,
         );
+      } else {
+        await updateGoldWidget(
+          rate24k: 7850.0,
+          rate22k: 7200.0,
+          changeToday: 0.0,
+          city: 'Bengaluru',
+        );
       }
 
       // 2. Sync Finance Widget
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
       final accountsSnap = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)

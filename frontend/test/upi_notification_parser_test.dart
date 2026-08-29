@@ -3,9 +3,9 @@ import 'package:remindbuddy/services/upi_notification_parser_service.dart';
 
 void main() {
   group('UpiNotificationParserService Tests', () {
-    test('Correctly parses GPay received payment notification', () {
+    test('Correctly parses GPay India received payment notification', () {
       final tx = UpiNotificationParserService.parseNotification(
-        packageName: 'com.google.android.apps.npx',
+        packageName: 'com.google.android.apps.nbu.paisa.user',
         appName: 'GPay',
         title: 'Payment received',
         body: 'Rahul Sharma paid you ₹500.00',
@@ -18,6 +18,22 @@ void main() {
       expect(tx.payee, 'Rahul Sharma');
       expect(tx.bankName, 'GPay');
       expect(tx.source, 'notification');
+      expect(tx.sourceApp, 'GPay');
+    });
+
+    test('Correctly parses GPay India "has sent you" title notification', () {
+      final tx = UpiNotificationParserService.parseNotification(
+        packageName: 'com.google.android.apps.nbu.paisa.user',
+        appName: 'GPay',
+        title: 'Rahul has sent you ₹50',
+        body: 'Check updated balance in Google Pay',
+        timestampMillis: 1724938250000,
+      );
+
+      expect(tx, isNotNull);
+      expect(tx!.amount, 50.0);
+      expect(tx.type, 'Credit');
+      expect(tx.payee, 'Rahul');
       expect(tx.sourceApp, 'GPay');
     });
 
