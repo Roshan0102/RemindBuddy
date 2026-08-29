@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,7 +37,7 @@ class AuthService {
         email: email,
         password: password,
       );
-      print("Logged in via Firebase as ${credential.user?.uid}");
+      debugPrint("Logged in via Firebase as ${credential.user?.uid}");
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('last_sync_time');
@@ -51,11 +52,11 @@ class AuthService {
           }
         }
       } catch (e) {
-        print('Error saving FCM Token: $e');
+        debugPrint('Error saving FCM Token: $e');
       }
 
     } catch (e) {
-      print("Firebase Login failed: $e");
+      debugPrint("Firebase Login failed: $e");
       throw Exception('Login failed: ${e.toString()}');
     }
   }
@@ -63,14 +64,14 @@ class AuthService {
   Future<void> signup(String username, String email, String password) async {
     try {
       // 1. Check if username is taken
-      print('🔍 Checking username existence for: $username');
+      debugPrint('🔍 Checking username existence for: $username');
       final usernameDoc = await _db.collection('usernames').doc(username.toLowerCase()).get();
       if (usernameDoc.exists) {
         throw Exception('Username already taken');
       }
 
       // 2. Create Auth User
-      print('🔐 Creating auth user for: $email');
+      debugPrint('🔐 Creating auth user for: $email');
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -80,7 +81,7 @@ class AuthService {
       await Future.delayed(const Duration(milliseconds: 500));
       
       // 3. Save username map
-      print('💾 Saving username map for UID: ${credential.user?.uid}');
+      debugPrint('💾 Saving username map for UID: ${credential.user?.uid}');
       await _db.collection('usernames').doc(username.toLowerCase()).set({
         'email': email,
         'uid': credential.user?.uid,
@@ -98,12 +99,12 @@ class AuthService {
           });
         }
       } catch (e) {
-        print('Error saving FCM Token on signup: $e');
+        debugPrint('Error saving FCM Token on signup: $e');
       }
 
-      print("✅ Signed up via Firebase as ${credential.user?.uid}");
+      debugPrint("✅ Signed up via Firebase as ${credential.user?.uid}");
     } catch (e) {
-      print("❌ Firebase Signup failed: $e");
+      debugPrint("❌ Firebase Signup failed: $e");
       throw Exception('Signup failed: ${e.toString()}');
     }
   }
@@ -112,6 +113,6 @@ class AuthService {
     await _auth.signOut();
     final storage = StorageService();
     await storage.logoutAndClearData();
-    print('User logged out natively via Firebase');
+    debugPrint('User logged out natively via Firebase');
   }
 }

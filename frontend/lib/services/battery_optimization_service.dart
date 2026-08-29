@@ -12,7 +12,7 @@ class BatteryOptimizationService {
       final bool result = await platform.invokeMethod('isBatteryOptimizationEnabled');
       return result;
     } on PlatformException catch (e) {
-      print("Failed to check battery optimization: '${e.message}'.");
+      debugPrint("Failed to check battery optimization: '${e.message}'.");
       return true;
     }
   }
@@ -24,7 +24,7 @@ class BatteryOptimizationService {
       final bool result = await platform.invokeMethod('isExactAlarmPermissionGranted');
       return result;
     } on PlatformException catch (e) {
-      print("Failed to check exact alarm: '${e.message}'.");
+      debugPrint("Failed to check exact alarm: '${e.message}'.");
       return true;
     }
   }
@@ -35,7 +35,7 @@ class BatteryOptimizationService {
     try {
       await platform.invokeMethod('requestDisableBatteryOptimization');
     } on PlatformException catch (e) {
-      print("Failed to request battery optimization: '${e.message}'.");
+      debugPrint("Failed to request battery optimization: '${e.message}'.");
     }
   }
 
@@ -45,7 +45,7 @@ class BatteryOptimizationService {
     try {
       await platform.invokeMethod('requestExactAlarmPermission');
     } on PlatformException catch (e) {
-      print("Failed to request alarm permission: '${e.message}'.");
+      debugPrint("Failed to request alarm permission: '${e.message}'.");
     }
   }
 
@@ -55,7 +55,7 @@ class BatteryOptimizationService {
     try {
       await platform.invokeMethod('openAutostartSettings');
     } on PlatformException catch (e) {
-      print("Failed to open autostart: '${e.message}'.");
+      debugPrint("Failed to open autostart: '${e.message}'.");
     }
   }
 
@@ -65,7 +65,7 @@ class BatteryOptimizationService {
     try {
       await platform.invokeMethod('openNotificationSettings');
     } on PlatformException catch (e) {
-      print("Failed to open notifications: '${e.message}'.");
+      debugPrint("Failed to open notifications: '${e.message}'.");
     }
   }
 
@@ -172,7 +172,7 @@ class BatteryOptimizationService {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
+                color: statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: statusColor),

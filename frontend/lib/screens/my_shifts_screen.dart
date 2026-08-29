@@ -1,21 +1,16 @@
 import 'dart:convert';
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/shift.dart';
 import '../services/storage_service.dart';
 import '../services/shift_service.dart';
 import '../services/log_service.dart';
 import '../widgets/web_image_viewer.dart';
-
 
 class MyShiftsScreen extends StatefulWidget {
   final int initialTab;
@@ -31,39 +26,10 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   final ShiftService _shiftService = ShiftService();
   
   List<Shift> _shifts = [];
-
   Map<String, int>? _statistics;
   bool _isLoading = true;
   bool _hasData = false;
   String? _rosterImageUrl;
-  
-  // State & Subscriptions
-  DateTime? _eventsLastUpdated;
-  DateTime? _eventsLastRan;
-  DateTime? _walkinsLastUpdated;
-  DateTime? _walkinsLastRan;
-  bool _showPastWalkIns = false;
-  bool _showPastEvents = false;
-  bool _isFetchingEvents = false;
-  bool _isFetchingWalkIns = false;
-  Map<String, int> _eventCounts = {};
-  Map<String, int> _walkinCounts = {};
-  bool _isEventsEnabled = false;
-  bool _isWalkInEnabled = false;
-  bool _isEventsConfigured = false;
-  bool _isWalkInConfigured = false;
-  List<String> _eventInterests = [];
-  String _eventLocation = '';
-  String _eventMode = '';
-  List<String> _walkinRoles = [];
-  String _walkinLocation = '';
-  int _selectedTab = 0;
-
-  StreamSubscription? _userSubscription;
-  StreamSubscription? _eventsSubscription;
-  StreamSubscription? _walkinsSubscription;
-  Stream<QuerySnapshot>? _eventsStream;
-  Stream<QuerySnapshot>? _walkinsStream;
 
   // Multi-month support
   DateTime _currentDate = DateTime.now();
@@ -72,750 +38,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedTab = widget.initialTab;
     _loadShifts();
   }
 
-  @override
-  void dispose() {
-    _userSubscription?.cancel();
-    _eventsSubscription?.cancel();
-    _walkinsSubscription?.cancel();
-    super.dispose();
-  }
-
-  bool _isLocationMatch(String itemLocation, String targetLocation) {
-    final itemLoc = itemLocation.toLowerCase().trim();
-    final target = targetLocation.toLowerCase().trim();
-    if (target.isEmpty || target == 'all' || target == 'any') return true;
-
-    if (target.contains('bengaluru') || target.contains('bangalore') || target.contains('blr')) {
-      return itemLoc.contains('bengaluru') || itemLoc.contains('bangalore') || itemLoc.contains('blr') ||
-             itemLoc.contains('electronic city') || itemLoc.contains('hsr') || itemLoc.contains('koramangala') ||
-             itemLoc.contains('indiranagar') || itemLoc.contains('manyata') || itemLoc.contains('whitefield') || itemLoc.contains('marathahalli');
-    }
-
-    return itemLoc.contains(target);
-  }
-
-  void _listenToUserAndCounts() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    _eventsStream = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('events')
-        .orderBy('date', descending: false)
-        .snapshots();
-
-    _walkinsStream = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('walkins')
-        .orderBy('date', descending: false)
-        .snapshots();
-
-    _userSubscription?.cancel();
-    _userSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .snapshots()
-        .listen((doc) {
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
-        final enabledModules = List<String>.from(data['enabledModules'] ?? ['gold']);
-        
-        final hasEventsConfigured = (data['isEventsConfigured'] == true) || (data['eventLocation'] != null && data['eventInterests'] != null && data['eventMode'] != null);
-        final hasWalkinConfigured = (data['isWalkinConfigured'] == true) || (data['walkinLocation'] != null && data['walkinRoles'] != null);
-
-        final interests = data['eventInterests'] != null ? List<String>.from(data['eventInterests']) : <String>[];
-        final location = (data['eventLocation'] ?? '').toString();
-        final mode = (data['eventMode'] ?? 'In-Person').toString();
-
-        final walkinRoles = data['walkinRoles'] != null ? List<String>.from(data['walkinRoles']) : <String>[];
-        final walkinLocation = (data['walkinLocation'] ?? '').toString();
-
-        final lastUpdatedVal = data['eventsLastUpdated'];
-        DateTime? lastUpdated;
-        if (lastUpdatedVal is Timestamp) {
-          lastUpdated = lastUpdatedVal.toDate();
-        } else if (lastUpdatedVal is String) {
-          lastUpdated = DateTime.tryParse(lastUpdatedVal);
-        }
-
-        final walkinsLastUpdatedVal = data['walkinsLastUpdated'];
-        DateTime? walkinsLastUpdated;
-        if (walkinsLastUpdatedVal is Timestamp) {
-          walkinsLastUpdated = walkinsLastUpdatedVal.toDate();
-        } else if (walkinsLastUpdatedVal is String) {
-          walkinsLastUpdated = DateTime.tryParse(walkinsLastUpdatedVal);
-        }
-
-        final eventsLastRanVal = data['eventsLastRan'];
-        DateTime? eventsLastRan;
-        if (eventsLastRanVal is Timestamp) {
-          eventsLastRan = eventsLastRanVal.toDate();
-        } else if (eventsLastRanVal is String) {
-          eventsLastRan = DateTime.tryParse(eventsLastRanVal);
-        }
-
-        final walkinsLastRanVal = data['walkinsLastRan'];
-        DateTime? walkinsLastRan;
-        if (walkinsLastRanVal is Timestamp) {
-          walkinsLastRan = walkinsLastRanVal.toDate();
-        } else if (walkinsLastRanVal is String) {
-          walkinsLastRan = DateTime.tryParse(walkinsLastRanVal);
-        }
-
-        if (mounted) {
-          setState(() {
-            _isEventsEnabled = enabledModules.contains('events') || _selectedTab == 1;
-            _isWalkInEnabled = enabledModules.contains('walkin') || _selectedTab == 2;
-            _isEventsConfigured = hasEventsConfigured;
-            _isWalkInConfigured = hasWalkinConfigured;
-            _eventInterests = interests;
-            _eventLocation = location;
-            _eventMode = mode;
-            _walkinRoles = walkinRoles;
-            _walkinLocation = walkinLocation;
-            _eventsLastUpdated = lastUpdated;
-            _walkinsLastUpdated = walkinsLastUpdated;
-            _eventsLastRan = eventsLastRan;
-            _walkinsLastRan = walkinsLastRan;
-          });
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _isEventsEnabled = _selectedTab == 1;
-            _isWalkInEnabled = _selectedTab == 2;
-            _isEventsConfigured = false;
-            _isWalkInConfigured = false;
-            _eventInterests = [];
-            _walkinRoles = [];
-            _walkinLocation = '';
-          });
-        }
-      }
-    }, onError: (e) {
-      LogService().error("Error listening to events permission/interests", e);
-    });
-
-    _eventsSubscription?.cancel();
-    _eventsSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('events')
-        .snapshots()
-        .listen((snapshot) {
-      final counts = <String, int>{};
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final notInterested = data['notInterested'] as bool? ?? false;
-        if (notInterested) continue;
-        final date = data['date'] as String? ?? '';
-        if (date.isNotEmpty) {
-          counts[date] = (counts[date] ?? 0) + 1;
-        }
-      }
-      if (mounted) {
-        setState(() {
-          _eventCounts = counts;
-        });
-      }
-    }, onError: (e) {
-      LogService().error("Error listening to events count", e);
-    });
-
-    _walkinsSubscription?.cancel();
-    _walkinsSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('walkins')
-        .snapshots()
-        .listen((snapshot) {
-      final counts = <String, int>{};
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final notInterested = data['notInterested'] as bool? ?? false;
-        if (notInterested) continue;
-        final date = data['date'] as String? ?? '';
-        if (date.isNotEmpty) {
-          counts[date] = (counts[date] ?? 0) + 1;
-        }
-      }
-      if (mounted) {
-        setState(() {
-          _walkinCounts = counts;
-        });
-      }
-    }, onError: (e) {
-      LogService().error("Error listening to walkins count", e);
-    });
-  }
-
-  Future<void> _triggerFetchEvents() async {
-    setState(() => _isFetchingEvents = true);
-    try {
-      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('fetchUserTechEvents');
-      final result = await callable.call();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ Successfully loaded ${result.data['count'] ?? 0} tech events'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Failed to fetch events: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isFetchingEvents = false);
-      }
-    }
-  }
-
-  Future<void> _markNotInterested(String eventDocId) async {
-    await _markGroupNotInterested([eventDocId]);
-  }
-
-  Future<void> _markGroupNotInterested(List<String> eventDocIds) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || eventDocIds.isEmpty) return;
-    try {
-      final batch = FirebaseFirestore.instance.batch();
-      final collection = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('events');
-      for (final id in eventDocIds) {
-        batch.update(collection.doc(id), {'notInterested': true});
-      }
-      await batch.commit();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Marked as not interested')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update event: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _toggleEventInterest(String eventDocId, bool currentInterest) async {
-    await _toggleGroupEventInterest([eventDocId], currentInterest);
-  }
-
-  Future<void> _toggleGroupEventInterest(List<String> eventDocIds, bool currentInterest) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || eventDocIds.isEmpty) return;
-    try {
-      final batch = FirebaseFirestore.instance.batch();
-      final collection = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('events');
-      for (final id in eventDocIds) {
-        batch.update(collection.doc(id), {'interested': !currentInterest});
-      }
-      await batch.commit();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(!currentInterest ? 'Marked as interested' : 'Removed interest')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update event: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _clearAllEventsDialog() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete All Events'),
-        content: const Text('Are you sure you want to completely delete all events? This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await _clearAllEvents();
-    }
-  }
-
-  Future<void> _clearAllEvents() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    setState(() => _isFetchingEvents = true);
-    try {
-      final col = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('events');
-      final snapshots = await col.get();
-      final batch = FirebaseFirestore.instance.batch();
-      for (var doc in snapshots.docs) {
-        batch.delete(doc.reference);
-      }
-      await batch.commit();
-
-      // Clear last updated time as well
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .update({
-        'eventsLastUpdated': FieldValue.delete()
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All events deleted successfully.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete events: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isFetchingEvents = false);
-      }
-    }
-  }
-
-  Future<void> _triggerFetchWalkIns() async {
-    setState(() => _isFetchingWalkIns = true);
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-      final callable = FirebaseFunctions.instance.httpsCallable('fetchUserWalkIns');
-      final result = await callable.call();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ Successfully loaded ${result.data['count'] ?? 0} walk-in interviews'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Failed to fetch walk-ins: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isFetchingWalkIns = false);
-      }
-    }
-  }
-
-  Future<void> _markWalkInNotInterested(String walkinDocId) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('walkins')
-          .doc(walkinDocId)
-          .update({'notInterested': true});
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Marked as not interested')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update walk-in: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _toggleWalkInInterest(String walkinDocId, bool currentInterest) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('walkins')
-          .doc(walkinDocId)
-          .update({'interested': !currentInterest});
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(!currentInterest ? 'Marked as interested' : 'Removed interest')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update walk-in: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _clearAllWalkInsDialog() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete All Walk-Ins'),
-        content: const Text('Are you sure you want to completely delete all walk-in drives? This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await _clearAllWalkIns();
-    }
-  }
-
-  Future<void> _clearAllWalkIns() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    setState(() => _isFetchingWalkIns = true);
-    try {
-      final col = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('walkins');
-      final snapshots = await col.get();
-      final batch = FirebaseFirestore.instance.batch();
-      for (var doc in snapshots.docs) {
-        batch.delete(doc.reference);
-      }
-      await batch.commit();
-
-      // Clear last updated time as well
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .update({
-        'walkinsLastUpdated': FieldValue.delete()
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All walk-ins deleted successfully.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete walk-ins: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isFetchingWalkIns = false);
-      }
-    }
-  }
-
-  Future<void> _editInterestsDialog() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final interestsController = TextEditingController(text: _eventInterests.join(', '));
-    final locationController = TextEditingController(text: _eventLocation.isEmpty ? 'Bengaluru' : _eventLocation);
-    String selectedMode = _eventMode;
-    bool isSavingInterests = false;
-
-    await showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Event Preferences 🎯'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  '1. Target Location / City:',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: locationController,
-                  decoration: const InputDecoration(
-                    labelText: 'Location / City',
-                    hintText: 'e.g. Bengaluru, Chennai, Mumbai, Delhi, Hyderabad',
-                    prefixIcon: Icon(Icons.location_on_outlined, size: 20),
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '2. Event Mode / Format:',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  children: ['In-Person', 'Online', 'Both'].map((mode) {
-                    final isSel = selectedMode == mode;
-                    return ChoiceChip(
-                      label: Text(mode == 'In-Person' ? '📍 In-Person (Offline)' : mode == 'Online' ? '🌐 Online (Virtual)' : '✨ Both'),
-                      selected: isSel,
-                      selectedColor: Theme.of(context).colorScheme.primary,
-                      labelStyle: TextStyle(
-                        color: isSel ? Colors.white : Theme.of(context).textTheme.bodyMedium?.color,
-                        fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 12,
-                      ),
-                      onSelected: (val) {
-                        if (val) setDialogState(() => selectedMode = mode);
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '3. Tech Interests (comma-separated):',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: interestsController,
-                  decoration: const InputDecoration(
-                    labelText: 'Interests',
-                    hintText: 'e.g. Cloud, Devops, AI, Agentic AI, testing',
-                    prefixIcon: Icon(Icons.interests_outlined, size: 20),
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: isSavingInterests ? null : () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isSavingInterests
-                  ? null
-                  : () async {
-                      setDialogState(() => isSavingInterests = true);
-                      try {
-                        final list = interestsController.text
-                            .split(',')
-                            .map((s) => s.trim())
-                            .where((s) => s.isNotEmpty)
-                            .toList();
-                        
-                        final loc = locationController.text.trim().isEmpty ? 'Bengaluru' : locationController.text.trim();
-
-                        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-                          'eventInterests': list,
-                          'eventLocation': loc,
-                          'eventMode': selectedMode,
-                          'isEventsConfigured': true,
-                        }, SetOptions(merge: true));
-
-                        setState(() {
-                          _eventInterests = list;
-                          _eventLocation = loc;
-                          _eventMode = selectedMode;
-                          _isEventsConfigured = true;
-                        });
-
-                        Navigator.pop(context);
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Preferences saved! Fetching matching events...'),
-                          ),
-                        );
-                        _triggerFetchEvents();
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to save preferences: $e'), backgroundColor: Colors.red),
-                        );
-                      } finally {
-                        if (mounted) {
-                          setDialogState(() => isSavingInterests = false);
-                        }
-                      }
-                    },
-              child: isSavingInterests
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _editWalkInRolesDialog() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final rolesController = TextEditingController(text: _walkinRoles.join(', '));
-    final locationController = TextEditingController(text: _walkinLocation.isEmpty ? 'Bengaluru' : _walkinLocation);
-    bool isSavingRoles = false;
-
-    await showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Walk-In Drive Preferences 🏢'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  '1. Target Location / City:',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: locationController,
-                  decoration: const InputDecoration(
-                    labelText: 'Location / City',
-                    hintText: 'e.g. Bengaluru, Hyderabad, Chennai, Pune, All',
-                    prefixIcon: Icon(Icons.location_on_outlined, size: 20),
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '2. Targeted Job Roles (comma-separated):',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: rolesController,
-                  decoration: const InputDecoration(
-                    labelText: 'Roles',
-                    hintText: 'e.g. DevOps Engineer, Cloud Engineer, SRE',
-                    prefixIcon: Icon(Icons.work_outline, size: 20),
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: isSavingRoles ? null : () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isSavingRoles
-                  ? null
-                  : () async {
-                      setDialogState(() => isSavingRoles = true);
-                      try {
-                        final list = rolesController.text
-                            .split(',')
-                            .map((s) => s.trim())
-                            .where((s) => s.isNotEmpty)
-                            .toList();
-                        
-                        final loc = locationController.text.trim().isEmpty ? 'Bengaluru' : locationController.text.trim();
-
-                        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-                          'walkinRoles': list,
-                          'walkinLocation': loc,
-                          'isWalkinConfigured': true,
-                        }, SetOptions(merge: true));
-
-                        setState(() {
-                          _walkinRoles = list;
-                          _walkinLocation = loc;
-                          _isWalkInConfigured = true;
-                        });
-
-                        Navigator.pop(context);
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Walk-In preferences saved! Fetching matching drives...'),
-                          ),
-                        );
-                        _triggerFetchWalkIns();
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to save preferences: $e'), backgroundColor: Colors.red),
-                        );
-                      } finally {
-                        if (mounted) {
-                          setDialogState(() => isSavingRoles = false);
-                        }
-                      }
-                    },
-              child: isSavingRoles
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  
   void _changeMonth(int delta) {
     setState(() {
       _currentDate = DateTime(_currentDate.year, _currentDate.month + delta, 1);
@@ -844,23 +69,29 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         final stats = await _storage.getShiftStatistics(monthForQuery, rosterMonth: _selectedRosterMonth);
         final imageUrl = metadata['roster_image_url'] as String?;
         
-        setState(() {
-          _shifts = shifts;
-          _statistics = stats;
-          _rosterImageUrl = imageUrl;
-          _hasData = true;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _shifts = shifts;
+            _statistics = stats;
+            _rosterImageUrl = imageUrl;
+            _hasData = true;
+            _isLoading = false;
+          });
+        }
       } else {
-        setState(() {
-          _rosterImageUrl = null;
-          _hasData = false;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _rosterImageUrl = null;
+            _hasData = false;
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       LogService().error('Failed to load shifts', e);
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -894,9 +125,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                           return Container(
                             color: Colors.white,
                             padding: const EdgeInsets.all(24),
-                            child: Column(
+                            child: const Column(
                               mainAxisSize: MainAxisSize.min,
-                              children: const [
+                              children: [
                                 Icon(Icons.broken_image, size: 64, color: Colors.red),
                                 SizedBox(height: 16),
                                 Text('Failed to load roster image', style: TextStyle(color: Colors.black)),
@@ -911,7 +142,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               top: 8,
               right: 8,
               child: CircleAvatar(
-                backgroundColor: Colors.black.withOpacity(0.5),
+                backgroundColor: Colors.black.withValues(alpha: 0.5),
                 child: IconButton(
                   icon: const Icon(Icons.close, color: Colors.white),
                   onPressed: () => Navigator.pop(context),
@@ -923,8 +154,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       ),
     );
   }
-  
-
 
   Future<void> _uploadJSON() async {
     final TextEditingController jsonController = TextEditingController();
@@ -943,11 +172,13 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     String monthLabel = '';
     List<Shift> parsedShifts = [];
 
+    final messenger = ScaffoldMessenger.of(context);
+
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (innerDialogContext, setDialogState) {
           if (!isPreviewMode) {
             return AlertDialog(
               title: const Text('Upload Shift Roster'),
@@ -956,7 +187,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Tab toggle
                     Row(
                       children: [
                         Expanded(
@@ -964,7 +194,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             label: const Text('Scan Image', textAlign: TextAlign.center),
                             selected: currentTab == 0,
                             onSelected: (selected) {
-                              if (selected) setState(() => currentTab = 0);
+                              if (selected) setDialogState(() => currentTab = 0);
                             },
                           ),
                         ),
@@ -974,7 +204,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             label: const Text('Paste JSON', textAlign: TextAlign.center),
                             selected: currentTab == 1,
                             onSelected: (selected) {
-                              if (selected) setState(() => currentTab = 1);
+                              if (selected) setDialogState(() => currentTab = 1);
                             },
                           ),
                         ),
@@ -982,7 +212,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     ),
                     const SizedBox(height: 16),
                     if (currentTab == 0) ...[
-                      // Image upload form
                       TextField(
                         controller: nameController,
                         decoration: const InputDecoration(
@@ -997,7 +226,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                           final ImagePicker picker = ImagePicker();
                           final XFile? img = await picker.pickImage(source: ImageSource.gallery);
                           if (img != null) {
-                            setState(() {
+                            setDialogState(() {
                               selectedImage = img;
                               errorMessage = '';
                             });
@@ -1015,7 +244,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         ),
                       ],
                     ] else ...[
-                      // JSON upload form
                       const Text(
                         'Paste your JSON roster data below:',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -1043,7 +271,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: isScanning ? null : () => Navigator.pop(context),
+                  onPressed: isScanning ? null : () => Navigator.pop(dialogContext),
                   child: const Text('Cancel'),
                 ),
                 if (isScanning)
@@ -1054,21 +282,21 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 else
                   ElevatedButton(
                     onPressed: () async {
-                      setState(() {
+                      setDialogState(() {
                         errorMessage = '';
                       });
 
                       if (currentTab == 0) {
                         if (nameController.text.trim().isEmpty) {
-                          setState(() => errorMessage = 'Please enter employee name.');
+                          setDialogState(() => errorMessage = 'Please enter employee name.');
                           return;
                         }
                         if (selectedImage == null) {
-                          setState(() => errorMessage = 'Please select a roster image.');
+                          setDialogState(() => errorMessage = 'Please select a roster image.');
                           return;
                         }
 
-                        setState(() => isScanning = true);
+                        setDialogState(() => isScanning = true);
                         try {
                           final bytes = await selectedImage!.readAsBytes();
                           final base64Image = base64Encode(bytes);
@@ -1082,7 +310,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                           final data = result.data;
                           if (data != null) {
                             final roster = ShiftRoster.fromJson(data as Map);
-                            setState(() {
+                            setDialogState(() {
                               parsedShifts = roster.shifts;
                               employeeName = roster.employeeName;
                               monthLabel = roster.month;
@@ -1093,28 +321,28 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             throw Exception('Received empty result from server.');
                           }
                         } catch (e) {
-                          setState(() {
+                          setDialogState(() {
                             errorMessage = 'Scanning failed: $e';
                             isScanning = false;
                           });
                         }
                       } else {
                         if (jsonController.text.trim().isEmpty) {
-                          setState(() => errorMessage = 'Please paste JSON roster data.');
+                          setDialogState(() => errorMessage = 'Please paste JSON roster data.');
                           return;
                         }
 
                         try {
                           final jsonData = json.decode(jsonController.text.trim());
                           final roster = ShiftRoster.fromJson(jsonData);
-                          setState(() {
+                          setDialogState(() {
                             parsedShifts = roster.shifts;
                             employeeName = roster.employeeName;
                             monthLabel = roster.month;
                             isPreviewMode = true;
                           });
                         } catch (e) {
-                          setState(() {
+                          setDialogState(() {
                             errorMessage = 'Invalid JSON: $e';
                           });
                         }
@@ -1151,67 +379,62 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     ),
                     const SizedBox(height: 8),
                     Container(
-                      constraints: const BoxConstraints(maxHeight: 320),
+                      height: 250,
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey[300]!),
+                        border: Border.all(color: Colors.grey.shade300),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: ListView.builder(
-                        shrinkWrap: true,
+                      child: ListView.separated(
                         itemCount: parsedShifts.length,
+                        separatorBuilder: (context, i) => const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final shift = parsedShifts[index];
-                          // Try formatting date nicely if possible
-                          String displayDate = shift.date;
-                          try {
-                            final dateObj = DateTime.parse(shift.date);
-                            displayDate = DateFormat('EEE, MMM d').format(dateObj);
-                          } catch (_) {}
-
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(displayDate, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                DropdownButton<String>(
-                                  value: shift.shiftType,
-                                  underline: const SizedBox(),
-                                  items: const [
-                                    DropdownMenuItem(value: 'morning', child: Text('Morning')),
-                                    DropdownMenuItem(value: 'afternoon', child: Text('Afternoon')),
-                                    DropdownMenuItem(value: 'night', child: Text('Night')),
-                                    DropdownMenuItem(value: 'week_off', child: Text('Week Off')),
-                                  ],
-                                  onChanged: (newVal) {
-                                    if (newVal != null) {
-                                      setState(() {
-                                        final isWeekOff = newVal == 'week_off';
-                                        String? start;
-                                        String? end;
-                                        if (newVal == 'morning') {
-                                          start = '06:00';
-                                          end = '14:00';
-                                        } else if (newVal == 'afternoon') {
-                                          start = '14:00';
-                                          end = '22:00';
-                                        } else if (newVal == 'night') {
-                                          start = '22:00';
-                                          end = '06:00';
-                                        }
-
-                                        parsedShifts[index] = Shift(
-                                          date: shift.date,
-                                          shiftType: newVal,
-                                          startTime: start,
-                                          endTime: end,
-                                          isWeekOff: isWeekOff,
-                                        );
-                                      });
-                                    }
-                                  },
-                                ),
+                          return ListTile(
+                            dense: true,
+                            leading: Icon(
+                              _getShiftIcon(shift.shiftType),
+                              color: _getShiftColor(shift.shiftType),
+                              size: 20,
+                            ),
+                            title: Text(
+                              shift.date,
+                              style: const TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                            trailing: DropdownButton<String>(
+                              value: shift.shiftType,
+                              underline: const SizedBox(),
+                              items: const [
+                                DropdownMenuItem(value: 'morning', child: Text('Morning')),
+                                DropdownMenuItem(value: 'afternoon', child: Text('Afternoon')),
+                                DropdownMenuItem(value: 'night', child: Text('Night')),
+                                DropdownMenuItem(value: 'week_off', child: Text('Week Off')),
                               ],
+                              onChanged: (newType) {
+                                if (newType != null) {
+                                  setDialogState(() {
+                                    final isOff = newType == 'week_off';
+                                    String? start;
+                                    String? end;
+                                    if (newType == 'morning') {
+                                      start = '06:00';
+                                      end = '14:00';
+                                    } else if (newType == 'afternoon') {
+                                      start = '14:00';
+                                      end = '22:00';
+                                    } else if (newType == 'night') {
+                                      start = '22:00';
+                                      end = '06:00';
+                                    }
+                                    parsedShifts[index] = Shift(
+                                      date: shift.date,
+                                      shiftType: newType,
+                                      startTime: start,
+                                      endTime: end,
+                                      isWeekOff: isOff,
+                                    );
+                                  });
+                                }
+                              },
                             ),
                           );
                         },
@@ -1231,14 +454,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: isSaving
-                    ? null
-                    : () {
-                        setState(() {
-                          isPreviewMode = false;
-                          errorMessage = '';
-                        });
-                      },
+                onPressed: isSaving ? null : () => setDialogState(() => isPreviewMode = false),
                 child: const Text('Back'),
               ),
               if (isSaving)
@@ -1249,12 +465,11 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               else
                 ElevatedButton(
                   onPressed: () async {
-                    setState(() {
+                    setDialogState(() {
                       isSaving = true;
                       errorMessage = '';
                     });
                     try {
-                      // Extract roster month directly from UI selection
                       String rosterMonth = _selectedRosterMonth;
                       String updatedMonthLabel = DateFormat('MMMM yyyy').format(_currentDate);
 
@@ -1271,7 +486,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         }
                       }
 
-                      // Rewrite the shift dates to match the selected month/year.
                       final shiftsToSave = parsedShifts.map((s) {
                         final map = s.toMap();
                         if (map['date'].length >= 10) {
@@ -1280,7 +494,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         return map;
                       }).toList();
 
-                      // Rewrite the original JSON payload too so when it's pushed, it has the correct dates!
                       final Map<String, dynamic> rewrittenJson = {
                         'employee_name': employeeName,
                         'month': updatedMonthLabel,
@@ -1305,16 +518,15 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         rosterImageUrl: rosterImageUrl,
                       );
 
-                      // Schedule notifications
                       await _shiftService.scheduleDailyShiftNotification();
 
-                      if (mounted) {
-                        Navigator.pop(context);
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext);
                       }
-                      await _loadShifts(); // Reload current view
+                      await _loadShifts();
 
                       if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text('✅ Loaded ${parsedShifts.length} shifts for $employeeName ($rosterMonth)'),
                             backgroundColor: Colors.green,
@@ -1322,7 +534,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         );
                       }
                     } catch (e) {
-                      setState(() {
+                      setDialogState(() {
                         errorMessage = 'Save failed: $e';
                         isSaving = false;
                       });
@@ -1411,23 +623,23 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               'Month Statistics',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildStatItem('Morning', _statistics!['morning']!, Colors.orange),
-                _buildStatItem('Afternoon', _statistics!['afternoon']!, Colors.blue),
-                _buildStatItem('Night', _statistics!['night']!, Colors.indigo),
-                _buildStatItem('Week Off', _statistics!['week_off']!, Colors.green),
+                _buildStatItem('Morning', _statistics!['morning'] ?? 0, Colors.orange),
+                _buildStatItem('Afternoon', _statistics!['afternoon'] ?? 0, Colors.blue),
+                _buildStatItem('Night', _statistics!['night'] ?? 0, Colors.indigo),
+                _buildStatItem('Week Off', _statistics!['week_off'] ?? 0, Colors.green),
               ],
             ),
             const Divider(height: 24),
             Text(
-              'Total Working Days: ${_statistics!['total_working']}',
+              'Total Working Days: ${_statistics!['total_working'] ?? 0}',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
           ],
@@ -1442,7 +654,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Text(
@@ -1463,64 +675,11 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     );
   }
 
-  Widget _buildCountsBadges(String date) {
-    final eventCount = _eventCounts[date] ?? 0;
-    final walkinCount = _walkinCounts[date] ?? 0;
-
-    if (eventCount == 0 && walkinCount == 0) {
-      return const SizedBox.shrink();
-    }
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (eventCount > 0) ...[
-          Container(
-            width: 20,
-            height: 20,
-            decoration: const BoxDecoration(
-              color: Colors.green,
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              eventCount.toString(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-        ],
-        if (walkinCount > 0) ...[
-          Container(
-            width: 20,
-            height: 20,
-            decoration: const BoxDecoration(
-              color: Colors.blue,
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              walkinCount.toString(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
   Widget _buildUpcomingShifts() {
     final today = DateTime.now();
     final upcomingShifts = _shifts.where((shift) {
-      final shiftDate = DateTime.parse(shift.date);
+      final shiftDate = DateTime.tryParse(shift.date);
+      if (shiftDate == null) return false;
       return shiftDate.isAfter(today.subtract(const Duration(days: 1)));
     }).take(7).toList();
 
@@ -1560,24 +719,17 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
             return ListTile(
               onTap: () => _editShiftDialog(shift),
               leading: CircleAvatar(
-                backgroundColor: _getShiftColor(shift.shiftType).withOpacity(0.2),
+                backgroundColor: _getShiftColor(shift.shiftType).withValues(alpha: 0.2),
                 child: Icon(
                   _getShiftIcon(shift.shiftType),
                   color: _getShiftColor(shift.shiftType),
                 ),
               ),
-              title: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      dayLabel,
-                      style: TextStyle(
-                        fontWeight: isToday || isTomorrow ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                  _buildCountsBadges(shift.date),
-                ],
+              title: Text(
+                dayLabel,
+                style: TextStyle(
+                  fontWeight: isToday || isTomorrow ? FontWeight.bold : FontWeight.normal,
+                ),
               ),
               subtitle: Text(shift.getTimeRange()),
               trailing: Text(
@@ -1622,7 +774,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               itemCount: _shifts.length,
               itemBuilder: (context, index) {
                 final shift = _shifts[index];
-                final shiftDate = DateTime.parse(shift.date);
+                final shiftDate = DateTime.tryParse(shift.date) ?? DateTime.now();
 
                 return ListTile(
                   onTap: () => _editShiftDialog(shift),
@@ -1632,16 +784,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     color: _getShiftColor(shift.shiftType),
                     size: 20,
                   ),
-                  title: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          DateFormat('EEE, MMM d').format(shiftDate),
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ),
-                      _buildCountsBadges(shift.date),
-                    ],
+                  title: Text(
+                    DateFormat('EEE, MMM d').format(shiftDate),
+                    style: const TextStyle(fontSize: 14),
                   ),
                   subtitle: Text(
                     shift.getTimeRange(),
@@ -1650,7 +795,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                   trailing: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _getShiftColor(shift.shiftType).withOpacity(0.1),
+                      color: _getShiftColor(shift.shiftType).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -1676,7 +821,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     
     final newShift = await showDialog<Shift>(
       context: context,
-      builder: (context) {
+      builder: (dialogCtx) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -1685,7 +830,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<String>(
-                    value: selectedType,
+                    initialValue: selectedType,
                     decoration: const InputDecoration(
                       labelText: 'Shift Type',
                       border: OutlineInputBorder(),
@@ -1706,7 +851,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(dialogCtx),
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
@@ -1726,7 +871,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     }
                     
                     Navigator.pop(
-                      context,
+                      dialogCtx,
                       Shift(
                         date: shift.date,
                         shiftType: selectedType,
@@ -1749,8 +894,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       setState(() => _isLoading = true);
       try {
         await _storage.updateSingleShift(newShift.date, newShift.toMap());
-        await _shiftService.scheduleDailyShiftNotification(); // Reschedule
-        await _loadShifts(); // Reload list
+        await _shiftService.scheduleDailyShiftNotification();
+        await _loadShifts();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Shift updated for ${newShift.date}')),
@@ -1772,7 +917,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
       decoration: BoxDecoration(
-        color: Colors.teal.withOpacity(0.05),
+        color: Colors.teal.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -1808,7 +953,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                 style: TextStyle(
                   fontSize: 14, 
                   fontWeight: FontWeight.w500, 
-                  color: Colors.teal.withOpacity(0.7),
+                  color: Colors.teal.withValues(alpha: 0.7),
                   letterSpacing: 4.0
                 ),
               ),
@@ -1831,1190 +976,6 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         ],
       ),
     );
-  }
-
-
-
-  Widget _buildDateShiftBadge(String dateStr) {
-    String shiftLabel = 'no data';
-    Color shiftBadgeColor = Colors.grey;
-
-    if (_hasData) {
-      final shiftOnDay = _shifts.firstWhere(
-        (s) => s.date == dateStr,
-        orElse: () => Shift(date: dateStr, shiftType: 'week_off', isWeekOff: true),
-      );
-
-      if (shiftOnDay.shiftType == 'morning') {
-        shiftLabel = 'Morning';
-        shiftBadgeColor = Colors.orange;
-      } else if (shiftOnDay.shiftType == 'afternoon') {
-        shiftLabel = 'Afternoon';
-        shiftBadgeColor = Colors.blue;
-      } else if (shiftOnDay.shiftType == 'night') {
-        shiftLabel = 'Night';
-        shiftBadgeColor = Colors.indigo;
-      } else if (shiftOnDay.shiftType == 'week_off' || shiftOnDay.isWeekOff || shiftOnDay.shiftType == 'none') {
-        shiftLabel = 'Week Off';
-        shiftBadgeColor = Colors.green;
-      } else {
-        shiftLabel = shiftOnDay.getDisplayName();
-        shiftBadgeColor = _getShiftColor(shiftOnDay.shiftType);
-      }
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: shiftLabel == 'no data'
-            ? Colors.grey.withOpacity(0.1)
-            : shiftBadgeColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: shiftLabel == 'no data'
-              ? Colors.grey.withOpacity(0.3)
-              : shiftBadgeColor.withOpacity(0.3),
-        ),
-      ),
-      child: Text(
-        shiftLabel == 'no data' ? 'Shift: No Data' : 'Shift: $shiftLabel',
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-          color: shiftLabel == 'no data' ? Colors.grey : shiftBadgeColor,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEventsView() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return const Center(child: Text('Please log in first.'));
-    }
-
-    if (!_isEventsConfigured) {
-      final isDark = Theme.of(context).brightness == Brightness.dark;
-      final textColor = isDark ? Colors.white : Colors.black87;
-      final subtextColor = isDark ? Colors.white70 : Colors.grey.shade600;
-
-      return Center(
-        child: SingleChildScrollView(
-          child: Container(
-            margin: const EdgeInsets.all(20),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 15,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-              border: Border.all(color: Colors.blueAccent.withOpacity(0.2)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.blueAccent.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.tune_rounded, size: 48, color: Colors.blueAccent),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Customize Your Tech Events Feed 🎯',
-                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Select your preferred Location, Event Format (In-Person / Online), and Tech Interests to discover events tailored specifically for you.',
-                  style: TextStyle(color: subtextColor, fontSize: 13, height: 1.4),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 22),
-                ElevatedButton.icon(
-                  onPressed: _editInterestsDialog,
-                  icon: const Icon(Icons.tune, size: 18),
-                  label: const Text('Set Event Preferences', style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    _eventsStream ??= FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('events')
-        .orderBy('date', descending: false)
-        .snapshots();
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: _eventsStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasError) {
-          return Center(child: Text('Error loading events: ${snapshot.error}'));
-        }
-
-        final allDocs = snapshot.data?.docs ?? [];
-        final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
-        // Group documents by normalized title, excluding conferences and not-interested items
-        final Map<String, List<QueryDocumentSnapshot>> groupsMap = {};
-
-        for (final doc in allDocs) {
-          final data = doc.data() as Map<String, dynamic>;
-          final title = (data['title'] ?? 'No Title').toString().trim();
-          final dateStr = (data['date'] ?? '').toString().trim();
-          final notInterested = data['notInterested'] as bool? ?? false;
-
-          // 1. Exclude conferences
-          final lowerTitle = title.toLowerCase();
-          final isConference = lowerTitle.contains('conference') ||
-              RegExp(r'\bconf\b').hasMatch(lowerTitle);
-          if (isConference) continue;
-
-          // 2. Exclude not interested
-          if (notInterested) continue;
-
-          if (dateStr.isEmpty) continue;
-
-          // 3. Location & Format Filter
-          final loc = (data['location'] ?? '').toString();
-          final isOnline = loc.toLowerCase().contains('online') || loc.toLowerCase().contains('virtual') || loc.toLowerCase().contains('webinar') || loc.toLowerCase().contains('zoom');
-
-          if (_eventMode == 'In-Person' && isOnline) continue;
-          if (_eventMode == 'Online' && !isOnline) continue;
-          if (_eventMode != 'Online' && !_isLocationMatch(loc, _eventLocation)) continue;
-
-          // 4. Interest Relevance Filter: Match user interests or tech keywords
-          final desc = (data['description'] ?? '').toString().toLowerCase();
-          final combinedText = '$lowerTitle $desc $loc';
-          
-          final activeInterests = _eventInterests.map((i) => i.toLowerCase().trim()).where((i) => i.isNotEmpty).toList();
-          final coreKeywords = ['cloud', 'devops', 'ai', 'agentic', 'ml', 'llm', 'genai', 'sre', 'kubernetes', 'aws', 'gcp', 'azure', 'docker', 'rag', 'tech', 'developer', 'hiring', 'buildathon', 'hackathon'];
-          
-          bool isRelevant = false;
-          if (activeInterests.isNotEmpty) {
-            for (final interest in activeInterests) {
-              if (combinedText.contains(interest)) {
-                isRelevant = true;
-                break;
-              }
-            }
-          }
-          if (!isRelevant) {
-            for (final kw in coreKeywords) {
-              if (combinedText.contains(kw)) {
-                isRelevant = true;
-                break;
-              }
-            }
-          }
-
-          if (!isRelevant) continue;
-
-          final key = title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-          groupsMap.putIfAbsent(key, () => []).add(doc);
-        }
-
-        final List<Map<String, dynamic>> groupedEvents = [];
-
-        for (final entry in groupsMap.entries) {
-          final docs = entry.value;
-          if (docs.isEmpty) continue;
-
-          final Set<String> dateSet = {};
-          final List<String> docIds = [];
-          bool isNewGroup = false;
-          bool isInterestedGroup = false;
-
-          String repTitle = '';
-          String repTimings = '';
-          String repLocation = '';
-          String repRegLink = '';
-          String repSource = '';
-
-          for (final doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
-            final dateStr = (data['date'] ?? '').toString().trim();
-            if (dateStr.isNotEmpty) {
-              dateSet.add(dateStr);
-            }
-            docIds.add(doc.id);
-
-            if (repTitle.isEmpty && (data['title'] ?? '').toString().isNotEmpty) {
-              repTitle = data['title'].toString();
-            }
-            if (repTimings.isEmpty && (data['timings'] ?? '').toString().isNotEmpty) {
-              repTimings = data['timings'].toString();
-            }
-            if (repLocation.isEmpty && (data['location'] ?? '').toString().isNotEmpty) {
-              repLocation = data['location'].toString();
-            }
-            if (repRegLink.isEmpty && (data['registrationLink'] ?? '').toString().isNotEmpty) {
-              repRegLink = data['registrationLink'].toString();
-            }
-            if (repSource.isEmpty && (data['sourcePlatform'] ?? '').toString().isNotEmpty) {
-              repSource = data['sourcePlatform'].toString();
-            }
-
-            final isNewRaw = data['isNew'] as bool? ?? false;
-            final createdAtVal = data['createdAt'];
-            bool isDocNew = isNewRaw;
-            if (createdAtVal is Timestamp) {
-              final createdTime = createdAtVal.toDate();
-              final diff = DateTime.now().difference(createdTime);
-              if (diff.inHours >= 24) {
-                isDocNew = false;
-              }
-            }
-            if (isDocNew) isNewGroup = true;
-
-            if (data['interested'] as bool? ?? false) {
-              isInterestedGroup = true;
-            }
-          }
-
-          final sortedDates = dateSet.toList()..sort();
-          if (sortedDates.isEmpty) continue;
-
-          // Keep event on screen until its last date has finished!
-          final lastDate = sortedDates.last;
-          if (!_showPastEvents && lastDate.compareTo(todayStr) < 0) {
-            continue;
-          }
-
-          // Filter by selected month: match if any date is in selected month
-          final matchesMonth = sortedDates.any((d) => d.startsWith(_selectedRosterMonth));
-          if (!matchesMonth) continue;
-
-          groupedEvents.add({
-            'title': repTitle.isNotEmpty ? repTitle : 'No Title',
-            'timings': repTimings.isNotEmpty ? repTimings : 'No timings',
-            'location': repLocation.isNotEmpty ? repLocation : 'No location',
-            'registrationLink': repRegLink,
-            'sourcePlatform': repSource,
-            'dates': sortedDates,
-            'docIds': docIds,
-            'isNew': isNewGroup,
-            'isInterested': isInterestedGroup,
-          });
-        }
-
-        // Sort groups by earliest upcoming date (or first date)
-        groupedEvents.sort((a, b) {
-          final List<String> aDates = List<String>.from(a['dates']);
-          final List<String> bDates = List<String>.from(b['dates']);
-          final aNext = aDates.firstWhere((d) => d.compareTo(todayStr) >= 0, orElse: () => aDates.first);
-          final bNext = bDates.firstWhere((d) => d.compareTo(todayStr) >= 0, orElse: () => bDates.first);
-          return aNext.compareTo(bNext);
-        });
-
-        Widget mainContent;
-
-        if (groupedEvents.isEmpty) {
-          mainContent = Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.event_busy, size: 80, color: Colors.grey[300]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No events found for ${DateFormat('MMMM yyyy').format(_currentDate)}',
-                    style: TextStyle(fontSize: 16, color: Colors.grey[600], fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Interests: ${_eventInterests.join(", ")}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: _editInterestsDialog,
-                        icon: const Icon(Icons.interests_outlined),
-                        label: const Text('Edit Interests'),
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.green,
-                          backgroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.green),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        onPressed: _triggerFetchEvents,
-                        icon: const Icon(Icons.sync),
-                        label: const Text('Fetch Events via AI'),
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor: Colors.green,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        } else {
-          mainContent = ListView.builder(
-            padding: const EdgeInsets.only(bottom: 24),
-            itemCount: groupedEvents.length,
-            itemBuilder: (context, index) {
-              final group = groupedEvents[index];
-              final title = group['title'] as String;
-              final timings = group['timings'] as String;
-              final location = group['location'] as String;
-              final regLink = group['registrationLink'] as String;
-              final sourcePlatform = group['sourcePlatform'] as String;
-              final dates = List<String>.from(group['dates']);
-              final docIds = List<String>.from(group['docIds']);
-              final isNewEvent = group['isNew'] as bool;
-              final isInterested = group['isInterested'] as bool;
-
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                elevation: 1,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.grey.withOpacity(0.15)),
-                ),
-                child: Stack(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Padding(
-                                      padding: EdgeInsets.only(right: isNewEvent ? 45.0 : 0.0),
-                                      child: Text(
-                                        title,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.green,
-                                        ),
-                                      ),
-                                    ),
-                                    if (sourcePlatform.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green.withOpacity(0.08),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Text(
-                                          'Source: $sourcePlatform',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.green.shade700,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Render Dates & Shifts
-                          if (dates.length == 1) ...[
-                            Builder(
-                              builder: (context) {
-                                final d = dates.first;
-                                String formattedDate = d;
-                                try {
-                                  final parsed = DateTime.parse(d);
-                                  formattedDate = DateFormat('EEEE, MMMM d').format(parsed);
-                                } catch (_) {}
-                                return Row(
-                                  children: [
-                                    const Icon(Icons.calendar_month, size: 16, color: Colors.grey),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      formattedDate,
-                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                                    ),
-                                    const Spacer(),
-                                    _buildDateShiftBadge(d),
-                                  ],
-                                );
-                              },
-                            ),
-                          ] else ...[
-                            Row(
-                              children: [
-                                const Icon(Icons.calendar_month, size: 16, color: Colors.green),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Event Dates (${dates.length} Days):',
-                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Column(
-                              children: dates.map((d) {
-                                String formattedDate = d;
-                                try {
-                                  final parsed = DateTime.parse(d);
-                                  formattedDate = DateFormat('EEE, MMM d, yyyy').format(parsed);
-                                } catch (_) {}
-                                return Container(
-                                  margin: const EdgeInsets.symmetric(vertical: 3),
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.withOpacity(0.06),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.event_available, size: 14, color: Colors.green),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            formattedDate,
-                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                                          ),
-                                        ],
-                                      ),
-                                      _buildDateShiftBadge(d),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              const Icon(Icons.access_time, size: 16, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Text(
-                                timings,
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  location,
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 4,
-                            alignment: WrapAlignment.end,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              TextButton.icon(
-                                onPressed: () => _toggleGroupEventInterest(docIds, isInterested),
-                                icon: Icon(isInterested ? Icons.star : Icons.star_border, size: 16, color: Colors.amber),
-                                label: Text(isInterested ? 'Interested' : 'Mark Interested'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.amber,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                ),
-                              ),
-                              TextButton.icon(
-                                onPressed: () => _markGroupNotInterested(docIds),
-                                icon: const Icon(Icons.block, size: 16, color: Colors.red),
-                                label: const Text('Not Interested'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                ),
-                              ),
-                              if (regLink.isNotEmpty) ...[
-                                TextButton.icon(
-                                  onPressed: () => _launchURL(regLink),
-                                  icon: const Icon(Icons.open_in_new, size: 16),
-                                  label: const Text('View Event Page'),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.green,
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (isNewEvent)
-                      Positioned(
-                        top: 45,
-                        right: 12,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(10),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.red.withOpacity(0.3),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              )
-                            ],
-                          ),
-                          child: const Text(
-                            'NEW',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            },
-          );
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (_eventsLastUpdated != null || _eventsLastRan != null)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_eventsLastUpdated != null)
-                          Row(
-                            children: [
-                              const Icon(Icons.update, size: 14, color: Colors.grey),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_eventsLastUpdated!)}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        if (_eventsLastRan != null) ...[
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              const Icon(Icons.history, size: 14, color: Colors.grey),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Last Ran: ${DateFormat('MMMM d, yyyy h:mm a').format(_eventsLastRan!)}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    )
-                  else
-                    const SizedBox.shrink(),
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _showPastEvents = !_showPastEvents;
-                      });
-                    },
-                    child: Text(
-                      _showPastEvents ? 'Hide Past Events' : 'View Past Events',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(child: mainContent),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildWalkInView() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return const Center(child: Text('Please log in first.'));
-    }
-
-    if (!_isWalkInConfigured) {
-      final isDark = Theme.of(context).brightness == Brightness.dark;
-      final textColor = isDark ? Colors.white : Colors.black87;
-      final subtextColor = isDark ? Colors.white70 : Colors.grey.shade600;
-
-      return Center(
-        child: SingleChildScrollView(
-          child: Container(
-            margin: const EdgeInsets.all(20),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 15,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-              border: Border.all(color: Colors.lightBlue.withOpacity(0.2)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.lightBlue.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.campaign_rounded, size: 48, color: Colors.lightBlue),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Customize Your Walk-In Drives Feed 🏢',
-                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Select your target Location and Job Roles to discover walk-in interview opportunities in your preferred city.',
-                  style: TextStyle(color: subtextColor, fontSize: 13, height: 1.4),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 22),
-                ElevatedButton.icon(
-                  onPressed: _editWalkInRolesDialog,
-                  icon: const Icon(Icons.tune, size: 18),
-                  label: const Text('Set Walk-In Preferences', style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.lightBlue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    _walkinsStream ??= FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('walkins')
-        .orderBy('date', descending: false)
-        .snapshots();
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: _walkinsStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasError) {
-          return Center(child: Text('Error loading walk-ins: ${snapshot.error}'));
-        }
-
-        final allDocs = snapshot.data?.docs ?? [];
-        
-        final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-        final monthWalkIns = allDocs.where((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          final dateStr = data['date'] as String? ?? '';
-          final notInterested = data['notInterested'] as bool? ?? false;
-          final loc = data['location'] as String? ?? '';
-          final matchesMonth = dateStr.startsWith(_selectedRosterMonth);
-          if (!matchesMonth || notInterested) return false;
-          
-          if (!_isLocationMatch(loc, _walkinLocation)) return false;
-
-          if (!_showPastWalkIns) {
-            return dateStr.compareTo(todayStr) >= 0;
-          }
-          return true;
-        }).toList();
-
-        Widget mainContent;
-
-        if (monthWalkIns.isEmpty) {
-          mainContent = Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.directions_walk, size: 80, color: Colors.grey[300]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No walk-in drives found for ${DateFormat('MMMM yyyy').format(_currentDate)}',
-                    style: TextStyle(fontSize: 16, color: Colors.grey[600], fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Roles: ${_walkinRoles.join(", ")}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: _editWalkInRolesDialog,
-                        icon: const Icon(Icons.interests_outlined),
-                        label: const Text('Edit Roles'),
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.lightBlue,
-                          backgroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.lightBlue),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        onPressed: _triggerFetchWalkIns,
-                        icon: const Icon(Icons.sync),
-                        label: const Text('Fetch Walk-Ins via AI'),
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor: Colors.lightBlue,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        } else {
-          mainContent = ListView.builder(
-            padding: const EdgeInsets.only(bottom: 24),
-            itemCount: monthWalkIns.length,
-            itemBuilder: (context, index) {
-              final docId = monthWalkIns[index].id;
-              final data = monthWalkIns[index].data() as Map<String, dynamic>;
-              final title = data['title'] ?? 'No Title';
-              final dateStr = data['date'] ?? '';
-              final timings = data['timings'] ?? 'No timings';
-              final location = data['location'] ?? 'No location';
-              final regLink = data['registrationLink'] ?? '';
-              final company = data['company'] ?? '';
-              final expRaw = (data['experience'] as String?)?.trim();
-              final experience = (expRaw != null && expRaw.isNotEmpty && expRaw.toUpperCase() != 'N/A')
-                  ? expRaw
-                  : '-';
-              final isNewWalkInRaw = data['isNew'] as bool? ?? false;
-              final createdAtVal = data['createdAt'];
-              bool isNewWalkIn = isNewWalkInRaw;
-              if (createdAtVal is Timestamp) {
-                final createdTime = createdAtVal.toDate();
-                final diff = DateTime.now().difference(createdTime);
-                if (diff.inHours >= 24) {
-                  isNewWalkIn = false;
-                }
-              }
-              final isInterested = data['interested'] as bool? ?? false;
-
-              // Format date nicely: YYYY-MM-DD to "EEE, MMM d"
-              String formattedDate = dateStr;
-              try {
-                final parsed = DateTime.parse(dateStr);
-                formattedDate = DateFormat('EEEE, MMMM d').format(parsed);
-              } catch (_) {}
-
-              // Determine user shift for this day
-              String shiftLabel = 'no data';
-              Color shiftBadgeColor = Colors.grey;
-
-              if (_hasData) {
-                final shiftOnDay = _shifts.firstWhere(
-                  (s) => s.date == dateStr,
-                  orElse: () => Shift(date: dateStr, shiftType: 'week_off', isWeekOff: true),
-                );
-
-                if (shiftOnDay.shiftType == 'morning') {
-                  shiftLabel = 'Morning';
-                  shiftBadgeColor = Colors.orange;
-                } else if (shiftOnDay.shiftType == 'afternoon') {
-                  shiftLabel = 'Afternoon';
-                  shiftBadgeColor = Colors.blue;
-                } else if (shiftOnDay.shiftType == 'night') {
-                  shiftLabel = 'Night';
-                  shiftBadgeColor = Colors.indigo;
-                } else if (shiftOnDay.shiftType == 'week_off' || shiftOnDay.isWeekOff) {
-                  shiftLabel = 'Week Off';
-                  shiftBadgeColor = Colors.green;
-                } else if (shiftOnDay.shiftType == 'none') {
-                  shiftLabel = 'Week Off';
-                  shiftBadgeColor = Colors.green;
-                } else {
-                  shiftLabel = shiftOnDay.getDisplayName();
-                  shiftBadgeColor = _getShiftColor(shiftOnDay.shiftType);
-                }
-              }
-
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                elevation: 1,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.grey.withOpacity(0.15)),
-                ),
-                child: Stack(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Padding(
-                                      padding: EdgeInsets.only(right: isNewWalkIn ? 45.0 : 0.0),
-                                      child: Text(
-                                        title,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.lightBlue,
-                                        ),
-                                      ),
-                                    ),
-                                    if (company.toString().isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Company: $company',
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: shiftLabel == 'no data'
-                                      ? Colors.grey.withOpacity(0.1)
-                                      : shiftBadgeColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: shiftLabel == 'no data'
-                                        ? Colors.grey.withOpacity(0.3)
-                                        : shiftBadgeColor.withOpacity(0.3),
-                                  ),
-                                ),
-                                child: Text(
-                                  shiftLabel == 'no data' ? 'Shift: No Data' : 'Shift: $shiftLabel',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: shiftLabel == 'no data' ? Colors.grey : shiftBadgeColor,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              const Icon(Icons.work_outline, size: 16, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Experience: $experience',
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              const Icon(Icons.calendar_month, size: 16, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Text(
-                                formattedDate,
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              const Icon(Icons.access_time, size: 16, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Text(
-                                timings,
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  location,
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 4,
-                            alignment: WrapAlignment.end,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              TextButton.icon(
-                                onPressed: () => _toggleWalkInInterest(docId, isInterested),
-                                icon: Icon(isInterested ? Icons.star : Icons.star_border, size: 16, color: Colors.amber),
-                                label: Text(isInterested ? 'Interested' : 'Mark Interested'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.amber,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                ),
-                              ),
-                              TextButton.icon(
-                                onPressed: () => _markWalkInNotInterested(docId),
-                                icon: const Icon(Icons.block, size: 16, color: Colors.red),
-                                label: const Text('Not Interested'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                ),
-                              ),
-                              if (regLink.isNotEmpty) ...[
-                                TextButton.icon(
-                                  onPressed: () => _launchURL(regLink),
-                                  icon: const Icon(Icons.open_in_new, size: 16),
-                                  label: const Text('View Interview Page'),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.teal,
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (isNewWalkIn)
-                      Positioned(
-                        top: 45,
-                        right: 12,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(10),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.red.withOpacity(0.3),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              )
-                            ],
-                          ),
-                          child: const Text(
-                            'NEW',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            },
-          );
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (_walkinsLastUpdated != null || _walkinsLastRan != null)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_walkinsLastUpdated != null)
-                          Row(
-                            children: [
-                              const Icon(Icons.update, size: 14, color: Colors.grey),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Last Updated: ${DateFormat('MMMM d, yyyy h:mm a').format(_walkinsLastUpdated!)}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        if (_walkinsLastRan != null) ...[
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              const Icon(Icons.history, size: 14, color: Colors.grey),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Last Ran: ${DateFormat('MMMM d, yyyy h:mm a').format(_walkinsLastRan!)}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    )
-                  else
-                    const SizedBox.shrink(),
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _showPastWalkIns = !_showPastWalkIns;
-                      });
-                    },
-                    child: Text(
-                      _showPastWalkIns ? 'Hide Past Walk-Ins' : 'View Past Walk-Ins',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.lightBlue),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(child: mainContent),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _launchURL(String urlString) async {
-    final Uri url = Uri.parse(urlString);
-    try {
-      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not open link: $urlString')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error launching link: $e')),
-        );
-      }
-    }
   }
 
   @override
@@ -3068,7 +1029,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Upload your roster JSON for this month',
+                              'Upload your roster image or JSON for this month',
                               style: TextStyle(color: Colors.grey[500]),
                             ),
                           ],
@@ -3080,7 +1041,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             _buildStatisticsCard(),
                             _buildUpcomingShifts(),
                             _buildAllShiftsCalendar(),
-                            const SizedBox(height: 80), // Space for FAB
+                            const SizedBox(height: 80),
                           ],
                         ),
                       ),

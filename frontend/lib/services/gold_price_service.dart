@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../models/gold_price.dart';
@@ -99,7 +100,7 @@ class GoldPriceService {
       final doc = await _db.collection('gold_ai_insights').doc('latest').get();
       return doc.data();
     } catch (e) {
-      print('Error fetching AI insights: $e');
+      debugPrint('Error fetching AI insights: $e');
       return null;
     }
   }
@@ -119,7 +120,7 @@ class GoldPriceService {
       final doc = await _db.collection('gold_chit_advice').doc('latest').get();
       return doc.data();
     } catch (e) {
-      print('Error fetching gold chit advice: $e');
+      debugPrint('Error fetching gold chit advice: $e');
       return null;
     }
   }
@@ -147,7 +148,7 @@ class GoldPriceService {
       // Also clear the latest log document to reset state
       await _db.collection('gold_fetch_logs').doc('latest').delete().catchError((_) {});
     } catch (e) {
-      print('Error clearing history: $e');
+      debugPrint('Error clearing history: $e');
     }
   }
 }

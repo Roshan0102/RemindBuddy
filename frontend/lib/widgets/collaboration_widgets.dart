@@ -28,7 +28,7 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
   String _searchQuery = '';
   String? _sendingToUid;
   List<String> _sharedWith = [];
-  Map<String, String> _uidToUsername = {};
+  final Map<String, String> _uidToUsername = {};
   StreamSubscription? _itemSubscription;
   bool _isOwner = false;
 
@@ -253,7 +253,7 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.people_outline, size: 48, color: Colors.grey.withOpacity(0.5)),
+                              Icon(Icons.people_outline, size: 48, color: Colors.grey.withValues(alpha: 0.5)),
                               const SizedBox(height: 8),
                               Text(
                                 _searchQuery.isEmpty ? 'No other registered users' : 'No users match search',
@@ -274,7 +274,7 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
                               elevation: 0.5,
                               child: ListTile(
                                 leading: CircleAvatar(
-                                  backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                                  backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                                   child: Text(
                                     user['username']!.substring(0, 1).toUpperCase(),
                                     style: TextStyle(
@@ -369,7 +369,7 @@ class CollaborationRequestsSheet extends StatelessWidget {
                     padding: const EdgeInsets.all(32.0),
                     child: Column(
                       children: [
-                        Icon(Icons.handshake_outlined, size: 64, color: Colors.grey.withOpacity(0.5)),
+                        Icon(Icons.handshake_outlined, size: 64, color: Colors.grey.withValues(alpha: 0.5)),
                         const SizedBox(height: 12),
                         const Text(
                           'No pending requests',

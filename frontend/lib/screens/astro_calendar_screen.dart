@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'dart:math' as math;
 
@@ -9,7 +8,7 @@ class AstroCalendarScreen extends StatefulWidget {
 
   static Map<String, String>? getTodayLunarEvent(DateTime date) {
     final epoch = DateTime.utc(2000, 1, 6, 18, 14);
-    final cycle = 29.530588853;
+    const cycle = 29.530588853;
     final startDiffDays = date.difference(epoch).inSeconds / 86400.0;
     final double startMonth = startDiffDays / cycle;
     final int monthIndex = startMonth.floor();
@@ -44,9 +43,9 @@ class AstroCalendarScreen extends StatefulWidget {
 
 class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
   // Sivaganga, Tamil Nadu coordinates
-  double _latitude = 9.8504;
-  double _longitude = 78.4809;
-  String _locationName = 'Sivaganga, Tamil Nadu';
+  final double _latitude = 9.8504;
+  final double _longitude = 78.4809;
+  final String _locationName = 'Sivaganga, Tamil Nadu';
 
   DateTime _selectedDate = DateTime.now();
 
@@ -135,7 +134,7 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
               decoration: BoxDecoration(
                 color: cardColor,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.grey.withOpacity(0.15)),
+                border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -177,7 +176,7 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
                     icon: const Icon(Icons.calendar_month),
                     label: const Text('Change'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange.withOpacity(0.15),
+                      backgroundColor: Colors.orange.withValues(alpha: 0.15),
                       foregroundColor: Colors.orange[800],
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -231,7 +230,7 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
+                    color: Colors.black.withValues(alpha: 0.02),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   )
@@ -291,7 +290,7 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
                     decoration: BoxDecoration(
                       color: cardColor,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.grey.withOpacity(0.15)),
+                      border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -326,7 +325,7 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
                     decoration: BoxDecoration(
                       color: cardColor,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.grey.withOpacity(0.15)),
+                      border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,14 +368,14 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.withOpacity(0.15)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(icon, color: color, size: 24),
@@ -577,7 +576,7 @@ class _AstroCalendarScreenState extends State<AstroCalendarScreen> {
   // Analytical Calculation of next N Lunar Phases
   List<DateTime> _getUpcomingLunarPhases(DateTime startDate, bool getNewMoon, int count) {
     final epoch = DateTime.utc(2000, 1, 6, 18, 14); // Known New Moon
-    final cycle = 29.530588853; // Synodic month
+    const cycle = 29.530588853; // Synodic month
     final startDiffDays = startDate.difference(epoch).inSeconds / 86400.0;
     
     final double startMonth = startDiffDays / cycle;

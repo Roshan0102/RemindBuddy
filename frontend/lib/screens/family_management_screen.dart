@@ -59,9 +59,9 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen> {
 
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogCtx) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (innerCtx, setDialogState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: Text(isEditing ? 'Edit Family Profile' : 'Add Virtual Family Member'),
@@ -81,7 +81,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: _selectedRelationship,
+                      initialValue: _selectedRelationship,
                       decoration: InputDecoration(
                         labelText: 'Relationship',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -154,7 +154,9 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen> {
                       );
                     }
 
-                    if (mounted) Navigator.pop(context);
+                    if (dialogCtx.mounted) {
+                      Navigator.pop(dialogCtx);
+                    }
                   },
                   child: Text(isEditing ? 'Save' : 'Add Profile'),
                 ),
@@ -233,7 +235,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.indigo.withOpacity(0.3),
+                          color: Colors.indigo.withValues(alpha: 0.3),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -354,7 +356,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen> {
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                             decoration: BoxDecoration(
-                                              color: Color(member.avatarColorValue).withOpacity(0.15),
+                                              color: Color(member.avatarColorValue).withValues(alpha: 0.15),
                                               borderRadius: BorderRadius.circular(8),
                                             ),
                                             child: Text(

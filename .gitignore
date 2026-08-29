@@ -78,5 +78,19 @@ Thumbs.db
 **/node_modules/
 Gold_Price_Checking/
 
-# Firebase Admin
+# Firebase Admin & Tokens
 serviceAccountKey.json
+token.txt
+
+# Root logs and test files
+android_full_log.txt
+android_log.txt
+web_full_log.txt
+web_log.txt
+deploy_error.txt
+error_log.txt
+gh_error.log
+test_*.py
+test_gold_feature.sh
+fix_test.dart
+test_admin/

@@ -18,12 +18,9 @@ class TechEventsScreen extends StatefulWidget {
 class _TechEventsScreenState extends State<TechEventsScreen> {
   bool _showPastEvents = false;
   bool _isFetchingEvents = false;
-  bool _isEventsConfigured = false;
   List<String> _eventInterests = [];
   String _eventLocation = '';
   String _eventMode = 'In-Person'; // 'In-Person', 'Online', 'Both'
-  DateTime? _eventsLastUpdated;
-  DateTime? _eventsLastRan;
 
   StreamSubscription<DocumentSnapshot>? _userSubscription;
   Stream<QuerySnapshot>? _eventsStream;
@@ -80,41 +77,17 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
         .listen((doc) {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        final hasEventsConfigured = (data['isEventsConfigured'] == true) ||
-            (data['eventLocation'] != null &&
-                data['eventInterests'] != null &&
-                data['eventMode'] != null);
-
         final interests = data['eventInterests'] != null
             ? List<String>.from(data['eventInterests'])
             : <String>[];
         final location = (data['eventLocation'] ?? '').toString();
         final mode = (data['eventMode'] ?? 'In-Person').toString();
 
-        final lastUpdatedVal = data['eventsLastUpdated'];
-        DateTime? lastUpdated;
-        if (lastUpdatedVal is Timestamp) {
-          lastUpdated = lastUpdatedVal.toDate();
-        } else if (lastUpdatedVal is String) {
-          lastUpdated = DateTime.tryParse(lastUpdatedVal);
-        }
-
-        final eventsLastRanVal = data['eventsLastRan'];
-        DateTime? eventsLastRan;
-        if (eventsLastRanVal is Timestamp) {
-          eventsLastRan = eventsLastRanVal.toDate();
-        } else if (eventsLastRanVal is String) {
-          eventsLastRan = DateTime.tryParse(eventsLastRanVal);
-        }
-
         if (mounted) {
           setState(() {
-            _isEventsConfigured = hasEventsConfigured;
             _eventInterests = interests;
             _eventLocation = location;
             _eventMode = mode;
-            _eventsLastUpdated = lastUpdated;
-            _eventsLastRan = eventsLastRan;
           });
         }
       }
@@ -198,18 +171,6 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final List<String> availableInterests = [
-      'Cloud & DevOps',
-      'AI & Machine Learning',
-      'Agentic AI & GenAI',
-      'SRE & Infrastructure',
-      'Kubernetes & Containers',
-      'AWS / GCP / Azure',
-      'Mobile & Flutter',
-      'Frontend & Web3',
-    ];
-
-    List<String> tempSelected = List.from(_eventInterests);
     String tempLocation = _eventLocation.isEmpty ? 'Bengaluru' : _eventLocation;
     String tempMode = _eventMode;
     final locationController = TextEditingController(text: tempLocation);
@@ -218,8 +179,8 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
 
     await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (innerCtx, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Row(
             children: [
@@ -248,7 +209,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                 const Text('Event Format', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  value: tempMode,
+                  initialValue: tempMode,
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     isDense: true,
@@ -311,23 +272,28 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                           _eventInterests = list;
                           _eventLocation = loc;
                           _eventMode = tempMode;
-                          _isEventsConfigured = true;
                         });
 
-                        Navigator.pop(context);
+                        if (dialogCtx.mounted) {
+                          Navigator.pop(dialogCtx);
+                        }
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Event preferences saved! Fetching matching events...'),
-                          ),
-                        );
-                        _triggerFetchEvents();
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to save preferences: $e'), backgroundColor: Colors.red),
-                        );
-                      } finally {
                         if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Event preferences saved! Fetching matching events...'),
+                            ),
+                          );
+                          _triggerFetchEvents();
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Failed to save preferences: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      } finally {
+                        if (innerCtx.mounted) {
                           setDialogState(() => isSavingInterests = false);
                         }
                       }
@@ -425,7 +391,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                             label: Text(_eventMode, style: const TextStyle(fontSize: 10, color: Colors.blueAccent)),
                             padding: EdgeInsets.zero,
                             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            backgroundColor: Colors.blueAccent.withOpacity(0.1),
+                            backgroundColor: Colors.blueAccent.withValues(alpha: 0.1),
                           ),
                         ],
                       ),
@@ -434,7 +400,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                           Text('Show Past', style: TextStyle(fontSize: 12, color: subtextColor)),
                           Switch(
                             value: _showPastEvents,
-                            activeColor: Colors.blueAccent,
+                            activeThumbColor: Colors.blueAccent,
                             onChanged: (val) => setState(() => _showPastEvents = val),
                           ),
                         ],

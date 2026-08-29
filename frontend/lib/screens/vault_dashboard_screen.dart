@@ -16,8 +16,6 @@ import '../models/vault_collaborator.dart';
 import '../models/vault_member_profile.dart';
 import '../models/vault_family.dart';
 import '../services/vault_service.dart';
-import 'vault_collaboration_screen.dart';
-import 'family_management_screen.dart';
 import 'add_document_screen.dart';
 import 'document_detail_screen.dart';
 
@@ -30,7 +28,7 @@ class VaultDashboardScreen extends StatefulWidget {
 
 class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   final VaultService _vaultService = VaultService();
-  StreamSubscription? _collaboratorSubscription;
+
   StreamSubscription? _profilesSubscription;
   final TextEditingController _searchController = TextEditingController();
   List<SecureDocument>? _previousRawDocs;
@@ -41,14 +39,12 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   String _selectedCategory = 'All'; // "All" or a specific category
   String _vaultViewMode = 'family'; // 'family' (Family Shared), 'private' (My Private), 'all' (All)
 
-  Map<String, VaultCollaborator> _collaboratorsMap = {};
   Map<String, VaultMemberProfile> _profilesMap = {};
 
   @override
   void initState() {
     super.initState();
     _loadSavedViewMode();
-    _loadCollaborators();
     _loadProfiles();
     _searchController.addListener(() {
       setState(() {
@@ -77,22 +73,12 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
 
   @override
   void dispose() {
-    _collaboratorSubscription?.cancel();
+
     _profilesSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  void _loadCollaborators() {
-    _collaboratorSubscription?.cancel();
-    _collaboratorSubscription = _vaultService.getVaultCollaborators().listen((list) {
-      if (mounted) {
-        setState(() {
-          _collaboratorsMap = {for (var c in list) c.uid: c};
-        });
-      }
-    });
-  }
 
   void _loadProfiles() {
     _profilesSubscription?.cancel();
@@ -206,9 +192,9 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
 
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogCtx) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (innerCtx, setDialogState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: const Row(
@@ -264,7 +250,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(dialogCtx),
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
@@ -333,8 +319,10 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                               'updatedAt': FieldValue.serverTimestamp(),
                             });
 
+                            if (dialogCtx.mounted) {
+                              Navigator.pop(dialogCtx);
+                            }
                             if (mounted) {
-                              Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('🔑 Vault PIN changed successfully!'),
@@ -713,7 +701,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                     ),
                                   ),
                                 );
-                              }).toList(),
+                              }),
                               const SizedBox(height: 16),
                             ],
 
@@ -815,7 +803,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                         : null,
                                   ),
                                 );
-                              }).toList(),
+                              }),
                               const SizedBox(height: 16),
 
                               // COLLABORATORS SECTION
@@ -876,7 +864,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                     );
                                   },
                                 );
-                              }).toList(),
+                              }),
 
                               // PENDING SENT INVITES LIST
                               if (family.pendingInvites.isNotEmpty && isAdmin) ...[
@@ -898,7 +886,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                       ),
                                     ),
                                   );
-                                }).toList(),
+                                }),
                               ],
 
                               const SizedBox(height: 20),
@@ -1486,7 +1474,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                     child: Container(
                                       padding: const EdgeInsets.all(4),
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.6),
+                                        color: Colors.black.withValues(alpha: 0.6),
                                         shape: BoxShape.circle,
                                       ),
                                       child: const Icon(Icons.share, color: Colors.white, size: 12),
@@ -1569,9 +1557,11 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
       
       await Share.shareXFiles([XFile(tempPath)], text: cleanName);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error sharing: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sharing: $e')),
+        );
+      }
     }
   }
 

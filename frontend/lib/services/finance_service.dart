@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,6 +16,8 @@ class FinanceService {
   FinanceService._internal();
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static const EventChannel _smsStreamChannel = EventChannel('com.remindbuddy/sms_stream');
+  dynamic _smsEventSubscription;
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
@@ -22,6 +25,31 @@ class FinanceService {
     final uid = _uid;
     if (uid == null) return null;
     return _db.collection('users').doc(uid);
+  }
+
+  void initGlobalSmsListener() {
+    try {
+      _smsEventSubscription?.cancel();
+      _smsEventSubscription = _smsStreamChannel.receiveBroadcastStream().listen((dynamic event) {
+        if (event is Map) {
+          final sender = event['sender']?.toString() ?? '';
+          final body = event['body']?.toString() ?? '';
+          final timestamp = (event['timestamp'] is num) ? (event['timestamp'] as num).toInt() : DateTime.now().millisecondsSinceEpoch;
+
+          final parsed = SmsParserService.parseSms(sender, body, timestamp);
+          if (parsed != null) {
+            saveSmsTransaction(parsed);
+          }
+        }
+      }, onError: (err) {
+        debugPrint('Global SMS EventChannel stream error: $err');
+      });
+
+      // Also drain any pending background SMS from buffer
+      checkAndProcessPendingBackgroundSms();
+    } catch (e) {
+      debugPrint('Error initializing global SMS listener: $e');
+    }
   }
 
   // ============================================================================
@@ -605,7 +633,7 @@ class FinanceService {
         }
       }
     } catch (e) {
-      print('Error scanning SMS inbox: $e');
+      debugPrint('Error scanning SMS inbox: $e');
     }
     return count;
   }
@@ -633,7 +661,7 @@ class FinanceService {
         }
       }
     } catch (e) {
-      print('Error checking background SMS buffer: $e');
+      debugPrint('Error checking background SMS buffer: $e');
     }
     return count;
   }
@@ -644,7 +672,7 @@ class FinanceService {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
-        print('uploadSmsStudySamples: User is null');
+        debugPrint('uploadSmsStudySamples: User is null');
         return 0;
       }
 
@@ -697,7 +725,7 @@ class FinanceService {
         }
       }
     } catch (e) {
-      print('Error uploading SMS study samples: $e');
+      debugPrint('Error uploading SMS study samples: $e');
     }
     return count;
   }
@@ -864,7 +892,7 @@ class FinanceService {
         await batch.commit();
       }
     } catch (e) {
-      print('Error applying custom header bank rules retroactively: $e');
+      debugPrint('Error applying custom header bank rules retroactively: $e');
     }
   }
 

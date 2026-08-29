@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -74,7 +73,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print("Error loading checklists in screen: $e");
+      debugPrint("Error loading checklists in screen: $e");
       setState(() {
         _isLoading = false;
       });
@@ -92,12 +91,12 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
   }
 
   void _showAddDialog() {
-    final TextEditingController _controller = TextEditingController();
-    int _selectedIcon = Icons.list.codePoint;
-    int _selectedColorValue = Colors.blue.value;
-    bool _isSaving = false;
+    final TextEditingController controller = TextEditingController();
+    int selectedIcon = Icons.list.codePoint;
+    int selectedColorValue = Colors.blue.toARGB32();
+    bool isSaving = false;
 
-    final List<Map<String, dynamic>> _options = [
+    final List<Map<String, dynamic>> options = [
       {'icon': Icons.work, 'color': Colors.blue},
       {'icon': Icons.flight_takeoff, 'color': Colors.orange},
       {'icon': Icons.school, 'color': Colors.green},
@@ -110,9 +109,9 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
 
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogCtx) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (dialogInnerCtx, setDialogState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: const Text('New Checklist', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -122,7 +121,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TextField(
-                      controller: _controller,
+                      controller: controller,
                       decoration: InputDecoration(
                         labelText: 'List Name',
                         hintText: 'e.g., Office, Travel',
@@ -143,29 +142,29 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                           mainAxisSpacing: 8,
                           crossAxisSpacing: 8,
                         ),
-                        itemCount: _options.length,
-                        itemBuilder: (context, index) {
-                          final option = _options[index];
-                          final isSelected = _selectedIcon == (option['icon'] as IconData).codePoint;
+                        itemCount: options.length,
+                        itemBuilder: (itemCtx, index) {
+                          final option = options[index];
+                          final isSelected = selectedIcon == (option['icon'] as IconData).codePoint;
                           return GestureDetector(
                             onTap: () {
                               setDialogState(() {
-                                _selectedIcon = (option['icon'] as IconData).codePoint;
-                                _selectedColorValue = (option['color'] as Color).value;
+                                selectedIcon = (option['icon'] as IconData).codePoint;
+                                selectedColorValue = (option['color'] as Color).toARGB32();
                               });
                             },
                             child: Container(
                               decoration: BoxDecoration(
-                                color: (option['color'] as Color).withOpacity(isSelected ? 0.2 : 0.05),
+                                color: (option['color'] as Color).withValues(alpha: isSelected ? 0.2 : 0.05),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: isSelected ? (option['color'] as Color) : Colors.grey.withOpacity(0.2),
+                                  color: isSelected ? (option['color'] as Color) : Colors.transparent,
                                   width: 2,
                                 ),
                               ),
                               child: Icon(
                                 option['icon'] as IconData,
-                                color: isSelected ? (option['color'] as Color) : Colors.grey,
+                                color: option['color'] as Color,
                               ),
                             ),
                           );
@@ -177,12 +176,12 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(dialogCtx),
                   child: const Text('Cancel'),
                 ),
-                _isSaving 
+                isSaving 
                   ? const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
                       child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
                     )
                   : ElevatedButton(
@@ -190,13 +189,17 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: () async {
-                        if (_controller.text.isNotEmpty) {
-                          setDialogState(() => _isSaving = true);
+                        if (controller.text.isNotEmpty) {
+                          setDialogState(() => isSaving = true);
                           try {
-                            await _createChecklist(_controller.text, _selectedIcon, _selectedColorValue);
-                            if (mounted) Navigator.pop(context);
+                            await _createChecklist(controller.text, selectedIcon, selectedColorValue);
+                            if (dialogCtx.mounted) {
+                              Navigator.pop(dialogCtx);
+                            }
                           } catch (e) {
-                            setDialogState(() => _isSaving = false);
+                            if (dialogInnerCtx.mounted) {
+                              setDialogState(() => isSaving = false);
+                            }
                           }
                         }
                       },
@@ -267,9 +270,9 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
         stream: _storage.getChecklistsStream(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            print("Checklists stream error: ${snapshot.error}");
+            debugPrint("Checklists stream error: ${snapshot.error}");
           }
-          if (snapshot.connectionState == ConnectionState.waiting && _checklists.isEmpty) {
+          if ((snapshot.connectionState == ConnectionState.waiting || _isLoading) && _checklists.isEmpty) {
             return const Center(child: CircularProgressIndicator());
           }
           
@@ -325,7 +328,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                 itemCount: orderedChecklists.length,
                 itemBuilder: (context, index) {
                   final list = orderedChecklists[index];
-                  final colorValue = list['colorValue'] ?? list['color'] ?? Colors.blue.value;
+                  final colorValue = list['colorValue'] ?? list['color'] ?? Colors.blue.toARGB32();
                   final color = Color(colorValue);
                   final icon = _getIconFromCode(list['iconCode']);
                   final sharedWithList = list['sharedWith'] as List?;
@@ -416,7 +419,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  color.withOpacity(0.8),
+                  color.withValues(alpha: 0.8),
                   color,
                 ],
               ),
@@ -429,7 +432,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                   child: Icon(
                     icon,
                     size: 100,
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                   ),
                 ),
                 Padding(
@@ -444,7 +447,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.3),
+                              color: Colors.white.withValues(alpha: 0.3),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Icon(icon, color: Colors.white, size: 24),
@@ -555,7 +558,6 @@ class ChecklistDetailScreen extends StatefulWidget {
 
 class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
   final StorageService _storage = StorageService();
-  bool _isLoading = true;
 
   @override
   void initState() {
@@ -579,16 +581,16 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
   }
 
   void _showAddItemDialog() {
-    final TextEditingController _controller = TextEditingController();
-    bool _isSaving = false;
+    final TextEditingController controller = TextEditingController();
+    bool isSaving = false;
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogInnerCtx, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('Add Item', style: TextStyle(fontWeight: FontWeight.bold)),
           content: TextField(
-            controller: _controller,
+            controller: controller,
             autofocus: true,
             decoration: InputDecoration(
               labelText: 'Item Name',
@@ -597,22 +599,26 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
             textCapitalization: TextCapitalization.sentences,
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            _isSaving 
+            TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
+            isSaving 
               ? const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  padding: EdgeInsets.symmetric(horizontal: 16.0),
                   child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
                 )
               : ElevatedButton(
                   style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                   onPressed: () async {
-                    if (_controller.text.isNotEmpty) {
-                      setDialogState(() => _isSaving = true);
+                    if (controller.text.isNotEmpty) {
+                      setDialogState(() => isSaving = true);
                       try {
-                        await _addItem(_controller.text);
-                        if (mounted) Navigator.pop(context);
+                        await _addItem(controller.text);
+                        if (dialogCtx.mounted) {
+                          Navigator.pop(dialogCtx);
+                        }
                       } catch (e) {
-                        setDialogState(() => _isSaving = false);
+                        if (dialogInnerCtx.mounted) {
+                          setDialogState(() => isSaving = false);
+                        }
                       }
                     }
                   }, 
@@ -670,10 +676,10 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: [widget.color.withOpacity(0.8), widget.color],
+                          colors: [widget.color.withValues(alpha: 0.8), widget.color],
                         ),
                       ),
-                      child: Center(
+                      child: const Center(
                         child: Opacity(
                           opacity: 0.1,
                           child: Icon(Icons.checklist, size: 100, color: Colors.white),
@@ -775,7 +781,7 @@ class _ChecklistDetailScreenState extends State<ChecklistDetailScreen> {
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
+                                  color: Colors.black.withValues(alpha: 0.03),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
                                 ),

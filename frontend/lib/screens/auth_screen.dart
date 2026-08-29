@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
-import '../services/storage_service.dart';
 
 import 'main_screen.dart';
 
@@ -59,14 +58,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     _passwordController.dispose();
     _emailController.dispose();
     super.dispose();
-  }
-
-  void _toggleAuthMode() {
-    setState(() {
-      _isLogin = !_isLogin;
-    });
-    _animController.reset();
-    _animController.forward();
   }
 
   Future<void> _submit() async {
@@ -210,7 +201,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white30, width: 2),
                         ),
@@ -282,7 +273,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                       border: Border.all(color: Colors.white12, width: 1.5),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.4),
+                          color: Colors.black.withValues(alpha: 0.4),
                           blurRadius: 30,
                           offset: const Offset(0, 10),
                         ),
@@ -297,8 +288,8 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: Colors.blue.withOpacity(0.15),
-                              border: Border.all(color: Colors.blueAccent.withOpacity(0.4), width: 2),
+                              color: Colors.blue.withValues(alpha: 0.15),
+                              border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4), width: 2),
                             ),
                             child: const Icon(
                               Icons.lock_person_rounded,
@@ -411,7 +402,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
       width: 220,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        color: Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white12),
       ),
@@ -420,7 +411,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.2),
+              color: iconColor.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: iconColor, size: 22),
@@ -506,7 +497,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                label: const Text("LOGOUT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                style: OutlinedButton.styleFrom(
                  side: const BorderSide(color: Colors.redAccent),
-                 backgroundColor: Colors.redAccent.withOpacity(0.2),
+                 backgroundColor: Colors.redAccent.withValues(alpha: 0.2),
                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                ),
                onPressed: _logout,
@@ -524,11 +515,11 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       border: Border.all(color: Colors.white24, width: 2),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           blurRadius: 20,
                           spreadRadius: 5,
                         )
@@ -563,7 +554,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                   Card(
                     elevation: 12,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    color: Colors.white.withOpacity(0.95), 
+                    color: Colors.white.withValues(alpha: 0.95), 
                     child: Padding(
                       padding: const EdgeInsets.all(24.0),
                       child: Form(

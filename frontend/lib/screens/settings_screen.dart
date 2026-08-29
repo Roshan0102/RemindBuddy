@@ -46,7 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     } catch (e) {
-      print('Error loading username: $e');
+      debugPrint('Error loading username: $e');
     }
   }
 

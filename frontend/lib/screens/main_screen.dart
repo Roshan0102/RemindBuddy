@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'home_screen.dart';
 import 'notes_screen.dart';
+import 'reminders_screen.dart';
 import 'daily_reminders_screen.dart';
 import 'gold_screen.dart';
 import 'checklists_screen.dart';
@@ -16,10 +17,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
+import '../services/finance_service.dart';
 import '../services/vault_service.dart';
 import 'vault_tab_wrapper.dart';
 import 'settings_screen.dart';
-import 'notification_control_screen.dart';
 import 'admin_screen.dart';
 import 'notification_history_screen.dart';
 import '../services/update_service.dart';
@@ -30,7 +31,6 @@ import 'finance_screen.dart';
 import 'job_assistant_screen.dart';
 import 'tech_events_screen.dart';
 import 'walkin_drives_screen.dart';
-import 'all_features_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../main.dart';
 
@@ -98,6 +98,7 @@ class _MainScreenState extends State<MainScreen> {
     await _loadPreferences();
     _listenToUserPreferences();
     _checkAstroNotification();
+    FinanceService().initGlobalSmsListener();
     if (mounted) {
       UpdateService.checkForUpdates(context);
     }
@@ -127,7 +128,7 @@ class _MainScreenState extends State<MainScreen> {
         }
       }
     }, onError: (err) {
-      print("Error listening to user preferences: $err");
+      debugPrint("Error listening to user preferences: $err");
     });
   }
 
@@ -162,7 +163,7 @@ class _MainScreenState extends State<MainScreen> {
         });
       }
     } catch (e) {
-      print("Error loading user preferences in background: $e");
+      debugPrint("Error loading user preferences in background: $e");
     }
   }
 
@@ -321,6 +322,8 @@ class _MainScreenState extends State<MainScreen> {
 
                   if (dialogCtx.mounted) {
                     Navigator.pop(dialogCtx);
+                  }
+                  if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('Snoozed for $snoozeIntervalMinutes minutes.')),
                     );
@@ -349,6 +352,8 @@ class _MainScreenState extends State<MainScreen> {
 
                 if (dialogCtx.mounted) {
                   Navigator.pop(dialogCtx);
+                }
+                if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Reminder marked as completed!')),
                   );
@@ -403,12 +408,21 @@ class _MainScreenState extends State<MainScreen> {
       ),
     },
     'reminders': {
-      'screen': const DailyRemindersScreen(),
+      'screen': const RemindersScreen(),
       'name': 'Reminders',
       'destination': const NavigationDestination(
-        icon: Icon(Icons.calendar_today_outlined, color: Colors.indigoAccent),
-        selectedIcon: Icon(Icons.calendar_today, color: Colors.indigoAccent),
+        icon: Icon(Icons.calendar_month_outlined, color: Colors.indigoAccent),
+        selectedIcon: Icon(Icons.calendar_month, color: Colors.indigoAccent),
         label: 'Reminders',
+      ),
+    },
+    'daily_reminders': {
+      'screen': const DailyRemindersScreen(),
+      'name': 'Daily Reminders',
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.alarm_on_outlined, color: Colors.blue),
+        selectedIcon: Icon(Icons.alarm_on, color: Colors.blue),
+        label: 'Daily Tasks',
       ),
     },
     'notes': {
@@ -589,8 +603,12 @@ class _MainScreenState extends State<MainScreen> {
 
     if (id == 'reminders') {
       final Color remColor = _isDarkMode ? Colors.indigoAccent : Colors.indigo;
-      icon = Icon(Icons.calendar_today_outlined, color: remColor);
-      selectedIcon = Icon(Icons.calendar_today, color: remColor);
+      icon = Icon(Icons.calendar_month_outlined, color: remColor);
+      selectedIcon = Icon(Icons.calendar_month, color: remColor);
+    } else if (id == 'daily_reminders') {
+      final Color dailyColor = _isDarkMode ? Colors.blueAccent : Colors.blue;
+      icon = Icon(Icons.alarm_on_outlined, color: dailyColor);
+      selectedIcon = Icon(Icons.alarm_on, color: dailyColor);
     } else if (id == 'notes') {
       icon = NavigationIconWithBadge(
         icon: icon,
@@ -633,21 +651,6 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  bool _isModuleSelected(String id) {
-    final isLargeScreen = MediaQuery.of(context).size.width >= 768;
-    if (isLargeScreen) {
-      final desktop = _desktopActiveModules;
-      if (_selectedIndex < desktop.length) {
-        return desktop[_selectedIndex] == id;
-      }
-      return false;
-    }
-    final active = _activeFeatures;
-    if (_selectedIndex < active.length) {
-      return active[_selectedIndex] == id;
-    }
-    return false;
-  }
 
   void _openVoiceAssistant() {
     Navigator.push(
@@ -774,10 +777,10 @@ class _MainScreenState extends State<MainScreen> {
   Widget _buildMenuItemTile(Map<String, dynamic> item) {
     return Container(
       decoration: BoxDecoration(
-        color: (item['color'] as Color).withOpacity(0.06),
+        color: (item['color'] as Color).withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: (item['color'] as Color).withOpacity(0.15),
+          color: (item['color'] as Color).withValues(alpha: 0.15),
         ),
       ),
       child: Column(
@@ -812,10 +815,18 @@ class _MainScreenState extends State<MainScreen> {
               if (_enabledModules.contains('reminders'))
                 {
                   'id': 'reminders',
-                  'name': 'Reminders',
-                  'icon': Icons.calendar_today,
+                  'name': 'Calendar Reminders',
+                  'icon': Icons.calendar_month,
                   'color': Colors.indigo,
                   'action': () => _selectTabOrPush('reminders'),
+                },
+              if (_enabledModules.contains('daily_reminders'))
+                {
+                  'id': 'daily_reminders',
+                  'name': 'Daily Reminders',
+                  'icon': Icons.alarm_on,
+                  'color': Colors.blue,
+                  'action': () => _selectTabOrPush('daily_reminders'),
                 },
               if (_enabledModules.contains('gold'))
                 {
@@ -875,19 +886,6 @@ class _MainScreenState extends State<MainScreen> {
                   'icon': Icons.shield,
                   'color': Colors.blueAccent,
                   'action': () => _selectTabOrPush('vault'),
-                },
-              if (_enabledModules.contains('daily_reminders'))
-                {
-                  'id': 'daily_reminders',
-                  'name': 'Daily Reminders',
-                  'icon': Icons.alarm_on,
-                  'color': Colors.blue,
-                  'action': () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
-                    );
-                  },
                 },
               if (_enabledModules.contains('astro_calendar'))
                 {
@@ -983,7 +981,7 @@ class _MainScreenState extends State<MainScreen> {
                       height: 4,
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.3),
+                        color: Colors.grey.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -1060,9 +1058,9 @@ class _MainScreenState extends State<MainScreen> {
                                 width: 100,
                                 height: 95,
                                 decoration: BoxDecoration(
-                                  color: (item['color'] as Color).withOpacity(0.9),
+                                  color: (item['color'] as Color).withValues(alpha: 0.9),
                                   borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
+                                  boxShadow: const [
                                     BoxShadow(
                                       color: Colors.black26,
                                       blurRadius: 8,
@@ -1085,7 +1083,7 @@ class _MainScreenState extends State<MainScreen> {
                             ),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
-                              transform: isOver ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
+                              transform: isOver ? Matrix4.diagonal3Values(1.05, 1.05, 1.0) : Matrix4.identity(),
                               child: InkWell(
                                 onTap: () {
                                   Navigator.pop(context);
@@ -1119,13 +1117,12 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  @override
   Widget _buildDesktopSidebar(List<String> desktopModules, int displayIndex) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sidebarBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
     final borderCol = isDark ? Colors.white10 : Colors.black12;
     final activeColor = Theme.of(context).colorScheme.primary;
-    final activeBg = activeColor.withOpacity(isDark ? 0.15 : 0.08);
+    final activeBg = activeColor.withValues(alpha: isDark ? 0.15 : 0.08);
 
     return Container(
       width: 260,
@@ -1297,12 +1294,7 @@ class _MainScreenState extends State<MainScreen> {
                     icon: Icons.alarm_on,
                     color: Colors.blue,
                     title: 'Daily Reminders',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
-                      );
-                    },
+                    onTap: () => _selectTabOrPush('daily_reminders'),
                   ),
                 if (_enabledModules.contains('events'))
                   _buildSidebarItem(
@@ -1570,7 +1562,7 @@ class _MainScreenState extends State<MainScreen> {
                   Text(
                     'Your Daily Companion',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       fontSize: 14,
                     ),
                   ),

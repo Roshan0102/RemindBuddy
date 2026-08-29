@@ -122,7 +122,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
           amount: tx.amount,
           type: debtType,
           date: tx.timestamp,
-          note: notes.isNotEmpty ? notes : 'Tracked from SMS (${chosenBankName})',
+          note: notes.isNotEmpty ? notes : 'Tracked from SMS ($chosenBankName)',
           isSettled: false,
           accountId: destBankId,
         );
@@ -192,7 +192,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.2),
+                  color: Colors.amber.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.receipt_long_rounded, color: Colors.amber, size: 26),
@@ -298,9 +298,9 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.2),
+                                color: Colors.red.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.redAccent.withOpacity(0.4), width: 0.8),
+                                border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4), width: 0.8),
                               ),
                               child: const Text(
                                 '⚠️ Assign Bank',
@@ -314,9 +314,9 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.15),
+                                color: Colors.blue.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.blue.withOpacity(0.4), width: 0.8),
+                                border: Border.all(color: Colors.blue.withValues(alpha: 0.4), width: 0.8),
                               ),
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -349,10 +349,10 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                             margin: const EdgeInsets.only(bottom: 10),
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                             decoration: BoxDecoration(
-                              color: isUnassignedBank ? Colors.red.withOpacity(0.12) : inputBg,
+                              color: isUnassignedBank ? Colors.red.withValues(alpha: 0.12) : inputBg,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: isUnassignedBank ? Colors.redAccent.withOpacity(0.6) : borderColor,
+                                color: isUnassignedBank ? Colors.redAccent.withValues(alpha: 0.6) : borderColor,
                                 width: isUnassignedBank ? 1.2 : 0.8,
                               ),
                             ),
@@ -469,8 +469,8 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                               '+ Add Category',
                               style: TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold),
                             ),
-                            backgroundColor: Colors.blue.withOpacity(0.12),
-                            side: BorderSide(color: Colors.blueAccent.withOpacity(0.4), width: 1.0),
+                            backgroundColor: Colors.blue.withValues(alpha: 0.12),
+                            side: BorderSide(color: Colors.blueAccent.withValues(alpha: 0.4), width: 1.0),
                             onPressed: () => _showAddCustomCategoryDialog(context),
                           ),
                         ],
@@ -481,7 +481,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
-                            color: selectedCat == 'Lended' ? Colors.teal.withOpacity(0.12) : Colors.amber.withOpacity(0.12),
+                            color: selectedCat == 'Lended' ? Colors.teal.withValues(alpha: 0.12) : Colors.amber.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: selectedCat == 'Lended' ? Colors.teal : Colors.amber.shade700,
@@ -776,7 +776,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.15),
+                color: Colors.blue.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.sms_rounded, color: Colors.blue, size: 20),
@@ -806,7 +806,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                 decoration: BoxDecoration(
                   color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

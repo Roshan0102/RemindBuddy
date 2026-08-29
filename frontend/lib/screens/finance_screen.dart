@@ -58,7 +58,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         }
       }
     }, onError: (err) {
-      print('SMS EventChannel stream error: $err');
+      debugPrint('SMS EventChannel stream error: $err');
     });
   }
 
@@ -156,7 +156,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.2),
+                color: Colors.blue.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.blueAccent, size: 28),
@@ -201,7 +201,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
                   color: cardBg,
-                  border: Border.all(color: (feat['gradient'] as List<Color>).first.withOpacity(0.4)),
+                  border: Border.all(color: (feat['gradient'] as List<Color>).first.withValues(alpha: 0.4)),
                 ),
                 child: Row(
                   children: [
@@ -240,7 +240,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               ),
             ),
           );
-        }).toList(),
+        }),
       ],
     );
   }
@@ -296,7 +296,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         }
 
         final accounts = accountsSnap.data ?? [];
-        final double totalNetWorth = accounts.fold(0.0, (sum, acc) => sum + acc.currentBalance);
+        final double totalNetWorth = accounts.fold(0.0, (total, acc) => total + acc.currentBalance);
 
         return StreamBuilder<List<FinanceTransaction>>(
           stream: _financeService.getTransactionsStream(),
@@ -387,7 +387,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: Colors.grey.withOpacity(0.08),
+                      color: Colors.grey.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Center(
@@ -414,10 +414,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         decoration: BoxDecoration(
                           color: isDark ? const Color(0xFF1E293B) : Colors.white,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: accColor.withOpacity(0.5), width: 1.5),
+                          border: Border.all(color: accColor.withValues(alpha: 0.5), width: 1.5),
                           boxShadow: [
                             BoxShadow(
-                              color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.12),
+                              color: isDark ? Colors.black26 : Colors.grey.withValues(alpha: 0.12),
                               blurRadius: 6,
                               offset: const Offset(0, 3),
                             ),
@@ -435,7 +435,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                 Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: accColor.withOpacity(0.15),
+                                    color: accColor.withValues(alpha: 0.15),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(_getIconData(acc.iconName), color: accColor, size: 14),
@@ -525,7 +525,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: isIncome ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                            backgroundColor: isIncome ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
                             child: Icon(
                               isIncome ? Icons.arrow_downward : Icons.arrow_upward,
                               color: isIncome ? Colors.green : Colors.red,
@@ -599,7 +599,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       margin: const EdgeInsets.only(bottom: 10),
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: Colors.purple.withOpacity(0.1),
+                          backgroundColor: Colors.purple.withValues(alpha: 0.1),
                           child: const Icon(Icons.calendar_today, color: Colors.purple),
                         ),
                         title: Text(bill.title, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -650,10 +650,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         final debts = snapshot.data ?? [];
         final totalLent = debts
             .where((d) => d.type == 'lent' && !d.isSettled)
-            .fold(0.0, (sum, d) => sum + d.amount);
+            .fold(0.0, (total, d) => total + d.amount);
         final totalBorrowed = debts
             .where((d) => d.type == 'borrowed' && !d.isSettled)
-            .fold(0.0, (sum, d) => sum + d.amount);
+            .fold(0.0, (total, d) => total + d.amount);
 
         return StreamBuilder<List<BankAccount>>(
           stream: _financeService.getAccountsStream(),
@@ -738,8 +738,8 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                           child: ListTile(
                             leading: CircleAvatar(
                               backgroundColor: debt.isSettled
-                                  ? Colors.grey.withOpacity(0.2)
-                                  : (isLent ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1)),
+                                  ? Colors.grey.withValues(alpha: 0.2)
+                                  : (isLent ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1)),
                               child: Icon(
                                 debt.isSettled
                                     ? Icons.check
@@ -1318,17 +1318,26 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     String selectedFrequency = 'monthly';
     if (existingBill != null) {
       final f = existingBill.frequency.toLowerCase();
-      if (f.contains('15')) selectedFrequency = '15_days';
-      else if (f.contains('30')) selectedFrequency = '30_days';
-      else if (f.contains('45')) selectedFrequency = '45_days';
-      else if (f.contains('60')) selectedFrequency = '60_days';
-      else if (f.contains('weekly')) selectedFrequency = 'weekly';
-      else if (f.contains('yearly')) selectedFrequency = 'yearly';
-      else if (f.contains('monthly')) selectedFrequency = 'monthly';
-      else if (f.contains('days')) {
+      if (f.contains('15')) {
+        selectedFrequency = '15_days';
+      } else if (f.contains('30')) {
+        selectedFrequency = '30_days';
+      } else if (f.contains('45')) {
+        selectedFrequency = '45_days';
+      } else if (f.contains('60')) {
+        selectedFrequency = '60_days';
+      } else if (f.contains('weekly')) {
+        selectedFrequency = 'weekly';
+      } else if (f.contains('yearly')) {
+        selectedFrequency = 'yearly';
+      } else if (f.contains('monthly')) {
+        selectedFrequency = 'monthly';
+      } else if (f.contains('days')) {
         selectedFrequency = 'custom';
         final match = RegExp(r'(\d+)').firstMatch(f);
-        if (match != null) customDaysCtrl.text = match.group(1)!;
+        if (match != null) {
+          customDaysCtrl.text = match.group(1)!;
+        }
       }
     }
 
@@ -1343,11 +1352,17 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
       final now = DateTime.now();
       DateTime next = inputDate;
       int intervalDays = 0;
-      if (freq == '15_days') intervalDays = 15;
-      else if (freq == '30_days') intervalDays = 30;
-      else if (freq == '45_days') intervalDays = 45;
-      else if (freq == '60_days') intervalDays = 60;
-      else if (freq == 'custom') intervalDays = customDays > 0 ? customDays : 30;
+      if (freq == '15_days') {
+        intervalDays = 15;
+      } else if (freq == '30_days') {
+        intervalDays = 30;
+      } else if (freq == '45_days') {
+        intervalDays = 45;
+      } else if (freq == '60_days') {
+        intervalDays = 60;
+      } else if (freq == 'custom') {
+        intervalDays = customDays > 0 ? customDays : 30;
+      }
 
       int safety = 0;
       final todayTrunc = DateTime(now.year, now.month, now.day);
@@ -1516,7 +1531,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                             ],
                           ),
                         );
-                      }).toList(),
+                      }),
                       const SizedBox(height: 4),
                       InkWell(
                         onTap: () {
@@ -1795,7 +1810,6 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final Color subtextColor = isDark ? Colors.white70 : Colors.black54;
     final Color cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
-    final Color summaryBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9);
 
     final String? currentUid = FirebaseAuth.instance.currentUser?.uid;
 
@@ -1890,15 +1904,14 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                       : () async {
                                           setState(() => _isSyncingStudySms = true);
                                           final count = await _financeService.uploadSmsStudySamples(days: 15);
+                                          if (!mounted) return;
                                           setState(() => _isSyncingStudySms = false);
-                                          if (mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(
-                                                content: Text('Successfully uploaded $count SMS samples to Cloud for AI Study!'),
-                                                backgroundColor: Colors.green,
-                                              ),
-                                            );
-                                          }
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Successfully uploaded $count SMS samples to Cloud for AI Study!'),
+                                              backgroundColor: Colors.green,
+                                            ),
+                                          );
                                         },
                                   icon: _isSyncingStudySms
                                       ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -2094,7 +2107,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                     child: Card(
                                       elevation: 3,
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                      color: Colors.amber.shade900.withOpacity(0.85),
+                                      color: Colors.amber.shade900.withValues(alpha: 0.85),
                                       child: Padding(
                                         padding: const EdgeInsets.all(16),
                                         child: Row(
@@ -2207,7 +2220,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                     );
                                   },
                                   leading: CircleAvatar(
-                                    backgroundColor: isDebit ? Colors.red.shade900.withOpacity(0.3) : Colors.green.shade900.withOpacity(0.3),
+                                    backgroundColor: isDebit ? Colors.red.shade900.withValues(alpha: 0.3) : Colors.green.shade900.withValues(alpha: 0.3),
                                     child: Icon(
                                       isDebit ? Icons.arrow_upward : Icons.arrow_downward,
                                       color: isDebit ? Colors.redAccent : Colors.green,
@@ -2231,7 +2244,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                               decoration: BoxDecoration(
-                                                color: Colors.red.withOpacity(0.2),
+                                                color: Colors.red.withValues(alpha: 0.2),
                                                 borderRadius: BorderRadius.circular(6),
                                               ),
                                               child: const Text(
@@ -2272,9 +2285,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                   margin: const EdgeInsets.only(right: 6),
                                                   decoration: BoxDecoration(
-                                                    color: Colors.blue.withOpacity(0.15),
+                                                    color: Colors.blue.withValues(alpha: 0.15),
                                                     borderRadius: BorderRadius.circular(6),
-                                                    border: Border.all(color: Colors.blue.withOpacity(0.4), width: 0.8),
+                                                    border: Border.all(color: Colors.blue.withValues(alpha: 0.4), width: 0.8),
                                                   ),
                                                   child: const Row(
                                                     mainAxisSize: MainAxisSize.min,
@@ -2289,7 +2302,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                                 decoration: BoxDecoration(
-                                                  color: tx.isVerified ? Colors.green.withOpacity(0.2) : Colors.amber.withOpacity(0.2),
+                                                  color: tx.isVerified ? Colors.green.withValues(alpha: 0.2) : Colors.amber.withValues(alpha: 0.2),
                                                   borderRadius: BorderRadius.circular(8),
                                                 ),
                                                 child: Text(
@@ -2363,7 +2376,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               const SizedBox(height: 16),
               ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                tileColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
+                tileColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
                 leading: const Icon(Icons.calendar_month_rounded, color: Colors.indigoAccent),
                 title: Text('Selected Month ($currentMonthName)'),
                 subtitle: const Text('Strictly scan 1st to end of selected month'),
@@ -2378,7 +2391,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               const SizedBox(height: 8),
               ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                tileColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
+                tileColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
                 leading: const Icon(Icons.history_rounded, color: Colors.blueAccent),
                 title: const Text('Last 15 Days'),
                 subtitle: const Text('Scan SMS from past 15 days'),
@@ -2390,7 +2403,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               const SizedBox(height: 8),
               ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                tileColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
+                tileColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
                 leading: const Icon(Icons.date_range_rounded, color: Colors.teal),
                 title: const Text('Last 30 Days'),
                 subtitle: const Text('Scan SMS from past 30 days'),
@@ -2462,14 +2475,13 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               onPressed: () async {
                 Navigator.pop(ctx);
                 final deletedCount = await _financeService.deleteSmsTransactionsForMonth(_smsMonthFilter);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Deleted $deletedCount transactions for $monthYearText.'),
-                      backgroundColor: Colors.redAccent,
-                    ),
-                  );
-                }
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Deleted $deletedCount transactions for $monthYearText.'),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
               },
               child: const Text('Delete All'),
             ),
@@ -2502,7 +2514,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.15),
+                color: Colors.blue.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.sms_rounded, color: Colors.blue, size: 20),
@@ -2532,7 +2544,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                 decoration: BoxDecoration(
                   color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2705,7 +2717,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: netSavings >= 0 ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15),
+                            color: netSavings >= 0 ? Colors.green.withValues(alpha: 0.15) : Colors.red.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
@@ -2906,7 +2918,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: isDark ? Colors.white.withOpacity(0.04) : Colors.grey.shade100,
+                          color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
@@ -2948,7 +2960,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               margin: const EdgeInsets.only(bottom: 12),
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: isDark ? Colors.white.withOpacity(0.03) : Colors.white,
+                                color: isDark ? Colors.white.withValues(alpha: 0.03) : Colors.white,
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
                                   color: isOver ? Colors.redAccent : (isDark ? Colors.white12 : Colors.grey.shade200),
@@ -3009,7 +3021,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
-                                            color: Colors.blue.withOpacity(0.12),
+                                            color: Colors.blue.withValues(alpha: 0.12),
                                             borderRadius: BorderRadius.circular(6),
                                           ),
                                           child: Text(
@@ -3065,7 +3077,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.15),
+                            color: Colors.blue.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Text('Interactive Curve', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
@@ -3099,7 +3111,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               xValueMapper: (MapEntry<int, double> data, _) => data.key,
                               yValueMapper: (MapEntry<int, double> data, _) => data.value,
                               gradient: LinearGradient(
-                                colors: [Colors.blueAccent.withOpacity(0.5), Colors.blueAccent.withOpacity(0.0)],
+                                colors: [Colors.blueAccent.withValues(alpha: 0.5), Colors.blueAccent.withValues(alpha: 0.0)],
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
                               ),
@@ -3188,7 +3200,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                   BarChartRodData(
                                     toY: daySpent,
                                     gradient: LinearGradient(
-                                      colors: daySpent > 0 ? [Colors.indigoAccent, Colors.blueAccent] : [Colors.grey.withOpacity(0.2), Colors.grey.withOpacity(0.2)],
+                                      colors: daySpent > 0 ? [Colors.indigoAccent, Colors.blueAccent] : [Colors.grey.withValues(alpha: 0.2), Colors.grey.withValues(alpha: 0.2)],
                                       begin: Alignment.bottomCenter,
                                       end: Alignment.topCenter,
                                     ),
@@ -3276,7 +3288,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
-                value: selectedCategory,
+                initialValue: selectedCategory,
                 decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
                 items: availableCategories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                 onChanged: (val) {
@@ -3475,9 +3487,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF0F172A) : Colors.blue.shade50.withOpacity(0.5),
+                        color: isDark ? const Color(0xFF0F172A) : Colors.blue.shade50.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
+                        border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3500,7 +3512,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                             children: [
                               Expanded(
                                 child: DropdownButtonFormField<String>(
-                                  value: selectedPopularBank,
+                                  initialValue: selectedPopularBank,
                                   isExpanded: true,
                                   decoration: InputDecoration(
                                     labelText: 'Select Bank',
@@ -3551,11 +3563,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                 selectedPopularBank = null;
                               });
 
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Rule saved for "$p" → "$b"'), backgroundColor: Colors.green),
-                                );
-                              }
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Rule saved for "$p" → "$b"'), backgroundColor: Colors.green),
+                              );
                             },
                             icon: const Icon(Icons.save_rounded, size: 18),
                             label: const Text('Save Header Rule', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -3612,7 +3623,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                         decoration: BoxDecoration(
-                                          color: Colors.blueAccent.withOpacity(0.15),
+                                          color: Colors.blueAccent.withValues(alpha: 0.15),
                                           borderRadius: BorderRadius.circular(6),
                                         ),
                                         child: Text(
@@ -3636,11 +3647,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                     icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
                                     onPressed: () async {
                                       await _financeService.deleteCustomHeaderBankRule(p);
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Deleted rule for "$p"')),
-                                        );
-                                      }
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Deleted rule for "$p"')),
+                                      );
                                     },
                                   ),
                                 ),

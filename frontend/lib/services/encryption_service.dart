@@ -1,6 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 
@@ -119,7 +119,7 @@ class EncryptionService {
       final decrypted = encrypter.decrypt(enc.Encrypted(cipherBytes), iv: iv);
       return decrypted;
     } catch (e) {
-      print("EncryptionService: Decryption failed: $e");
+      debugPrint("EncryptionService: Decryption failed: $e");
       return "[Decryption Error]";
     }
   }
@@ -162,7 +162,7 @@ class EncryptionService {
       final decryptedList = encrypter.decryptBytes(enc.Encrypted(cipherBytes), iv: iv);
       return Uint8List.fromList(decryptedList);
     } catch (e) {
-      print("EncryptionService: Decrypt bytes failed: $e");
+      debugPrint("EncryptionService: Decrypt bytes failed: $e");
       return Uint8List(0);
     }
   }

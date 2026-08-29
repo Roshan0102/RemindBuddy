@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import '../services/encryption_service.dart';
 import '../services/update_service.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -159,7 +158,7 @@ class _AdminScreenState extends State<AdminScreen> {
         _geminiApiKeyController.text = key;
       }
     } catch (e) {
-      print('Error fetching Gemini API key: $e');
+      debugPrint('Error fetching Gemini API key: $e');
     }
   }
 
@@ -218,7 +217,7 @@ class _AdminScreenState extends State<AdminScreen> {
         _isLoading = false;
         _isFetchingGithub = false;
       });
-      print('Error fetching App Updates config: $e');
+      debugPrint('Error fetching App Updates config: $e');
     }
   }
 
@@ -355,6 +354,7 @@ class _AdminScreenState extends State<AdminScreen> {
     List<String> selectedPartners = [];
 
     if (existingUsernames.isNotEmpty) {
+      if (!mounted) return;
       final result = await showDialog<List<String>>(
         context: context,
         barrierDismissible: false,

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -130,9 +129,11 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       
       await Share.shareXFiles([XFile(tempPath)], text: cleanName);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error sharing: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sharing: $e')),
+        );
+      }
     }
   }
 
@@ -176,7 +177,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed == true && mounted) {
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -235,7 +236,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                     children: [
                       CircleAvatar(
                         radius: 28,
-                        backgroundColor: Colors.blueAccent.withOpacity(0.15),
+                        backgroundColor: Colors.blueAccent.withValues(alpha: 0.15),
                         child: const Icon(Icons.description, color: Colors.blueAccent, size: 30),
                       ),
                       const SizedBox(width: 16),
@@ -464,7 +465,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                                             child: Container(
                                               padding: const EdgeInsets.all(6),
                                               decoration: BoxDecoration(
-                                                color: Colors.black.withOpacity(0.6),
+                                                color: Colors.black.withValues(alpha: 0.6),
                                                 shape: BoxShape.circle,
                                               ),
                                               child: const Icon(Icons.share, color: Colors.white, size: 16),
@@ -477,7 +478,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                                           child: Container(
                                             padding: const EdgeInsets.all(4),
                                             decoration: BoxDecoration(
-                                              color: Colors.black.withOpacity(0.6),
+                                              color: Colors.black.withValues(alpha: 0.6),
                                               borderRadius: BorderRadius.circular(6),
                                             ),
                                             child: const Icon(Icons.lock, color: Colors.greenAccent, size: 14),

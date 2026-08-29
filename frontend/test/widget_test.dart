@@ -1,30 +1,69 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:remindbuddy/main.dart';
+import 'package:remindbuddy/models/shift.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const RemindBuddyApp());
+  group('Shift Model Tests', () {
+    test('Shift.fromJson correctly parses morning shift', () {
+      final json = {
+        'date': '2026-08-29',
+        'shift_type': 'morning',
+        'start_time': '06:00',
+        'end_time': '14:00',
+        'is_week_off': false,
+      };
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+      final shift = Shift.fromJson(json);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+      expect(shift.date, '2026-08-29');
+      expect(shift.shiftType, 'morning');
+      expect(shift.startTime, '06:00');
+      expect(shift.endTime, '14:00');
+      expect(shift.isWeekOff, isFalse);
+      expect(shift.getDisplayName(), 'Morning Shift');
+      expect(shift.getTimeRange(), '06:00 - 14:00');
+    });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    test('Shift.fromJson correctly parses week off', () {
+      final json = {
+        'date': '2026-08-30',
+        'shift_type': 'week_off',
+        'is_week_off': true,
+      };
+
+      final shift = Shift.fromJson(json);
+
+      expect(shift.date, '2026-08-30');
+      expect(shift.shiftType, 'week_off');
+      expect(shift.isWeekOff, isTrue);
+      expect(shift.getDisplayName(), 'Week Off');
+      expect(shift.getTimeRange(), '');
+    });
+
+    test('ShiftRoster.fromJson parses complete roster', () {
+      final json = {
+        'employee_name': 'Roshan J',
+        'month': 'August 2026',
+        'shifts': [
+          {
+            'date': '2026-08-29',
+            'shift_type': 'morning',
+            'start_time': '06:00',
+            'end_time': '14:00',
+            'is_week_off': false,
+          },
+          {
+            'date': '2026-08-30',
+            'shift_type': 'week_off',
+            'is_week_off': true,
+          }
+        ],
+      };
+
+      final roster = ShiftRoster.fromJson(json);
+
+      expect(roster.employeeName, 'Roshan J');
+      expect(roster.month, 'August 2026');
+      expect(roster.shifts.length, 2);
+    });
   });
 }

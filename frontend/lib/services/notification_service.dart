@@ -71,7 +71,7 @@ void notificationTapBackground(NotificationResponse notificationResponse) async 
                     .doc(pairedDocId)
                     .update(updates);
               } catch (e) {
-                print("Error updating paired snooze reminder: $e");
+                debugPrint("Error updating paired snooze reminder: $e");
               }
             }
             LogService.staticLog("BG Handler: Snoozed reminder $reminderId to $dateStr $timeStr (Snooze count: ${currentSnooze + 1}).");
@@ -218,7 +218,7 @@ class NotificationService {
                             .doc(pairedDocId)
                             .update(updates);
                       } catch (e) {
-                        print("Error updating paired snooze reminder: $e");
+                        debugPrint("Error updating paired snooze reminder: $e");
                       }
                     }
                     LogService.staticLog("FG Handler: Snoozed reminder $reminderId to $dateStr $timeStr.");
@@ -351,7 +351,7 @@ class NotificationService {
     // 4. Get Messaging Token and update Firestore
     // Note: VAPID key is strictly required on Web for push notifications to work.
     // Replace the placeholder below with your actual Web Push certificate key pair from Firebase Console -> Project Settings -> Cloud Messaging -> Web configuration.
-    final String? vapidKey = kIsWeb ? 'YOUR_PUBLIC_VAPID_KEY_HERE' : null;
+    const String? vapidKey = kIsWeb ? 'YOUR_PUBLIC_VAPID_KEY_HERE' : null;
     messaging.getToken(vapidKey: vapidKey).then((token) async {
       LogService.staticLog("FCM Token: $token");
       if (token != null) {

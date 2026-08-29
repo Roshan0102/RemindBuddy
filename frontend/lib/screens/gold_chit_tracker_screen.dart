@@ -118,7 +118,7 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
          }).toList();
          updatePlansState();
        }, onError: (err) {
-         print("Error loading owned plans: $err");
+         debugPrint("Error loading owned plans: $err");
          updatePlansState();
        });
 
@@ -133,7 +133,7 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
          }).toList();
          updatePlansState();
        }, onError: (err) {
-         print("Error loading shared plans: $err");
+         debugPrint("Error loading shared plans: $err");
          updatePlansState();
        });
   }

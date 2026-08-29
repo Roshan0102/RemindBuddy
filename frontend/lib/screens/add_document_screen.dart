@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../models/vault_collaborator.dart';
 import '../models/secure_document.dart';
 import '../models/vault_member_profile.dart';
 import '../services/vault_service.dart';
@@ -351,7 +350,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButtonFormField<String>(
-                          value: profiles.any((p) => p.id == activeValue) ? activeValue : null,
+                          initialValue: profiles.any((p) => p.id == activeValue) ? activeValue : null,
                           decoration: const InputDecoration(
                             labelText: 'Belongs to Vault Profile / Member',
                             border: InputBorder.none,

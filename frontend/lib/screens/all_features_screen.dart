@@ -148,7 +148,7 @@ class AllFeaturesScreen extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: Colors.blue.shade100.withOpacity(0.5),
+                          color: Colors.blue.shade100.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(Icons.grid_view_rounded, size: 28, color: Colors.blue.shade900),
@@ -209,7 +209,7 @@ class AllFeaturesScreen extends StatelessWidget {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: color.withOpacity(0.08),
+                            color: color.withValues(alpha: 0.08),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -223,7 +223,7 @@ class AllFeaturesScreen extends StatelessWidget {
                               Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: color.withOpacity(0.12),
+                                  color: color.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Icon(feat['icon'] as IconData, color: color, size: 24),

@@ -18,11 +18,8 @@ class WalkInDrivesScreen extends StatefulWidget {
 class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
   bool _showPastWalkIns = false;
   bool _isFetchingWalkIns = false;
-  bool _isWalkInConfigured = false;
   List<String> _walkinRoles = [];
   String _walkinLocation = '';
-  DateTime? _walkinsLastUpdated;
-  DateTime? _walkinsLastRan;
 
   StreamSubscription<DocumentSnapshot>? _userSubscription;
   Stream<QuerySnapshot>? _walkinsStream;
@@ -79,37 +76,15 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
         .listen((doc) {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        final hasWalkinConfigured = (data['isWalkinConfigured'] == true) ||
-            (data['walkinLocation'] != null && data['walkinRoles'] != null);
-
         final walkinRoles = data['walkinRoles'] != null
             ? List<String>.from(data['walkinRoles'])
             : <String>[];
         final walkinLocation = (data['walkinLocation'] ?? '').toString();
 
-        final walkinsLastUpdatedVal = data['walkinsLastUpdated'];
-        DateTime? walkinsLastUpdated;
-        if (walkinsLastUpdatedVal is Timestamp) {
-          walkinsLastUpdated = walkinsLastUpdatedVal.toDate();
-        } else if (walkinsLastUpdatedVal is String) {
-          walkinsLastUpdated = DateTime.tryParse(walkinsLastUpdatedVal);
-        }
-
-        final walkinsLastRanVal = data['walkinsLastRan'];
-        DateTime? walkinsLastRan;
-        if (walkinsLastRanVal is Timestamp) {
-          walkinsLastRan = walkinsLastRanVal.toDate();
-        } else if (walkinsLastRanVal is String) {
-          walkinsLastRan = DateTime.tryParse(walkinsLastRanVal);
-        }
-
         if (mounted) {
           setState(() {
-            _isWalkInConfigured = hasWalkinConfigured;
             _walkinRoles = walkinRoles;
             _walkinLocation = walkinLocation;
-            _walkinsLastUpdated = walkinsLastUpdated;
-            _walkinsLastRan = walkinsLastRan;
           });
         }
       }
@@ -200,8 +175,8 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
 
     await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (innerCtx, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Row(
             children: [
@@ -244,7 +219,7 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: isSavingRoles ? null : () => Navigator.pop(context),
+              onPressed: isSavingRoles ? null : () => Navigator.pop(dialogCtx),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
@@ -270,23 +245,28 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
                         setState(() {
                           _walkinRoles = list;
                           _walkinLocation = loc;
-                          _isWalkInConfigured = true;
                         });
 
-                        Navigator.pop(context);
+                        if (dialogCtx.mounted) {
+                          Navigator.pop(dialogCtx);
+                        }
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Walk-In preferences saved! Fetching matching drives...'),
-                          ),
-                        );
-                        _triggerFetchWalkIns();
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to save preferences: $e'), backgroundColor: Colors.red),
-                        );
-                      } finally {
                         if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Walk-In preferences saved! Fetching matching drives...'),
+                            ),
+                          );
+                          _triggerFetchWalkIns();
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Failed to save preferences: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      } finally {
+                        if (innerCtx.mounted) {
                           setDialogState(() => isSavingRoles = false);
                         }
                       }
@@ -382,7 +362,7 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
                           Text('Show Past', style: TextStyle(fontSize: 12, color: subtextColor)),
                           Switch(
                             value: _showPastWalkIns,
-                            activeColor: Colors.blueAccent,
+                            activeThumbColor: Colors.blueAccent,
                             onChanged: (val) => setState(() => _showPastWalkIns = val),
                           ),
                         ],

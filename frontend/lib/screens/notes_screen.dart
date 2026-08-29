@@ -278,7 +278,9 @@ class _NotesScreenState extends State<NotesScreen> {
                             checklistItems = [{'text': '', 'isChecked': false}];
                           }
                           itemControllers.clear();
-                          itemFocusNodes.forEach((node) => node.dispose());
+                          for (var node in itemFocusNodes) {
+                            node.dispose();
+                          }
                           itemFocusNodes.clear();
                           for (var item in checklistItems) {
                             itemControllers.add(LinkTextEditingController(text: item['text'] as String));
@@ -1109,7 +1111,7 @@ class _NotesScreenState extends State<NotesScreen> {
                             bool auth = await _showPinDialog();
                             if (!auth) return;
                           }
-                          if (!context.mounted) return;
+                          if (!mounted) return;
                           final isOwn = note.ownerUid == null || note.ownerUid == currentUser?.uid;
                           final confirm = await showDialog<bool>(
                             context: context,

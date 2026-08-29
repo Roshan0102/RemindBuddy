@@ -32,8 +32,8 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
 
     await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (innerCtx, setDialogState) => AlertDialog(
           title: Text(existingReminder == null ? 'Add Daily Reminder' : 'Edit Daily Reminder'),
           content: SingleChildScrollView(
             child: Column(
@@ -132,7 +132,7 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                             labelText: 'Interval',
                             border: OutlineInputBorder(),
                           ),
-                          value: snoozeIntervalMinutes,
+                          initialValue: snoozeIntervalMinutes,
                           items: [5, 10, 15, 30, 45, 60].map((mins) {
                             return DropdownMenuItem<int>(
                               value: mins,
@@ -155,7 +155,7 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                             labelText: 'Max Repeats',
                             border: OutlineInputBorder(),
                           ),
-                          value: maxSnoozeCount,
+                          initialValue: maxSnoozeCount,
                           items: [1, 2, 3, 5, 10].map((count) {
                             return DropdownMenuItem<int>(
                               value: count,
@@ -227,14 +227,18 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                         await _storageService.updateDailyReminder(reminder);
                       }
 
+                      if (dialogCtx.mounted) {
+                        Navigator.pop(dialogCtx);
+                      }
                       if (mounted) {
-                        Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Reminder saved')),
                         );
                       }
                     } catch (e) {
-                      setDialogState(() => isSaving = false);
+                      if (innerCtx.mounted) {
+                        setDialogState(() => isSaving = false);
+                      }
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),

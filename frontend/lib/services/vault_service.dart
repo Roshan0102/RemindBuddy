@@ -1,5 +1,5 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -347,7 +347,7 @@ class VaultService {
         return snap.docs.first.id;
       }
     } catch (e) {
-      print("VaultService: Error fetching username: $e");
+      debugPrint("VaultService: Error fetching username: $e");
     }
     return user.displayName ?? user.email ?? 'Myself';
   }
@@ -418,7 +418,7 @@ class VaultService {
           }).toList();
           emitCollaborators();
         }, onError: (e) {
-          print("VaultService: Error listening to sent collabs: $e");
+          debugPrint("VaultService: Error listening to sent collabs: $e");
           emitCollaborators();
         });
 
@@ -444,7 +444,7 @@ class VaultService {
           }).toList();
           emitCollaborators();
         }, onError: (e) {
-          print("VaultService: Error listening to received collabs: $e");
+          debugPrint("VaultService: Error listening to received collabs: $e");
           emitCollaborators();
         });
       },
@@ -654,14 +654,14 @@ class VaultService {
                 }).toList();
                 updateCombinedDocs();
               }, onError: (e) {
-                print("VaultService: Error listening to docs for user $userUid: $e");
+                debugPrint("VaultService: Error listening to docs for user $userUid: $e");
               });
             }
           }
 
           updateCombinedDocs();
         }, onError: (e) {
-          print("VaultService: Error listening to collaborators: $e");
+          debugPrint("VaultService: Error listening to collaborators: $e");
         });
       },
       onCancel: () {
@@ -708,7 +708,7 @@ class VaultService {
         fields: decryptedFields,
       );
     } catch (e) {
-      print("VaultService: Error decrypting document ${doc.id}: $e");
+      debugPrint("VaultService: Error decrypting document ${doc.id}: $e");
       return null;
     }
   }
@@ -810,7 +810,7 @@ class VaultService {
       try {
         await _storage.ref().child(path).delete();
       } catch (e) {
-        print("VaultService: Error deleting attachment $path: $e");
+        debugPrint("VaultService: Error deleting attachment $path: $e");
       }
     }
 
@@ -833,7 +833,7 @@ class VaultService {
       final decryptedBytes = await EncryptionService().decryptBytes(encryptedBytes);
       return decryptedBytes;
     } catch (e) {
-      print("VaultService: Error downloading/decrypting attachment: $e");
+      debugPrint("VaultService: Error downloading/decrypting attachment: $e");
       return null;
     }
   }

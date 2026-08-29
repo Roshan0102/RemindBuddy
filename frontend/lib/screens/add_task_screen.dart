@@ -414,7 +414,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 elevation: 1,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.grey.withOpacity(0.15)),
+                  side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
@@ -475,7 +475,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                             Expanded(
                               flex: 3,
                               child: DropdownButtonFormField<String>(
-                                value: _recurrenceUnit,
+                                initialValue: _recurrenceUnit,
                                 decoration: const InputDecoration(
                                   labelText: 'Unit',
                                   border: OutlineInputBorder(),
@@ -549,7 +549,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 elevation: 1,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.grey.withOpacity(0.15)),
+                  side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),

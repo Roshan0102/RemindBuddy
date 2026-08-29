@@ -3,7 +3,6 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:async';
 import 'screens/main_screen.dart';
 import 'screens/auth_screen.dart';
 import 'services/notification_service.dart';
@@ -26,13 +25,13 @@ void main() async {
     final isDark = prefs.getBool('isDarkMode') ?? false;
     themeNotifier.value = isDark ? ThemeMode.dark : ThemeMode.light;
   } catch (e) {
-    print('Error loading theme preference: $e');
+    debugPrint('Error loading theme preference: $e');
   }
   
   try {
     await NotificationService().init();
   } catch (e) {
-    print('Error initializing services: $e');
+    debugPrint('Error initializing services: $e');
   }
   
   runApp(const RemindBuddyApp());

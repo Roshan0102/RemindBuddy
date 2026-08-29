@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,7 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/note.dart';
 import '../models/daily_reminder.dart';
-import '../models/gold_price.dart';
 import '../models/calendar_reminder.dart';
 import '../models/notification_history.dart';
 
@@ -61,10 +61,8 @@ class StorageService {
     if (destinationUid != user.uid) {
       data['scheduledByUid'] = user.uid;
       final myUsername = await getCurrentUsername();
-      if (myUsername != null) {
-        data['scheduledByUsername'] = myUsername;
-      }
-      
+      data['scheduledByUsername'] = myUsername;
+          
       final targetDocRef = FirebaseFirestore.instance
           .collection('users')
           .doc(destinationUid)
@@ -150,7 +148,7 @@ class StorageService {
                 .doc(pairedDocId)
                 .delete();
           } catch (e) {
-            print("Error deleting paired reminder: $e");
+            debugPrint("Error deleting paired reminder: $e");
           }
         }
 
@@ -170,12 +168,12 @@ class StorageService {
               await otherDoc.reference.delete();
             }
           } catch (e) {
-            print("Error deleting matching paired reminder via fallback: $e");
+            debugPrint("Error deleting matching paired reminder via fallback: $e");
           }
         }
       }
     } catch (e) {
-      print("Error looking up reminder before delete: $e");
+      debugPrint("Error looking up reminder before delete: $e");
     }
 
     await docRef.delete();
@@ -208,12 +206,12 @@ class StorageService {
                 .doc(pairedDocId)
                 .update(reminder.toMap());
           } catch (e) {
-            print("Error updating paired reminder: $e");
+            debugPrint("Error updating paired reminder: $e");
           }
         }
       }
     } catch (e) {
-      print("Error looking up reminder before update: $e");
+      debugPrint("Error looking up reminder before update: $e");
     }
 
     await docRef.update(reminder.toMap());
@@ -324,7 +322,7 @@ class StorageService {
           ownNotes = notes;
           emitMerged();
         }, onError: (err) {
-          print("Error reading own notes: $err");
+          debugPrint("Error reading own notes: $err");
         });
 
     // 2. Listen to notes via collectionGroup where sharedWith contains user.uid
@@ -342,7 +340,7 @@ class StorageService {
           }
           emitMerged();
         }, onError: (err) {
-          print("Error reading shared notes group: $err");
+          debugPrint("Error reading shared notes group: $err");
         });
 
     // 3. Listen live to approved collaboration requests for notes
@@ -383,7 +381,7 @@ class StorageService {
                         emitMerged();
                       }
                     }, onError: (err) {
-                      print("Error listening to shared note $itemId: $err");
+                      debugPrint("Error listening to shared note $itemId: $err");
                     });
                 approvedItemSubscriptions[itemId] = sub;
               }
@@ -398,7 +396,7 @@ class StorageService {
           }
           emitMerged();
         }, onError: (err) {
-          print("Error reading approved collaboration requests: $err");
+          debugPrint("Error reading approved collaboration requests: $err");
         });
 
     controller.onCancel = () {
@@ -557,7 +555,7 @@ class StorageService {
           .get();
       own = ownSnap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList();
     } catch (e) {
-      print("Error fetching own checklists: $e");
+      debugPrint("Error fetching own checklists: $e");
       try {
         final ownSnap = await FirebaseFirestore.instance
             .collection('users')
@@ -566,7 +564,7 @@ class StorageService {
             .get();
         own = ownSnap.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList();
       } catch (e2) {
-        print("Fallback fetching own checklists failed: $e2");
+        debugPrint("Fallback fetching own checklists failed: $e2");
       }
     }
 
@@ -581,7 +579,7 @@ class StorageService {
         return {...data, 'id': doc.id, 'ownerUid': data['ownerUid']};
       }).toList();
     } catch (e) {
-      print("Error fetching shared checklists (index might be missing): $e");
+      debugPrint("Error fetching shared checklists (index might be missing): $e");
     }
 
     final merged = [...own, ...shared];
@@ -595,7 +593,7 @@ class StorageService {
         return bTime.compareTo(aTime);
       });
     } catch (e) {
-      print("Error sorting checklists: $e");
+      debugPrint("Error sorting checklists: $e");
     }
     return merged;
   }
@@ -620,7 +618,7 @@ class StorageService {
           return bTime.compareTo(aTime);
         });
       } catch (e) {
-        print("Error sorting stream checklists: $e");
+        debugPrint("Error sorting stream checklists: $e");
       }
       if (!controller.isClosed) {
         controller.add(merged);
@@ -641,10 +639,10 @@ class StorageService {
             ownLists = lists;
             emitMerged();
           }, onError: (err) {
-            print("Error reading own checklists in stream: $err");
+            debugPrint("Error reading own checklists in stream: $err");
           });
     } catch (e) {
-      print("Error subscribing to own checklists: $e");
+      debugPrint("Error subscribing to own checklists: $e");
     }
 
     try {
@@ -660,11 +658,11 @@ class StorageService {
             sharedLists = lists;
             emitMerged();
           }, onError: (err) {
-            print("Error reading shared checklists in stream (index might be missing): $err");
+            debugPrint("Error reading shared checklists in stream (index might be missing): $err");
             emitMerged();
           });
     } catch (e) {
-      print("Error subscribing to shared checklists: $e");
+      debugPrint("Error subscribing to shared checklists: $e");
     }
 
     controller.onCancel = () {
@@ -713,7 +711,7 @@ class StorageService {
     final myUsername = await getCurrentUsername();
 
     String itemText = text;
-    if (myUsername != null && myUsername.isNotEmpty) {
+    if (myUsername.isNotEmpty) {
       if (!RegExp(r'\s*\(by\s+[^\)]+\)$').hasMatch(itemText)) {
         itemText = '${itemText.trim()} (by $myUsername)';
       }
@@ -785,12 +783,19 @@ class StorageService {
     int m = 0, a = 0, n = 0, w = 0, tw = 0;
     for (var s in shifts) {
       final type = s['shift_type']?.toString().toLowerCase() ?? '';
-      if (type == 'morning') m++;
-      else if (type == 'afternoon') a++;
-      else if (type == 'night') n++;
-      else if (type == 'week_off') w++;
+      if (type == 'morning') {
+        m++;
+      } else if (type == 'afternoon') {
+        a++;
+      } else if (type == 'night') {
+        n++;
+      } else if (type == 'week_off') {
+        w++;
+      }
       
-      if (type != 'week_off') tw++;
+      if (type != 'week_off') {
+        tw++;
+      }
     }
     return {'morning': m, 'afternoon': a, 'night': n, 'week_off': w, 'total_working': tw};
   }
@@ -1160,7 +1165,7 @@ class StorageService {
           }
         }
       } catch (e) {
-        print("Direct item update failed (expected due to security rules): $e");
+        debugPrint("Direct item update failed (expected due to security rules): $e");
       }
       
       await requestRef.update({'status': 'approved'});
@@ -1174,7 +1179,7 @@ class StorageService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception("User not logged in");
 
-    final senderUsername = await getCurrentUsername() ?? user.email ?? 'User';
+    final senderUsername = await getCurrentUsername();
 
     // Find receiver uid
     final receiverSnap = await FirebaseFirestore.instance

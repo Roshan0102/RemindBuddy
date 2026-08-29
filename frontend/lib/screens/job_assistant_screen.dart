@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -164,12 +163,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               final newEmail = emailController.text.trim();
               final newPass = passwordController.text.trim();
               await _service.saveUserEmailConfig(newEmail, newPass);
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+              }
               if (mounted) {
                 setState(() {
                   _userEmail = newEmail;
                   _userAppPassword = newPass;
                 });
-                Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Email settings saved successfully!')),
                 );
@@ -731,9 +732,6 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
-
     return Scaffold(
       appBar: AppBar(
         title: Text(

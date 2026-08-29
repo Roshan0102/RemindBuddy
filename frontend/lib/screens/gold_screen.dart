@@ -17,7 +17,6 @@ class GoldScreen extends StatefulWidget {
 
 class _GoldScreenState extends State<GoldScreen> {
   final GoldPriceService _goldService = GoldPriceService();
-  bool _isFetching = false;
   bool _isGeneratingAI = false;
   bool _isGeneratingChit = false;
   int _aiActiveTab = 1; // 1 for Chit Assistant, 0 for Forecast
@@ -122,56 +121,6 @@ class _GoldScreenState extends State<GoldScreen> {
     super.dispose();
   }
 
-  Future<void> _fetchPrice() async {
-    if (_isFetching) return;
-    setState(() => _isFetching = true);
-    try {
-      final result = await _goldService.triggerForceFetch();
-      if (mounted) {
-        if (result.containsKey('error')) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('❌ Fetch failed: ${result['error']}'), backgroundColor: Colors.red),
-          );
-        } else if (result['status'] == 'no_change') {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Gold Price Status'),
-              content: const Text('No Change in Gold Price'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        } else {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Gold Price Status'),
-              content: Text('Change in gold price! New Price: ₹${result['price'] ?? ''}'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Exception: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isFetching = false);
-    }
-  }
 
   void _showSourceChecker() async {
     showDialog(
@@ -342,7 +291,7 @@ class _GoldScreenState extends State<GoldScreen> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFB38728).withOpacity(0.4),
+            color: const Color(0xFFB38728).withValues(alpha: 0.4),
             blurRadius: 15,
             spreadRadius: 2,
             offset: const Offset(0, 8),
@@ -357,7 +306,7 @@ class _GoldScreenState extends State<GoldScreen> {
               'LATEST GOLD RATE (22K)', 
               style: TextStyle(
                 fontSize: 13, 
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withValues(alpha: 0.6),
                 fontWeight: FontWeight.bold,
                 letterSpacing: 2.0,
               )
@@ -377,7 +326,7 @@ class _GoldScreenState extends State<GoldScreen> {
                Container(
                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                  decoration: BoxDecoration(
-                   color: Colors.black.withOpacity(0.1),
+                   color: Colors.black.withValues(alpha: 0.1),
                    borderRadius: BorderRadius.circular(30),
                  ),
                  child: Row(
@@ -401,7 +350,7 @@ class _GoldScreenState extends State<GoldScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
@@ -420,7 +369,7 @@ class _GoldScreenState extends State<GoldScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.withOpacity(0.15)),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -435,7 +384,7 @@ class _GoldScreenState extends State<GoldScreen> {
           children: [
             TableRow(
               decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
+                border: Border(bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
               ),
               children: const [
                 Padding(
@@ -460,7 +409,7 @@ class _GoldScreenState extends State<GoldScreen> {
               final change = price.priceChange;
               return TableRow(
                 decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.1))),
+                  border: Border(bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
                 ),
                 children: [
                   Padding(
@@ -501,7 +450,7 @@ class _GoldScreenState extends State<GoldScreen> {
                   ),
                 ],
               );
-            }).toList(),
+            }),
           ],
         ),
       ),
@@ -624,10 +573,10 @@ class _GoldScreenState extends State<GoldScreen> {
             SizedBox(
               height: 250,
               child: SfCartesianChart(
-                primaryXAxis: CategoryAxis(
-                  majorGridLines: const MajorGridLines(width: 0),
+                primaryXAxis: const CategoryAxis(
+                  majorGridLines: MajorGridLines(width: 0),
                   labelRotation: -45,
-                  labelStyle: const TextStyle(fontSize: 8),
+                  labelStyle: TextStyle(fontSize: 8),
                 ),
                 primaryYAxis: NumericAxis(
                   numberFormat: NumberFormat.currency(symbol: '₹', decimalDigits: 0),
@@ -640,7 +589,7 @@ class _GoldScreenState extends State<GoldScreen> {
                     dataSource: sortedHistory,
                     xValueMapper: (GoldPrice p, _) => _formatDate(p.timestamp),
                     yValueMapper: (GoldPrice p, _) => p.price,
-                    color: Colors.indigo.withOpacity(0.15),
+                    color: Colors.indigo.withValues(alpha: 0.15),
                     borderColor: Colors.indigo,
                     borderWidth: 2,
                     markerSettings: const MarkerSettings(isVisible: true),
@@ -694,7 +643,7 @@ class _GoldScreenState extends State<GoldScreen> {
 
   Widget _buildScheduleInfo() {
     return Card(
-      color: Colors.blue.withOpacity(0.1),
+      color: Colors.blue.withValues(alpha: 0.1),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -969,10 +918,10 @@ class _GoldScreenState extends State<GoldScreen> {
                 Card(
                   elevation: 0,
                   margin: EdgeInsets.zero,
-                  color: Colors.grey.withOpacity(0.03),
+                  color: Colors.grey.withValues(alpha: 0.03),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: Colors.grey.withOpacity(0.15)),
+                    side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
                   ),
                   child: ExpansionTile(
                     title: const Text(
@@ -1006,10 +955,10 @@ class _GoldScreenState extends State<GoldScreen> {
                     return Card(
                       margin: const EdgeInsets.symmetric(vertical: 4),
                       elevation: 0,
-                      color: Colors.grey.withOpacity(0.03),
+                      color: Colors.grey.withValues(alpha: 0.03),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
-                        side: BorderSide(color: Colors.grey.withOpacity(0.1)),
+                        side: BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
                       ),
                       child: ListTile(
                         dense: true,
@@ -1113,9 +1062,9 @@ class _GoldScreenState extends State<GoldScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.05),
+                  color: Colors.blue.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.withOpacity(0.15)),
+                  border: Border.all(color: Colors.blue.withValues(alpha: 0.15)),
                 ),
                 child: const Row(
                   children: [
@@ -1134,9 +1083,9 @@ class _GoldScreenState extends State<GoldScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: recColor.withOpacity(0.1),
+                  color: recColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: recColor.withOpacity(0.3)),
+                  border: Border.all(color: recColor.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   children: [
@@ -1178,10 +1127,10 @@ class _GoldScreenState extends State<GoldScreen> {
                 Card(
                   elevation: 0,
                   margin: EdgeInsets.zero,
-                  color: Colors.grey.withOpacity(0.03),
+                  color: Colors.grey.withValues(alpha: 0.03),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: Colors.grey.withOpacity(0.15)),
+                    side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
                   ),
                   child: ExpansionTile(
                     title: const Text(
@@ -1202,11 +1151,11 @@ class _GoldScreenState extends State<GoldScreen> {
                 const SizedBox(height: 16),
               ],
               Card(
-                color: Colors.grey.withOpacity(0.02),
+                color: Colors.grey.withValues(alpha: 0.02),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.grey.withOpacity(0.1)),
+                  side: BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
                 ),
                 child: const Padding(
                   padding: EdgeInsets.all(12.0),
@@ -1243,9 +1192,9 @@ class _GoldScreenState extends State<GoldScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

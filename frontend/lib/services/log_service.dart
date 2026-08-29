@@ -15,7 +15,7 @@ class LogService {
 
   static void staticLog(String message) {
      final String timestamp = DateFormat('HH:mm:ss').format(DateTime.now());
-     print('[$timestamp] $message');
+     debugPrint('[$timestamp] $message');
   }
 
   void log(String message) {
@@ -23,7 +23,7 @@ class LogService {
     final String logEntry = '[$timestamp] $message';
     _logs.add(logEntry);
     logsNotifier.value = List.from(_logs);
-    print(logEntry);
+    debugPrint(logEntry);
   }
 
   void error(String message, [dynamic e]) {
@@ -31,7 +31,7 @@ class LogService {
     final String logEntry = '🔴 [$timestamp] ERROR: $message ${e != null ? '($e)' : ''}';
     _logs.add(logEntry);
     logsNotifier.value = List.from(_logs);
-    print(logEntry);
+    debugPrint(logEntry);
   }
   
   void clear() {

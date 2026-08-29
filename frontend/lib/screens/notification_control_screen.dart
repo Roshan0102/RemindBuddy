@@ -229,14 +229,14 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: SwitchListTile(
         secondary: CircleAvatar(
-          backgroundColor: iconColor.withOpacity(0.1),
+          backgroundColor: iconColor.withValues(alpha: 0.1),
           child: Icon(icon, color: iconColor),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
         value: _notifPrefs[key] ?? true,
         onChanged: (val) => _saveNotificationPreference(key, val),
-        activeColor: iconColor,
+        activeThumbColor: iconColor,
       ),
     );
   }
