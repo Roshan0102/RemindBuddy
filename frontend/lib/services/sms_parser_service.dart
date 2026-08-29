@@ -191,6 +191,14 @@ class SmsParserService {
     final DateTime timestamp = DateTime.fromMillisecondsSinceEpoch(timestampMillis);
     final String id = 'sms_${timestamp.millisecondsSinceEpoch}_${amount.toInt()}';
 
+    // 7. Extract UPI Reference (12-digit UTR/RRN) if present
+    String upiRef = '';
+    final RegExp upiRefReg = RegExp(r'(?:UPI|Ref|UTR|RRN)\s*(?:No\.?|ID)?\s*[:/]?\s*(\d{12})', caseSensitive: false);
+    final upiMatch = upiRefReg.firstMatch(body);
+    if (upiMatch != null) {
+      upiRef = upiMatch.group(1)!;
+    }
+
     return SmsTransaction(
       id: id,
       sender: sender,
@@ -203,6 +211,10 @@ class SmsParserService {
       isVerified: false,
       category: category,
       notes: body,
+      source: 'sms',
+      sourceApp: bankName,
+      upiRef: upiRef,
+      rawBody: body,
     );
   }
 

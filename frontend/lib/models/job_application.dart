@@ -12,6 +12,10 @@ class JobApplication {
   final DateTime appliedAt;
   final List<String> posterImageUrls;
   final String? errorMessage;
+  final bool isAutoApplied;
+  final String? location;
+  final String? experienceRequired;
+  final String? sourcePlatform;
 
   JobApplication({
     required this.id,
@@ -25,6 +29,10 @@ class JobApplication {
     required this.appliedAt,
     this.posterImageUrls = const [],
     this.errorMessage,
+    this.isAutoApplied = false,
+    this.location,
+    this.experienceRequired,
+    this.sourcePlatform,
   });
 
   Map<String, dynamic> toMap() {
@@ -40,6 +48,10 @@ class JobApplication {
       'appliedAt': Timestamp.fromDate(appliedAt),
       'posterImageUrls': posterImageUrls,
       'errorMessage': errorMessage,
+      'isAutoApplied': isAutoApplied,
+      'location': location,
+      'experienceRequired': experienceRequired,
+      'sourcePlatform': sourcePlatform,
     };
   }
 
@@ -76,6 +88,10 @@ class JobApplication {
       appliedAt: parsedDate,
       posterImageUrls: parsedImages,
       errorMessage: map['errorMessage'],
+      isAutoApplied: map['isAutoApplied'] == true,
+      location: map['location'] as String?,
+      experienceRequired: map['experienceRequired'] as String?,
+      sourcePlatform: map['sourcePlatform'] as String?,
     );
   }
 }

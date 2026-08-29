@@ -27,7 +27,7 @@ function isValidEmail(email) {
  * Searches and automatically applies to matching jobs for a specific user
  */
 async function discoverAndApplyForUser(uid, options) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     if (!userDoc.exists) {
         return { success: false, appliedCount: 0, jobs: [], message: "User not found" };
@@ -42,11 +42,11 @@ async function discoverAndApplyForUser(uid, options) {
     const applicantName = userData.displayName || "Roshan J";
     if (!userEmail || !appPassword) {
         console.log(`[JobDiscovery] User ${uid} has not configured Gmail/App Password. Skipping.`);
-        return { success: false, appliedCount: 0, jobs: [], message: "Gmail & App Password not configured." };
+        return { success: false, appliedCount: 0, jobs: [], message: "Gmail & App Password not configured in Job Assistant Settings." };
     }
     if (!resumeBase64) {
         console.log(`[JobDiscovery] User ${uid} has not uploaded a Master Resume. Skipping.`);
-        return { success: false, appliedCount: 0, jobs: [], message: "Master Resume PDF not uploaded." };
+        return { success: false, appliedCount: 0, jobs: [], message: "Master Resume PDF not uploaded in Job Assistant Settings." };
     }
     // Resolve roles & locations from options or user profile
     const autoApplySettings = userData.autoApplySettings || {};
@@ -74,6 +74,8 @@ async function discoverAndApplyForUser(uid, options) {
     if (targetLocations.length === 0) {
         targetLocations = ["Bengaluru", "India", "Remote"];
     }
+    const minExp = (options === null || options === void 0 ? void 0 : options.minExpYears) !== undefined ? Number(options.minExpYears) : Number((_a = autoApplySettings.minExpYears) !== null && _a !== void 0 ? _a : 0);
+    const maxExp = (options === null || options === void 0 ? void 0 : options.maxExpYears) !== undefined ? Number(options.maxExpYears) : Number((_b = autoApplySettings.maxExpYears) !== null && _b !== void 0 ? _b : 3);
     const maxApplyLimit = (options === null || options === void 0 ? void 0 : options.maxApplications) || autoApplySettings.maxPerRun || 4;
     // Fetch previously applied emails/companies to avoid duplicate applications
     const existingAppsSnap = await firebase_1.db.collection("users").doc(uid).collection("job_applications").get();
@@ -92,7 +94,7 @@ async function discoverAndApplyForUser(uid, options) {
     const configDoc = await firebase_1.db.collection("admin_creds").doc("gemini_config").get();
     let apiKey = "";
     if (configDoc.exists) {
-        apiKey = ((_a = configDoc.data()) === null || _a === void 0 ? void 0 : _a.apiKey) || "";
+        apiKey = ((_c = configDoc.data()) === null || _c === void 0 ? void 0 : _c.apiKey) || "";
     }
     if (!apiKey) {
         throw new Error("Gemini API key is not configured in admin_creds.");
@@ -104,12 +106,12 @@ async function discoverAndApplyForUser(uid, options) {
 Target Roles: ${rolesQuery}
 Locations: ${locQuery}
 Candidate Name: "${applicantName}"
-Candidate Experience Level: ~1.5 Years Experience (Seeking 0 to 3 Years Experience / Junior / Associate / Mid-level roles).
+Candidate Experience Target: Seeking ${minExp} to ${maxExp} Years Experience / Junior / Associate / Mid-level roles.
 
 CRITICAL SEARCH & EXTRACTION MANDATES:
 1. Use Google Search grounding to discover active, recent (past 24-72 hours) job openings, recruiter hiring updates, and posts from LinkedIn public posts, Wellfound/AngelList, Cutshort, Y Combinator, and tech company career pages.
 2. RECRUITER EMAIL IS MANDATORY: Every single job item MUST contain a verified recruiter / HR / hiring contact email address (e.g. hr@company.com, careers@company.com, hiring@company.com, jobs@company.com, talent@company.com, or specific recruiter email). If NO valid email address is mentioned in the job posting/snippet, DO NOT INCLUDE THAT JOB.
-3. EXPERIENCE REQUIREMENT (0 TO 3 YEARS ONLY): The candidate has ~1.5 years experience. ONLY include roles requiring 0 to 3 years experience (Freshers, Junior, Associate, 1-2 years, 1-3 years). EXCLUDE any roles requiring > 3 years experience (Senior, Lead, Staff, Principal, 5+ years).
+3. EXPERIENCE REQUIREMENT (${minExp} TO ${maxExp} YEARS ONLY): ONLY include roles requiring between ${minExp} and ${maxExp} years experience (or Freshers/Entry-level if min is 0). EXCLUDE any roles requiring > ${maxExp} years experience (e.g. Senior, Lead, Staff, Principal).
 4. HUMAN-WRITTEN, HIGH-CONVERTING APPLICATION EMAIL:
    - For each matching job, write a highly authentic, natural, and engaging cover letter.
    - Read the candidate's attached Resume PDF to extract concrete accomplishments, technical skills (e.g., Flutter, Dart, State Management, REST APIs, Firebase, Cloud/DevOps, Docker, CI/CD), and align them specifically with the company's domain and job requirements.
@@ -119,7 +121,7 @@ CRITICAL SEARCH & EXTRACTION MANDATES:
      c) Key Relevant Skills: 3-4 bullet points matching the exact requirements of the job.
      d) Professional closing & Call to Action proposing a brief discussion, mentioning the attached resume.
      e) Sign-off: "Sincerely,\\n${applicantName}" (Never use placeholders like [Your Name]).
-   - Subject line format: "Application for [Job Title] - ${applicantName} (1.5 Yrs Exp)"
+   - Subject line format: "Application for [Job Title] - ${applicantName}"
 
 Respond ONLY with a JSON array matching this schema:
 [
@@ -128,7 +130,7 @@ Respond ONLY with a JSON array matching this schema:
     "companyName": "string",
     "recipientEmail": "string (MUST be a valid email address)",
     "location": "string",
-    "experienceRequired": "string (e.g. 0-2 years, 1-3 years)",
+    "experienceRequired": "string (e.g. ${minExp}-${maxExp} years)",
     "sourcePlatform": "string (e.g. LinkedIn, Wellfound, Google Jobs, Company Careers)",
     "sourceUrl": "string",
     "keySkills": ["string"],
@@ -136,7 +138,7 @@ Respond ONLY with a JSON array matching this schema:
     "generatedCoverLetter": "string"
   }
 ]
-If no matching jobs with verified emails and 0-3 years experience are found, respond with an empty JSON array: [].`;
+If no matching jobs with verified emails and ${minExp}-${maxExp} years experience are found, respond with an empty JSON array: [].`;
     const inlineParts = [];
     if (resumeBase64) {
         const cleanResumeB64 = resumeBase64.replace(/^data:application\/pdf;base64,/, '');
@@ -168,11 +170,11 @@ If no matching jobs with verified emails and 0-3 years experience are found, res
         headers: { 'Content-Type': 'application/json' },
         timeout: 240000
     });
-    const candidates = (_b = response.data) === null || _b === void 0 ? void 0 : _b.candidates;
+    const candidates = (_d = response.data) === null || _d === void 0 ? void 0 : _d.candidates;
     if (!candidates || candidates.length === 0) {
         return { success: true, appliedCount: 0, jobs: [], message: "No search candidates returned." };
     }
-    const rawText = ((_e = (_d = (_c = candidates[0].content) === null || _c === void 0 ? void 0 : _c.parts) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.text) || "";
+    const rawText = ((_g = (_f = (_e = candidates[0].content) === null || _e === void 0 ? void 0 : _e.parts) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.text) || "";
     if (!rawText) {
         return { success: true, appliedCount: 0, jobs: [], message: "Empty response from search agent." };
     }
@@ -276,7 +278,7 @@ If no matching jobs with verified emails and 0-3 years experience are found, res
         try {
             const userTokenDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
             if (!userTokenDoc.empty) {
-                const fcmToken = (_f = userTokenDoc.docs[0].data()) === null || _f === void 0 ? void 0 : _f.fcmToken;
+                const fcmToken = (_h = userTokenDoc.docs[0].data()) === null || _h === void 0 ? void 0 : _h.fcmToken;
                 if (fcmToken) {
                     const compNames = successfullyAppliedJobs.map(j => j.companyName).filter(Boolean).slice(0, 3).join(', ');
                     const notifTitle = `🚀 Auto-Applied to ${successfullyAppliedJobs.length} New Job${successfullyAppliedJobs.length > 1 ? 's' : ''}!`;
@@ -357,13 +359,21 @@ exports.triggerAutoJobDiscoveryAndApply = functions.runWith({ timeoutSeconds: 30
         const result = await discoverAndApplyForUser(uid, {
             targetRoles: data.targetRoles,
             locations: data.locations,
+            minExpYears: data.minExpYears,
+            maxExpYears: data.maxExpYears,
             maxApplications: data.maxApplications || 4,
             isManualTrigger: true
         });
+        if (!result.success) {
+            throw new functions.https.HttpsError('failed-precondition', result.message);
+        }
         return result;
     }
     catch (error) {
         console.error(`triggerAutoJobDiscoveryAndApply failed for ${uid}:`, error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
         throw new functions.https.HttpsError('internal', error.message || 'Failed to discover and apply to jobs.');
     }
 });

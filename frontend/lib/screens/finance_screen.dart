@@ -14,6 +14,7 @@ import '../models/group_split.dart';
 import '../models/sms_transaction.dart';
 import '../services/finance_service.dart';
 import '../services/sms_parser_service.dart';
+import '../services/payment_notification_tracker_service.dart';
 import '../widgets/nightly_expense_tag_sheet.dart';
 
 class FinanceScreen extends StatefulWidget {
@@ -1968,6 +1969,11 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               Row(
                                 children: [
                                   IconButton(
+                                    tooltip: 'UPI Notification Tracker 🔔',
+                                    icon: const Icon(Icons.notifications_active_outlined, color: Colors.purpleAccent, size: 22),
+                                    onPressed: () => _showUpiNotificationSettingsDialog(context),
+                                  ),
+                                  IconButton(
                                     tooltip: 'Bank Header Rules ⚙️',
                                     icon: const Icon(Icons.settings_suggest_rounded, color: Colors.blueAccent, size: 22),
                                     onPressed: () => _showCustomHeaderRulesDialog(context),
@@ -2287,16 +2293,54 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                   margin: const EdgeInsets.only(right: 6),
                                                   decoration: BoxDecoration(
-                                                    color: Colors.blue.withValues(alpha: 0.15),
+                                                    color: tx.source == 'both'
+                                                        ? Colors.green.withValues(alpha: 0.15)
+                                                        : (tx.source == 'notification'
+                                                            ? Colors.purple.withValues(alpha: 0.15)
+                                                            : Colors.blue.withValues(alpha: 0.15)),
                                                     borderRadius: BorderRadius.circular(6),
-                                                    border: Border.all(color: Colors.blue.withValues(alpha: 0.4), width: 0.8),
+                                                    border: Border.all(
+                                                      color: tx.source == 'both'
+                                                          ? Colors.green.withValues(alpha: 0.5)
+                                                          : (tx.source == 'notification'
+                                                              ? Colors.purple.withValues(alpha: 0.5)
+                                                              : Colors.blue.withValues(alpha: 0.4)),
+                                                      width: 0.8,
+                                                    ),
                                                   ),
-                                                  child: const Row(
+                                                  child: Row(
                                                     mainAxisSize: MainAxisSize.min,
                                                     children: [
-                                                      Icon(Icons.sms_rounded, size: 11, color: Colors.blueAccent),
-                                                      SizedBox(width: 3),
-                                                      Text('SMS 📩', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                                      Icon(
+                                                        tx.source == 'both'
+                                                            ? Icons.verified_rounded
+                                                            : (tx.source == 'notification'
+                                                                ? Icons.notifications_active_rounded
+                                                                : Icons.sms_rounded),
+                                                        size: 11,
+                                                        color: tx.source == 'both'
+                                                            ? Colors.green
+                                                            : (tx.source == 'notification'
+                                                                ? Colors.purpleAccent
+                                                                : Colors.blueAccent),
+                                                      ),
+                                                      const SizedBox(width: 3),
+                                                      Text(
+                                                        tx.source == 'both'
+                                                            ? '⚡ Verified (${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'SMS + UPI'})'
+                                                            : (tx.source == 'notification'
+                                                                ? '🔔 ${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'UPI App'}'
+                                                                : 'SMS 📩'),
+                                                        style: TextStyle(
+                                                          color: tx.source == 'both'
+                                                              ? (isDark ? Colors.greenAccent : Colors.green.shade800)
+                                                              : (tx.source == 'notification'
+                                                                  ? (isDark ? Colors.purpleAccent : Colors.purple.shade800)
+                                                                  : Colors.blueAccent),
+                                                          fontSize: 10,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
                                                     ],
                                                   ),
                                                 ),
@@ -2506,6 +2550,21 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final Color subtextColor = isDark ? Colors.white70 : Colors.black54;
 
+    final isBoth = tx.source == 'both';
+    final isNotif = tx.source == 'notification';
+
+    final Color badgeThemeColor = isBoth
+        ? Colors.green
+        : (isNotif ? Colors.purpleAccent : Colors.blue);
+
+    final IconData badgeIcon = isBoth
+        ? Icons.verified_rounded
+        : (isNotif ? Icons.notifications_active_rounded : Icons.sms_rounded);
+
+    final String dialogTitle = isBoth
+        ? 'Verified Bank & UPI Alert ⚡'
+        : (isNotif ? 'UPI App Notification 📱' : 'SMS Raw Details 📩');
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -2516,15 +2575,15 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.15),
+                color: badgeThemeColor.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.sms_rounded, color: Colors.blue, size: 20),
+              child: Icon(badgeIcon, color: badgeThemeColor, size: 20),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'SMS Raw Details 📩',
+                dialogTitle,
                 style: GoogleFonts.outfit(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -2539,25 +2598,25 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Box
+              // Header & Source Box
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                  border: Border.all(color: badgeThemeColor.withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'SMS SENDER HEADER',
-                      style: TextStyle(color: Colors.blue.shade700, fontSize: 10, fontWeight: FontWeight.bold),
+                      isNotif ? 'PAYMENT APP SOURCE' : 'SMS SENDER / SOURCE',
+                      style: TextStyle(color: badgeThemeColor, fontSize: 10, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
                     SelectableText(
-                      tx.sender.isNotEmpty ? tx.sender : (tx.bankName.isNotEmpty ? tx.bankName : 'Unknown Header'),
+                      tx.sourceApp.isNotEmpty ? tx.sourceApp : (tx.sender.isNotEmpty ? tx.sender : tx.bankName),
                       style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
                     ),
                   ],
@@ -2603,7 +2662,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('DETECTED BANK', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                          Text(isNotif ? 'APP / BANK' : 'DETECTED BANK', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 2),
                           Text(tx.bankName, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor)),
                         ],
@@ -2630,11 +2689,31 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   ),
                 ],
               ),
+
+              if (tx.upiRef.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('UPI REFERENCE / UTR', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      SelectableText(tx.upiRef, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor)),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
 
               // Raw Body Text
               Text(
-                'RAW SMS MESSAGE BODY:',
+                isNotif ? 'RAW NOTIFICATION TEXT:' : 'RAW MESSAGE BODY:',
                 style: TextStyle(color: subtextColor, fontSize: 11, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 6),
@@ -2647,7 +2726,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade300),
                 ),
                 child: SelectableText(
-                  tx.notes.isNotEmpty ? tx.notes : 'No raw SMS body recorded.',
+                  tx.notes.isNotEmpty ? tx.notes : (tx.rawBody.isNotEmpty ? tx.rawBody : 'No raw body recorded.'),
                   style: TextStyle(fontSize: 13, color: textColor, height: 1.4),
                 ),
               ),
@@ -3664,6 +3743,239 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                     ),
                   ],
                 ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showUpiNotificationSettingsDialog(BuildContext context) async {
+    final tracker = PaymentNotificationTrackerService();
+    bool isPermissionGranted = await tracker.isNotificationAccessGranted();
+    bool isTrackingEnabled = await tracker.isTrackingEnabled();
+    List<String> enabledPackages = await tracker.getEnabledUpiPackages();
+
+    if (!mounted) return;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final bg = isDark ? const Color(0xFF1E293B) : Colors.white;
+        final textColor = isDark ? Colors.white : Colors.black87;
+        final subtextColor = isDark ? Colors.white70 : Colors.grey.shade600;
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.82,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white24 : Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.notifications_active_rounded, color: Colors.purpleAccent, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'UPI Notification Tracker 🔔',
+                              style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
+                            ),
+                            Text(
+                              'Auto-track GPay, PhonePe, Paytm payments',
+                              style: TextStyle(color: subtextColor, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Permission Status Banner
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isPermissionGranted
+                          ? Colors.green.withValues(alpha: 0.12)
+                          : Colors.orange.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isPermissionGranted
+                            ? Colors.green.withValues(alpha: 0.4)
+                            : Colors.orange.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isPermissionGranted ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+                          color: isPermissionGranted ? Colors.green : Colors.orange,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                isPermissionGranted ? 'Notification Access Granted' : 'Notification Access Required',
+                                style: TextStyle(
+                                  color: isPermissionGranted ? Colors.green : Colors.orange.shade800,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(
+                                isPermissionGranted
+                                    ? 'RemindBuddy is actively listening to payment alerts.'
+                                    : 'Allow RemindBuddy in Android Settings to read payment alerts.',
+                                style: TextStyle(color: subtextColor, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!isPermissionGranted)
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: () async {
+                              await tracker.openNotificationAccessSettings();
+                              final granted = await tracker.isNotificationAccessGranted();
+                              setSheetState(() {
+                                isPermissionGranted = granted;
+                              });
+                            },
+                            child: const Text('Grant', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Master Switch
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      'Enable UPI Notification Ingestion',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor),
+                    ),
+                    subtitle: Text(
+                      'Parses incoming payments even when bank skips SMS',
+                      style: TextStyle(color: subtextColor, fontSize: 12),
+                    ),
+                    value: isTrackingEnabled,
+                    activeColor: Colors.purpleAccent,
+                    onChanged: (val) async {
+                      await tracker.setTrackingEnabled(val);
+                      setSheetState(() {
+                        isTrackingEnabled = val;
+                      });
+                    },
+                  ),
+                  const Divider(),
+
+                  Text(
+                    'Supported Indian Payment Apps (Top 10)',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14, color: textColor),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Select which apps RemindBuddy is allowed to listen to:',
+                    style: TextStyle(color: subtextColor, fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // List of 10 Apps
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: PaymentNotificationTrackerService.supportedUpiApps.length,
+                      itemBuilder: (context, idx) {
+                        final app = PaymentNotificationTrackerService.supportedUpiApps[idx];
+                        final appId = app['id']!;
+                        final appName = app['name']!;
+                        final isAppEnabled = enabledPackages.contains(appId);
+
+                        return CheckboxListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                          dense: true,
+                          title: Text(appName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: textColor)),
+                          subtitle: Text(appId, style: TextStyle(color: subtextColor, fontSize: 10)),
+                          value: isAppEnabled,
+                          activeColor: Colors.purpleAccent,
+                          onChanged: !isTrackingEnabled
+                              ? null
+                              : (bool? checked) async {
+                                  if (checked == true) {
+                                    enabledPackages.add(appId);
+                                  } else {
+                                    enabledPackages.remove(appId);
+                                  }
+                                  await tracker.setEnabledUpiPackages(enabledPackages);
+                                  setSheetState(() {});
+                                },
+                        );
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF0F172A) : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lock_outline_rounded, size: 16, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '100% On-Device & Private: Only payment alerts from enabled apps are parsed locally on your phone.',
+                            style: TextStyle(fontSize: 10, color: subtextColor),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             );
           },

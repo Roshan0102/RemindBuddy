@@ -20,6 +20,7 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
   bool _isFetchingWalkIns = false;
   List<String> _walkinRoles = [];
   String _walkinLocation = '';
+  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
 
   StreamSubscription<DocumentSnapshot>? _userSubscription;
   Stream<QuerySnapshot>? _walkinsStream;
@@ -303,6 +304,74 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
         .update({'notInterested': true});
   }
 
+  Widget _buildMonthSelector(bool isDark) {
+    final monthFormat = DateFormat('MMMM yyyy');
+    final isCurrentMonth = _selectedMonth.year == DateTime.now().year && _selectedMonth.month == DateTime.now().month;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50,
+        border: Border(bottom: BorderSide(color: isDark ? Colors.white10 : Colors.blue.shade100)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left_rounded),
+            tooltip: 'Previous Month',
+            onPressed: () {
+              setState(() {
+                _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1, 1);
+              });
+            },
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () {
+              setState(() {
+                _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_month_rounded, size: 18, color: Colors.blueAccent),
+                  const SizedBox(width: 8),
+                  Text(
+                    monthFormat.format(_selectedMonth),
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  if (isCurrentMonth) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blueAccent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text('Current', style: TextStyle(fontSize: 10, color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right_rounded),
+            tooltip: 'Next Month',
+            onPressed: () {
+              setState(() {
+                _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 1);
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -341,6 +410,7 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
           ? const Center(child: Text('Please log in to view walk-in job drives.'))
           : Column(
               children: [
+                _buildMonthSelector(isDark),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -380,6 +450,7 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
 
                       final docs = snapshot.data?.docs ?? [];
                       final todayStr = DateFormat('yyyy-MM-DD').format(DateTime.now());
+                      final selectedMonthPrefix = DateFormat('yyyy-MM').format(_selectedMonth);
 
                       final filteredDocs = docs.where((doc) {
                         final data = doc.data() as Map<String, dynamic>;
@@ -387,6 +458,8 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
                         if (notInterested) return false;
 
                         final dateStr = (data['date'] ?? '').toString().trim();
+                        if (!dateStr.startsWith(selectedMonthPrefix)) return false;
+
                         final isPast = dateStr.isNotEmpty && dateStr.compareTo(todayStr) < 0;
                         if (isPast && !_showPastWalkIns) return false;
 

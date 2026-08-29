@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import '../services/gold_price_service.dart';
+import '../services/home_widget_service.dart';
 import '../models/gold_price.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -22,27 +23,36 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final GoldPriceService _goldPriceService = GoldPriceService();
 
-  // 8 Grid Slot widget IDs saved in SharedPreferences
-  List<String?> _slotWidgets = List.filled(8, null);
-  bool _isLoadingSlots = true;
+  // User's active enabled modules from Firestore/Preferences
+  List<String> _enabledModules = ['gold', 'finance', 'shifts', 'reminders', 'notes'];
+  
+  // Custom dashboard widget list chosen by user
+  List<String> _activeWidgets = ['gold_price', 'bank_accounts', 'expenses', 'shifts', 'weather', 'voice_assistant'];
+  String _heroWidget = 'gold_price'; // Default hero card
+
+  bool _isLoading = true;
 
   // Live Data State
   GoldPrice? _latestGoldPrice;
-  List<Map<String, dynamic>> _bankAccounts = [];
+  double _totalBalance = 0.0;
   double _todayCredited = 0.0;
   double _todayDebited = 0.0;
+  String _activeBankName = 'Active Accounts';
   Map<String, dynamic>? _todayShift;
-  int _upcomingEventsCount = 0;
-  int _upcomingWalkinsCount = 0;
+  int _todayEventsCount = 0;
+  int _todayWalkinsCount = 0;
   int _todayRemindersCount = 0;
-  int _totalNotesCount = 0;
   int _dailyRemindersCount = 0;
+  int _totalNotesCount = 0;
 
-  // Weather State
-  String _weatherTemp = '28°C';
-  String _weatherCondition = 'Sunny';
+  // Weather state
+  String _weatherTemp = '--°C';
+  String _weatherCity = 'Chennai';
+  String _weatherCondition = 'Partly Cloudy';
   IconData _weatherIcon = Icons.wb_sunny_rounded;
 
+  // Firestore Subscriptions
+  StreamSubscription? _userDocSub;
   StreamSubscription? _goldSub;
   StreamSubscription? _accountsSub;
   StreamSubscription? _txSub;
@@ -54,29 +64,81 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _notesSub;
   StreamSubscription? _dailyRemindersSub;
 
-  final Map<String, String> _availableWidgetTypes = {
-    'gold_price': '🪙 Gold Rate (22K)',
-    'bank_accounts': '🏦 Bank Balances',
-    'expenses': '💳 Today\'s Cashflow',
-    'shifts': '💼 Today\'s Shift',
-    'events_walkins': '🚀 Tech & Walk-Ins',
-    'voice_assistant': '🎙️ Voice Assistant (Ask Buddy)',
-    'weather': '🌤️ Live Weather',
-    'reminders': '📅 Calendar Reminders',
-    'daily_reminders': '🔔 Daily Habits & Alerts',
-    'notes': '📝 Quick Notes Summary',
+  final Map<String, Map<String, dynamic>> _widgetMetadata = {
+    'gold_price': {
+      'title': 'Gold Rates (24K & 22K)',
+      'module': 'gold',
+      'icon': Icons.monetization_on_rounded,
+      'color': Colors.amber,
+    },
+    'bank_accounts': {
+      'title': 'Bank Balances',
+      'module': 'finance',
+      'icon': Icons.account_balance_rounded,
+      'color': Colors.lightBlueAccent,
+    },
+    'expenses': {
+      'title': 'Today\'s Cashflow',
+      'module': 'finance',
+      'icon': Icons.swap_vert_rounded,
+      'color': const Color(0xFFF43F5E),
+    },
+    'shifts': {
+      'title': 'Work Duty & Shift',
+      'module': 'shifts',
+      'icon': Icons.work_history_rounded,
+      'color': Colors.purpleAccent,
+    },
+    'events_walkins': {
+      'title': 'Tech & Walk-Ins',
+      'module': 'events',
+      'icon': Icons.rocket_launch_rounded,
+      'color': Colors.tealAccent,
+    },
+    'reminders': {
+      'title': 'Calendar Tasks',
+      'module': 'reminders',
+      'icon': Icons.calendar_month_rounded,
+      'color': Colors.indigoAccent,
+    },
+    'daily_reminders': {
+      'title': 'Daily Habit Check-ins',
+      'module': 'daily_reminders',
+      'icon': Icons.alarm_on_rounded,
+      'color': Colors.orangeAccent,
+    },
+    'notes': {
+      'title': 'Quick Notes',
+      'module': 'notes',
+      'icon': Icons.note_alt_rounded,
+      'color': Colors.cyanAccent,
+    },
+    'weather': {
+      'title': 'Atmospheric Weather',
+      'module': 'all',
+      'icon': Icons.wb_sunny_rounded,
+      'color': Colors.blueAccent,
+    },
+    'voice_assistant': {
+      'title': 'Ask Buddy (Voice AI)',
+      'module': 'all',
+      'icon': Icons.mic_rounded,
+      'color': Colors.redAccent,
+    },
   };
 
   @override
   void initState() {
     super.initState();
-    _loadSlots();
+    _loadPreferences();
     _loadDashboardData();
     _fetchWeather();
+    HomeWidgetService().syncAllWidgets();
   }
 
   @override
   void dispose() {
+    _userDocSub?.cancel();
     _goldSub?.cancel();
     _accountsSub?.cancel();
     _txSub?.cancel();
@@ -90,52 +152,71 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _loadSlots() async {
+  Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedSlots = prefs.getStringList('home_dashboard_slots');
+    final cachedModules = prefs.getStringList('cached_enabled_modules');
+    final savedWidgets = prefs.getStringList('dashboard_active_widgets');
+    final savedHero = prefs.getString('dashboard_hero_widget');
 
-    if (savedSlots != null && savedSlots.length == 8) {
-      setState(() {
-        _slotWidgets = savedSlots.map((s) => s.isEmpty ? null : s).toList();
-        _isLoadingSlots = false;
-      });
+    if (cachedModules != null && cachedModules.isNotEmpty) {
+      _enabledModules = cachedModules;
+    }
+
+    if (savedWidgets != null && savedWidgets.isNotEmpty) {
+      _activeWidgets = savedWidgets;
     } else {
-      // Default pre-populated preset
-      setState(() {
-        _slotWidgets = [
-          'gold_price',
-          'bank_accounts',
-          'expenses',
-          'shifts',
-          'events_walkins',
-          'voice_assistant',
-          'reminders',
-          'notes',
-        ];
-        _isLoadingSlots = false;
-      });
-      _saveSlots();
+      _computeDefaultActiveWidgets();
+    }
+
+    if (savedHero != null && _isWidgetAllowed(savedHero)) {
+      _heroWidget = savedHero;
+    } else {
+      _heroWidget = _activeWidgets.isNotEmpty ? _activeWidgets.first : 'gold_price';
+    }
+
+    if (mounted) {
+      setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _saveSlots() async {
+  bool _isWidgetAllowed(String widgetKey) {
+    final meta = _widgetMetadata[widgetKey];
+    if (meta == null) return false;
+    final requiredMod = meta['module'] as String;
+    if (requiredMod == 'all') return true;
+    return _enabledModules.contains(requiredMod);
+  }
+
+  void _computeDefaultActiveWidgets() {
+    final List<String> list = [];
+    for (final entry in _widgetMetadata.entries) {
+      if (_isWidgetAllowed(entry.key)) {
+        list.add(entry.key);
+      }
+    }
+    _activeWidgets = list;
+    if (!_activeWidgets.contains(_heroWidget)) {
+      _heroWidget = _activeWidgets.isNotEmpty ? _activeWidgets.first : 'gold_price';
+    }
+  }
+
+  Future<void> _saveDashboardConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    final listToSave = _slotWidgets.map((s) => s ?? '').toList();
-    await prefs.setStringList('home_dashboard_slots', listToSave);
+    await prefs.setStringList('dashboard_active_widgets', _activeWidgets);
+    await prefs.setString('dashboard_hero_widget', _heroWidget);
   }
 
   Future<void> _fetchWeather() async {
     try {
-      final res = await http
-          .get(Uri.parse(
-              'https://api.open-meteo.com/v1/forecast?latitude=13.0827&longitude=80.2707&current=temperature_2m,weather_code&timezone=auto'))
+      final response = await http
+          .get(Uri.parse('https://api.open-meteo.com/v1/forecast?latitude=13.0827&longitude=80.2707&current_weather=true'))
           .timeout(const Duration(seconds: 4));
 
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final current = data['current'];
-        final temp = (current['temperature_2m'] as num?)?.round() ?? 28;
-        final code = (current['weather_code'] as num?)?.toInt() ?? 0;
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final current = data['current_weather'];
+        final temp = (current['temperature'] as num).round();
+        final code = (current['weathercode'] as num).toInt();
 
         String condition = 'Sunny';
         IconData icon = Icons.wb_sunny_rounded;
@@ -145,9 +226,6 @@ class _HomeScreenState extends State<HomeScreen> {
           icon = Icons.wb_sunny_rounded;
         } else if (code >= 1 && code <= 3) {
           condition = 'Partly Cloudy';
-          icon = Icons.cloud_queue_rounded;
-        } else if (code >= 45 && code <= 48) {
-          condition = 'Foggy';
           icon = Icons.cloud_rounded;
         } else if (code >= 51 && code <= 67) {
           condition = 'Rain Showers';
@@ -159,49 +237,97 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (mounted) {
           setState(() {
+            _weatherCity = 'Chennai';
             _weatherTemp = '$temp°C';
             _weatherCondition = condition;
             _weatherIcon = icon;
           });
         }
       }
-    } catch (_) {
-      // Graceful fallback
-    }
+    } catch (_) {}
   }
 
   void _loadDashboardData() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // 1. Fetch Gold Rate Stream (22K)
-    _goldSub = _goldPriceService.getGlobalGoldPricesStream().listen((prices) {
-      if (prices.isNotEmpty && mounted) {
-        setState(() => _latestGoldPrice = prices.first);
+    // 0. Listen to User's allowed modules from Firestore
+    _userDocSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen((snapshot) {
+      if (snapshot.exists && snapshot.data() != null) {
+        final data = snapshot.data()!;
+        final mods = List<String>.from(data['enabledModules'] ?? ['gold']);
+        if (mounted) {
+          setState(() {
+            _enabledModules = mods;
+            // Clean up active widgets if module was revoked
+            _activeWidgets.removeWhere((w) => !_isWidgetAllowed(w));
+            if (!_isWidgetAllowed(_heroWidget)) {
+              _heroWidget = _activeWidgets.isNotEmpty ? _activeWidgets.first : 'gold_price';
+            }
+          });
+          _saveDashboardConfig();
+        }
       }
     });
 
-    // 2. Fetch Bank Accounts Stream from 'finance_accounts'
+    // 1. Fetch Gold Rate Stream
+    _goldSub = _goldPriceService.getGlobalGoldPricesStream().listen((prices) {
+      if (prices.isNotEmpty && mounted) {
+        final latest = prices.first;
+        final double rate22k = latest.price;
+        final double rate24k = rate22k > 0 ? (rate22k / 22 * 24) : 0.0;
+        setState(() {
+          _latestGoldPrice = latest;
+        });
+        HomeWidgetService().updateGoldWidget(
+          rate24k: rate24k,
+          rate22k: rate22k,
+          changeToday: latest.priceChange,
+          city: 'Chennai',
+        );
+      }
+    });
+
+    // 2. Fetch Bank Accounts Stream
     _accountsSub = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .collection('finance_accounts')
         .snapshots()
         .listen((snap) {
+      double total = 0.0;
+      final accs = snap.docs.map((d) {
+        final data = d.data();
+        total += (data['currentBalance'] as num? ?? data['balance'] as num? ?? 0.0).toDouble();
+        return data;
+      }).toList();
+
       if (mounted) {
         setState(() {
-          _bankAccounts = snap.docs.map((d) => d.data()).toList();
+          _totalBalance = total;
+          _activeBankName = accs.length == 1
+              ? (accs.first['name'] ?? 'Active Bank')
+              : '${accs.length} Active Accounts';
         });
+        HomeWidgetService().updateFinanceWidget(
+          totalBalance: _totalBalance,
+          todayIn: _todayCredited,
+          todayOut: _todayDebited,
+          bankName: _activeBankName,
+        );
       }
     });
 
-    // 3. Fetch Today's Credited and Debited Amounts
+    // 3. Today's Transactions
     final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
-    double manualCredited = 0.0;
-    double manualDebited = 0.0;
-    double smsCredited = 0.0;
-    double smsDebited = 0.0;
+    double manualCred = 0.0;
+    double manualDeb = 0.0;
+    double smsCred = 0.0;
+    double smsDeb = 0.0;
 
     _txSub = FirebaseFirestore.instance
         .collection('users')
@@ -209,8 +335,8 @@ class _HomeScreenState extends State<HomeScreen> {
         .collection('finance_transactions')
         .snapshots()
         .listen((snap) {
-      double cred = 0.0;
-      double deb = 0.0;
+      double c = 0.0;
+      double d = 0.0;
       for (final doc in snap.docs) {
         final data = doc.data();
         DateTime? dt;
@@ -224,24 +350,21 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         final type = (data['type'] ?? '').toString().toLowerCase();
-        if (dt != null) {
-          final dtStr = DateFormat('yyyy-MM-dd').format(dt);
-          if (dtStr == todayStr) {
-            final amt = (data['amount'] as num? ?? 0.0).toDouble();
-            if (type == 'income' || type == 'credit' || type == 'received') {
-              cred += amt;
-            } else if (type == 'expense' || type == 'debit' || type == 'sent') {
-              deb += amt;
-            }
+        if (dt != null && DateFormat('yyyy-MM-dd').format(dt) == todayStr) {
+          final amt = (data['amount'] as num? ?? 0.0).toDouble();
+          if (type == 'income' || type == 'credit' || type == 'received') {
+            c += amt;
+          } else if (type == 'expense' || type == 'debit' || type == 'sent') {
+            d += amt;
           }
         }
       }
-      manualCredited = cred;
-      manualDebited = deb;
+      manualCred = c;
+      manualDeb = d;
       if (mounted) {
         setState(() {
-          _todayCredited = manualCredited + smsCredited;
-          _todayDebited = manualDebited + smsDebited;
+          _todayCredited = manualCred + smsCred;
+          _todayDebited = manualDeb + smsDeb;
         });
       }
     });
@@ -252,8 +375,8 @@ class _HomeScreenState extends State<HomeScreen> {
         .collection('sms_transactions')
         .snapshots()
         .listen((snap) {
-      double cred = 0.0;
-      double deb = 0.0;
+      double c = 0.0;
+      double d = 0.0;
       for (final doc in snap.docs) {
         final data = doc.data();
         DateTime? dt;
@@ -268,34 +391,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
         final type = (data['type'] ?? '').toString().toLowerCase();
         final cat = (data['category'] ?? '').toString();
-        if (cat == 'Ignored' || cat == 'Ignored / Not Needed' || cat == 'Self Transfer') continue;
+        if (cat.contains('Ignored') || cat == 'Self Transfer') continue;
 
-        if (dt != null) {
-          final dtStr = DateFormat('yyyy-MM-dd').format(dt);
-          if (dtStr == todayStr) {
-            final amt = (data['amount'] as num? ?? 0.0).toDouble();
-            if (type == 'credit' || type == 'income') {
-              cred += amt;
-            } else if (type == 'debit' || type == 'expense') {
-              deb += amt;
-            }
+        if (dt != null && DateFormat('yyyy-MM-dd').format(dt) == todayStr) {
+          final amt = (data['amount'] as num? ?? 0.0).toDouble();
+          if (type == 'credit' || type == 'income') {
+            c += amt;
+          } else if (type == 'debit' || type == 'expense') {
+            d += amt;
           }
         }
       }
-      smsCredited = cred;
-      smsDebited = deb;
+      smsCred = c;
+      smsDeb = d;
       if (mounted) {
         setState(() {
-          _todayCredited = manualCredited + smsCredited;
-          _todayDebited = manualDebited + smsDebited;
+          _todayCredited = manualCred + smsCred;
+          _todayDebited = manualDeb + smsDeb;
         });
       }
     });
 
-    // 4. Fetch Today's Work Shift
+    // 4. Work Shift
     final now = DateTime.now();
     final currentRosterMonth = DateFormat('yyyy-MM').format(now);
-
     _shiftsSub = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
@@ -306,26 +425,27 @@ class _HomeScreenState extends State<HomeScreen> {
         .snapshots()
         .listen((snap) {
       if (mounted) {
-        setState(() {
-          _todayShift = snap.exists ? snap.data() : null;
-        });
+        setState(() => _todayShift = snap.exists ? snap.data() : null);
       }
     });
 
-    // 5. Fetch Tech Events & Walk-Ins
+    // 5. Tech Events & Walk-ins
     _eventsSub = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .collection('events')
         .snapshots()
         .listen((snap) {
-      final nowStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final active = snap.docs.where((d) {
-        final data = d.data();
-        return (data['notInterested'] != true) &&
-            ((data['date'] ?? '').toString().compareTo(nowStr) >= 0);
-      }).length;
-      if (mounted) setState(() => _upcomingEventsCount = active);
+      int t = 0;
+      for (var doc in snap.docs) {
+        final d = doc.data();
+        if (d['notInterested'] == true) continue;
+        final dStr = (d['date'] ?? '').toString();
+        if (dStr == todayStr) t++;
+      }
+      if (mounted) {
+        setState(() => _todayEventsCount = t);
+      }
     });
 
     _walkinsSub = FirebaseFirestore.instance
@@ -334,42 +454,33 @@ class _HomeScreenState extends State<HomeScreen> {
         .collection('walkins')
         .snapshots()
         .listen((snap) {
-      final nowStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final active = snap.docs.where((d) {
-        final data = d.data();
-        return (data['notInterested'] != true) &&
-            ((data['date'] ?? '').toString().compareTo(nowStr) >= 0);
-      }).length;
-      if (mounted) setState(() => _upcomingWalkinsCount = active);
+      int t = 0;
+      for (var doc in snap.docs) {
+        final d = doc.data();
+        if (d['notInterested'] == true) continue;
+        final dStr = (d['date'] ?? '').toString();
+        if (dStr == todayStr) t++;
+      }
+      if (mounted) {
+        setState(() => _todayWalkinsCount = t);
+      }
     });
 
-    // 6. Fetch Today's Calendar Reminders
+    // 6. Reminders, Daily Habits, Notes
     _remindersSub = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .collection('calendar_reminders')
         .snapshots()
         .listen((snap) {
-      final activeToday = snap.docs.where((d) {
-        final data = d.data();
-        final date = (data['date'] ?? '').toString();
-        final status = (data['status'] ?? '').toString().toLowerCase();
+      final active = snap.docs.where((d) {
+        final date = (d.data()['date'] ?? '').toString();
+        final status = (d.data()['status'] ?? '').toString().toLowerCase();
         return date == todayStr && status != 'completed';
       }).length;
-      if (mounted) setState(() => _todayRemindersCount = activeToday);
+      if (mounted) setState(() => _todayRemindersCount = active);
     });
 
-    // 7. Fetch Notes Count
-    _notesSub = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('notes')
-        .snapshots()
-        .listen((snap) {
-      if (mounted) setState(() => _totalNotesCount = snap.docs.length);
-    });
-
-    // 8. Fetch Daily Reminders Count
     _dailyRemindersSub = FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
@@ -378,177 +489,250 @@ class _HomeScreenState extends State<HomeScreen> {
         .listen((snap) {
       if (mounted) setState(() => _dailyRemindersCount = snap.docs.length);
     });
+
+    _notesSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('notes')
+        .snapshots()
+        .listen((snap) {
+      if (mounted) setState(() => _totalNotesCount = snap.docs.length);
+    });
   }
 
-  void _showAddWidgetSheet(int slotIndex) {
+  void _showCustomizeDashboardSheet() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) {
-        final usedTypes = _slotWidgets.whereType<String>().toSet();
-        final availableEntries = _availableWidgetTypes.entries
-            .where((entry) => !usedTypes.contains(entry.key))
-            .toList();
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          final sheetBg = isDark ? const Color(0xFF1E293B) : Colors.white;
 
-        return Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Select Widget for Slot #${slotIndex + 1}',
-                      style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(ctx),
+          final allowedKeys = _widgetMetadata.keys.where(_isWidgetAllowed).toList();
+
+          return Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: sheetBg,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              const Text('Choose a widget to place on your Command Center:',
-                  style: TextStyle(color: Colors.grey, fontSize: 13)),
-              const SizedBox(height: 16),
-              if (availableEntries.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(
-                      child: Text('All available widgets are already placed on your dashboard.',
-                          style: TextStyle(color: Colors.grey))),
-                )
-              else
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '✨ Customize Dashboard',
+                      style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Select which modules appear on your home screen and pick your Primary Hero Card.',
+                  style: TextStyle(fontSize: 13, color: isDark ? Colors.white60 : Colors.grey[600]),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'FEATURED HERO CARD',
+                  style: GoogleFonts.outfit(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                    color: Colors.blueAccent,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _activeWidgets.map((wKey) {
+                    final meta = _widgetMetadata[wKey]!;
+                    final isHero = _heroWidget == wKey;
+                    return ChoiceChip(
+                      label: Text(meta['title'] as String),
+                      selected: isHero,
+                      selectedColor: Colors.blueAccent.withValues(alpha: 0.25),
+                      onSelected: (selected) {
+                        if (selected) {
+                          setSheetState(() => _heroWidget = wKey);
+                          setState(() => _heroWidget = wKey);
+                          _saveDashboardConfig();
+                        }
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'ENABLED MODULE CARDS',
+                  style: GoogleFonts.outfit(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                    color: isDark ? Colors.white60 : Colors.grey[700],
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Flexible(
                   child: ListView.separated(
                     shrinkWrap: true,
-                    itemCount: availableEntries.length,
-                    separatorBuilder: (_, __) => const Divider(height: 8),
+                    itemCount: allowedKeys.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, idx) {
-                      final item = availableEntries[idx];
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.blueAccent.withValues(alpha: 0.12),
-                          child: Text('${idx + 1}',
-                              style: const TextStyle(
-                                  color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                      final key = allowedKeys[idx];
+                      final meta = _widgetMetadata[key]!;
+                      final isSelected = _activeWidgets.contains(key);
+                      final Color col = meta['color'] as Color;
+
+                      return SwitchListTile(
+                        value: isSelected,
+                        activeThumbColor: col,
+                        secondary: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: col.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(meta['icon'] as IconData, color: col, size: 18),
                         ),
-                        title: Text(item.value,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        trailing: const Icon(Icons.add_circle_outline, color: Colors.blueAccent),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          setState(() {
-                            _slotWidgets[slotIndex] = item.key;
+                        title: Text(meta['title'] as String, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                        onChanged: (val) {
+                          setSheetState(() {
+                            if (val) {
+                              _activeWidgets.add(key);
+                            } else {
+                              if (_activeWidgets.length > 1) {
+                                _activeWidgets.remove(key);
+                                if (_heroWidget == key) {
+                                  _heroWidget = _activeWidgets.first;
+                                }
+                              }
+                            }
                           });
-                          _saveSlots();
+                          setState(() {});
+                          _saveDashboardConfig();
                         },
                       );
                     },
                   ),
                 ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showRemoveWidgetDialog(int slotIndex, String type) {
-    final title = _availableWidgetTypes[type] ?? 'Widget';
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Remove $title?', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        content: Text(
-          'Do you want to remove this widget from your Command Center? You can re-add it or pick another widget anytime.',
-          style: TextStyle(color: Colors.grey[700], fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                const SizedBox(height: 12),
+              ],
             ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              _removeWidget(slotIndex);
-            },
-            child: const Text('Remove Widget'),
-          ),
-        ],
+          );
+        },
       ),
     );
-  }
-
-  void _removeWidget(int slotIndex) {
-    setState(() {
-      _slotWidgets[slotIndex] = null;
-    });
-    _saveSlots();
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9);
+    final bgColor = isDark ? const Color(0xFF0B0F19) : const Color(0xFFF8FAFC);
 
-    if (_isLoadingSlots) {
+    if (_isLoading) {
       return Scaffold(
         backgroundColor: bgColor,
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
+    // Filter secondary widgets (all active except the hero)
+    final secondaryWidgets = _activeWidgets.where((w) => w != _heroWidget).toList();
+
     return Scaffold(
       backgroundColor: bgColor,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildGreetingHeader(isDark),
-              const SizedBox(height: 6),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return GridView.builder(
-                      physics: const BouncingScrollPhysics(),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        childAspectRatio: (constraints.maxWidth / 2) / (constraints.maxHeight / 4),
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                      ),
-                      itemCount: 8,
-                      itemBuilder: (context, index) {
-                        final widgetType = _slotWidgets[index];
-                        if (widgetType == null) {
-                          return _buildEmptySlotTile(index, isDark);
-                        }
-                        return _buildWidgetTile(index, widgetType, isDark);
-                      },
-                    );
-                  },
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            // 1. Dynamic Ambient Context Header Ribbon
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: _buildAmbientContextRibbon(isDark),
+              ),
+            ),
+
+            // 2. Primary Hero Bento Card (Wide 2-Span)
+            if (_activeWidgets.contains(_heroWidget))
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                  child: _buildHeroBentoCard(_heroWidget, isDark),
                 ),
               ),
-            ],
+
+            // 3. Dynamic Secondary Bento Grid (2-Column Flow)
+            if (secondaryWidgets.isNotEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    mainAxisExtent: 148,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final widgetType = secondaryWidgets[index];
+                      return _buildCompactBentoCard(widgetType, isDark);
+                    },
+                    childCount: secondaryWidgets.length,
+                  ),
+                ),
+              )
+            else
+              const SliverToBoxAdapter(child: SizedBox(height: 80)),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showCustomizeDashboardSheet,
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        foregroundColor: isDark ? Colors.white : Colors.black87,
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(30),
+          side: BorderSide(
+            color: isDark ? Colors.white24 : Colors.black12,
+            width: 1,
           ),
+        ),
+        icon: const Icon(Icons.dashboard_customize_rounded, size: 18, color: Colors.blueAccent),
+        label: Text(
+          'Customize',
+          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
         ),
       ),
     );
   }
 
-  Widget _buildGreetingHeader(bool isDark) {
+  // ==========================================
+  // 🌟 1. Dynamic Ambient Context Ribbon
+  // ==========================================
+  Widget _buildAmbientContextRibbon(bool isDark) {
     final user = FirebaseAuth.instance.currentUser;
     String rawName = user?.displayName ?? '';
     if (rawName.trim().isEmpty && user?.email != null) {
@@ -562,75 +746,76 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final hour = DateTime.now().hour;
-    String greetingText;
-    String greetingEmoji;
-    if (hour < 12) {
-      greetingText = 'Good Morning';
-      greetingEmoji = '👋';
-    } else if (hour < 17) {
-      greetingText = 'Good Afternoon';
-      greetingEmoji = '☀️';
-    } else if (hour < 21) {
-      greetingText = 'Good Evening';
-      greetingEmoji = '🌆';
-    } else {
-      greetingText = 'Good Night';
-      greetingEmoji = '🌙';
-    }
+    String greeting = 'Good Morning';
+    String emoji = '👋';
+    if (hour >= 12 && hour < 17) { greeting = 'Good Afternoon'; emoji = '☀️'; }
+    else if (hour >= 17 && hour < 21) { greeting = 'Good Evening'; emoji = '🌆'; }
+    else if (hour >= 21 || hour < 5) { greeting = 'Good Night'; emoji = '🌙'; }
 
-    final formattedDate = DateFormat('EEEE, MMMM d').format(DateTime.now());
+    final dateStr = DateFormat('EEE, d MMMM').format(DateTime.now());
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$greetingText, $cleanName $greetingEmoji',
-                style: GoogleFonts.outfit(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : const Color(0xFF0F172A),
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                formattedDate,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isDark ? Colors.white60 : Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF131C2E) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$greeting, $cleanName $emoji',
+                  style: GoogleFonts.outfit(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  dateStr,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white60 : Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Weather Status Pill
           InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () {
-              if (widget.onNavigateToFeature != null) {
-                widget.onNavigateToFeature!('voice_assistant');
-              }
-            },
+            onTap: _fetchWeather,
+            borderRadius: BorderRadius.circular(14),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.blueAccent.withValues(alpha: isDark ? 0.2 : 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                color: Colors.blueAccent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.mic_rounded, color: Colors.blueAccent, size: 14),
-                  const SizedBox(width: 4),
+                  Icon(_weatherIcon, color: Colors.blueAccent, size: 16),
+                  const SizedBox(width: 6),
                   Text(
-                    'Buddy AI',
+                    _weatherTemp,
                     style: GoogleFonts.outfit(
                       color: Colors.blueAccent,
                       fontWeight: FontWeight.bold,
-                      fontSize: 11,
+                      fontSize: 13,
                     ),
                   ),
                 ],
@@ -642,100 +827,488 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEmptySlotTile(int index, bool isDark) {
-    final cardBg = isDark ? const Color(0xFF1E293B).withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.8);
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08);
+  // ==========================================
+  // 🌟 2. Featured Hero Bento Card (Wide 2-Span)
+  // ==========================================
+  Widget _buildHeroBentoCard(String widgetKey, bool isDark) {
+    Widget content;
+    Color glowColor;
 
-    return InkWell(
-      onTap: () => _showAddWidgetSheet(index),
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: borderColor, style: BorderStyle.solid, width: 1.2),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
+    switch (widgetKey) {
+      case 'gold_price':
+        content = _buildHeroGoldContent(isDark);
+        glowColor = Colors.amber;
+        break;
+      case 'bank_accounts':
+      case 'expenses':
+        content = _buildHeroFinanceContent(isDark);
+        glowColor = Colors.lightBlueAccent;
+        break;
+      case 'shifts':
+        content = _buildHeroShiftContent(isDark);
+        glowColor = Colors.purpleAccent;
+        break;
+      default:
+        content = _buildHeroGoldContent(isDark);
+        glowColor = Colors.amber;
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF131C2E) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: glowColor.withValues(alpha: 0.35),
+          width: 1.5,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.blueAccent.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.add_rounded, color: Colors.blueAccent, size: 22),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '+ Add Widget',
-              style: GoogleFonts.outfit(
-                color: Colors.blueAccent,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-            ),
-          ],
+        boxShadow: [
+          BoxShadow(
+            color: glowColor.withValues(alpha: isDark ? 0.12 : 0.06),
+            blurRadius: 20,
+            spreadRadius: 2,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () {
+            if (widget.onNavigateToFeature != null) {
+              widget.onNavigateToFeature!(widgetKey);
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: content,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildWidgetTile(int slotIndex, String type, bool isDark) {
-    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.09) : Colors.black.withValues(alpha: 0.06);
+  Widget _buildHeroGoldContent(bool isDark) {
+    final price22k = _latestGoldPrice?.price ?? 7200.0;
+    final price24k = price22k > 0 ? (price22k / 22 * 24) : 7850.0;
+    final sovereign = price22k * 8; // 1 Pavan (8g)
+    final changeVal = _latestGoldPrice?.priceChange ?? 25.0;
+    final isPos = changeVal >= 0;
 
-    Widget content;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.monetization_on_rounded, color: Colors.amber, size: 18),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Live Gold Market Rates',
+                  style: GoogleFonts.outfit(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: isPos
+                    ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                    : const Color(0xFFF43F5E).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isPos ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                    color: isPos ? const Color(0xFF10B981) : const Color(0xFFF43F5E),
+                    size: 14,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${isPos ? "+" : ""}₹${changeVal.abs().toStringAsFixed(0)} Today',
+                    style: TextStyle(
+                      color: isPos ? const Color(0xFF10B981) : const Color(0xFFF43F5E),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        // Big Price Display Row
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('24K Pure Gold (1g)', style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(
+                    '₹${price24k.toStringAsFixed(0)}',
+                    style: GoogleFonts.outfit(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.amber,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(width: 1, height: 36, color: isDark ? Colors.white12 : Colors.black12),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('22K Standard (1g)', style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(
+                    '₹${price22k.toStringAsFixed(0)}',
+                    style: GoogleFonts.outfit(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Sovereign (8g) Banner
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.amber.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('8g Sovereign (Pavan)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              Text(
+                '₹${NumberFormat('#,##,##0').format(sovereign)}',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.amber),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeroFinanceContent(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: Colors.lightBlueAccent.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.account_balance_rounded, color: Colors.lightBlueAccent, size: 18),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Total Net Bank Balance',
+                  style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            Text(
+              _activeBankName,
+              style: const TextStyle(fontSize: 11, color: Colors.lightBlueAccent, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '₹${NumberFormat('#,##,##0.00').format(_totalBalance)}',
+          style: GoogleFonts.outfit(
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            color: Colors.lightBlueAccent,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Today\'s Inflow', style: TextStyle(fontSize: 10, color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '+₹${NumberFormat('#,##,##0').format(_todayCredited)}',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14, color: const Color(0xFF10B981)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF43F5E).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Today\'s Outflow', style: TextStyle(fontSize: 10, color: Color(0xFFF43F5E), fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '-₹${NumberFormat('#,##,##0').format(_todayDebited)}',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14, color: const Color(0xFFF43F5E)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeroShiftContent(bool isDark) {
+    String title = 'NO SHIFT TODAY';
+    String timing = 'Off Duty • Enjoy your day';
+    Color color = Colors.cyan;
+
+    if (_todayShift != null) {
+      final raw = (_todayShift!['shift_type'] ?? _todayShift!['shiftType'] ?? '').toString().toLowerCase();
+      if (!raw.contains('off')) {
+        title = '${raw.toUpperCase().replaceAll('_', ' ')} SHIFT';
+        color = Colors.purpleAccent;
+        final start = (_todayShift!['start_time'] ?? _todayShift!['startTime'] ?? '').toString();
+        final end = (_todayShift!['end_time'] ?? _todayShift!['endTime'] ?? '').toString();
+        if (start.isNotEmpty && end.isNotEmpty) timing = '$start - $end';
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.work_history_rounded, color: color, size: 18),
+                ),
+                const SizedBox(width: 8),
+                Text('Today\'s Work Schedule', style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            Text('Today', style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          title,
+          style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900, color: color),
+        ),
+        const SizedBox(height: 4),
+        Text(timing, style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.grey[700])),
+      ],
+    );
+  }
+
+  // ==========================================
+  // 🌟 3. Compact Bento Cards (2-Column Grid)
+  // ==========================================
+  Widget _buildCompactBentoCard(String type, bool isDark) {
+    final meta = _widgetMetadata[type]!;
+    final Color col = meta['color'] as Color;
+    final IconData icon = meta['icon'] as IconData;
+    final String title = meta['title'] as String;
+
+    Widget body;
     switch (type) {
       case 'gold_price':
-        content = _buildGoldWidget(isDark);
+        final price = _latestGoldPrice?.price ?? 7200.0;
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('₹${price.toStringAsFixed(0)}',
+                style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w900, color: Colors.amber)),
+            const SizedBox(height: 2),
+            Text('22K / 1 gram', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+          ],
+        );
         break;
       case 'bank_accounts':
-        content = _buildBankAccountsWidget(isDark);
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('₹${NumberFormat('#,##,##0').format(_totalBalance)}',
+                style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.lightBlueAccent)),
+            const SizedBox(height: 2),
+            Text(_activeBankName, style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600]), maxLines: 1),
+          ],
+        );
         break;
       case 'expenses':
-        content = _buildExpensesWidget(isDark);
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('-₹${NumberFormat('#,##,##0').format(_todayDebited)}',
+                style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w900, color: const Color(0xFFF43F5E))),
+            const SizedBox(height: 2),
+            Text('+₹${NumberFormat('#,##,##0').format(_todayCredited)} Inflow',
+                style: const TextStyle(fontSize: 10.5, color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
+          ],
+        );
         break;
       case 'shifts':
-        content = _buildShiftsWidget(isDark);
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              _todayShift != null ? 'Active Shift' : 'Week Off 🏖️',
+              style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.purpleAccent),
+            ),
+            const SizedBox(height: 2),
+            Text('Tap to check calendar', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+          ],
+        );
         break;
       case 'events_walkins':
-        content = _buildEventsWalkinsWidget(isDark);
-        break;
-      case 'voice_assistant':
-        content = _buildVoiceAssistantWidget(isDark);
-        break;
-      case 'weather':
-        content = _buildWeatherWidget(isDark);
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('$_todayEventsCount Events',
+                style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.tealAccent)),
+            const SizedBox(height: 2),
+            Text('$_todayWalkinsCount Walk-Ins Today', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+          ],
+        );
         break;
       case 'reminders':
-        content = _buildRemindersWidget(isDark);
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('$_todayRemindersCount Due',
+                style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.indigoAccent)),
+            const SizedBox(height: 2),
+            Text('Scheduled Tasks', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+          ],
+        );
         break;
       case 'daily_reminders':
-        content = _buildDailyRemindersWidget(isDark);
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('$_dailyRemindersCount Habits',
+                style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.orangeAccent)),
+            const SizedBox(height: 2),
+            Text('Daily Check-ins Active', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+          ],
+        );
         break;
       case 'notes':
-        content = _buildNotesWidget(isDark);
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('$_totalNotesCount Notes',
+                style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+            const SizedBox(height: 2),
+            Text('Pinned & Drafts', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+          ],
+        );
+        break;
+      case 'weather':
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('$_weatherCity • $_weatherTemp',
+                style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+            const SizedBox(height: 2),
+            Text(_weatherCondition, style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+          ],
+        );
+        break;
+      case 'voice_assistant':
+        body = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [Color(0xFFEF4444), Color(0xFFDC2626)]),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.mic, color: Colors.white, size: 14),
+              const SizedBox(width: 4),
+              Text('Ask Buddy', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
+            ],
+          ),
+        );
         break;
       default:
-        content = const Center(child: Text('Unknown Widget'));
+        body = const Text('Tap to open');
     }
 
     return Container(
       decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: borderColor, width: 1.2),
+        color: isDark ? const Color(0xFF131C2E) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -744,874 +1317,48 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(20),
           onTap: () {
             if (widget.onNavigateToFeature != null) {
               widget.onNavigateToFeature!(type);
             }
           },
-          onLongPress: () => _showRemoveWidgetDialog(slotIndex, type),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
-            child: content,
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: col.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(icon, color: col, size: 15),
+                    ),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 11, color: isDark ? Colors.white30 : Colors.black26),
+                  ],
+                ),
+                body,
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white54 : Colors.grey[600],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildGoldWidget(bool isDark) {
-    final price = _latestGoldPrice?.price ?? 6830.0;
-    final priceStr = '₹${price.toStringAsFixed(0)}';
-    final changeVal = _latestGoldPrice?.priceChange ?? 25.0;
-    final isPositive = changeVal >= 0;
-    final changeText = '${isPositive ? "+" : ""}₹${changeVal.abs().toStringAsFixed(0)} Today';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: const Icon(Icons.monetization_on_rounded, color: Colors.amber, size: 14),
-                ),
-                const SizedBox(width: 5),
-                Text('Gold Rate',
-                    style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.black87)),
-              ],
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Text(
-                '22K',
-                style: TextStyle(
-                  color: Colors.amber,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              priceStr,
-              style: GoogleFonts.outfit(
-                fontWeight: FontWeight.w900,
-                fontSize: 22,
-                color: Colors.amber,
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-              decoration: BoxDecoration(
-                color: isPositive
-                    ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                    : const Color(0xFFF43F5E).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: Text(
-                changeText,
-                style: TextStyle(
-                  color: isPositive ? const Color(0xFF10B981) : const Color(0xFFF43F5E),
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-        Text(
-          'Live 22K / 1g • Tap for Details',
-          style: TextStyle(
-            fontSize: 9.5,
-            color: isDark ? Colors.white54 : Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBankAccountsWidget(bool isDark) {
-    double totalBalance = 0.0;
-    for (var acc in _bankAccounts) {
-      totalBalance += (acc['currentBalance'] as num? ?? acc['balance'] as num? ?? 0.0).toDouble();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.indigoAccent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: const Icon(Icons.account_balance_rounded, color: Colors.indigoAccent, size: 14),
-                ),
-                const SizedBox(width: 5),
-                Text('Bank Balances',
-                    style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.black87)),
-              ],
-            ),
-            Text(
-              '${_bankAccounts.length} Banks',
-              style: const TextStyle(
-                color: Colors.indigoAccent,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        if (_bankAccounts.isEmpty)
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('No Bank Accounts',
-                    style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black87, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 2),
-                Text('Tap to connect', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
-              ],
-            ),
-          )
-        else
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ..._bankAccounts.take(2).map((acc) {
-                final name = (acc['name'] ?? 'Bank').toString();
-                final bal = (acc['currentBalance'] as num? ?? acc['balance'] as num? ?? 0.0).toDouble();
-                final balStr = NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(bal);
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 1.5),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white70 : Colors.black87,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        balStr,
-                        style: GoogleFonts.outfit(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          color: isDark ? Colors.lightBlueAccent : Colors.indigo,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ],
-          ),
-        Text(
-          _bankAccounts.length > 2
-              ? '+${_bankAccounts.length - 2} more • Total: ${NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(totalBalance)}'
-              : 'Tap to view Accounts',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 9.5,
-            color: isDark ? Colors.white54 : Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildExpensesWidget(bool isDark) {
-    final formattedCredited =
-        NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(_todayCredited);
-    final formattedDebited =
-        NumberFormat.currency(symbol: '₹', decimalDigits: 0).format(_todayDebited);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF43F5E).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: const Icon(Icons.swap_vert_rounded, color: Color(0xFFF43F5E), size: 14),
-                ),
-                const SizedBox(width: 5),
-                Text('Today\'s Spent',
-                    style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.black87)),
-              ],
-            ),
-            const Text(
-              'Live Flow',
-              style: TextStyle(
-                color: Color(0xFFF43F5E),
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('🟢 Credited:',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF10B981))),
-                Text(
-                  '+$formattedCredited',
-                  style: GoogleFonts.outfit(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    color: const Color(0xFF10B981),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 3),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('🔴 Debited:',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFF43F5E))),
-                Text(
-                  '-$formattedDebited',
-                  style: GoogleFonts.outfit(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    color: const Color(0xFFF43F5E),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        Text(
-          'Tap for Smart Bank Tracker',
-          style: TextStyle(
-            fontSize: 9.5,
-            color: isDark ? Colors.white54 : Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildShiftsWidget(bool isDark) {
-    String shiftTitle = 'NO SHIFT TODAY';
-    String shiftTiming = 'Tap to manage roster';
-    Color shiftColor = Colors.orange;
-
-    if (_todayShift != null) {
-      final rawType = (_todayShift!['shift_type'] ?? _todayShift!['shiftType'] ?? '').toString().toLowerCase();
-      final isOff = rawType == 'week_off' || rawType == 'off' || _todayShift!['is_week_off'] == true || _todayShift!['isWeekOff'] == true;
-      if (isOff) {
-        shiftTitle = 'WEEK OFF';
-        shiftTiming = 'Enjoy your day off! 🏖️';
-        shiftColor = Colors.cyan;
-      } else {
-        shiftTitle = rawType.toUpperCase().replaceAll('_', ' ');
-        if (!shiftTitle.contains('SHIFT')) shiftTitle = '$shiftTitle SHIFT';
-        final startTime = (_todayShift!['start_time'] ?? _todayShift!['startTime'] ?? '').toString();
-        final endTime = (_todayShift!['end_time'] ?? _todayShift!['endTime'] ?? '').toString();
-        if (startTime.isNotEmpty && endTime.isNotEmpty) {
-          shiftTiming = '$startTime - $endTime';
-        } else {
-          shiftTiming = (_todayShift!['timing'] ?? _todayShift!['notes'] ?? 'Work Shift Active').toString();
-        }
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: shiftColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: Icon(Icons.work_history_rounded, color: shiftColor, size: 14),
-                ),
-                const SizedBox(width: 5),
-                Text('Today\'s Shift',
-                    style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.black87)),
-              ],
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-              decoration: BoxDecoration(
-                color: shiftColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: const Text(
-                'Today',
-                style: TextStyle(
-                  color: Colors.orange,
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-        Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                shiftTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.outfit(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                  color: shiftColor,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                shiftTiming,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isDark ? Colors.white70 : Colors.grey[700],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Text(
-          'Tap to open Shifts & Roster',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 9.5,
-            color: isDark ? Colors.white54 : Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEventsWalkinsWidget(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.tealAccent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: const Icon(Icons.rocket_launch_rounded, color: Colors.teal, size: 14),
-                ),
-                const SizedBox(width: 5),
-                Text('Tech & Walk-Ins',
-                    style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.black87)),
-              ],
-            ),
-            const Text(
-              'Active',
-              style: TextStyle(
-                color: Colors.teal,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('🚀 Tech Events:',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                Text(
-                  '$_upcomingEventsCount Active',
-                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.teal),
-                ),
-              ],
-            ),
-            const SizedBox(height: 3),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('💼 Walk-In Drives:',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                Text(
-                  '$_upcomingWalkinsCount Active',
-                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueAccent),
-                ),
-              ],
-            ),
-          ],
-        ),
-        Text(
-          'Tap to explore events',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 9.5,
-            color: isDark ? Colors.white54 : Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVoiceAssistantWidget(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: const Icon(Icons.mic_rounded, color: Colors.redAccent, size: 14),
-                ),
-                const SizedBox(width: 5),
-                Text('Voice AI',
-                    style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.black87)),
-              ],
-            ),
-            const Text(
-              'Voice Hub',
-              style: TextStyle(
-                color: Colors.redAccent,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.redAccent.withValues(alpha: 0.3),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.mic, color: Colors.white, size: 15),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Ask Buddy',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        Text(
-          'Instant Voice Actions & Queries',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 9.5,
-            color: isDark ? Colors.white54 : Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWeatherWidget(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: Icon(_weatherIcon, color: Colors.blueAccent, size: 14),
-                ),
-                const SizedBox(width: 5),
-                Text('Weather',
-                    style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.black87)),
-              ],
-            ),
-            const Text(
-              'Live',
-              style: TextStyle(
-                color: Colors.blueAccent,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              _weatherTemp,
-              style: GoogleFonts.outfit(
-                fontWeight: FontWeight.w900,
-                fontSize: 22,
-                color: Colors.blueAccent,
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 1),
-            Text(
-              _weatherCondition,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white70 : Colors.black87,
-              ),
-            ),
-          ],
-        ),
-        Text(
-          'Tap to refresh weather',
-          style: TextStyle(
-            fontSize: 9.5,
-            color: isDark ? Colors.white54 : Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRemindersWidget(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.indigoAccent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: const Icon(Icons.calendar_month_rounded, color: Colors.indigoAccent, size: 14),
-                ),
-                const SizedBox(width: 5),
-                Text('Calendar',
-                    style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.black87)),
-              ],
-            ),
-            Text(
-              '$_todayRemindersCount Due',
-              style: const TextStyle(
-                color: Colors.indigoAccent,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '$_todayRemindersCount Today',
-                style: GoogleFonts.outfit(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 18,
-                  color: Colors.indigoAccent,
-                  letterSpacing: -0.4,
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                'Calendar Tasks Scheduled',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isDark ? Colors.white70 : Colors.grey[700],
-                ),
-              ),
-            ],
-          ),
-        ),
-        Text(
-          'Tap to open Calendar',
-          style: TextStyle(
-            fontSize: 9.5,
-            color: isDark ? Colors.white54 : Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDailyRemindersWidget(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.purpleAccent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: const Icon(Icons.alarm_on_rounded, color: Colors.purpleAccent, size: 14),
-                ),
-                const SizedBox(width: 5),
-                Text('Daily Tasks',
-                    style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.black87)),
-              ],
-            ),
-            Text(
-              '$_dailyRemindersCount Active',
-              style: const TextStyle(
-                color: Colors.purpleAccent,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '$_dailyRemindersCount Routines',
-                style: GoogleFonts.outfit(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 18,
-                  color: Colors.purpleAccent,
-                  letterSpacing: -0.4,
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                'Habit Check-ins & Alerts',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isDark ? Colors.white70 : Colors.grey[700],
-                ),
-              ),
-            ],
-          ),
-        ),
-        Text(
-          'Tap to manage alarms',
-          style: TextStyle(
-            fontSize: 9.5,
-            color: isDark ? Colors.white54 : Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNotesWidget(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.teal.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: const Icon(Icons.note_alt_rounded, color: Colors.teal, size: 14),
-                ),
-                const SizedBox(width: 5),
-                Text('Quick Notes',
-                    style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isDark ? Colors.white70 : Colors.black87)),
-              ],
-            ),
-            Text(
-              '$_totalNotesCount Saved',
-              style: const TextStyle(
-                color: Colors.teal,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '$_totalNotesCount Notes',
-                style: GoogleFonts.outfit(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 18,
-                  color: Colors.teal,
-                  letterSpacing: -0.4,
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                'Personal Drafts & Pinned',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isDark ? Colors.white70 : Colors.grey[700],
-                ),
-              ),
-            ],
-          ),
-        ),
-        Text(
-          'Tap to view notes',
-          style: TextStyle(
-            fontSize: 9.5,
-            color: isDark ? Colors.white54 : Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
     );
   }
 }

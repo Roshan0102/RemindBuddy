@@ -25,6 +25,10 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   final StorageService _storage = StorageService();
   final ShiftService _shiftService = ShiftService();
   
+  static final Map<String, List<Shift>> _cachedShifts = {};
+  static final Map<String, Map<String, int>?> _cachedStats = {};
+  static final Map<String, String?> _cachedRosterImages = {};
+
   List<Shift> _shifts = [];
   Map<String, int>? _statistics;
   bool _isLoading = true;
@@ -38,38 +42,73 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadShifts();
+    final month = _selectedRosterMonth;
+    if (_cachedShifts.containsKey(month) && _cachedShifts[month]!.isNotEmpty) {
+      _shifts = _cachedShifts[month]!;
+      _statistics = _cachedStats[month];
+      _rosterImageUrl = _cachedRosterImages[month];
+      _hasData = true;
+      _isLoading = false;
+    }
+    _loadShifts(showLoader: !_hasData);
   }
 
   void _changeMonth(int delta) {
     setState(() {
       _currentDate = DateTime(_currentDate.year, _currentDate.month + delta, 1);
+      final month = _selectedRosterMonth;
+      if (_cachedShifts.containsKey(month) && _cachedShifts[month]!.isNotEmpty) {
+        _shifts = _cachedShifts[month]!;
+        _statistics = _cachedStats[month];
+        _rosterImageUrl = _cachedRosterImages[month];
+        _hasData = true;
+        _isLoading = false;
+      }
     });
-    _loadShifts();
+    _loadShifts(showLoader: !_hasData);
   }
 
   void _changeYear(int delta) {
     setState(() {
       _currentDate = DateTime(_currentDate.year + delta, _currentDate.month, 1);
+      final month = _selectedRosterMonth;
+      if (_cachedShifts.containsKey(month) && _cachedShifts[month]!.isNotEmpty) {
+        _shifts = _cachedShifts[month]!;
+        _statistics = _cachedStats[month];
+        _rosterImageUrl = _cachedRosterImages[month];
+        _hasData = true;
+        _isLoading = false;
+      }
     });
-    _loadShifts();
+    _loadShifts(showLoader: !_hasData);
   }
 
-  Future<void> _loadShifts() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadShifts({bool showLoader = true}) async {
+    final month = _selectedRosterMonth;
+    if (showLoader && !_hasData) {
+      setState(() => _isLoading = true);
+    }
     
     try {
-      final metadata = await _storage.getShiftMetadata(rosterMonth: _selectedRosterMonth);
-      final shiftsData = await _storage.getAllShifts(rosterMonth: _selectedRosterMonth);
+      final results = await Future.wait([
+        _storage.getShiftMetadata(rosterMonth: month),
+        _storage.getAllShifts(rosterMonth: month),
+        _storage.getShiftStatistics(month, rosterMonth: month),
+      ]);
+      
+      final metadata = results[0] as Map<String, dynamic>?;
+      final shiftsData = results[1] as List<Map<String, dynamic>>;
+      final stats = results[2] as Map<String, int>?;
       
       if (metadata != null && shiftsData.isNotEmpty) {
         final shifts = shiftsData.map((s) => Shift.fromMap(s)).toList();
-        
-        String monthForQuery = _selectedRosterMonth;
-        final stats = await _storage.getShiftStatistics(monthForQuery, rosterMonth: _selectedRosterMonth);
         final imageUrl = metadata['roster_image_url'] as String?;
         
-        if (mounted) {
+        _cachedShifts[month] = shifts;
+        _cachedStats[month] = stats;
+        _cachedRosterImages[month] = imageUrl;
+        
+        if (mounted && _selectedRosterMonth == month) {
           setState(() {
             _shifts = shifts;
             _statistics = stats;
@@ -79,8 +118,13 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
           });
         }
       } else {
-        if (mounted) {
+        _cachedShifts[month] = [];
+        _cachedStats[month] = null;
+        _cachedRosterImages[month] = null;
+        if (mounted && _selectedRosterMonth == month) {
           setState(() {
+            _shifts = [];
+            _statistics = null;
             _rosterImageUrl = null;
             _hasData = false;
             _isLoading = false;

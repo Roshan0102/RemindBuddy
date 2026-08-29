@@ -1,13 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:http/http.dart' as http;
 import '../services/update_service.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -81,14 +80,14 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _checkLocalAuth() async {
     final prefs = await SharedPreferences.getInstance();
     final isAuth = prefs.getBool('isAdminAuthenticated') ?? false;
-    if (isAuth) {
-      await _fetchGeminiApiKey();
-      await _fetchAppUpdatesConfig();
-    }
     setState(() {
       _isAuthenticated = isAuth;
       _isLoading = false;
     });
+    if (isAuth) {
+      _fetchGeminiApiKey();
+      _fetchAppUpdatesConfig();
+    }
   }
 
   Future<void> _handleLogin() async {
@@ -621,25 +620,12 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Future<void> _shareLatestApk() async {
     if (_isSharingApk) return;
+    setState(() => _isSharingApk = true);
     try {
       final packageInfo = await PackageInfo.fromPlatform();
       final version = packageInfo.version;
 
-      if (!kIsWeb) {
-        // 1. Check if an APK already exists locally in temp cache
-        final tempDir = await getTemporaryDirectory();
-        final cachedApk = File('${tempDir.path}/RemindBuddy-v$version.apk');
-        if (await cachedApk.exists() && (await cachedApk.length()) > 5000000) {
-          await Share.shareXFiles(
-            [XFile(cachedApk.path)],
-            text: '📥 RemindBuddy App APK (v$version)',
-            subject: 'RemindBuddy App APK',
-          );
-          return;
-        }
-
-        // 2. Otherwise download latest release APK from Firebase Storage
-        setState(() => _isSharingApk = true);
+      if (!kIsWeb && Platform.isAndroid) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -647,28 +633,27 @@ class _AdminScreenState extends State<AdminScreen> {
                 children: [
                   SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
                   SizedBox(width: 12),
-                  Text('Downloading latest APK to share...'),
+                  Text('Preparing APK file for sharing...'),
                 ],
               ),
-              duration: Duration(seconds: 5),
+              duration: Duration(seconds: 2),
             ),
           );
         }
 
-        const firebaseApkUrl = 'https://firebasestorage.googleapis.com/v0/b/remindbuddy-b68f9.firebasestorage.app/o/releases%2Flatest-release.apk?alt=media';
-        final response = await http.get(Uri.parse(firebaseApkUrl));
-        if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
-          await cachedApk.writeAsBytes(response.bodyBytes);
+        const platform = MethodChannel('com.remindbuddy/app_utils');
+        final String? apkPath = await platform.invokeMethod<String>('getAppApkPath');
+        if (apkPath != null && File(apkPath).existsSync() && (await File(apkPath).length()) > 1000000) {
           await Share.shareXFiles(
-            [XFile(cachedApk.path)],
+            [XFile(apkPath, mimeType: 'application/vnd.android.package-archive')],
             text: '📥 RemindBuddy App APK (v$version)',
-            subject: 'RemindBuddy App APK',
+            subject: 'RemindBuddy App APK (v$version)',
           );
           return;
         }
       }
 
-      // Fallback if web or network failed
+      // Fallback if web or non-android
       const firebaseApkUrl = 'https://firebasestorage.googleapis.com/v0/b/remindbuddy-b68f9.firebasestorage.app/o/releases%2Flatest-release.apk?alt=media';
       final shareText = '''
 📱 *RemindBuddy App (v${packageInfo.version})*

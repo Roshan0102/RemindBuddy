@@ -127,6 +127,8 @@ class JobAssistantService {
       'enabled': settings['enabled'] ?? true,
       'targetRoles': targetRoles,
       'locations': locations,
+      'minExpYears': settings['minExpYears'] ?? 0,
+      'maxExpYears': settings['maxExpYears'] ?? 3,
       'maxPerRun': settings['maxPerRun'] ?? 4,
     };
   }
@@ -135,6 +137,8 @@ class JobAssistantService {
     required bool enabled,
     required List<String> targetRoles,
     required List<String> locations,
+    int minExpYears = 0,
+    int maxExpYears = 3,
     int maxPerRun = 4,
   }) async {
     final doc = _userDoc;
@@ -145,6 +149,8 @@ class JobAssistantService {
         'enabled': enabled,
         'targetRoles': targetRoles,
         'locations': locations,
+        'minExpYears': minExpYears,
+        'maxExpYears': maxExpYears,
         'maxPerRun': maxPerRun,
         'updatedAt': FieldValue.serverTimestamp(),
       }
@@ -154,12 +160,19 @@ class JobAssistantService {
   Future<Map<String, dynamic>> triggerAutoJobDiscoveryAndApply({
     List<String>? targetRoles,
     List<String>? locations,
+    int minExpYears = 0,
+    int maxExpYears = 3,
     int maxApplications = 4,
   }) async {
-    final callable = _functions.httpsCallable('triggerAutoJobDiscoveryAndApply');
+    final callable = _functions.httpsCallable(
+      'triggerAutoJobDiscoveryAndApply',
+      options: HttpsCallableOptions(timeout: const Duration(minutes: 5)),
+    );
     final response = await callable.call({
       'targetRoles': targetRoles,
       'locations': locations,
+      'minExpYears': minExpYears,
+      'maxExpYears': maxExpYears,
       'maxApplications': maxApplications,
     });
 
@@ -206,6 +219,10 @@ class JobAssistantService {
       appliedAt: app.appliedAt,
       posterImageUrls: app.posterImageUrls,
       errorMessage: app.errorMessage,
+      isAutoApplied: app.isAutoApplied,
+      location: app.location,
+      experienceRequired: app.experienceRequired,
+      sourcePlatform: app.sourcePlatform,
     );
 
     await ref.set(newApp.toMap(), SetOptions(merge: true));

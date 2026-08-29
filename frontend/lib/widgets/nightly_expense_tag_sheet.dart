@@ -314,16 +314,54 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: Colors.blue.withValues(alpha: 0.15),
+                                color: tx.source == 'both'
+                                    ? Colors.green.withValues(alpha: 0.15)
+                                    : (tx.source == 'notification'
+                                        ? Colors.purple.withValues(alpha: 0.15)
+                                        : Colors.blue.withValues(alpha: 0.15)),
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.blue.withValues(alpha: 0.4), width: 0.8),
+                                border: Border.all(
+                                  color: tx.source == 'both'
+                                      ? Colors.green.withValues(alpha: 0.5)
+                                      : (tx.source == 'notification'
+                                          ? Colors.purple.withValues(alpha: 0.5)
+                                          : Colors.blue.withValues(alpha: 0.4)),
+                                  width: 0.8,
+                                ),
                               ),
-                              child: const Row(
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.sms_rounded, size: 11, color: Colors.blueAccent),
-                                  SizedBox(width: 3),
-                                  Text('SMS 📩', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                  Icon(
+                                    tx.source == 'both'
+                                        ? Icons.verified_rounded
+                                        : (tx.source == 'notification'
+                                            ? Icons.notifications_active_rounded
+                                            : Icons.sms_rounded),
+                                    size: 11,
+                                    color: tx.source == 'both'
+                                        ? Colors.green
+                                        : (tx.source == 'notification'
+                                            ? Colors.purpleAccent
+                                            : Colors.blueAccent),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    tx.source == 'both'
+                                        ? '⚡ Verified (${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'SMS + UPI'})'
+                                        : (tx.source == 'notification'
+                                            ? '🔔 ${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'UPI App'}'
+                                            : 'SMS 📩'),
+                                    style: TextStyle(
+                                      color: tx.source == 'both'
+                                          ? (isDark ? Colors.greenAccent : Colors.green.shade800)
+                                          : (tx.source == 'notification'
+                                              ? (isDark ? Colors.purpleAccent : Colors.purple.shade800)
+                                              : Colors.blueAccent),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -766,6 +804,21 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final Color subtextColor = isDark ? Colors.white70 : Colors.black54;
 
+    final isBoth = tx.source == 'both';
+    final isNotif = tx.source == 'notification';
+
+    final Color badgeThemeColor = isBoth
+        ? Colors.green
+        : (isNotif ? Colors.purpleAccent : Colors.blue);
+
+    final IconData badgeIcon = isBoth
+        ? Icons.verified_rounded
+        : (isNotif ? Icons.notifications_active_rounded : Icons.sms_rounded);
+
+    final String dialogTitle = isBoth
+        ? 'Verified Bank & UPI Alert ⚡'
+        : (isNotif ? 'UPI App Notification 📱' : 'SMS Raw Details 📩');
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -776,15 +829,15 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.15),
+                color: badgeThemeColor.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.sms_rounded, color: Colors.blue, size: 20),
+              child: Icon(badgeIcon, color: badgeThemeColor, size: 20),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'SMS Raw Details 📩',
+                dialogTitle,
                 style: GoogleFonts.outfit(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -799,25 +852,25 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Box
+              // Header & Source Box
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                  border: Border.all(color: badgeThemeColor.withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'SMS SENDER HEADER',
-                      style: TextStyle(color: Colors.blue.shade700, fontSize: 10, fontWeight: FontWeight.bold),
+                      isNotif ? 'PAYMENT APP SOURCE' : 'SMS SENDER / SOURCE',
+                      style: TextStyle(color: badgeThemeColor, fontSize: 10, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
                     SelectableText(
-                      tx.sender.isNotEmpty ? tx.sender : (tx.bankName.isNotEmpty ? tx.bankName : 'Unknown Header'),
+                      tx.sourceApp.isNotEmpty ? tx.sourceApp : (tx.sender.isNotEmpty ? tx.sender : tx.bankName),
                       style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
                     ),
                   ],
@@ -863,7 +916,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('DETECTED BANK', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                          Text(isNotif ? 'APP / BANK' : 'DETECTED BANK', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 2),
                           Text(tx.bankName, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor)),
                         ],
@@ -890,11 +943,31 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                   ),
                 ],
               ),
+
+              if (tx.upiRef.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('UPI REFERENCE / UTR', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      SelectableText(tx.upiRef, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor)),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
 
               // Raw Body Text
               Text(
-                'RAW SMS MESSAGE BODY:',
+                isNotif ? 'RAW NOTIFICATION TEXT:' : 'RAW MESSAGE BODY:',
                 style: TextStyle(color: subtextColor, fontSize: 11, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 6),
@@ -907,7 +980,7 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                   border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade300),
                 ),
                 child: SelectableText(
-                  tx.notes.isNotEmpty ? tx.notes : 'No raw SMS body recorded.',
+                  tx.notes.isNotEmpty ? tx.notes : (tx.rawBody.isNotEmpty ? tx.rawBody : 'No raw body recorded.'),
                   style: TextStyle(fontSize: 13, color: textColor, height: 1.4),
                 ),
               ),

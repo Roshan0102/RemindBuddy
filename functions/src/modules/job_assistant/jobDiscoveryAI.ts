@@ -40,6 +40,8 @@ export async function discoverAndApplyForUser(
     options?: {
         targetRoles?: string[];
         locations?: string[];
+        minExpYears?: number;
+        maxExpYears?: number;
         maxApplications?: number;
         isManualTrigger?: boolean;
     }
@@ -60,12 +62,12 @@ export async function discoverAndApplyForUser(
 
     if (!userEmail || !appPassword) {
         console.log(`[JobDiscovery] User ${uid} has not configured Gmail/App Password. Skipping.`);
-        return { success: false, appliedCount: 0, jobs: [], message: "Gmail & App Password not configured." };
+        return { success: false, appliedCount: 0, jobs: [], message: "Gmail & App Password not configured in Job Assistant Settings." };
     }
 
     if (!resumeBase64) {
         console.log(`[JobDiscovery] User ${uid} has not uploaded a Master Resume. Skipping.`);
-        return { success: false, appliedCount: 0, jobs: [], message: "Master Resume PDF not uploaded." };
+        return { success: false, appliedCount: 0, jobs: [], message: "Master Resume PDF not uploaded in Job Assistant Settings." };
     }
 
     // Resolve roles & locations from options or user profile
@@ -95,6 +97,9 @@ export async function discoverAndApplyForUser(
     if (targetLocations.length === 0) {
         targetLocations = ["Bengaluru", "India", "Remote"];
     }
+
+    const minExp = options?.minExpYears !== undefined ? Number(options.minExpYears) : Number(autoApplySettings.minExpYears ?? 0);
+    const maxExp = options?.maxExpYears !== undefined ? Number(options.maxExpYears) : Number(autoApplySettings.maxExpYears ?? 3);
 
     const maxApplyLimit = options?.maxApplications || autoApplySettings.maxPerRun || 4;
 
@@ -131,12 +136,12 @@ export async function discoverAndApplyForUser(
 Target Roles: ${rolesQuery}
 Locations: ${locQuery}
 Candidate Name: "${applicantName}"
-Candidate Experience Level: ~1.5 Years Experience (Seeking 0 to 3 Years Experience / Junior / Associate / Mid-level roles).
+Candidate Experience Target: Seeking ${minExp} to ${maxExp} Years Experience / Junior / Associate / Mid-level roles.
 
 CRITICAL SEARCH & EXTRACTION MANDATES:
 1. Use Google Search grounding to discover active, recent (past 24-72 hours) job openings, recruiter hiring updates, and posts from LinkedIn public posts, Wellfound/AngelList, Cutshort, Y Combinator, and tech company career pages.
 2. RECRUITER EMAIL IS MANDATORY: Every single job item MUST contain a verified recruiter / HR / hiring contact email address (e.g. hr@company.com, careers@company.com, hiring@company.com, jobs@company.com, talent@company.com, or specific recruiter email). If NO valid email address is mentioned in the job posting/snippet, DO NOT INCLUDE THAT JOB.
-3. EXPERIENCE REQUIREMENT (0 TO 3 YEARS ONLY): The candidate has ~1.5 years experience. ONLY include roles requiring 0 to 3 years experience (Freshers, Junior, Associate, 1-2 years, 1-3 years). EXCLUDE any roles requiring > 3 years experience (Senior, Lead, Staff, Principal, 5+ years).
+3. EXPERIENCE REQUIREMENT (${minExp} TO ${maxExp} YEARS ONLY): ONLY include roles requiring between ${minExp} and ${maxExp} years experience (or Freshers/Entry-level if min is 0). EXCLUDE any roles requiring > ${maxExp} years experience (e.g. Senior, Lead, Staff, Principal).
 4. HUMAN-WRITTEN, HIGH-CONVERTING APPLICATION EMAIL:
    - For each matching job, write a highly authentic, natural, and engaging cover letter.
    - Read the candidate's attached Resume PDF to extract concrete accomplishments, technical skills (e.g., Flutter, Dart, State Management, REST APIs, Firebase, Cloud/DevOps, Docker, CI/CD), and align them specifically with the company's domain and job requirements.
@@ -146,7 +151,7 @@ CRITICAL SEARCH & EXTRACTION MANDATES:
      c) Key Relevant Skills: 3-4 bullet points matching the exact requirements of the job.
      d) Professional closing & Call to Action proposing a brief discussion, mentioning the attached resume.
      e) Sign-off: "Sincerely,\\n${applicantName}" (Never use placeholders like [Your Name]).
-   - Subject line format: "Application for [Job Title] - ${applicantName} (1.5 Yrs Exp)"
+   - Subject line format: "Application for [Job Title] - ${applicantName}"
 
 Respond ONLY with a JSON array matching this schema:
 [
@@ -155,7 +160,7 @@ Respond ONLY with a JSON array matching this schema:
     "companyName": "string",
     "recipientEmail": "string (MUST be a valid email address)",
     "location": "string",
-    "experienceRequired": "string (e.g. 0-2 years, 1-3 years)",
+    "experienceRequired": "string (e.g. ${minExp}-${maxExp} years)",
     "sourcePlatform": "string (e.g. LinkedIn, Wellfound, Google Jobs, Company Careers)",
     "sourceUrl": "string",
     "keySkills": ["string"],
@@ -163,7 +168,7 @@ Respond ONLY with a JSON array matching this schema:
     "generatedCoverLetter": "string"
   }
 ]
-If no matching jobs with verified emails and 0-3 years experience are found, respond with an empty JSON array: [].`;
+If no matching jobs with verified emails and ${minExp}-${maxExp} years experience are found, respond with an empty JSON array: [].`;
 
     const inlineParts: any[] = [];
     if (resumeBase64) {
@@ -407,12 +412,20 @@ export const triggerAutoJobDiscoveryAndApply = functions.runWith({ timeoutSecond
         const result = await discoverAndApplyForUser(uid, {
             targetRoles: data.targetRoles,
             locations: data.locations,
+            minExpYears: data.minExpYears,
+            maxExpYears: data.maxExpYears,
             maxApplications: data.maxApplications || 4,
             isManualTrigger: true
         });
+        if (!result.success) {
+            throw new functions.https.HttpsError('failed-precondition', result.message);
+        }
         return result;
     } catch (error: any) {
         console.error(`triggerAutoJobDiscoveryAndApply failed for ${uid}:`, error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
         throw new functions.https.HttpsError('internal', error.message || 'Failed to discover and apply to jobs.');
     }
 });

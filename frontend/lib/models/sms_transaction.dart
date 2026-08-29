@@ -11,6 +11,13 @@ class SmsTransaction {
   final String category;
   final String notes;
 
+  // Provenance & UPI Meta
+  final String source; // 'sms', 'notification', or 'both'
+  final String sourceApp; // 'GPay', 'PhonePe', 'Paytm', 'CRED', 'Super.money', 'Bank SMS', etc.
+  final String upiRef; // 12-digit UTR/RRN
+  final String rawTitle;
+  final String rawBody;
+
   SmsTransaction({
     required this.id,
     this.sender = '',
@@ -23,6 +30,11 @@ class SmsTransaction {
     this.isVerified = false,
     this.category = 'Uncategorized',
     this.notes = '',
+    this.source = 'sms',
+    this.sourceApp = '',
+    this.upiRef = '',
+    this.rawTitle = '',
+    this.rawBody = '',
   });
 
   Map<String, dynamic> toMap() {
@@ -38,6 +50,11 @@ class SmsTransaction {
       'isVerified': isVerified,
       'category': category,
       'notes': notes,
+      'source': source,
+      'sourceApp': sourceApp,
+      'upiRef': upiRef,
+      'rawTitle': rawTitle,
+      'rawBody': rawBody,
     };
   }
 
@@ -56,6 +73,11 @@ class SmsTransaction {
       isVerified: map['isVerified'] ?? false,
       category: map['category'] ?? 'Uncategorized',
       notes: map['notes'] ?? '',
+      source: map['source'] ?? 'sms',
+      sourceApp: map['sourceApp'] ?? (map['source'] == 'notification' ? 'UPI App' : 'Bank SMS'),
+      upiRef: map['upiRef'] ?? '',
+      rawTitle: map['rawTitle'] ?? '',
+      rawBody: map['rawBody'] ?? '',
     );
   }
 
@@ -71,6 +93,11 @@ class SmsTransaction {
     bool? isVerified,
     String? category,
     String? notes,
+    String? source,
+    String? sourceApp,
+    String? upiRef,
+    String? rawTitle,
+    String? rawBody,
   }) {
     return SmsTransaction(
       id: id ?? this.id,
@@ -84,6 +111,11 @@ class SmsTransaction {
       isVerified: isVerified ?? this.isVerified,
       category: category ?? this.category,
       notes: notes ?? this.notes,
+      source: source ?? this.source,
+      sourceApp: sourceApp ?? this.sourceApp,
+      upiRef: upiRef ?? this.upiRef,
+      rawTitle: rawTitle ?? this.rawTitle,
+      rawBody: rawBody ?? this.rawBody,
     );
   }
 }

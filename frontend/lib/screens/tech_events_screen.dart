@@ -21,6 +21,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
   List<String> _eventInterests = [];
   String _eventLocation = '';
   String _eventMode = 'In-Person'; // 'In-Person', 'Online', 'Both'
+  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
 
   StreamSubscription<DocumentSnapshot>? _userSubscription;
   Stream<QuerySnapshot>? _eventsStream;
@@ -334,6 +335,74 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
     await batch.commit();
   }
 
+  Widget _buildMonthSelector(bool isDark) {
+    final monthFormat = DateFormat('MMMM yyyy');
+    final isCurrentMonth = _selectedMonth.year == DateTime.now().year && _selectedMonth.month == DateTime.now().month;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50,
+        border: Border(bottom: BorderSide(color: isDark ? Colors.white10 : Colors.blue.shade100)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left_rounded),
+            tooltip: 'Previous Month',
+            onPressed: () {
+              setState(() {
+                _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1, 1);
+              });
+            },
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () {
+              setState(() {
+                _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_month_rounded, size: 18, color: Colors.blueAccent),
+                  const SizedBox(width: 8),
+                  Text(
+                    monthFormat.format(_selectedMonth),
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  if (isCurrentMonth) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blueAccent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text('Current', style: TextStyle(fontSize: 10, color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right_rounded),
+            tooltip: 'Next Month',
+            onPressed: () {
+              setState(() {
+                _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 1);
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -372,6 +441,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
           ? const Center(child: Text('Please log in to view tech events.'))
           : Column(
               children: [
+                _buildMonthSelector(isDark),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -418,6 +488,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
 
                       final allDocs = snapshot.data?.docs ?? [];
                       final todayStr = DateFormat('yyyy-MM-DD').format(DateTime.now());
+                      final selectedMonthPrefix = DateFormat('yyyy-MM').format(_selectedMonth);
 
                       final Map<String, List<QueryDocumentSnapshot>> groupsMap = {};
 
@@ -428,6 +499,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                         final notInterested = data['notInterested'] as bool? ?? false;
 
                         if (notInterested || dateStr.isEmpty) continue;
+                        if (!dateStr.startsWith(selectedMonthPrefix)) continue;
 
                         final loc = (data['location'] ?? '').toString();
                         final isOnline = loc.toLowerCase().contains('online') ||

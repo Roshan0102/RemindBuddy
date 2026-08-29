@@ -22,6 +22,8 @@ import androidx.core.content.ContextCompat
 import io.flutter.plugin.common.EventChannel
 import android.provider.Telephony
 
+import androidx.core.app.NotificationManagerCompat
+
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.remindbuddy/battery"
     private var permissionResult: MethodChannel.Result? = null
@@ -34,6 +36,94 @@ class MainActivity: FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Payment Notification Stream EventChannel
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/payment_notification_stream").setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    PaymentNotificationListener.eventSink = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    PaymentNotificationListener.eventSink = null
+                }
+            }
+        )
+
+        // Payment Notification Listener MethodChannel (Permissions & Background Buffer)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/notification_listener").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isNotificationAccessGranted" -> {
+                    val packageName = context.packageName
+                    val enabledPackages = NotificationManagerCompat.getEnabledListenerPackages(context)
+                    val isGranted = enabledPackages.contains(packageName)
+                    result.success(isGranted)
+                }
+                "openNotificationAccessSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SETTINGS_ERROR", e.message, null)
+                    }
+                }
+                "getAndClearPendingNotifications" -> {
+                    try {
+                        val prefs = getSharedPreferences("remindbuddy_notification_buffer", Context.MODE_PRIVATE)
+                        val existingJsonStr = prefs.getString("pending_payment_notifications", "[]") ?: "[]"
+                        val jsonArray = org.json.JSONArray(existingJsonStr)
+
+                        val list = mutableListOf<Map<String, Any>>()
+                        for (i in 0 until jsonArray.length()) {
+                            val obj = jsonArray.getJSONObject(i)
+                            list.add(mapOf(
+                                "packageName" to obj.optString("packageName"),
+                                "appName" to obj.optString("appName"),
+                                "title" to obj.optString("title"),
+                                "body" to obj.optString("body"),
+                                "timestamp" to obj.optLong("timestamp")
+                            ))
+                        }
+
+                        // Clear buffer once retrieved
+                        prefs.edit().remove("pending_payment_notifications").apply()
+                        result.success(list)
+                    } catch (e: Exception) {
+                        result.error("BUFFER_ERROR", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // App Utilities MethodChannel (Direct APK File Extraction for Instant Sharing)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/app_utils").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getAppApkPath" -> {
+                    try {
+                        val appInfo = context.applicationInfo
+                        val originalApk = java.io.File(appInfo.sourceDir)
+                        if (originalApk.exists()) {
+                            val versionName = try {
+                                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                            } catch (e: Exception) {
+                                "latest"
+                            }
+                            val destFile = java.io.File(context.cacheDir, "RemindBuddy-v$versionName.apk")
+                            originalApk.copyTo(destFile, overwrite = true)
+                            result.success(destFile.absolutePath)
+                        } else {
+                            result.error("NOT_FOUND", "Source APK file not found on device", null)
+                        }
+                    } catch (e: Exception) {
+                        result.error("APK_ERROR", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         // SMS Stream EventChannel
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/sms_stream").setStreamHandler(

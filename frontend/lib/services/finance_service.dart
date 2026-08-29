@@ -9,6 +9,7 @@ import '../models/debt_record.dart';
 import '../models/group_split.dart';
 import '../models/sms_transaction.dart';
 import 'sms_parser_service.dart';
+import 'payment_notification_tracker_service.dart';
 
 class FinanceService {
   static final FinanceService _instance = FinanceService._internal();
@@ -47,8 +48,11 @@ class FinanceService {
 
       // Also drain any pending background SMS from buffer
       checkAndProcessPendingBackgroundSms();
+
+      // Initialize live UPI app notification listener & buffer drain
+      PaymentNotificationTrackerService().init();
     } catch (e) {
-      debugPrint('Error initializing global SMS listener: $e');
+      debugPrint('Error initializing global SMS & Notification listeners: $e');
     }
   }
 
@@ -491,7 +495,8 @@ class FinanceService {
     final doc = _userDoc;
     if (doc == null) return;
 
-    await doc.collection('sms_transactions').doc(tx.id).set(tx.toMap(), SetOptions(merge: true));
+    // Route through 5-Stage Smart Deduplication Engine
+    await PaymentNotificationTrackerService().processAndReconcileTransaction(tx);
   }
 
   Future<void> updateSmsTransaction(SmsTransaction tx, {String? destinationBankAccountId}) async {

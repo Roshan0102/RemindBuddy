@@ -554,14 +554,19 @@ class _MainScreenState extends State<MainScreen> {
     return 0;
   }
 
+  bool get _isBottomBarFeatureActive {
+    final active = _activeFeatures;
+    return active.contains(_activeFeatureOverride);
+  }
+
   int get _navBarSelectedIndex {
     final active = _activeFeatures;
     if (active.isEmpty) return 0;
     final mIdx = _menuIndex;
     
-    int tempIdx = _selectedIndex;
-    if (tempIdx >= active.length) {
-      tempIdx = 0;
+    int tempIdx = active.indexOf(_activeFeatureOverride);
+    if (tempIdx == -1) {
+      return 0;
     }
     
     if (tempIdx < mIdx) {
@@ -646,7 +651,7 @@ class _MainScreenState extends State<MainScreen> {
 
     return NavigationDestination(
       icon: icon,
-      selectedIcon: selectedIcon,
+      selectedIcon: _isBottomBarFeatureActive ? selectedIcon : icon,
       label: dest.label,
     );
   }
@@ -705,51 +710,88 @@ class _MainScreenState extends State<MainScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Customize Bottom Bar'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
                 children: [
-                  const Text('Select features (up to 4) to show in the bottom navigation bar:'),
-                  const SizedBox(height: 12),
-                  ...adminEnabled.map((id) {
-                    final isChecked = tempSelected.contains(id);
-                    final label = _moduleRegistry[id]?['name'] ?? id.toUpperCase();
-                    return CheckboxListTile(
-                      title: Text(label),
-                      value: isChecked,
-                      activeColor: Theme.of(context).colorScheme.primary,
-                      onChanged: (val) {
-                        setDialogState(() {
-                          if (val == true) {
-                            if (tempSelected.length >= 4) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('You can only select up to 4 features.')),
-                              );
-                              return;
-                            }
-                            tempSelected.add(id);
-                          } else {
-                            if (tempSelected.length <= 1) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('You must select at least 1 feature.')),
-                              );
-                              return;
-                            }
-                            tempSelected.remove(id);
-                          }
-                        });
-                      },
-                    );
-                  }),
+                  Icon(Icons.dashboard_customize_rounded, color: Theme.of(context).primaryColor, size: 24),
+                  const SizedBox(width: 10),
+                  const Text('Customize Bottom Bar', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 ],
               ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Select features (up to 4) to show in your bottom navigation bar:',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 10),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 340),
+                      child: Scrollbar(
+                        thumbVisibility: true,
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: adminEnabled.length,
+                          itemBuilder: (context, index) {
+                            final id = adminEnabled[index];
+                            final isChecked = tempSelected.contains(id);
+                            final label = _moduleRegistry[id]?['name'] ?? id.toUpperCase();
+                            final iconData = _moduleRegistry[id]?['icon'] as IconData? ?? Icons.star_rounded;
+                            final color = _moduleRegistry[id]?['color'] as Color? ?? Colors.blueAccent;
+
+                            return CheckboxListTile(
+                              secondary: CircleAvatar(
+                                radius: 15,
+                                backgroundColor: color.withValues(alpha: 0.15),
+                                child: Icon(iconData, color: color, size: 16),
+                              ),
+                              title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                              value: isChecked,
+                              activeColor: Theme.of(context).colorScheme.primary,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                              onChanged: (val) {
+                                setDialogState(() {
+                                  if (val == true) {
+                                    if (tempSelected.length >= 4) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('You can only select up to 4 features.')),
+                                      );
+                                      return;
+                                    }
+                                    tempSelected.add(id);
+                                  } else {
+                                    if (tempSelected.length <= 1) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('You must select at least 1 feature.')),
+                                      );
+                                      return;
+                                    }
+                                    tempSelected.remove(id);
+                                  }
+                                });
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                   onPressed: tempSelected.isEmpty
                       ? null
                       : () async {
@@ -1527,12 +1569,6 @@ class _MainScreenState extends State<MainScreen> {
           ),
         ),
         actions: [
-          if (_enabledModules.contains('voice_assistant'))
-            IconButton(
-              icon: const Icon(Icons.mic, color: Colors.redAccent),
-              onPressed: _openVoiceAssistant,
-              tooltip: 'Voice Assistant',
-            ),
           IconButton(
             icon: Icon(_isDarkMode ? Icons.light_mode : Icons.dark_mode),
             onPressed: _toggleTheme,
@@ -1658,6 +1694,7 @@ class _MainScreenState extends State<MainScreen> {
       body: mainBody,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navBarSelectedIndex,
+        indicatorColor: _isBottomBarFeatureActive ? null : Colors.transparent,
         onDestinationSelected: (int index) {
           final active = _activeFeatures;
           final mIdx = _menuIndex;

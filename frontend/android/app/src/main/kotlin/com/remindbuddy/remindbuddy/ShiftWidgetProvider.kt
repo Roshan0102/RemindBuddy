@@ -1,0 +1,42 @@
+package com.remindbuddy.remindbuddy
+
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
+import android.content.Context
+import android.net.Uri
+import android.widget.RemoteViews
+import es.antonborri.home_widget.HomeWidgetLaunchIntent
+import es.antonborri.home_widget.HomeWidgetPlugin
+
+class ShiftWidgetProvider : AppWidgetProvider() {
+    override fun onUpdate(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetIds: IntArray
+    ) {
+        for (appWidgetId in appWidgetIds) {
+            val widgetData = HomeWidgetPlugin.getData(context)
+            val views = RemoteViews(context.packageName, R.layout.shift_widget_layout).apply {
+                val shiftName = widgetData.getString("shift_name", "No Shift Scheduled")
+                val shiftTime = widgetData.getString("shift_time", "Check Roster")
+                val shiftTomorrow = widgetData.getString("shift_tomorrow", "Tomorrow: No Shift")
+                val shiftDate = widgetData.getString("shift_date", "Today")
+
+                setTextViewText(R.id.widget_shift_name, shiftName)
+                setTextViewText(R.id.widget_shift_time, shiftTime)
+                setTextViewText(R.id.widget_shift_tomorrow, shiftTomorrow)
+                setTextViewText(R.id.widget_shift_date, shiftDate)
+
+                // Launch RemindBuddy on click
+                val pendingIntent = HomeWidgetLaunchIntent.getActivity(
+                    context,
+                    MainActivity::class.java,
+                    Uri.parse("remindbuddy://feature/shifts")
+                )
+                setOnClickPendingIntent(R.id.widget_shift_root, pendingIntent)
+            }
+
+            appWidgetManager.updateAppWidget(appWidgetId, views)
+        }
+    }
+}

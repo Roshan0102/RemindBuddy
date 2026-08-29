@@ -80,6 +80,16 @@
                 android:value="Sleep tracking based on device lock state." />
         </service>
 
+        <service
+            android:name=".PaymentNotificationListener"
+            android:label="RemindBuddy Payment Tracker"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -87,6 +97,43 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
+        </receiver>
+
+        <!-- Android Home Screen Widgets -->
+        <receiver
+            android:name=".GoldWidgetProvider"
+            android:label="Gold Rates"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/gold_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".FinanceWidgetProvider"
+            android:label="Bank Balance"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/finance_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ShiftWidgetProvider"
+            android:label="Work Shift"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/shift_widget_info" />
         </receiver>
         
         <meta-data
