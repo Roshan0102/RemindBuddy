@@ -82,6 +82,96 @@ class JobAssistantService {
   }
 
   // ============================================================================
+  // AUTO-APPLY SETTINGS & ON-DEMAND TRIGGER
+  // ============================================================================
+
+  Future<Map<String, dynamic>> getAutoApplySettings() async {
+    final doc = _userDoc;
+    if (doc == null) {
+      return {
+        'enabled': true,
+        'targetRoles': ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer', 'Flutter Developer'],
+        'locations': ['Bengaluru', 'India', 'Remote'],
+        'maxPerRun': 4,
+      };
+    }
+
+    final snap = await doc.get();
+    if (!snap.exists || snap.data() == null) {
+      return {
+        'enabled': true,
+        'targetRoles': ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer', 'Flutter Developer'],
+        'locations': ['Bengaluru', 'India', 'Remote'],
+        'maxPerRun': 4,
+      };
+    }
+
+    final data = snap.data() as Map<String, dynamic>;
+    final settings = Map<String, dynamic>.from(data['autoApplySettings'] ?? {});
+
+    List<String> targetRoles = ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer', 'Flutter Developer'];
+    if (settings['targetRoles'] is List) {
+      targetRoles = List<String>.from(settings['targetRoles']);
+    } else if (settings['targetRoles'] is String) {
+      targetRoles = (settings['targetRoles'] as String).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    }
+
+    List<String> locations = ['Bengaluru', 'India', 'Remote'];
+    if (settings['locations'] is List) {
+      locations = List<String>.from(settings['locations']);
+    } else if (settings['locations'] is String) {
+      locations = (settings['locations'] as String).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    }
+
+    return {
+      'enabled': settings['enabled'] ?? true,
+      'targetRoles': targetRoles,
+      'locations': locations,
+      'maxPerRun': settings['maxPerRun'] ?? 4,
+    };
+  }
+
+  Future<void> saveAutoApplySettings({
+    required bool enabled,
+    required List<String> targetRoles,
+    required List<String> locations,
+    int maxPerRun = 4,
+  }) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.set({
+      'autoApplySettings': {
+        'enabled': enabled,
+        'targetRoles': targetRoles,
+        'locations': locations,
+        'maxPerRun': maxPerRun,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Future<Map<String, dynamic>> triggerAutoJobDiscoveryAndApply({
+    List<String>? targetRoles,
+    List<String>? locations,
+    int maxApplications = 4,
+  }) async {
+    final callable = _functions.httpsCallable('triggerAutoJobDiscoveryAndApply');
+    final response = await callable.call({
+      'targetRoles': targetRoles,
+      'locations': locations,
+      'maxApplications': maxApplications,
+    });
+
+    final resData = response.data;
+    if (resData == null || resData['success'] != true) {
+      throw Exception(resData?['message'] ?? 'Failed to trigger automated job discovery & outreach.');
+    }
+
+    return Map<String, dynamic>.from(resData);
+  }
+
+  // ============================================================================
   // JOB APPLICATIONS CRUD
   // ============================================================================
 

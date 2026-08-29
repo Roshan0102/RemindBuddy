@@ -61,18 +61,30 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   String _userEmail = '';
   String _userAppPassword = '';
 
+  // Auto-Apply Agent State
+  bool _autoApplyEnabled = true;
+  final TextEditingController _targetRolesController = TextEditingController();
+  final TextEditingController _locationsController = TextEditingController();
+  bool _isSavingAutoSettings = false;
+  bool _isRunningAutoApply = false;
+  String _autoApplyStatusMessage = '';
+  final ScrollController _autoAppScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadUserConfig();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _autoAppScrollController.dispose();
     _newAppScrollController.dispose();
     _historyScrollController.dispose();
+    _targetRolesController.dispose();
+    _locationsController.dispose();
     _customScreenshotPromptController.dispose();
     _manualCompanyNameController.dispose();
     _manualJobTitleController.dispose();
@@ -90,6 +102,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   Future<void> _loadUserConfig() async {
     final emailConfig = await _service.getUserEmailConfig();
     final masterResume = await _service.getMasterResume();
+    final autoSettings = await _service.getAutoApplySettings();
+    final targetRoles = List<String>.from(autoSettings['targetRoles'] ?? []);
+    final locations = List<String>.from(autoSettings['locations'] ?? []);
 
     if (mounted) {
       setState(() {
@@ -97,6 +112,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         _userAppPassword = emailConfig['appPassword'] ?? '';
         _resumeFileName = masterResume['fileName'] ?? '';
         _hasResume = (masterResume['base64'] ?? '').isNotEmpty;
+        _autoApplyEnabled = autoSettings['enabled'] ?? true;
+        _targetRolesController.text = targetRoles.isNotEmpty
+            ? targetRoles.join(', ')
+            : 'DevOps Engineer, Cloud Engineer, Site Reliability Engineer, Flutter Developer';
+        _locationsController.text = locations.isNotEmpty
+            ? locations.join(', ')
+            : 'Bengaluru, India, Remote';
       });
     }
   }
@@ -727,6 +749,98 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   // ============================================================================
+  // AUTO-APPLY AGENT ACTIONS & TAB
+  // ============================================================================
+
+  Future<void> _saveAutoApplySettings() async {
+    final roles = _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    final locs = _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+
+    setState(() => _isSavingAutoSettings = true);
+    try {
+      await _service.saveAutoApplySettings(
+        enabled: _autoApplyEnabled,
+        targetRoles: roles.isNotEmpty ? roles : ['DevOps Engineer', 'Cloud Engineer', 'Flutter Developer'],
+        locations: locs.isNotEmpty ? locs : ['Bengaluru', 'India', 'Remote'],
+        maxPerRun: 4,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Auto-Apply settings saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving settings: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingAutoSettings = false);
+      }
+    }
+  }
+
+  Future<void> _runAutoApplyNow() async {
+    if (!_hasResume) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please upload your Master Resume PDF first in New Applications tab.')),
+      );
+      return;
+    }
+    if (_userEmail.isEmpty || _userAppPassword.isEmpty) {
+      _showEmailConfigDialog();
+      return;
+    }
+
+    final roles = _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    final locs = _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+
+    setState(() {
+      _isRunningAutoApply = true;
+      _autoApplyStatusMessage = 'Searching LinkedIn & job boards for verified HR postings (0-3 yrs)...';
+    });
+
+    try {
+      final res = await _service.triggerAutoJobDiscoveryAndApply(
+        targetRoles: roles,
+        locations: locs,
+        maxApplications: 4,
+      );
+
+      final count = res['appliedCount'] ?? 0;
+      final msg = res['message'] ?? 'Discovery complete.';
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(count > 0 ? '🚀 Successfully auto-applied to $count new job(s)!' : msg),
+            backgroundColor: count > 0 ? Colors.green : Colors.blueAccent,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Auto-apply failed: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRunningAutoApply = false;
+          _autoApplyStatusMessage = '';
+        });
+      }
+    }
+  }
+
+  // ============================================================================
   // BUILD METHOD
   // ============================================================================
 
@@ -744,8 +858,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           indicatorColor: Colors.amber,
           indicatorWeight: 3.0,
           tabs: const [
-            Tab(icon: Icon(Icons.add_photo_alternate), text: 'New Applications'),
-            Tab(icon: Icon(Icons.history), text: 'Applied History'),
+            Tab(icon: Icon(Icons.bolt_rounded), text: 'Auto-Apply Agent'),
+            Tab(icon: Icon(Icons.add_photo_alternate_rounded), text: 'Manual & Scan'),
+            Tab(icon: Icon(Icons.history_rounded), text: 'Applied History'),
           ],
         ),
         actions: [
@@ -759,8 +874,442 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       body: TabBarView(
         controller: _tabController,
         children: [
+          _buildAutoApplyTab(),
           _buildNewApplicationTab(),
           _buildHistoryTab(),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================================
+  // TAB 1: AUTO-APPLY AGENT TAB (10 AM & 10 PM SCHEDULER)
+  // ============================================================================
+
+  Widget _buildAutoApplyTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+
+    return Scrollbar(
+      controller: _autoAppScrollController,
+      child: SingleChildScrollView(
+        controller: _autoAppScrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status Banner: Schedule & Configuration health
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: isDark
+                      ? [const Color(0xFF0F172A), const Color(0xFF1E293B)]
+                      : [const Color(0xFFEFF6FF), const Color(0xFFDBEAFE)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.blueAccent.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.blueAccent.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.schedule_send_rounded, color: Colors.blueAccent, size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Twice Daily Auto-Apply',
+                                style: GoogleFonts.outfit(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                ),
+                              ),
+                              const Text(
+                                'Runs every day at 10:00 AM & 10:00 PM IST',
+                                style: TextStyle(fontSize: 11, color: Colors.blueAccent, fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      Switch.adaptive(
+                        value: _autoApplyEnabled,
+                        activeTrackColor: Colors.blueAccent,
+                        onChanged: (val) {
+                          setState(() => _autoApplyEnabled = val);
+                          _saveAutoApplySettings();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  // Health checklist: Resume & Gmail
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Icon(
+                              _hasResume ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+                              color: _hasResume ? const Color(0xFF10B981) : Colors.orange,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _hasResume ? 'Resume: $_resumeFileName' : 'Resume: Not uploaded',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: isDark ? Colors.white70 : Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Icon(
+                              (_userEmail.isNotEmpty && _userAppPassword.isNotEmpty)
+                                  ? Icons.check_circle_rounded
+                                  : Icons.warning_amber_rounded,
+                              color: (_userEmail.isNotEmpty && _userAppPassword.isNotEmpty)
+                                  ? const Color(0xFF10B981)
+                                  : Colors.orange,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                (_userEmail.isNotEmpty && _userAppPassword.isNotEmpty)
+                                    ? 'Gmail: $_userEmail'
+                                    : 'Gmail: Not configured',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: isDark ? Colors.white70 : Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Search Preferences Card
+            Card(
+              color: cardBg,
+              elevation: isDark ? 2 : 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '🎯 Target Roles & Locations',
+                          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        if (_isSavingAutoSettings)
+                          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        else
+                          TextButton.icon(
+                            onPressed: _saveAutoApplySettings,
+                            icon: const Icon(Icons.save_outlined, size: 16),
+                            label: const Text('Save Settings', style: TextStyle(fontSize: 12)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _targetRolesController,
+                      decoration: InputDecoration(
+                        labelText: 'Target Job Roles (comma-separated)',
+                        hintText: 'e.g. DevOps Engineer, Cloud Engineer, Flutter Developer',
+                        prefixIcon: const Icon(Icons.work_outline_rounded),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _locationsController,
+                      decoration: InputDecoration(
+                        labelText: 'Target Locations (comma-separated)',
+                        hintText: 'e.g. Bengaluru, India, Remote, Chennai',
+                        prefixIcon: const Icon(Icons.location_on_outlined),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    // Filter Badges
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.teal.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.filter_alt_rounded, color: Colors.teal, size: 14),
+                              SizedBox(width: 4),
+                              Text('Experience: 0 – 3 Years', style: TextStyle(fontSize: 11, color: Colors.teal, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.purple.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.purple.withValues(alpha: 0.3)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.mark_email_read_rounded, color: Colors.purple, size: 14),
+                              SizedBox(width: 4),
+                              Text('Verified Recruiter Emails Only', style: TextStyle(fontSize: 11, color: Colors.purple, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.attachment_rounded, color: Colors.amber, size: 14),
+                              SizedBox(width: 4),
+                              Text('Attached Resume PDF', style: TextStyle(fontSize: 11, color: Colors.amber, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // On-Demand Discovery & Apply Trigger Button
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 3,
+                ),
+                onPressed: _isRunningAutoApply ? null : _runAutoApplyNow,
+                icon: _isRunningAutoApply
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.rocket_launch_rounded),
+                label: Text(
+                  _isRunningAutoApply ? 'Agent Discovering & Applying...' : '🚀 Run Auto-Discovery & Apply Now',
+                  style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+
+            if (_autoApplyStatusMessage.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  _autoApplyStatusMessage,
+                  style: const TextStyle(fontSize: 11.5, color: Colors.blueAccent, fontStyle: FontStyle.italic),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 24),
+
+            // Recent Auto-Applied Applications Section
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '📬 Recent Automated Applications',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            StreamBuilder<List<JobApplication>>(
+              stream: _service.getJobApplicationsStream(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
+                }
+
+                final apps = snapshot.data ?? [];
+                if (apps.isEmpty) {
+                  return Card(
+                    color: cardBg,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        children: [
+                          Icon(Icons.work_outline_rounded, size: 40, color: Colors.grey.shade400),
+                          const SizedBox(height: 10),
+                          Text(
+                            'No Automated Applications Sent Yet',
+                            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'The agent runs automatically at 10:00 AM & 10:00 PM IST, or you can tap "Run Auto-Discovery & Apply Now" anytime!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: apps.length > 10 ? 10 : apps.length,
+                  itemBuilder: (context, index) {
+                    final app = apps[index];
+                    return _buildAutoAppCard(app, isDark);
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAutoAppCard(JobApplication app, bool isDark) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: isDark ? const Color(0xFF1E293B) : Colors.white,
+      elevation: 1.5,
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        leading: CircleAvatar(
+          backgroundColor: Colors.blueAccent.withValues(alpha: 0.15),
+          child: const Icon(Icons.send_rounded, color: Colors.blueAccent, size: 18),
+        ),
+        title: Text(
+          app.jobTitle,
+          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 2),
+            Text(
+              '${app.companyName} • ${app.recipientEmail}',
+              style: TextStyle(fontSize: 11.5, color: isDark ? Colors.white70 : Colors.grey[700]),
+            ),
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text('Sent with Resume PDF', style: TextStyle(fontSize: 9.5, color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '${app.appliedAt.day}/${app.appliedAt.month} ${app.appliedAt.hour.toString().padLeft(2, '0')}:${app.appliedAt.minute.toString().padLeft(2, '0')}',
+                  style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.grey[500]),
+                ),
+              ],
+            ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(14.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Subject: ${app.generatedSubject}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.black26 : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    app.generatedCoverLetter,
+                    style: TextStyle(fontSize: 11.5, height: 1.4, color: isDark ? Colors.white70 : Colors.black87),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

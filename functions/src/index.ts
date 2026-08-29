@@ -79,6 +79,10 @@ export {
     sendJobApplicationEmail
 } from "./modules/job_assistant/emailSender";
 
+export {
+    triggerAutoJobDiscoveryAndApply
+} from "./modules/job_assistant/jobDiscoveryAI";
+
 // Consolidated Master Schedulers
 export {
     masterMinuteRunner,

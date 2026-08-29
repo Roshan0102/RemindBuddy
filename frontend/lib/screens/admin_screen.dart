@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 import '../services/update_service.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -615,38 +617,50 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
-  Future<void> _shareLatestApk() async {
-    try {
-      String? apkPath;
-      if (!kIsWeb) {
-        final packageInfo = await PackageInfo.fromPlatform();
-        final version = packageInfo.version;
+  bool _isSharingApk = false;
 
-        final candidateDirs = [
-          '/sdcard/Download',
-          '/storage/emulated/0/Download',
-        ];
-        
-        for (var dirPath in candidateDirs) {
-          final dir = Directory(dirPath);
-          if (await dir.exists()) {
-            final files = dir.listSync();
-            for (var file in files) {
-              if (file.path.endsWith('.apk') &&
-                  (file.path.contains('app-release') ||
-                   file.path.contains('RemindBuddy') ||
-                   file.path.contains('remindbuddy'))) {
-                apkPath = file.path;
-                break;
-              }
-            }
-          }
-          if (apkPath != null) break;
+  Future<void> _shareLatestApk() async {
+    if (_isSharingApk) return;
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final version = packageInfo.version;
+
+      if (!kIsWeb) {
+        // 1. Check if an APK already exists locally in temp cache
+        final tempDir = await getTemporaryDirectory();
+        final cachedApk = File('${tempDir.path}/RemindBuddy-v$version.apk');
+        if (await cachedApk.exists() && (await cachedApk.length()) > 5000000) {
+          await Share.shareXFiles(
+            [XFile(cachedApk.path)],
+            text: '📥 RemindBuddy App APK (v$version)',
+            subject: 'RemindBuddy App APK',
+          );
+          return;
         }
 
-        if (apkPath != null && await File(apkPath).exists()) {
+        // 2. Otherwise download latest release APK from Firebase Storage
+        setState(() => _isSharingApk = true);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                  SizedBox(width: 12),
+                  Text('Downloading latest APK to share...'),
+                ],
+              ),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+
+        const firebaseApkUrl = 'https://firebasestorage.googleapis.com/v0/b/remindbuddy-b68f9.firebasestorage.app/o/releases%2Flatest-release.apk?alt=media';
+        final response = await http.get(Uri.parse(firebaseApkUrl));
+        if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+          await cachedApk.writeAsBytes(response.bodyBytes);
           await Share.shareXFiles(
-            [XFile(apkPath)],
+            [XFile(cachedApk.path)],
             text: '📥 RemindBuddy App APK (v$version)',
             subject: 'RemindBuddy App APK',
           );
@@ -654,7 +668,7 @@ class _AdminScreenState extends State<AdminScreen> {
         }
       }
 
-      final packageInfo = await PackageInfo.fromPlatform();
+      // Fallback if web or network failed
       const firebaseApkUrl = 'https://firebasestorage.googleapis.com/v0/b/remindbuddy-b68f9.firebasestorage.app/o/releases%2Flatest-release.apk?alt=media';
       final shareText = '''
 📱 *RemindBuddy App (v${packageInfo.version})*
@@ -666,8 +680,15 @@ $firebaseApkUrl
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sharing APK: $e')),
+          SnackBar(
+            content: Text('Error preparing APK for sharing: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSharingApk = false);
       }
     }
   }

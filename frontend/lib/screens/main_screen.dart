@@ -669,6 +669,16 @@ class _MainScreenState extends State<MainScreen> {
     } else if (id == 'settings') {
       Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
       return;
+    } else if (id == 'bank_accounts') {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen(initialFeatureIndex: 0)));
+      return;
+    } else if (id == 'expenses') {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen(initialFeatureIndex: 4)));
+      return;
+    } else if (id == 'gold_price') {
+      id = 'gold';
+    } else if (id == 'events_walkins') {
+      id = 'tech_events';
     }
 
     final active = _activeFeatures;

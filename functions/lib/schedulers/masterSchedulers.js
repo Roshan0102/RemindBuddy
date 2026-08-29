@@ -11,6 +11,7 @@ const astroNotifications_1 = require("../modules/astro/astroNotifications");
 const techEvents_1 = require("../modules/events/techEvents");
 const walkinDrives_1 = require("../modules/events/walkinDrives");
 const shiftNotifications_1 = require("../modules/shifts/shiftNotifications");
+const jobDiscoveryAI_1 = require("../modules/job_assistant/jobDiscoveryAI");
 // --- CONSOLIDATED MASTER SCHEDULERS (2 Schedulers total for 100% Free GCP Tier) ---
 // 1. Minute Master Runner (Replaces checkDailyReminders & checkPendingGoldChitNotifications)
 exports.masterMinuteRunner = functions.pubsub.schedule('* * * * *')
@@ -40,6 +41,16 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
             }
             catch (err) {
                 console.error("Error in internalDailyAstroNotifier inside masterHalfHourlyRunner:", err);
+            }
+        }
+        // 10:00 AM IST (Hour 10): Automated AI Job Discovery & Email Applicant Agent (Morning Run)
+        if (hour === 10) {
+            console.log("[masterHalfHourlyRunner] Executing 10:00 AM tasks: Automated Job Discovery & Outreach...");
+            try {
+                await (0, jobDiscoveryAI_1.internalAutoJobDiscoveryAndApply)();
+            }
+            catch (err) {
+                console.error("Error in internalAutoJobDiscoveryAndApply inside masterHalfHourlyRunner:", err);
             }
         }
         // 11:00 AM IST (Hour 11): Gold Fetch & Market Forecast
@@ -94,9 +105,15 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
                 console.error("Error in internalDailyWalkInsFetcher inside masterHalfHourlyRunner:", err);
             }
         }
-        // 10:00 PM IST (Hour 22): Daily Shift Reminder
+        // 10:00 PM IST (Hour 22): Automated AI Job Discovery & Email Applicant Agent (Night Run) & Daily Shift Reminders
         if (hour === 22) {
-            console.log("[masterHalfHourlyRunner] Executing 10:00 PM tasks: Daily Shift Reminders...");
+            console.log("[masterHalfHourlyRunner] Executing 10:00 PM tasks: Automated Job Discovery & Daily Shift Reminders...");
+            try {
+                await (0, jobDiscoveryAI_1.internalAutoJobDiscoveryAndApply)();
+            }
+            catch (err) {
+                console.error("Error in internalAutoJobDiscoveryAndApply inside masterHalfHourlyRunner:", err);
+            }
             try {
                 await (0, shiftNotifications_1.internalDailyShiftReminder)();
             }

@@ -65,8 +65,8 @@ export const processCalendarReminderTask = functions.tasks
                 console.log(`Skipping notification for calendar reminder ${reminderId} (user ${uid}): disabled.`);
             }
 
-            const currentSnoozeCount = rData?.currentSnoozeCount || 0;
-            const maxSnoozeCount = rData?.maxSnoozeCount || 3;
+            const currentSnoozeCount = Number(rData?.currentSnoozeCount || 0);
+            const maxSnoozeCount = Number(rData?.maxSnoozeCount || 3);
             const isLastNotification = snoozeEnabled && (currentSnoozeCount + 1 >= maxSnoozeCount);
 
             const updateData: any = {
@@ -83,6 +83,15 @@ export const processCalendarReminderTask = functions.tasks
             }
 
             await reminderRef.update(updateData);
+
+            if (rData?.pairedUid && rData?.pairedDocId && (!snoozeEnabled || isLastNotification)) {
+                try {
+                    await db.collection("users").doc(rData.pairedUid).collection("calendar_reminders").doc(rData.pairedDocId).update(updateData);
+                    console.log(`Updated paired reminder ${rData.pairedDocId} for user ${rData.pairedUid} on completion.`);
+                } catch (pErr) {
+                    console.error("Error updating paired reminder on completion:", pErr);
+                }
+            }
 
             if (snoozeEnabled && !isLastNotification) {
                 try {
@@ -197,9 +206,9 @@ export const autoSnoozeReminderCheckTask = functions.tasks
 
             console.log(`Auto-snooze check: User did not interact with reminder ${reminderId}. Auto-snoozing.`);
 
-            const currentSnooze = rData.currentSnoozeCount || 0;
-            const maxSnooze = rData.maxSnoozeCount || 3;
-            const interval = rData.snoozeIntervalMinutes || 15;
+            const currentSnooze = Number(rData.currentSnoozeCount || 0);
+            const maxSnooze = Number(rData.maxSnoozeCount || 3);
+            const interval = Number(rData.snoozeIntervalMinutes || 15);
 
             if (currentSnooze + 1 < maxSnooze) {
                 const nowKolkata = moment().tz('Asia/Kolkata');

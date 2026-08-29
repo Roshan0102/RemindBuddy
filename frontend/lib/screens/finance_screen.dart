@@ -17,7 +17,8 @@ import '../services/sms_parser_service.dart';
 import '../widgets/nightly_expense_tag_sheet.dart';
 
 class FinanceScreen extends StatefulWidget {
-  const FinanceScreen({super.key});
+  final int? initialFeatureIndex;
+  const FinanceScreen({super.key, this.initialFeatureIndex});
 
   @override
   State<FinanceScreen> createState() => _FinanceScreenState();
@@ -38,6 +39,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
+    _selectedFeatureIndex = widget.initialFeatureIndex;
     final now = DateTime.now();
     _smsMonthFilter = DateTime(now.year, now.month);
     _tabController = TabController(length: 2, vsync: this);
