@@ -3776,6 +3776,33 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     bool isPermissionGranted = await tracker.isNotificationAccessGranted();
     bool isTrackingEnabled = await tracker.isTrackingEnabled();
     List<String> enabledPackages = await tracker.getEnabledUpiPackages();
+    Map<String, String> upiBankMappings = await tracker.getUpiBankMappings();
+
+    // Fetch user's registered bank accounts
+    List<String> availableBankNames = [];
+    try {
+      final accounts = await _financeService.getAccountsStream().first;
+      availableBankNames = accounts.map((a) => a.name.trim()).where((n) => n.isNotEmpty).toSet().toList();
+    } catch (_) {}
+
+    // Combine with top popular banks
+    final popularBanks = [
+      'Union Bank of India',
+      'State Bank of India (SBI)',
+      'HDFC Bank',
+      'ICICI Bank',
+      'Axis Bank',
+      'Indian Bank',
+      'Canara Bank',
+      'Bank of Baroda',
+      'Kotak Mahindra Bank',
+      'Punjab National Bank',
+    ];
+    for (final b in popularBanks) {
+      if (!availableBankNames.contains(b)) {
+        availableBankNames.add(b);
+      }
+    }
 
     if (!mounted) return;
 
@@ -3792,7 +3819,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         return StatefulBuilder(
           builder: (context, setSheetState) {
             return Container(
-              height: MediaQuery.of(context).size.height * 0.82,
+              height: MediaQuery.of(context).size.height * 0.85,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: bg,
@@ -3833,7 +3860,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
                             ),
                             Text(
-                              'Auto-track GPay, PhonePe, Paytm payments',
+                              'Auto-track GPay, PhonePe, Paytm payments & map primary banks',
                               style: TextStyle(color: subtextColor, fontSize: 12),
                             ),
                           ],
@@ -3932,17 +3959,17 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   const Divider(),
 
                   Text(
-                    'Supported Indian Payment Apps (Top 10)',
+                    'Supported Indian Payment Apps & Primary Banks',
                     style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14, color: textColor),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Select which apps RemindBuddy is allowed to listen to:',
+                    'Choose enabled apps and assign their linked primary bank account:',
                     style: TextStyle(color: subtextColor, fontSize: 11),
                   ),
                   const SizedBox(height: 8),
 
-                  // List of 10 Apps
+                  // List of Apps with Primary Bank Selector
                   Expanded(
                     child: ListView.builder(
                       itemCount: PaymentNotificationTrackerService.supportedUpiApps.length,
@@ -3951,25 +3978,110 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         final appId = app['id']!;
                         final appName = app['name']!;
                         final isAppEnabled = enabledPackages.contains(appId);
+                        final currentMappedBank = upiBankMappings[appId];
 
-                        return CheckboxListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                          dense: true,
-                          title: Text(appName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: textColor)),
-                          subtitle: Text(appId, style: TextStyle(color: subtextColor, fontSize: 10)),
-                          value: isAppEnabled,
-                          activeColor: Colors.purpleAccent,
-                          onChanged: !isTrackingEnabled
-                              ? null
-                              : (bool? checked) async {
-                                  if (checked == true) {
-                                    enabledPackages.add(appId);
-                                  } else {
-                                    enabledPackages.remove(appId);
-                                  }
-                                  await tracker.setEnabledUpiPackages(enabledPackages);
-                                  setSheetState(() {});
-                                },
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF0F172A).withValues(alpha: 0.6) : Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isAppEnabled
+                                  ? Colors.purpleAccent.withValues(alpha: 0.35)
+                                  : (isDark ? Colors.white12 : Colors.grey.shade200),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Checkbox(
+                                    value: isAppEnabled,
+                                    activeColor: Colors.purpleAccent,
+                                    onChanged: !isTrackingEnabled
+                                        ? null
+                                        : (bool? checked) async {
+                                            if (checked == true) {
+                                              enabledPackages.add(appId);
+                                            } else {
+                                              enabledPackages.remove(appId);
+                                            }
+                                            await tracker.setEnabledUpiPackages(enabledPackages);
+                                            setSheetState(() {});
+                                          },
+                                  ),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(appName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
+                                        Text(appId, style: TextStyle(color: subtextColor, fontSize: 10)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (isAppEnabled) ...[
+                                const SizedBox(height: 6),
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 8, right: 4),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.account_balance_wallet_rounded, size: 14, color: Colors.purpleAccent.shade100),
+                                      const SizedBox(width: 6),
+                                      Text('Primary Bank:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: subtextColor)),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: isDark ? Colors.white24 : Colors.grey.shade300),
+                                          ),
+                                          child: DropdownButtonHideUnderline(
+                                            child: DropdownButton<String>(
+                                              value: (currentMappedBank != null && availableBankNames.contains(currentMappedBank))
+                                                  ? currentMappedBank
+                                                  : 'Auto Detect',
+                                              isExpanded: true,
+                                              isDense: true,
+                                              style: TextStyle(fontSize: 11, color: textColor, fontWeight: FontWeight.w600),
+                                              dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                                              items: [
+                                                const DropdownMenuItem(
+                                                  value: 'Auto Detect',
+                                                  child: Text('Auto Detect (Default)', style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic)),
+                                                ),
+                                                ...availableBankNames.map((bank) => DropdownMenuItem(
+                                                      value: bank,
+                                                      child: Text(bank, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                                                    )),
+                                              ],
+                                              onChanged: !isTrackingEnabled
+                                                  ? null
+                                                  : (selected) async {
+                                                      if (selected == null || selected == 'Auto Detect') {
+                                                        await tracker.setUpiBankMapping(appId, null);
+                                                        upiBankMappings.remove(appId);
+                                                      } else {
+                                                        await tracker.setUpiBankMapping(appId, selected);
+                                                        upiBankMappings[appId] = selected;
+                                                      }
+                                                      setSheetState(() {});
+                                                    },
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         );
                       },
                     ),

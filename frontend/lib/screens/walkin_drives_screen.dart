@@ -154,11 +154,14 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
   }
 
   Future<void> _clearAllWalkins() async {
+    final monthStr = DateFormat('MMMM yyyy').format(_selectedMonth);
+    final monthPrefix = DateFormat('yyyy-MM').format(_selectedMonth);
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Clear All Walk-In Drives?'),
-        content: const Text('This will delete all saved walk-in job drives for your account.'),
+        title: Text('Clear $monthStr Walk-In Drives?'),
+        content: Text('This will delete all saved walk-in job drives for $monthStr.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -167,7 +170,7 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Clear All'),
+            child: Text('Clear $monthStr'),
           ),
         ],
       ),
@@ -184,14 +187,23 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
           .get();
 
       final batch = FirebaseFirestore.instance.batch();
+      int count = 0;
       for (final doc in snapshot.docs) {
-        batch.delete(doc.reference);
+        final data = doc.data();
+        final dateStr = (data['date'] ?? '').toString().trim();
+        if (dateStr.startsWith(monthPrefix)) {
+          batch.delete(doc.reference);
+          count++;
+        }
       }
-      await batch.commit();
+
+      if (count > 0) {
+        await batch.commit();
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All walk-in drives cleared')),
+          SnackBar(content: Text('Cleared $count walk-in drive(s) for $monthStr')),
         );
       }
     }

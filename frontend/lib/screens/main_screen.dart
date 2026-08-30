@@ -682,8 +682,10 @@ class _MainScreenState extends State<MainScreen> {
       return;
     } else if (id == 'gold_price') {
       id = 'gold';
-    } else if (id == 'events_walkins') {
-      id = 'tech_events';
+    } else if (id == 'events_walkins' || id == 'tech_events') {
+      id = 'events';
+    } else if (id == 'walkin') {
+      id = 'walkins';
     }
 
     final active = _activeFeatures;
@@ -911,25 +913,15 @@ class _MainScreenState extends State<MainScreen> {
                   'name': 'Tech Events',
                   'icon': Icons.event,
                   'color': Colors.green,
-                  'action': () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const TechEventsScreen()),
-                    );
-                  },
+                  'action': () => _selectTabOrPush('events'),
                 },
-              if (_enabledModules.contains('walkin'))
+              if (_enabledModules.contains('walkin') || _enabledModules.contains('walkins'))
                 {
-                  'id': 'walkin',
+                  'id': 'walkins',
                   'name': 'Walk-In Drives',
                   'icon': Icons.directions_walk,
                   'color': Colors.lightBlue,
-                  'action': () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const WalkInDrivesScreen()),
-                    );
-                  },
+                  'action': () => _selectTabOrPush('walkins'),
                 },
               if (_isVaultEnabled)
                 {
@@ -1354,22 +1346,18 @@ class _MainScreenState extends State<MainScreen> {
                     color: Colors.green,
                     title: 'Tech Events',
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const TechEventsScreen()),
-                      );
+                      Navigator.pop(context);
+                      _selectTabOrPush('events');
                     },
                   ),
-                if (_enabledModules.contains('walkin'))
+                if (_enabledModules.contains('walkin') || _enabledModules.contains('walkins'))
                   _buildSidebarItem(
                     icon: Icons.directions_walk,
                     color: Colors.lightBlue,
                     title: 'Walk-In Drives',
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const WalkInDrivesScreen()),
-                      );
+                      Navigator.pop(context);
+                      _selectTabOrPush('walkins');
                     },
                   ),
                 if (_enabledModules.contains('voice_assistant'))

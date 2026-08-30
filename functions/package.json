@@ -1,6 +1,6 @@
 {
     "name": "functions",
-    "version": "1.0.99",
+    "version": "1.10.4",
     "scripts": {
         "build": "tsc",
         "build:watch": "tsc --watch",

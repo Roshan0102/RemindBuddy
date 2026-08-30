@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import axios from "axios";
 import * as nodemailer from "nodemailer";
 import * as moment from "moment-timezone";
+import * as dns from "dns";
 import { admin, db } from "../../config/firebase";
 import { logNotification } from "../../utils/logger";
 
@@ -26,10 +27,26 @@ function isValidEmail(email: string): boolean {
     const clean = email.trim();
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     // Filter out common dummy or invalid placeholder emails
-    if (clean.includes('example.com') || clean.includes('yourcompany.com') || clean.includes('test.com') || clean.includes('dummy')) {
+    if (clean.includes('example.com') || clean.includes('yourcompany.com') || clean.includes('test.com') || clean.includes('dummy') || clean.includes('sample.com')) {
         return false;
     }
     return emailRegex.test(clean);
+}
+
+/**
+ * Verifies that the recipient email's domain has valid MX (Mail Exchange) DNS records
+ * to prevent bounced/undeliverable emails ("address not found").
+ */
+async function verifyEmailDomainMx(email: string): Promise<boolean> {
+    try {
+        const domain = email.split('@')[1]?.trim();
+        if (!domain) return false;
+        const records = await dns.promises.resolveMx(domain);
+        return records && records.length > 0;
+    } catch (e) {
+        console.warn(`[JobDiscovery] MX DNS validation failed for domain in '${email}':`, e);
+        return false;
+    }
 }
 
 /**
@@ -233,7 +250,7 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         return { success: true, appliedCount: 0, jobs: [], message: "No fresh matching openings with recruiter emails found today." };
     }
 
-    // Filter valid jobs
+    // Filter valid jobs with active MX record validation
     const validFilteredJobs: DiscoveredJob[] = [];
     for (const job of discoveredJobs) {
         const email = (job.recipientEmail || '').trim();
@@ -250,6 +267,13 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             continue;
         }
 
+        // Verify that the email domain actually has live MX mail exchange servers
+        const hasValidMx = await verifyEmailDomainMx(email);
+        if (!hasValidMx) {
+            console.log(`[JobDiscovery] Skipping job at '${job.companyName}' because domain '${email}' has no valid MX records (dead/unreachable email domain).`);
+            continue;
+        }
+
         validFilteredJobs.push(job);
         if (validFilteredJobs.length >= maxApplyLimit) {
             break;
@@ -257,8 +281,8 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
     }
 
     if (validFilteredJobs.length === 0) {
-        console.log(`[JobDiscovery] All discovered jobs were either duplicates or lacked valid emails.`);
-        return { success: true, appliedCount: 0, jobs: [], message: "Discovered openings were already applied to previously." };
+        console.log(`[JobDiscovery] All discovered jobs were either duplicates, lacked valid emails, or had unreachable domains.`);
+        return { success: true, appliedCount: 0, jobs: [], message: "Discovered openings were already applied to or had unreachable domains." };
     }
 
     // Initialize Nodemailer transporter with user's Gmail App Password
@@ -304,7 +328,9 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
                 sourcePlatform: job.sourcePlatform || "LinkedIn / Search",
                 sourceUrl: job.sourceUrl || "",
                 subject: job.generatedSubject,
+                generatedSubject: job.generatedSubject,
                 coverLetter: job.generatedCoverLetter,
+                generatedCoverLetter: job.generatedCoverLetter,
                 appliedAt: admin.firestore.FieldValue.serverTimestamp(),
                 status: "sent",
                 messageId: info.messageId || "",

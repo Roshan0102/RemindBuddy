@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -27,8 +28,15 @@ class _HomeScreenState extends State<HomeScreen> {
   // User's active enabled modules from Firestore/Preferences
   List<String> _enabledModules = ['gold', 'finance', 'shifts', 'reminders', 'notes'];
   
-  // Custom dashboard widget list chosen by user
-  List<String> _activeWidgets = ['gold_price', 'bank_accounts', 'expenses', 'shifts', 'weather', 'voice_assistant'];
+  // Static Weather Cache across Screen Mounts (avoids re-fetching on tab/screen switch)
+  static DateTime? _lastWeatherFetchTime;
+  static String _cachedCity = 'Bengaluru';
+  static String _cachedTemp = '--°C';
+  static String _cachedCondition = 'Partly Cloudy';
+  static IconData _cachedIcon = Icons.wb_sunny_rounded;
+
+  // Custom dashboard widget list chosen by user (weather is in permanent top header)
+  List<String> _activeWidgets = ['gold_price', 'bank_accounts', 'expenses', 'shifts', 'voice_assistant'];
   String _heroWidget = 'gold_price'; // Default hero card
 
   bool _isLoading = true;
@@ -47,11 +55,11 @@ class _HomeScreenState extends State<HomeScreen> {
   int _dailyRemindersCount = 0;
   int _totalNotesCount = 0;
 
-  // Weather state
-  String _weatherTemp = '--°C';
-  String _weatherCity = 'Bengaluru';
-  String _weatherCondition = 'Partly Cloudy';
-  IconData _weatherIcon = Icons.wb_sunny_rounded;
+  // Weather state (initialized from static cache)
+  String _weatherTemp = _cachedTemp;
+  String _weatherCity = _cachedCity;
+  String _weatherCondition = _cachedCondition;
+  IconData _weatherIcon = _cachedIcon;
 
   // Firestore Subscriptions
   StreamSubscription? _userDocSub;
@@ -115,12 +123,6 @@ class _HomeScreenState extends State<HomeScreen> {
       'icon': Icons.note_alt_rounded,
       'color': Colors.cyanAccent,
     },
-    'weather': {
-      'title': 'Atmospheric Weather',
-      'module': 'all',
-      'icon': Icons.wb_sunny_rounded,
-      'color': Colors.blueAccent,
-    },
     'voice_assistant': {
       'title': 'Ask Buddy (Voice AI)',
       'module': 'all',
@@ -163,6 +165,24 @@ class _HomeScreenState extends State<HomeScreen> {
     final savedWidgets = prefs.getStringList('dashboard_active_widgets');
     final savedHero = prefs.getString('dashboard_hero_widget');
 
+    // Restore cached weather to eliminate initial --°C flicker
+    final cachedCity = prefs.getString('cached_weather_city');
+    final cachedTemp = prefs.getString('cached_weather_temp');
+    final cachedCond = prefs.getString('cached_weather_cond');
+    final cachedIconCode = prefs.getInt('cached_weather_icon_code');
+    if (cachedCity != null && cachedTemp != null) {
+      _cachedCity = cachedCity;
+      _cachedTemp = cachedTemp;
+      _cachedCondition = cachedCond ?? 'Partly Cloudy';
+      if (cachedIconCode != null) {
+        _cachedIcon = _resolveWeatherIconFromCode(cachedIconCode);
+      }
+      _weatherCity = _cachedCity;
+      _weatherTemp = _cachedTemp;
+      _weatherCondition = _cachedCondition;
+      _weatherIcon = _cachedIcon;
+    }
+
     if (cachedModules != null && cachedModules.isNotEmpty) {
       _enabledModules = cachedModules;
     }
@@ -182,6 +202,15 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       setState(() => _isLoading = false);
     }
+  }
+
+  static IconData _resolveWeatherIconFromCode(int code) {
+    if (code == Icons.wb_sunny_rounded.codePoint) return Icons.wb_sunny_rounded;
+    if (code == Icons.wb_cloudy_rounded.codePoint) return Icons.wb_cloudy_rounded;
+    if (code == Icons.thunderstorm_rounded.codePoint) return Icons.thunderstorm_rounded;
+    if (code == Icons.grain_rounded.codePoint) return Icons.grain_rounded;
+    if (code == Icons.ac_unit_rounded.codePoint) return Icons.ac_unit_rounded;
+    return Icons.wb_sunny_rounded;
   }
 
   bool _isWidgetAllowed(String widgetKey) {
@@ -211,11 +240,58 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setString('dashboard_hero_widget', _heroWidget);
   }
 
-  Future<void> _fetchWeather() async {
+  void _swapCards(String sourceKey, String targetKey) {
+    if (sourceKey == targetKey) return;
+    setState(() {
+      final sourceIndex = _activeWidgets.indexOf(sourceKey);
+      final targetIndex = _activeWidgets.indexOf(targetKey);
+      if (sourceIndex != -1 && targetIndex != -1) {
+        final temp = _activeWidgets[sourceIndex];
+        _activeWidgets[sourceIndex] = _activeWidgets[targetIndex];
+        _activeWidgets[targetIndex] = temp;
+        _heroWidget = _activeWidgets.first;
+      }
+    });
+    _saveDashboardConfig();
+    HapticFeedback.mediumImpact();
+
+    final sourceTitle = _widgetMetadata[sourceKey]?['title'] ?? sourceKey;
+    final targetTitle = _widgetMetadata[targetKey]?['title'] ?? targetKey;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.swap_horiz_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Reordered: $sourceTitle ⇄ $targetTitle',
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  Future<void> _fetchWeather({bool force = false}) async {
+    // 5-minute cache throttle to prevent re-fetching on tab/screen switch
+    if (!force && _lastWeatherFetchTime != null) {
+      final diff = DateTime.now().difference(_lastWeatherFetchTime!);
+      if (diff < const Duration(minutes: 5) && _weatherTemp != '--°C') {
+        return;
+      }
+    }
+
     try {
       double lat = 12.9716; // default Bengaluru
       double lon = 77.5946;
-      String city = 'Bengaluru';
+      String city = _weatherCity.isNotEmpty && _weatherCity != 'Bengaluru' ? _weatherCity : 'Bengaluru';
 
       try {
         final ipRes = await http.get(Uri.parse('http://ip-api.com/json')).timeout(const Duration(seconds: 3));
@@ -255,6 +331,18 @@ class _HomeScreenState extends State<HomeScreen> {
           condition = 'Thunderstorm';
           icon = Icons.thunderstorm_rounded;
         }
+
+        _lastWeatherFetchTime = DateTime.now();
+        _cachedCity = city;
+        _cachedTemp = '$temp°C';
+        _cachedCondition = condition;
+        _cachedIcon = icon;
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('cached_weather_city', city);
+        await prefs.setString('cached_weather_temp', '$temp°C');
+        await prefs.setString('cached_weather_cond', condition);
+        await prefs.setInt('cached_weather_icon_code', icon.codePoint);
 
         if (mounted) {
           setState(() {
@@ -735,16 +823,16 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            // 2. Primary Hero Bento Card (Wide 2-Span)
+            // 2. Primary Hero Bento Card (Wide 2-Span, Long-Press & Draggable to Swap)
             if (_isWidgetAllowed(_heroWidget))
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-                  child: _buildHeroBentoCard(_heroWidget, isDark),
+                  child: _buildDraggableHeroCard(_heroWidget, isDark),
                 ),
               ),
 
-            // 3. Dynamic Secondary Bento Grid (2-Column Flow with Themed Borders)
+            // 3. Dynamic Secondary Bento Grid (2-Column Flow with Long-Press Drag-and-Drop)
             if (secondaryWidgets.isNotEmpty)
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
@@ -758,7 +846,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final widgetType = secondaryWidgets[index];
-                      return _buildCompactBentoCard(widgetType, isDark);
+                      return _buildDraggableCompactCard(widgetType, isDark);
                     },
                     childCount: secondaryWidgets.length,
                   ),
@@ -791,6 +879,185 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ==========================================
+  // 🌟 DRAGGABLE & REORDERABLE CARD WRAPPERS
+  // ==========================================
+  Widget _buildDraggableHeroCard(String widgetKey, bool isDark) {
+    final meta = _widgetMetadata[widgetKey] ?? _widgetMetadata['gold_price']!;
+    final title = meta['title'] as String;
+    final color = meta['color'] as Color;
+    final icon = meta['icon'] as IconData;
+
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => details.data != widgetKey,
+      onAcceptWithDetails: (details) {
+        _swapCards(details.data, widgetKey);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isHovered = candidateData.isNotEmpty;
+        return AnimatedScale(
+          scale: isHovered ? 1.02 : 1.0,
+          duration: const Duration(milliseconds: 180),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            decoration: isHovered
+                ? BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: color, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.35),
+                        blurRadius: 14,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  )
+                : null,
+            child: LongPressDraggable<String>(
+              data: widgetKey,
+              delay: const Duration(milliseconds: 300),
+              hapticFeedbackOnStart: true,
+              feedback: Material(
+                color: Colors.transparent,
+                child: SizedBox(
+                  width: MediaQuery.of(context).size.width - 32,
+                  height: 130,
+                  child: Opacity(
+                    opacity: 0.9,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: color, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.withValues(alpha: 0.45),
+                            blurRadius: 20,
+                            spreadRadius: 4,
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(icon, color: color, size: 28),
+                          const SizedBox(width: 12),
+                          Text(
+                            title,
+                            style: GoogleFonts.outfit(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          const Spacer(),
+                          const Icon(Icons.drag_indicator_rounded, color: Colors.blueAccent, size: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              childWhenDragging: Opacity(
+                opacity: 0.35,
+                child: _buildHeroBentoCard(widgetKey, isDark),
+              ),
+              child: _buildHeroBentoCard(widgetKey, isDark),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDraggableCompactCard(String widgetKey, bool isDark) {
+    final meta = _widgetMetadata[widgetKey] ?? _widgetMetadata['gold_price']!;
+    final title = meta['title'] as String;
+    final color = meta['color'] as Color;
+    final icon = meta['icon'] as IconData;
+
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => details.data != widgetKey,
+      onAcceptWithDetails: (details) {
+        _swapCards(details.data, widgetKey);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isHovered = candidateData.isNotEmpty;
+        return AnimatedScale(
+          scale: isHovered ? 1.04 : 1.0,
+          duration: const Duration(milliseconds: 180),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            decoration: isHovered
+                ? BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: color, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.35),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  )
+                : null,
+            child: LongPressDraggable<String>(
+              data: widgetKey,
+              delay: const Duration(milliseconds: 300),
+              hapticFeedbackOnStart: true,
+              feedback: Material(
+                color: Colors.transparent,
+                child: SizedBox(
+                  width: 160,
+                  height: 140,
+                  child: Opacity(
+                    opacity: 0.9,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: color, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.withValues(alpha: 0.45),
+                            blurRadius: 18,
+                            spreadRadius: 3,
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(icon, color: color, size: 28),
+                          const SizedBox(height: 8),
+                          Text(
+                            title,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.outfit(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              childWhenDragging: Opacity(
+                opacity: 0.3,
+                child: _buildCompactBentoCard(widgetKey, isDark),
+              ),
+              child: _buildCompactBentoCard(widgetKey, isDark),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ==========================================
   // 🌟 1. Dynamic Ambient Context Ribbon
   // ==========================================
   Widget _buildAmbientContextRibbon(bool isDark) {
@@ -813,10 +1080,10 @@ class _HomeScreenState extends State<HomeScreen> {
     else if (hour >= 17 && hour < 21) { greeting = 'Good Evening'; emoji = '🌆'; }
     else if (hour >= 21 || hour < 5) { greeting = 'Good Night'; emoji = '🌙'; }
 
-    final dateStr = DateFormat('EEE, d MMMM').format(DateTime.now());
+    final dateStr = DateFormat('EEEE, d MMMM').format(DateTime.now());
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF131C2E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -832,61 +1099,110 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // Left side: Clean 3-line hierarchy (Greeting -> Username -> Date)
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '$greeting, $cleanName $emoji',
-                  style: GoogleFonts.outfit(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  greeting,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white70 : const Color(0xFF64748B),
+                    letterSpacing: 0.2,
                   ),
                 ),
                 const SizedBox(height: 2),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        cleanName,
+                        style: GoogleFonts.outfit(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      emoji,
+                      style: const TextStyle(fontSize: 18),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
                 Text(
                   dateStr,
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.white60 : Colors.grey[600],
+                    color: isDark ? Colors.white54 : Colors.grey.shade600,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
           ),
-          // Weather Status Pill (Auto Location)
-          InkWell(
-            onTap: _fetchWeather,
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          const SizedBox(width: 12),
+          // Right side: Compact, responsive Weather Widget
+          Tooltip(
+            message: '$_weatherCondition (Tap to refresh)',
+            child: InkWell(
+              onTap: () => _fetchWeather(force: true),
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.blueAccent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
+                color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark ? Colors.white10 : Colors.blue.shade100,
+                ),
               ),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(_weatherIcon, color: Colors.blueAccent, size: 16),
-                  const SizedBox(width: 6),
-                  Text(
-                    '$_weatherCity • $_weatherTemp',
-                    style: GoogleFonts.outfit(
-                      color: Colors.blueAccent,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
+                  Icon(_weatherIcon, color: Colors.blueAccent, size: 20),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _weatherTemp,
+                        style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                      ),
+                      Text(
+                        _weatherCity,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white60 : Colors.blueGrey.shade700,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   // ==========================================
   // 🌟 2. Dedicated Featured Hero Bento Cards (For ALL Categories)
@@ -920,9 +1236,6 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case 'notes':
         content = _buildHeroNotesContent(isDark);
-        break;
-      case 'weather':
-        content = _buildHeroWeatherContent(isDark);
         break;
       case 'voice_assistant':
         content = _buildHeroVoiceAssistantContent(isDark);
@@ -1473,43 +1786,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 9. Weather Hero
-  Widget _buildHeroWeatherContent(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(
-                    color: Colors.blueAccent.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(_weatherIcon, color: Colors.blueAccent, size: 18),
-                ),
-                const SizedBox(width: 8),
-                Text('Atmospheric Weather', style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            Text('$_weatherCity (Auto)', style: const TextStyle(fontSize: 11, color: Colors.blueAccent, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text(
-          '$_weatherCity • $_weatherTemp',
-          style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.blueAccent),
-        ),
-        const SizedBox(height: 4),
-        Text('$_weatherCondition • Tap to refresh forecast', style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.grey[700])),
-      ],
-    );
-  }
-
-  // 10. Voice Assistant Hero
+  // 9. Voice Assistant Hero
   Widget _buildHeroVoiceAssistantContent(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1712,20 +1989,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
               const SizedBox(height: 2),
               Text('Pinned & Drafts', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
-            ],
-          ),
-        );
-        break;
-      case 'weather':
-        body = Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text('$_weatherCity • $_weatherTemp',
-                  style: GoogleFonts.outfit(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-              const SizedBox(height: 2),
-              Text(_weatherCondition, style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
             ],
           ),
         );

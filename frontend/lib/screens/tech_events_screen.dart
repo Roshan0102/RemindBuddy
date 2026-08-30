@@ -157,11 +157,14 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
   }
 
   Future<void> _clearAllEvents() async {
+    final monthStr = DateFormat('MMMM yyyy').format(_selectedMonth);
+    final monthPrefix = DateFormat('yyyy-MM').format(_selectedMonth);
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Clear All Tech Events?'),
-        content: const Text('This will delete all saved tech events for your account.'),
+        title: Text('Clear $monthStr Tech Events?'),
+        content: Text('This will delete all saved tech events for $monthStr.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -170,7 +173,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Clear All'),
+            child: Text('Clear $monthStr'),
           ),
         ],
       ),
@@ -187,14 +190,23 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
           .get();
 
       final batch = FirebaseFirestore.instance.batch();
+      int count = 0;
       for (final doc in snapshot.docs) {
-        batch.delete(doc.reference);
+        final data = doc.data();
+        final dateStr = (data['date'] ?? '').toString().trim();
+        if (dateStr.startsWith(monthPrefix)) {
+          batch.delete(doc.reference);
+          count++;
+        }
       }
-      await batch.commit();
+
+      if (count > 0) {
+        await batch.commit();
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All tech events cleared')),
+          SnackBar(content: Text('Cleared $count tech event(s) for $monthStr')),
         );
       }
     }

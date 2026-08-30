@@ -118,6 +118,47 @@ class PaymentNotificationTrackerService {
     await prefs.setStringList('enabled_upi_packages', packages);
   }
 
+  /// Get primary bank mappings for UPI apps (e.g. {'com.google.android.apps.nbu.paisa.user': 'Union Bank'})
+  Future<Map<String, String>> getUpiBankMappings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys().where((k) => k.startsWith('upi_bank_map_')).toList();
+    final Map<String, String> map = {};
+    for (final k in keys) {
+      final appId = k.replaceFirst('upi_bank_map_', '');
+      final bank = prefs.getString(k);
+      if (bank != null && bank.isNotEmpty) {
+        map[appId] = bank;
+      }
+    }
+    return map;
+  }
+
+  /// Set primary bank mapping for a UPI app
+  Future<void> setUpiBankMapping(String appId, String? bankName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'upi_bank_map_$appId';
+    if (bankName == null || bankName.isEmpty || bankName == 'Default' || bankName == 'None') {
+      await prefs.remove(key);
+    } else {
+      await prefs.setString(key, bankName);
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final mappings = await getUpiBankMappings();
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('finance_settings')
+            .doc('upi_mappings')
+            .set({'mappings': mappings}, SetOptions(merge: true));
+      } catch (e) {
+        LogService().error('Failed to sync UPI bank mappings to Firestore', e);
+      }
+    }
+  }
+
   /// Flushes notifications saved by native service while the app was closed
   Future<void> flushBackgroundBuffer() async {
     if (kIsWeb) return;
@@ -156,7 +197,7 @@ class PaymentNotificationTrackerService {
     final String body = (map['fullBody'] ?? map['body'] ?? map['text'] ?? '').toString();
     final int timestamp = (map['timestamp'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch;
 
-    final parsedTx = UpiNotificationParserService.parseNotification(
+    var parsedTx = UpiNotificationParserService.parseNotification(
       packageName: packageName,
       appName: appName,
       title: title,
@@ -165,6 +206,14 @@ class PaymentNotificationTrackerService {
     );
 
     if (parsedTx != null) {
+      final mappings = await getUpiBankMappings();
+      final mappedBank = mappings[packageName] ?? mappings[parsedTx.sourceApp];
+      if (mappedBank != null && mappedBank.isNotEmpty && mappedBank != 'Default' && mappedBank != 'None') {
+        parsedTx = parsedTx.copyWith(
+          bankName: mappedBank,
+          sourceApp: '${parsedTx.sourceApp} ($mappedBank)',
+        );
+      }
       await processAndReconcileTransaction(parsedTx);
     }
   }

@@ -215,7 +215,15 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
 
   IconData _getIconFromCode(int? code) {
     if (code == null) return Icons.list;
-    return IconData(code, fontFamily: 'MaterialIcons');
+    if (code == Icons.work.codePoint) return Icons.work;
+    if (code == Icons.flight_takeoff.codePoint) return Icons.flight_takeoff;
+    if (code == Icons.school.codePoint) return Icons.school;
+    if (code == Icons.fitness_center.codePoint) return Icons.fitness_center;
+    if (code == Icons.shopping_bag.codePoint) return Icons.shopping_bag;
+    if (code == Icons.home.codePoint) return Icons.home;
+    if (code == Icons.restaurant.codePoint) return Icons.restaurant;
+    if (code == Icons.medical_services.codePoint) return Icons.medical_services;
+    return Icons.list;
   }
 
   @override

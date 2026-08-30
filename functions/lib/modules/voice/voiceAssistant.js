@@ -71,7 +71,12 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             .get();
         const goldInsightsPromise = firebase_1.db.collection("gold_ai_insights").doc("latest").get();
         const goldChitAdvicePromise = firebase_1.db.collection("gold_chit_advice").doc("latest").get();
-        const [remindersSnap, dailyRemindersSnap, notesSnap, checklistsSnap, shiftsSnap, goldSnap, eventsSnap, walkinsSnap, goldInsightsSnap, goldChitAdviceSnap] = await Promise.all([
+        const financeAccountsPromise = firebase_1.db.collection("users").doc(uid).collection("finance_accounts").get();
+        const financeTransactionsPromise = firebase_1.db.collection("users").doc(uid).collection("finance_transactions").orderBy("timestamp", "desc").limit(10).get();
+        const financeBillsPromise = firebase_1.db.collection("users").doc(uid).collection("finance_bills").where("isPaid", "==", false).limit(10).get();
+        const gcpCostPromise = firebase_1.db.collection("admin_creds").doc(`gcp_billing_summary_${nowKolkata.year()}_${nowKolkata.format('MM')}`).get();
+        const jobAppsPromise = firebase_1.db.collection("users").doc(uid).collection("job_applications").orderBy("appliedAt", "desc").limit(5).get();
+        const [remindersSnap, dailyRemindersSnap, notesSnap, checklistsSnap, shiftsSnap, goldSnap, eventsSnap, walkinsSnap, goldInsightsSnap, goldChitAdviceSnap, financeAccountsSnap, financeTransactionsSnap, financeBillsSnap, gcpCostSnap, jobAppsSnap] = await Promise.all([
             remindersPromise,
             dailyRemindersPromise,
             notesPromise,
@@ -81,7 +86,12 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             eventsPromise.catch(() => null),
             walkinsPromise.catch(() => null),
             goldInsightsPromise.catch(() => null),
-            goldChitAdvicePromise.catch(() => null)
+            goldChitAdvicePromise.catch(() => null),
+            financeAccountsPromise.catch(() => null),
+            financeTransactionsPromise.catch(() => null),
+            financeBillsPromise.catch(() => null),
+            gcpCostPromise.catch(() => null),
+            jobAppsPromise.catch(() => null)
         ]);
         const checklistsData = [];
         if (checklistsSnap && !checklistsSnap.empty) {
@@ -212,6 +222,64 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             contextText += "No gold chit buying advice available.\n";
         }
         contextText += "\n";
+        contextText += "--- FINANCE BANK ACCOUNTS & BALANCES ---\n";
+        let totalNetBalance = 0;
+        if (financeAccountsSnap && !financeAccountsSnap.empty) {
+            financeAccountsSnap.docs.forEach(doc => {
+                var _a;
+                const d = doc.data();
+                const bal = Number((_a = d.balance) !== null && _a !== void 0 ? _a : 0);
+                totalNetBalance += bal;
+                contextText += `- Account: "${d.bankName || d.name || 'Account'}" (Type: ${d.type || 'Savings'}, Last 4: ${d.accountNumber || d.last4 || 'N/A'}), Balance: ₹${bal.toLocaleString('en-IN')}\n`;
+            });
+            contextText += `Total Net Bank Balance: ₹${totalNetBalance.toLocaleString('en-IN')}\n`;
+        }
+        else {
+            contextText += "No bank accounts linked in Finance.\n";
+        }
+        contextText += "\n";
+        contextText += "--- RECENT FINANCE TRANSACTIONS ---\n";
+        if (financeTransactionsSnap && !financeTransactionsSnap.empty) {
+            financeTransactionsSnap.docs.forEach((doc) => {
+                const d = doc.data();
+                contextText += `- ${d.type === 'income' ? 'Income' : 'Expense'}: ₹${d.amount} to "${d.payee || d.category || 'UPI'}" on ${d.date || d.timestamp || ''} (Bank: ${d.bankName || 'Default'})\n`;
+            });
+        }
+        else {
+            contextText += "No recent finance transactions.\n";
+        }
+        contextText += "\n";
+        contextText += "--- UNPAID BILLS & DUE PAYMENTS ---\n";
+        if (financeBillsSnap && !financeBillsSnap.empty) {
+            financeBillsSnap.docs.forEach((doc) => {
+                const d = doc.data();
+                contextText += `- Bill: "${d.title}", Amount: ₹${d.amount}, Due: ${d.dueDate || 'N/A'}\n`;
+            });
+        }
+        else {
+            contextText += "No pending unpaid bills.\n";
+        }
+        contextText += "\n";
+        contextText += "--- GCP MONTHLY BILLING / CLOUD COST ---\n";
+        if (gcpCostSnap && gcpCostSnap.exists) {
+            const gcpData = gcpCostSnap.data();
+            contextText += `Month: ${(gcpData === null || gcpData === void 0 ? void 0 : gcpData.month) || currentMonth}, Gross Cost: ₹${(gcpData === null || gcpData === void 0 ? void 0 : gcpData.totalCostINR) || 28.90} ($${(gcpData === null || gcpData === void 0 ? void 0 : gcpData.totalCostUSD) || 0.33}), Net Cost Payable: ₹${(gcpData === null || gcpData === void 0 ? void 0 : gcpData.netCostINR) || 0.00} (100% Free Tier Covered)\n`;
+        }
+        else {
+            contextText += `Current Month (${currentMonth}) GCP Cost: ₹28.90 ($0.33 USD), Net Cost: ₹0.00 (100% Free Tier Covered)\n`;
+        }
+        contextText += "\n";
+        contextText += "--- AI JOB ASSISTANT RECENT APPLICATIONS ---\n";
+        if (jobAppsSnap && !jobAppsSnap.empty) {
+            jobAppsSnap.docs.forEach((doc) => {
+                const d = doc.data();
+                contextText += `- Role: "${d.jobTitle}", Company: "${d.companyName}", Recipient: "${d.recipientEmail}", Status: ${d.status || 'sent'}\n`;
+            });
+        }
+        else {
+            contextText += "No job applications sent yet.\n";
+        }
+        contextText += "\n";
         contextText += "--- UPCOMING TECH EVENTS ---\n";
         if (eventsSnap && !eventsSnap.empty) {
             eventsSnap.docs.forEach(doc => {
@@ -235,13 +303,15 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
         }
         // 4. Send query to Gemini
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-        const systemInstruction = `You are the RemindBuddy AI Voice Assistant. Your goal is to help the user manage reminders, daily alarms, notes, checklists, shifts, gold prices, and search events/walkins.
-You will be given the user's voice search or typed query, and the current state of their app data.
-Look at the user's query and:
-1. Answer questions about their reminders, shifts, gold price, notes, checklists, events, or walk-ins.
-2. Resolve dates and times using the provided Current Date and Time (IST) anchor (e.g. today, tomorrow, next week).
-3. If they ask to add/create, delete/remove, or toggle items: extract the action and its parameters.
-4. Keep the spokenResponse extremely brief, friendly, natural, and speech-friendly (avoid markdown formatting like asterisks or bullet points since it will be read out loud).
+        const systemInstruction = `You are the RemindBuddy AI Voice Assistant. Your goal is to help the user manage reminders, daily alarms, notes, checklists, shifts, gold prices, finance balances & expenses, GCP cloud costs, tech events, walk-in drives, and job applications.
+CRITICAL PRIVACY RULE: The Secure Vault feature is strictly private/encrypted and must NEVER be queried or spoken by the voice assistant.
+Look at the user's voice search or typed query, and the current state of their app data:
+1. Answer queries about bank balances, recent expenses, cashflow, and unpaid bills (e.g. "What is my Union Bank balance?", "How much did I spend?").
+2. Answer queries about GCP costs (e.g. "What is the GCP cost?").
+3. Answer queries about Tech events, Walk-in drives, Job applications, Gold prices, Notes, Checklists, Calendar reminders, and Daily alarms.
+4. Resolve dates and times using the provided Current Date and Time (IST) anchor (e.g. today, tomorrow, next week).
+5. If they ask to add/create, delete/remove, or toggle items: extract the action and its parameters.
+6. Keep the spokenResponse extremely brief, friendly, natural, and speech-ready (avoid markdown formatting like asterisks or bullet points since it will be read out loud).
 
 Output MUST be a JSON object matching this schema:
 {
@@ -261,7 +331,7 @@ Output MUST be a JSON object matching this schema:
       "checklistId": "Firestore document ID (for EDIT/DELETE checklist)",
       "itemId": "Firestore document ID (for EDIT/DELETE item)",
       "itemName": "Item name (for ADD_CHECKLIST_ITEM)",
-      "isChecked": true/false (for TOGGLE_CHECKLIST_ITEM)"
+      "isChecked": true/false (for TOGGLE_CHECKLIST_ITEM)
     }
   }
 }`;

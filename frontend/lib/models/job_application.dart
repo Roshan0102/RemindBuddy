@@ -43,7 +43,9 @@ class JobApplication {
       'recipientEmail': recipientEmail,
       'extractedSkills': extractedSkills,
       'generatedSubject': generatedSubject,
+      'subject': generatedSubject,
       'generatedCoverLetter': generatedCoverLetter,
+      'coverLetter': generatedCoverLetter,
       'status': status,
       'appliedAt': Timestamp.fromDate(appliedAt),
       'posterImageUrls': posterImageUrls,
@@ -76,14 +78,17 @@ class JobApplication {
       parsedImages = rawImages.map((e) => e.toString()).toList();
     }
 
+    final String subject = (map['generatedSubject'] ?? map['subject'] ?? '').toString();
+    final String coverLetter = (map['generatedCoverLetter'] ?? map['coverLetter'] ?? map['body'] ?? '').toString();
+
     return JobApplication(
       id: docId,
       jobTitle: map['jobTitle'] ?? 'Unknown Position',
       companyName: map['companyName'] ?? 'Unknown Company',
       recipientEmail: map['recipientEmail'] ?? '',
       extractedSkills: parsedSkills,
-      generatedSubject: map['generatedSubject'] ?? '',
-      generatedCoverLetter: map['generatedCoverLetter'] ?? '',
+      generatedSubject: subject,
+      generatedCoverLetter: coverLetter,
       status: map['status'] ?? 'extracted',
       appliedAt: parsedDate,
       posterImageUrls: parsedImages,

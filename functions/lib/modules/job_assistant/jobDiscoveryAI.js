@@ -7,6 +7,7 @@ const functions = require("firebase-functions");
 const axios_1 = require("axios");
 const nodemailer = require("nodemailer");
 const moment = require("moment-timezone");
+const dns = require("dns");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
 /**
@@ -18,10 +19,28 @@ function isValidEmail(email) {
     const clean = email.trim();
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     // Filter out common dummy or invalid placeholder emails
-    if (clean.includes('example.com') || clean.includes('yourcompany.com') || clean.includes('test.com') || clean.includes('dummy')) {
+    if (clean.includes('example.com') || clean.includes('yourcompany.com') || clean.includes('test.com') || clean.includes('dummy') || clean.includes('sample.com')) {
         return false;
     }
     return emailRegex.test(clean);
+}
+/**
+ * Verifies that the recipient email's domain has valid MX (Mail Exchange) DNS records
+ * to prevent bounced/undeliverable emails ("address not found").
+ */
+async function verifyEmailDomainMx(email) {
+    var _a;
+    try {
+        const domain = (_a = email.split('@')[1]) === null || _a === void 0 ? void 0 : _a.trim();
+        if (!domain)
+            return false;
+        const records = await dns.promises.resolveMx(domain);
+        return records && records.length > 0;
+    }
+    catch (e) {
+        console.warn(`[JobDiscovery] MX DNS validation failed for domain in '${email}':`, e);
+        return false;
+    }
 }
 /**
  * Searches and automatically applies to matching jobs for a specific user
@@ -197,7 +216,7 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         console.log(`[JobDiscovery] 0 matching jobs found with recruiter emails for user ${uid}.`);
         return { success: true, appliedCount: 0, jobs: [], message: "No fresh matching openings with recruiter emails found today." };
     }
-    // Filter valid jobs
+    // Filter valid jobs with active MX record validation
     const validFilteredJobs = [];
     for (const job of discoveredJobs) {
         const email = (job.recipientEmail || '').trim();
@@ -211,14 +230,20 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             console.log(`[JobDiscovery] Skipping duplicate application to ${emailLower} (${job.companyName})`);
             continue;
         }
+        // Verify that the email domain actually has live MX mail exchange servers
+        const hasValidMx = await verifyEmailDomainMx(email);
+        if (!hasValidMx) {
+            console.log(`[JobDiscovery] Skipping job at '${job.companyName}' because domain '${email}' has no valid MX records (dead/unreachable email domain).`);
+            continue;
+        }
         validFilteredJobs.push(job);
         if (validFilteredJobs.length >= maxApplyLimit) {
             break;
         }
     }
     if (validFilteredJobs.length === 0) {
-        console.log(`[JobDiscovery] All discovered jobs were either duplicates or lacked valid emails.`);
-        return { success: true, appliedCount: 0, jobs: [], message: "Discovered openings were already applied to previously." };
+        console.log(`[JobDiscovery] All discovered jobs were either duplicates, lacked valid emails, or had unreachable domains.`);
+        return { success: true, appliedCount: 0, jobs: [], message: "Discovered openings were already applied to or had unreachable domains." };
     }
     // Initialize Nodemailer transporter with user's Gmail App Password
     const cleanPassword = appPassword.replace(/\s+/g, '');
@@ -258,7 +283,9 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
                 sourcePlatform: job.sourcePlatform || "LinkedIn / Search",
                 sourceUrl: job.sourceUrl || "",
                 subject: job.generatedSubject,
+                generatedSubject: job.generatedSubject,
                 coverLetter: job.generatedCoverLetter,
+                generatedCoverLetter: job.generatedCoverLetter,
                 appliedAt: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
                 status: "sent",
                 messageId: info.messageId || "",

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/gold_price_service.dart';
@@ -458,6 +459,7 @@ class _GoldScreenState extends State<GoldScreen> {
   }
 
   Widget _buildChartFilterButtons() {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -467,19 +469,44 @@ class _GoldScreenState extends State<GoldScreen> {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4.0),
             child: InkWell(
+              borderRadius: BorderRadius.circular(20),
               onTap: () => setState(() => _selectedChartRange = range),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                 decoration: BoxDecoration(
-                  color: isSelected ? Colors.indigo : Colors.transparent,
+                  gradient: isSelected
+                      ? const LinearGradient(
+                          colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
+                        )
+                      : null,
+                  color: isSelected
+                      ? null
+                      : (isDark ? const Color(0xFF1E293B) : Colors.white),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.indigo),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFFF59E0B)
+                        : (isDark ? Colors.white12 : Colors.grey.shade300),
+                    width: isSelected ? 1.5 : 1.0,
+                  ),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
                 ),
                 child: Text(
                   range,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.indigo,
-                    fontWeight: FontWeight.bold,
+                  style: GoogleFonts.outfit(
+                    color: isSelected
+                        ? Colors.black87
+                        : (isDark ? Colors.white70 : Colors.blueGrey.shade800),
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                     fontSize: 12,
                   ),
                 ),
@@ -492,6 +519,7 @@ class _GoldScreenState extends State<GoldScreen> {
   }
 
   Widget _buildModernChart(List<GoldPrice> history) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     if (history.length < 2) return const SizedBox.shrink();
 
     // Filter history based on range
@@ -542,10 +570,20 @@ class _GoldScreenState extends State<GoldScreen> {
     }
 
     if (filteredHistory.length < 2) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(32.0),
-          child: Center(child: Text('Not enough data for this range')),
+      return Container(
+        padding: const EdgeInsets.all(32.0),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF131C2E) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isDark ? Colors.white10 : Colors.grey.shade200,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            'Not enough data for this range',
+            style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600),
+          ),
         ),
       );
     }
@@ -564,8 +602,22 @@ class _GoldScreenState extends State<GoldScreen> {
       }
     }).toList();
 
-    return Card(
-      elevation: 2,
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF131C2E) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? const Color(0xFFF59E0B).withValues(alpha: 0.25) : Colors.amber.shade100,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.black.withValues(alpha: 0.35) : Colors.amber.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -573,66 +625,117 @@ class _GoldScreenState extends State<GoldScreen> {
             SizedBox(
               height: 250,
               child: SfCartesianChart(
-                primaryXAxis: const CategoryAxis(
-                  majorGridLines: MajorGridLines(width: 0),
-                  labelRotation: -45,
-                  labelStyle: TextStyle(fontSize: 8),
+                plotAreaBorderWidth: 0,
+                primaryXAxis: CategoryAxis(
+                  majorGridLines: const MajorGridLines(width: 0),
+                  axisLine: AxisLine(color: isDark ? Colors.white24 : Colors.grey.shade300),
+                  labelStyle: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+                  ),
+                  labelIntersectAction: AxisLabelIntersectAction.hide,
+                  labelRotation: 0,
                 ),
                 primaryYAxis: NumericAxis(
                   numberFormat: NumberFormat.currency(symbol: '₹', decimalDigits: 0),
                   axisLine: const AxisLine(width: 0),
+                  majorGridLines: MajorGridLines(
+                    color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+                    dashArray: const <double>[4, 4],
+                  ),
+                  labelStyle: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+                  ),
                 ),
-                tooltipBehavior: TooltipBehavior(enable: true),
+                tooltipBehavior: TooltipBehavior(
+                  enable: true,
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+                  textStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                  format: 'point.x : point.y',
+                ),
                 series: <CartesianSeries>[
-                  AreaSeries<GoldPrice, String>(
+                  SplineAreaSeries<GoldPrice, String>(
                     name: 'Gold Rate (22K)',
                     dataSource: sortedHistory,
-                    xValueMapper: (GoldPrice p, _) => _formatDate(p.timestamp),
+                    xValueMapper: (GoldPrice p, _) => _formatChartDate(p.timestamp),
                     yValueMapper: (GoldPrice p, _) => p.price,
-                    color: Colors.indigo.withValues(alpha: 0.15),
-                    borderColor: Colors.indigo,
-                    borderWidth: 2,
-                    markerSettings: const MarkerSettings(isVisible: true),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.40 : 0.25),
+                        const Color(0xFFF59E0B).withValues(alpha: 0.0),
+                      ],
+                    ),
+                    borderColor: isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706),
+                    borderWidth: 2.8,
+                    markerSettings: MarkerSettings(
+                      isVisible: sortedHistory.length <= 25,
+                      shape: DataMarkerType.circle,
+                      width: 5,
+                      height: 5,
+                      color: const Color(0xFFFBBF24),
+                      borderColor: isDark ? const Color(0xFF78350F) : Colors.white,
+                      borderWidth: 1.5,
+                    ),
                   ),
                   if (paidPoints.isNotEmpty)
                     ScatterSeries<GoldPrice, String>(
                       name: 'Gold Chit Paid',
                       dataSource: paidPoints,
-                      xValueMapper: (GoldPrice p, _) => _formatDate(p.timestamp),
+                      xValueMapper: (GoldPrice p, _) => _formatChartDate(p.timestamp),
                       yValueMapper: (GoldPrice p, _) => p.price,
                       markerSettings: const MarkerSettings(
                         isVisible: true,
                         shape: DataMarkerType.diamond,
-                        width: 13,
-                        height: 13,
-                        color: Colors.amberAccent,
-                        borderColor: Colors.deepOrange,
-                        borderWidth: 2,
+                        width: 14,
+                        height: 14,
+                        color: Color(0xFFFDE047),
+                        borderColor: Color(0xFFEA580C),
+                        borderWidth: 2.5,
                       ),
                     ),
                 ],
               ),
             ),
             if (_paidChitDateKeys.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: Colors.amberAccent,
-                      shape: BoxShape.rectangle,
-                      border: Border.all(color: Colors.deepOrange, width: 2),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.3 : 0.4),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFDE047),
+                        shape: BoxShape.rectangle,
+                        border: Border.all(color: const Color(0xFFEA580C), width: 2),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Glowing Diamond = Gold Chit Installment Paid Date',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange[900]),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Text(
+                      'Glowing Diamond = Gold Chit Installment Paid Date',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? const Color(0xFFFBBF24) : Colors.orange.shade900,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ],
@@ -642,40 +745,68 @@ class _GoldScreenState extends State<GoldScreen> {
   }
 
   Widget _buildScheduleInfo() {
-    return Card(
-      color: Colors.blue.withValues(alpha: 0.1),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.schedule, color: Colors.blue),
-                SizedBox(width: 8),
-                Text('Notification Schedule (IST)', style: TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _scheduleRow('11:00 AM', 'Daily rate update (Always)'),
-            _scheduleRow('07:00 PM', 'Evening check (Only if price differs)'),
-          ],
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF131C2E) : const Color(0xFFF0F9FF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.blueAccent.withValues(alpha: 0.2) : Colors.blue.shade100,
         ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.schedule_rounded, color: Colors.blueAccent, size: 20),
+              const SizedBox(width: 8),
+              Text('Notification Schedule (IST)', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _scheduleRow('11:00 AM', 'Daily rate update (Always)', isDark),
+          _scheduleRow('07:00 PM', 'Evening check (Only if price differs)', isDark),
+        ],
       ),
     );
   }
 
-  Widget _scheduleRow(String time, String desc) {
+  Widget _scheduleRow(String time, String desc, bool isDark) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4.0),
+      padding: const EdgeInsets.only(bottom: 6.0),
       child: Row(
         children: [
-          Text(time, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 12)),
+          Text(time, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 12)),
           const SizedBox(width: 8),
-          Expanded(child: Text(desc, style: const TextStyle(fontSize: 12))),
+          Expanded(
+            child: Text(
+              desc,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white70 : Colors.blueGrey.shade800,
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  String _formatChartDate(String dateStr) {
+    try {
+      final dt = DateTime.parse(dateStr).toLocal();
+      if (_selectedChartRange == '7D' || _selectedChartRange == 'This Month' || _selectedChartRange == '1M') {
+        return DateFormat('d MMM').format(dt);
+      } else if (_selectedChartRange == '3M' || _selectedChartRange == '6M') {
+        return DateFormat('d MMM').format(dt);
+      } else {
+        return DateFormat('MMM yy').format(dt);
+      }
+    } catch (e) {
+      return dateStr;
+    }
   }
 
   String _formatDate(String dateStr) {
