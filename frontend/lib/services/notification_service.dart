@@ -7,6 +7,36 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'log_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'home_widget_service.dart';
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {}
+
+  LogService.staticLog("FCM Background message received: ${message.data}");
+  
+  if (message.data['type'] == 'GOLD_PRICE') {
+    final rateStr = message.data['rate22k'];
+    final changeStr = message.data['changeToday'];
+    final tsStr = message.data['timestamp'];
+
+    final rate = double.tryParse(rateStr?.toString() ?? '') ?? 0.0;
+    final change = double.tryParse(changeStr?.toString() ?? '') ?? 0.0;
+    final updateTime = tsStr != null ? DateTime.tryParse(tsStr.toString()) : null;
+    
+    if (rate > 0) {
+      await HomeWidgetService().updateGoldWidget(
+        rate22k: rate,
+        changeToday: change,
+        updatedAt: updateTime,
+      );
+      LogService.staticLog("FCM BG: Successfully updated GoldWidget to rate $rate (change: $change)");
+    }
+  }
+}
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse notificationResponse) async {
@@ -141,14 +171,21 @@ class NotificationService {
   Future<void> init() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     
-    // 1. Request Permission
+    // 1. Register Background FCM message handler
+    try {
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    } catch (e) {
+      LogService.staticLog("Error registering onBackgroundMessage: $e");
+    }
+
+    // 2. Request Permission
     await messaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
 
-    // 2. Setup Local Notifications (for Foreground support & Channels)
+    // 3. Setup Local Notifications (for Foreground support & Channels)
     if (!kIsWeb) {
       const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
       const DarwinInitializationSettings initializationSettingsDarwin = DarwinInitializationSettings();
@@ -409,6 +446,24 @@ class NotificationService {
       
       RemoteNotification? notification = message.notification;
       AndroidNotification? android = message.notification?.android;
+
+      if (message.data['type'] == 'GOLD_PRICE') {
+        final rateStr = message.data['rate22k'];
+        final changeStr = message.data['changeToday'];
+        final tsStr = message.data['timestamp'];
+
+        final rate = double.tryParse(rateStr?.toString() ?? '') ?? 0.0;
+        final change = double.tryParse(changeStr?.toString() ?? '') ?? 0.0;
+        final updateTime = tsStr != null ? DateTime.tryParse(tsStr.toString()) : null;
+
+        if (rate > 0) {
+          HomeWidgetService().updateGoldWidget(
+            rate22k: rate,
+            changeToday: change,
+            updatedAt: updateTime,
+          );
+        }
+      }
 
       if (notification != null && android != null) {
         String? payload = message.data['type'];

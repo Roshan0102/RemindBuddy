@@ -19,13 +19,11 @@ class GoldWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.gold_widget_layout).apply {
                 val rate22kGram = widgetData.getString("gold_22k_gram", "₹0/g")
                 val rate22kSovereign = widgetData.getString("gold_22k_sovereign", "₹0 (8g)")
-                val city = widgetData.getString("gold_city", "Bengaluru")
                 val change = widgetData.getString("gold_change", "Live Rates")
                 val time = widgetData.getString("gold_time", "Updated Today")
 
                 setTextViewText(R.id.widget_gold_22k_gram, rate22kGram)
                 setTextViewText(R.id.widget_gold_22k_sovereign, rate22kSovereign)
-                setTextViewText(R.id.widget_gold_city, city)
                 setTextViewText(R.id.widget_gold_change, change)
                 setTextViewText(R.id.widget_gold_time, time)
 

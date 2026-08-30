@@ -48,7 +48,6 @@ class _AdminScreenState extends State<AdminScreen> {
     {'id': 'shifts', 'label': 'My Shifts'},
     {'id': 'job_assistant', 'label': 'AI Job Assistant'},
     {'id': 'finance', 'label': 'Finance & Split Expenses'},
-    {'id': 'checklist', 'label': 'Checklist'},
     {'id': 'vault', 'label': 'Secure Vault'},
     {'id': 'events', 'label': 'Tech Events'},
     {'id': 'walkin', 'label': 'Walk-In Drives'},
@@ -1249,14 +1248,9 @@ $firebaseApkUrl
                                     mainAxisSpacing: 2,
                                     childAspectRatio: cols == 1 ? 5.5 : 4.0,
                                   ),
-                                  itemCount: _availableModules
-                                      .where((mod) => !kIsWeb || mod['id'] != 'checklist')
-                                      .length,
+                                  itemCount: _availableModules.length,
                                   itemBuilder: (context, idx) {
-                                    final filteredMods = _availableModules
-                                        .where((mod) => !kIsWeb || mod['id'] != 'checklist')
-                                        .toList();
-                                    final mod = filteredMods[idx];
+                                    final mod = _availableModules[idx];
                                     final modId = mod['id']!;
                                     final modLabel = mod['label']!;
                                     final isEnabled = enabledModules.contains(modId);

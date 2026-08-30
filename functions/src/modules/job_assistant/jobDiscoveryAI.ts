@@ -347,6 +347,15 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         }
     }
 
+    // Record jobsLastRan and jobsLastApplied on user document
+    const userDocUpdate: any = {
+        jobsLastRan: admin.firestore.FieldValue.serverTimestamp()
+    };
+    if (successfullyAppliedJobs.length > 0) {
+        userDocUpdate.jobsLastApplied = admin.firestore.FieldValue.serverTimestamp();
+    }
+    await db.collection("users").doc(uid).set(userDocUpdate, { merge: true });
+
     // Send push notification if applications were sent
     if (successfullyAppliedJobs.length > 0) {
         try {

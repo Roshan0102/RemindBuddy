@@ -92,18 +92,27 @@ async function notifyAllUsers(price, oldPrice) {
         }
     }
     if (tokens.length > 0) {
-        const title = `Gold Rate: ₹${price}`;
+        const title = `Gold Rate: ₹${price}/g`;
         const body = diffText;
+        const diffNumber = oldPrice ? (price - oldPrice) : 0;
         await firebase_1.admin.messaging().sendEachForMulticast({
             tokens,
             notification: { title, body },
             android: {
+                priority: "high",
                 notification: {
                     channelId: "gold_price_channel",
                     tag: "gold_price"
                 }
             },
-            data: { type: "GOLD_PRICE" }
+            data: {
+                type: "GOLD_PRICE",
+                rate22k: String(price),
+                sovereign22k: String(price * 8),
+                changeToday: String(diffNumber),
+                changeText: diffText,
+                timestamp: new Date().toISOString()
+            }
         });
         for (const uid of targetUids) {
             await (0, logger_1.logNotification)(uid, title, body, "GOLD_PRICE");

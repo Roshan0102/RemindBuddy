@@ -51,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _todayShift;
   int _todayEventsCount = 0;
   int _todayWalkinsCount = 0;
+  int _todayAppliedJobsCount = 0;
   int _todayRemindersCount = 0;
   int _dailyRemindersCount = 0;
   int _totalNotesCount = 0;
@@ -69,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _smsTxSub;
   StreamSubscription? _eventsSub;
   StreamSubscription? _walkinsSub;
+  StreamSubscription? _jobAppsSub;
   StreamSubscription? _shiftsSub;
   StreamSubscription? _remindersSub;
   StreamSubscription? _notesSub;
@@ -164,6 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _smsTxSub?.cancel();
     _eventsSub?.cancel();
     _walkinsSub?.cancel();
+    _jobAppsSub?.cancel();
     _shiftsSub?.cancel();
     _remindersSub?.cancel();
     _notesSub?.cancel();
@@ -405,7 +408,7 @@ class _HomeScreenState extends State<HomeScreen> {
         HomeWidgetService().updateGoldWidget(
           rate22k: rate22k,
           changeToday: latest.priceChange,
-          city: _weatherCity,
+          updatedAt: DateTime.tryParse(latest.timestamp),
         );
       }
     });
@@ -612,6 +615,30 @@ class _HomeScreenState extends State<HomeScreen> {
         .snapshots()
         .listen((snap) {
       if (mounted) setState(() => _totalNotesCount = snap.docs.length);
+    });
+
+    // 7. AI Job Discovery Applications Today
+    _jobAppsSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('job_applications')
+        .snapshots()
+        .listen((snap) {
+      int t = 0;
+      for (var doc in snap.docs) {
+        final d = doc.data();
+        DateTime? dt;
+        final val = d['appliedAt'] ?? d['createdAt'] ?? d['timestamp'];
+        if (val is Timestamp) {
+          dt = val.toDate();
+        } else if (val is String) {
+          dt = DateTime.tryParse(val);
+        }
+        if (dt != null && DateFormat('yyyy-MM-dd').format(dt) == todayStr) {
+          t++;
+        }
+      }
+      if (mounted) setState(() => _todayAppliedJobsCount = t);
     });
   }
 
@@ -1072,9 +1099,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (rawName.trim().isEmpty && user?.email != null) {
       rawName = user!.email!.split('@').first;
     }
-    String cleanName = rawName.split(' ').first;
+    String cleanName = rawName.trim();
     if (cleanName.isNotEmpty) {
-      cleanName = cleanName[0].toUpperCase() + (cleanName.length > 1 ? cleanName.substring(1) : '');
+      cleanName = cleanName.split(' ').map((w) => w.isNotEmpty ? w[0].toUpperCase() + (w.length > 1 ? w.substring(1) : '') : '').join(' ');
     } else {
       cleanName = 'Friend';
     }
@@ -1089,7 +1116,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final dateStr = DateFormat('EEEE, d MMMM').format(DateTime.now());
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF131C2E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -1107,25 +1134,40 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Left side: Single-line greeting + date with icon
+          // Left side: 3-row hierarchy (Greeting -> Full Username with emoji -> Date with calendar icon)
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
+                Text(
+                  greeting,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white70 : const Color(0xFF64748B),
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
                 Row(
                   children: [
                     Flexible(
                       child: Text(
-                        '$greeting, $cleanName $emoji',
+                        cleanName,
                         style: GoogleFonts.outfit(
-                          fontSize: 17.5,
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
                           color: isDark ? Colors.white : const Color(0xFF0F172A),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      emoji,
+                      style: const TextStyle(fontSize: 18),
                     ),
                   ],
                 ),
@@ -1152,15 +1194,15 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 10),
-          // Right side: Compact, polished Weather Widget Chip
+          const SizedBox(width: 12),
+          // Right side: Compact, comfortably-sized Weather Widget Chip
           Tooltip(
             message: '$_weatherCondition in $_weatherCity (Tap to refresh)',
             child: InkWell(
               onTap: () => _fetchWeather(force: true),
               borderRadius: BorderRadius.circular(16),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(16),
@@ -1171,8 +1213,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(_weatherIcon, color: Colors.blueAccent, size: 20),
-                    const SizedBox(width: 8),
+                    Icon(_weatherIcon, color: Colors.blueAccent, size: 22),
+                    const SizedBox(width: 9),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
@@ -1181,14 +1223,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           _weatherTemp,
                           style: GoogleFonts.outfit(
                             fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontSize: 15,
                             color: isDark ? Colors.white : const Color(0xFF0F172A),
                           ),
                         ),
                         Text(
                           _weatherCity,
                           style: TextStyle(
-                            fontSize: 10.5,
+                            fontSize: 11,
                             fontWeight: FontWeight.w600,
                             color: isDark ? Colors.white60 : Colors.blueGrey.shade700,
                           ),
@@ -1938,6 +1980,48 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
         break;
+      case 'tech_events':
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text('$_todayEventsCount',
+                  style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.indigoAccent)),
+              const SizedBox(height: 2),
+              Text('Today Events', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: isDark ? Colors.white60 : Colors.grey[600])),
+            ],
+          ),
+        );
+        break;
+      case 'walkin_drives':
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text('$_todayWalkinsCount',
+                  style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.cyanAccent)),
+              const SizedBox(height: 2),
+              Text('Today Walk-Ins', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: isDark ? Colors.white60 : Colors.grey[600])),
+            ],
+          ),
+        );
+        break;
+      case 'job_discovery':
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text('$_todayAppliedJobsCount',
+                  style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.blueAccent)),
+              const SizedBox(height: 2),
+              Text('Applied Today', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: isDark ? Colors.white60 : Colors.grey[600])),
+            ],
+          ),
+        );
+        break;
       case 'events_walkins':
         body = Center(
           child: Column(
@@ -1987,7 +2071,7 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text('$_totalNotesCount Notes',
-                  style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                  style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.purpleAccent)),
               const SizedBox(height: 2),
               Text('Pinned & Drafts', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
             ],

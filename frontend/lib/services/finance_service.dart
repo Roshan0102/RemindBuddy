@@ -10,6 +10,7 @@ import '../models/group_split.dart';
 import '../models/sms_transaction.dart';
 import 'sms_parser_service.dart';
 import 'payment_notification_tracker_service.dart';
+import 'home_widget_service.dart';
 
 class FinanceService {
   static final FinanceService _instance = FinanceService._internal();
@@ -87,6 +88,7 @@ class FinanceService {
       updatedAt: DateTime.now(),
     );
     await ref.set(newAccount.toMap());
+    HomeWidgetService().syncAllWidgets();
   }
 
   Future<void> updateAccount(BankAccount account) async {
@@ -94,6 +96,7 @@ class FinanceService {
     if (doc == null) return;
 
     await doc.collection('finance_accounts').doc(account.id).update(account.toMap());
+    HomeWidgetService().syncAllWidgets();
   }
 
   Future<void> deleteAccount(String accountId) async {
@@ -101,6 +104,7 @@ class FinanceService {
     if (doc == null) return;
 
     await doc.collection('finance_accounts').doc(accountId).delete();
+    HomeWidgetService().syncAllWidgets();
   }
 
   // ============================================================================
@@ -144,6 +148,7 @@ class FinanceService {
     }
 
     await batch.commit();
+    HomeWidgetService().syncAllWidgets();
   }
 
   Future<void> deleteTransaction(FinanceTransaction tx) async {
@@ -168,6 +173,7 @@ class FinanceService {
     }
 
     await batch.commit();
+    HomeWidgetService().syncAllWidgets();
   }
 
   // ============================================================================
@@ -587,6 +593,7 @@ class FinanceService {
           'currentBalance': destBank.currentBalance + tx.amount,
           'updatedAt': FieldValue.serverTimestamp(),
         });
+        HomeWidgetService().syncAllWidgets();
       }
       return;
     }
@@ -606,6 +613,7 @@ class FinanceService {
           'currentBalance': newBal,
           'updatedAt': FieldValue.serverTimestamp(),
         });
+        HomeWidgetService().syncAllWidgets();
         break; // Matched and updated
       }
     }

@@ -14,22 +14,24 @@ class HomeWidgetService {
   Future<void> updateGoldWidget({
     required double rate22k,
     required double changeToday,
-    required String city,
+    DateTime? updatedAt,
   }) async {
     if (kIsWeb) return;
     try {
       final currencyFormat = NumberFormat('#,##,##0');
       final double sovereign22k = rate22k * 8;
 
-      final String changeText = changeToday >= 0
-          ? '▲ +₹${currencyFormat.format(changeToday.abs())} Today'
-          : '▼ -₹${currencyFormat.format(changeToday.abs())} Today';
+      final String changeText = changeToday > 0
+          ? '▲ +₹${currencyFormat.format(changeToday.abs())}'
+          : (changeToday < 0
+              ? '▼ -₹${currencyFormat.format(changeToday.abs())}'
+              : 'Live Rate');
 
-      final String timeText = 'Updated ${DateFormat('hh:mm a').format(DateTime.now())}';
+      final updateDate = updatedAt ?? DateTime.now();
+      final String timeText = 'Updated ${DateFormat('hh:mm a').format(updateDate)}';
 
       await HomeWidget.saveWidgetData<String>('gold_22k_gram', '₹${currencyFormat.format(rate22k)}/g');
       await HomeWidget.saveWidgetData<String>('gold_22k_sovereign', '₹${currencyFormat.format(sovereign22k)} (8g)');
-      await HomeWidget.saveWidgetData<String>('gold_city', city.isNotEmpty ? city : 'Bengaluru');
       await HomeWidget.saveWidgetData<String>('gold_change', changeText);
       await HomeWidget.saveWidgetData<String>('gold_time', timeText);
 
@@ -136,20 +138,30 @@ class HomeWidgetService {
 
       if (goldSnap.docs.isNotEmpty) {
         final latest = goldSnap.docs.first.data();
-        final double rate22k = (latest['rate22k'] as num?)?.toDouble() ?? (latest['rate24k'] as num?)?.toDouble() ?? 7200.0;
-        final String city = latest['city']?.toString() ?? 'Bengaluru';
+        final double rate22k = (latest['rate22k'] as num?)?.toDouble() ?? 
+                               (latest['price'] as num?)?.toDouble() ?? 
+                               (latest['rate24k'] as num?)?.toDouble() ?? 7200.0;
+
+        DateTime? updateTime;
+        final ts = latest['timestamp'];
+        if (ts is Timestamp) {
+          updateTime = ts.toDate();
+        } else if (ts is String) {
+          updateTime = DateTime.tryParse(ts);
+        }
 
         double change = 0.0;
         if (goldSnap.docs.length > 1) {
           final prev = goldSnap.docs[1].data();
-          final double prev22k = (prev['rate22k'] as num?)?.toDouble() ?? rate22k;
+          final double prev22k = (prev['rate22k'] as num?)?.toDouble() ?? 
+                                 (prev['price'] as num?)?.toDouble() ?? rate22k;
           change = rate22k - prev22k;
         }
 
         await updateGoldWidget(
           rate22k: rate22k,
           changeToday: change,
-          city: city,
+          updatedAt: updateTime,
         );
       }
 
@@ -161,7 +173,6 @@ class HomeWidgetService {
           .collection('users')
           .doc(user.uid)
           .collection('finance_accounts')
-          .orderBy('updatedAt', descending: true)
           .get();
 
       final List<Map<String, dynamic>> accountsList = [];
@@ -169,8 +180,10 @@ class HomeWidgetService {
 
       for (var d in accountsSnap.docs) {
         final data = d.data();
-        final name = data['name']?.toString() ?? 'Account';
-        final bal = (data['currentBalance'] as num?)?.toDouble() ?? (data['balance'] as num?)?.toDouble() ?? 0.0;
+        final name = (data['name'] ?? data['accountName'] ?? data['bankName'] ?? 'Bank Account').toString();
+        final bal = (data['currentBalance'] as num?)?.toDouble() ?? 
+                    (data['balance'] as num?)?.toDouble() ?? 
+                    (data['initialBalance'] as num?)?.toDouble() ?? 0.0;
         totalBalance += bal;
         accountsList.add({'name': name, 'balance': bal});
       }

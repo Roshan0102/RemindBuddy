@@ -57,6 +57,7 @@ export {
 
 export {
     fetchUserWalkIns,
+    fetchUserWalkInDrives,
     fetchUserWalkInsTrigger
 } from "./modules/events/walkinDrives";
 

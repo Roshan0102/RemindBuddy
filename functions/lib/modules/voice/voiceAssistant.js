@@ -40,9 +40,6 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             .orderBy("updatedAt", "desc")
             .limit(10)
             .get();
-        const checklistsPromise = firebase_1.db.collection("users").doc(uid).collection("checklists")
-            .limit(10)
-            .get();
         const shiftsPromise = firebase_1.db.collection("users").doc(uid).collection("shifts").doc(currentMonth).collection("daily_shifts")
             .orderBy("date")
             .get();
@@ -62,45 +59,19 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             .get();
         const goldInsightsPromise = firebase_1.db.collection("gold_ai_insights").doc("latest").get();
         const goldChitAdvicePromise = firebase_1.db.collection("gold_chit_advice").doc("latest").get();
-        const financeAccountsPromise = firebase_1.db.collection("users").doc(uid).collection("finance_accounts").get();
-        const financeTransactionsPromise = firebase_1.db.collection("users").doc(uid).collection("finance_transactions").orderBy("timestamp", "desc").limit(10).get();
-        const financeBillsPromise = firebase_1.db.collection("users").doc(uid).collection("finance_bills").where("isPaid", "==", false).limit(10).get();
-        const gcpCostPromise = firebase_1.db.collection("admin_creds").doc(`gcp_billing_summary_${nowKolkata.year()}_${nowKolkata.format('MM')}`).get();
         const jobAppsPromise = firebase_1.db.collection("users").doc(uid).collection("job_applications").orderBy("appliedAt", "desc").limit(5).get();
-        const [remindersSnap, dailyRemindersSnap, notesSnap, checklistsSnap, shiftsSnap, goldSnap, eventsSnap, walkinsSnap, goldInsightsSnap, goldChitAdviceSnap, financeAccountsSnap, financeTransactionsSnap, financeBillsSnap, gcpCostSnap, jobAppsSnap] = await Promise.all([
+        const [remindersSnap, dailyRemindersSnap, notesSnap, shiftsSnap, goldSnap, eventsSnap, walkinsSnap, goldInsightsSnap, goldChitAdviceSnap, jobAppsSnap] = await Promise.all([
             remindersPromise,
             dailyRemindersPromise,
             notesPromise,
-            checklistsPromise,
             shiftsPromise.catch(() => null),
             goldPromise.catch(() => null),
             eventsPromise.catch(() => null),
             walkinsPromise.catch(() => null),
             goldInsightsPromise.catch(() => null),
             goldChitAdvicePromise.catch(() => null),
-            financeAccountsPromise.catch(() => null),
-            financeTransactionsPromise.catch(() => null),
-            financeBillsPromise.catch(() => null),
-            gcpCostPromise.catch(() => null),
             jobAppsPromise.catch(() => null)
         ]);
-        const checklistsData = [];
-        if (checklistsSnap && !checklistsSnap.empty) {
-            const itemPromises = checklistsSnap.docs.map(async (doc) => {
-                const itemsSnap = await doc.ref.collection("items").orderBy("createdAt").get();
-                const items = itemsSnap.docs.map(itemDoc => ({
-                    id: itemDoc.id,
-                    name: itemDoc.data().name || "",
-                    isDone: itemDoc.data().isDone || false
-                }));
-                checklistsData.push({
-                    id: doc.id,
-                    title: doc.data().title || "",
-                    items
-                });
-            });
-            await Promise.all(itemPromises);
-        }
         // Format state context
         let contextText = `Current Date and Time (IST): ${nowKolkata.format('YYYY-MM-DD HH:mm dddd')}\n\n`;
         contextText += "--- UPCOMING CALENDAR REMINDERS ---\n";
@@ -134,24 +105,6 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
         }
         else {
             contextText += "No notes found.\n";
-        }
-        contextText += "\n";
-        contextText += "--- CHECKLISTS ---\n";
-        if (checklistsData.length > 0) {
-            checklistsData.forEach(cl => {
-                contextText += `- ID: ${cl.id}, Title: "${cl.title}"\n`;
-                if (cl.items.length > 0) {
-                    cl.items.forEach((item) => {
-                        contextText += `  * Item ID: ${item.id}, Name: "${item.name}", Done: ${item.isDone}\n`;
-                    });
-                }
-                else {
-                    contextText += "  (no items)\n";
-                }
-            });
-        }
-        else {
-            contextText += "No checklists found.\n";
         }
         contextText += "\n";
         contextText += `--- WORK SHIFTS (${currentMonth}) ---\n`;
@@ -213,53 +166,6 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             contextText += "No gold chit buying advice available.\n";
         }
         contextText += "\n";
-        contextText += "--- FINANCE BANK ACCOUNTS & BALANCES ---\n";
-        let totalNetBalance = 0;
-        if (financeAccountsSnap && !financeAccountsSnap.empty) {
-            financeAccountsSnap.docs.forEach(doc => {
-                var _a;
-                const d = doc.data();
-                const bal = Number((_a = d.balance) !== null && _a !== void 0 ? _a : 0);
-                totalNetBalance += bal;
-                contextText += `- Account: "${d.bankName || d.name || 'Account'}" (Type: ${d.type || 'Savings'}, Last 4: ${d.accountNumber || d.last4 || 'N/A'}), Balance: ₹${bal.toLocaleString('en-IN')}\n`;
-            });
-            contextText += `Total Net Bank Balance: ₹${totalNetBalance.toLocaleString('en-IN')}\n`;
-        }
-        else {
-            contextText += "No bank accounts linked in Finance.\n";
-        }
-        contextText += "\n";
-        contextText += "--- RECENT FINANCE TRANSACTIONS ---\n";
-        if (financeTransactionsSnap && !financeTransactionsSnap.empty) {
-            financeTransactionsSnap.docs.forEach((doc) => {
-                const d = doc.data();
-                contextText += `- ${d.type === 'income' ? 'Income' : 'Expense'}: ₹${d.amount} to "${d.payee || d.category || 'UPI'}" on ${d.date || d.timestamp || ''} (Bank: ${d.bankName || 'Default'})\n`;
-            });
-        }
-        else {
-            contextText += "No recent finance transactions.\n";
-        }
-        contextText += "\n";
-        contextText += "--- UNPAID BILLS & DUE PAYMENTS ---\n";
-        if (financeBillsSnap && !financeBillsSnap.empty) {
-            financeBillsSnap.docs.forEach((doc) => {
-                const d = doc.data();
-                contextText += `- Bill: "${d.title}", Amount: ₹${d.amount}, Due: ${d.dueDate || 'N/A'}\n`;
-            });
-        }
-        else {
-            contextText += "No pending unpaid bills.\n";
-        }
-        contextText += "\n";
-        contextText += "--- GCP MONTHLY BILLING / CLOUD COST ---\n";
-        if (gcpCostSnap && gcpCostSnap.exists) {
-            const gcpData = gcpCostSnap.data();
-            contextText += `Month: ${(gcpData === null || gcpData === void 0 ? void 0 : gcpData.month) || currentMonth}, Gross Cost: ₹${(gcpData === null || gcpData === void 0 ? void 0 : gcpData.totalCostINR) || 28.90} ($${(gcpData === null || gcpData === void 0 ? void 0 : gcpData.totalCostUSD) || 0.33}), Net Cost Payable: ₹${(gcpData === null || gcpData === void 0 ? void 0 : gcpData.netCostINR) || 0.00} (100% Free Tier Covered)\n`;
-        }
-        else {
-            contextText += `Current Month (${currentMonth}) GCP Cost: ₹28.90 ($0.33 USD), Net Cost: ₹0.00 (100% Free Tier Covered)\n`;
-        }
-        contextText += "\n";
         contextText += "--- AI JOB ASSISTANT RECENT APPLICATIONS ---\n";
         if (jobAppsSnap && !jobAppsSnap.empty) {
             jobAppsSnap.docs.forEach((doc) => {
@@ -293,35 +199,34 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             contextText += "No upcoming walk-in drives.\n";
         }
         // 4. Send query to Gemini
-        const systemInstruction = `You are the RemindBuddy AI Voice Assistant. Your goal is to help the user manage reminders, daily alarms, notes, checklists, shifts, gold prices, finance balances & expenses, GCP cloud costs, tech events, walk-in drives, and job applications.
-CRITICAL PRIVACY RULE: The Secure Vault feature is strictly private/encrypted and must NEVER be queried or spoken by the voice assistant.
+        const systemInstruction = `You are the RemindBuddy AI Voice Assistant. Your goal is to help the user manage reminders, daily alarms, notes, shifts, gold prices & insights, tech events, walk-in drives, and job applications.
+
+CRITICAL PRIVACY & SECURITY GUARDRAILS:
+1. SECURE VAULT: The Secure Vault feature is encrypted and strictly confidential. You do NOT have access to it and must NEVER query, speak about, or reveal vault documents, passwords, or files.
+2. FINANCE: The Finance feature (bank accounts, balances, transactions, and bills) is strictly private and confidential. You do NOT have access to it and must NEVER query, speak about, or reveal bank accounts, balances, or transactions. If the user asks about bank balances or finances, politely respond: "I do not have access to your private financial details or bank balances for privacy and security."
+3. ADMIN CONSOLE: The Admin Console, user management, and Cloud/GCP billing data are strictly restricted and must NEVER be queried or revealed.
+
 Look at the user's voice search or typed query, and the current state of their app data:
-1. Answer queries about bank balances, recent expenses, cashflow, and unpaid bills (e.g. "What is my Union Bank balance?", "How much did I spend?").
-2. Answer queries about GCP costs (e.g. "What is the GCP cost?").
-3. Answer queries about Tech events, Walk-in drives, Job applications, Gold prices, Notes, Checklists, Calendar reminders, and Daily alarms.
-4. Resolve dates and times using the provided Current Date and Time (IST) anchor (e.g. today, tomorrow, next week).
-5. If they ask to add/create, delete/remove, or toggle items: extract the action and its parameters.
-6. Keep the spokenResponse extremely brief, friendly, natural, and speech-ready (avoid markdown formatting like asterisks or bullet points since it will be read out loud).
+1. Answer queries about Tech events, Walk-in drives, Job applications, Gold prices & insights, Notes, Calendar reminders, Daily alarms, and Work shifts.
+2. Resolve dates and times using the provided Current Date and Time (IST) anchor (e.g. today, tomorrow, next week).
+3. If they ask to add/create or delete/remove items (reminders, notes): extract the action and its parameters.
+4. Keep the spokenResponse extremely brief, friendly, natural, and speech-ready (avoid markdown formatting like asterisks or bullet points since it will be read out loud).
 
 Output MUST be a JSON object matching this schema:
 {
   "spokenResponse": "Speech-ready text to be read by Text-to-Speech",
   "action": {
-    "type": "CREATE_REMINDER" | "DELETE_REMINDER" | "CREATE_NOTE" | "DELETE_NOTE" | "CREATE_CHECKLIST" | "DELETE_CHECKLIST" | "ADD_CHECKLIST_ITEM" | "TOGGLE_CHECKLIST_ITEM" | "DELETE_CHECKLIST_ITEM" | "NONE",
+    "type": "CREATE_REMINDER" | "DELETE_REMINDER" | "CREATE_NOTE" | "DELETE_NOTE" | "NONE",
     "params": {
       "reminderId": "Firestore document ID (for DELETE)",
-      "title": "Title (for CREATE_REMINDER, CREATE_NOTE, CREATE_CHECKLIST)",
+      "title": "Title (for CREATE_REMINDER, CREATE_NOTE)",
       "content": "Content body (for CREATE_NOTE)",
       "date": "YYYY-MM-DD (for CREATE_REMINDER)",
       "time": "HH:MM (for CREATE_REMINDER)",
       "snoozeEnabled": true/false,
       "snoozeIntervalMinutes": 15,
       "maxSnoozeCount": 3,
-      "noteId": "Firestore document ID (for DELETE)",
-      "checklistId": "Firestore document ID (for EDIT/DELETE checklist)",
-      "itemId": "Firestore document ID (for EDIT/DELETE item)",
-      "itemName": "Item name (for ADD_CHECKLIST_ITEM)",
-      "isChecked": true/false (for TOGGLE_CHECKLIST_ITEM)
+      "noteId": "Firestore document ID (for DELETE)"
     }
   }
 }`;
@@ -347,8 +252,6 @@ Output MUST be a JSON object matching this schema:
                                     enum: [
                                         "CREATE_REMINDER", "DELETE_REMINDER",
                                         "CREATE_NOTE", "DELETE_NOTE",
-                                        "CREATE_CHECKLIST", "DELETE_CHECKLIST",
-                                        "ADD_CHECKLIST_ITEM", "TOGGLE_CHECKLIST_ITEM", "DELETE_CHECKLIST_ITEM",
                                         "NONE"
                                     ]
                                 },
@@ -363,11 +266,7 @@ Output MUST be a JSON object matching this schema:
                                         snoozeEnabled: { type: "BOOLEAN" },
                                         snoozeIntervalMinutes: { type: "INTEGER" },
                                         maxSnoozeCount: { type: "INTEGER" },
-                                        noteId: { type: "STRING" },
-                                        checklistId: { type: "STRING" },
-                                        itemId: { type: "STRING" },
-                                        itemName: { type: "STRING" },
-                                        isChecked: { type: "BOOLEAN" }
+                                        noteId: { type: "STRING" }
                                     }
                                 }
                             },
@@ -432,54 +331,6 @@ Output MUST be a JSON object matching this schema:
                 if (noteId) {
                     await firebase_1.db.collection("users").doc(uid).collection("notes").doc(noteId).delete();
                     actionExecuted = { type: actionType, id: noteId };
-                }
-            }
-            else if (actionType === "CREATE_CHECKLIST") {
-                const { title } = params;
-                if (title) {
-                    const docRef = await firebase_1.db.collection("users").doc(uid).collection("checklists").add({
-                        title,
-                        createdAt: firebase_1.admin.firestore.FieldValue.serverTimestamp()
-                    });
-                    actionExecuted = { type: actionType, id: docRef.id, params };
-                }
-            }
-            else if (actionType === "DELETE_CHECKLIST") {
-                const { checklistId } = params;
-                if (checklistId) {
-                    const itemsSnap = await firebase_1.db.collection("users").doc(uid).collection("checklists").doc(checklistId).collection("items").get();
-                    const batch = firebase_1.db.batch();
-                    itemsSnap.docs.forEach(doc => batch.delete(doc.ref));
-                    batch.delete(firebase_1.db.collection("users").doc(uid).collection("checklists").doc(checklistId));
-                    await batch.commit();
-                    actionExecuted = { type: actionType, id: checklistId };
-                }
-            }
-            else if (actionType === "ADD_CHECKLIST_ITEM") {
-                const { checklistId, itemName } = params;
-                if (checklistId && itemName) {
-                    const docRef = await firebase_1.db.collection("users").doc(uid).collection("checklists").doc(checklistId).collection("items").add({
-                        name: itemName,
-                        isDone: false,
-                        createdAt: firebase_1.admin.firestore.FieldValue.serverTimestamp()
-                    });
-                    actionExecuted = { type: actionType, id: docRef.id, params };
-                }
-            }
-            else if (actionType === "TOGGLE_CHECKLIST_ITEM") {
-                const { checklistId, itemId, isChecked } = params;
-                if (checklistId && itemId) {
-                    await firebase_1.db.collection("users").doc(uid).collection("checklists").doc(checklistId).collection("items").doc(itemId).update({
-                        isDone: isChecked
-                    });
-                    actionExecuted = { type: actionType, id: itemId, params };
-                }
-            }
-            else if (actionType === "DELETE_CHECKLIST_ITEM") {
-                const { checklistId, itemId } = params;
-                if (checklistId && itemId) {
-                    await firebase_1.db.collection("users").doc(uid).collection("checklists").doc(checklistId).collection("items").doc(itemId).delete();
-                    actionExecuted = { type: actionType, id: itemId };
                 }
             }
         }

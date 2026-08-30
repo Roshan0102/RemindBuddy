@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fetchUserWalkInsTrigger = exports.fetchUserWalkIns = void 0;
+exports.fetchUserWalkInsTrigger = exports.fetchUserWalkInDrives = exports.fetchUserWalkIns = void 0;
 exports.fetchAndStoreWalkInsForUserInternal = fetchAndStoreWalkInsForUserInternal;
 exports.internalDailyWalkInsFetcher = internalDailyWalkInsFetcher;
 const functions = require("firebase-functions");
@@ -181,6 +181,7 @@ exports.fetchUserWalkIns = functions.runWith({ timeoutSeconds: 120, memory: "256
         throw new functions.https.HttpsError('internal', error.message || 'Failed to fetch walk-ins.');
     }
 });
+exports.fetchUserWalkInDrives = exports.fetchUserWalkIns;
 async function internalDailyWalkInsFetcher() {
     console.log("Starting dailyWalkInsFetcher at 8 PM IST");
     try {

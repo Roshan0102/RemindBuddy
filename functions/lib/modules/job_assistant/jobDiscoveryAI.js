@@ -299,6 +299,14 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             console.error(`[JobDiscovery] Failed sending email to ${job.recipientEmail}:`, mailErr);
         }
     }
+    // Record jobsLastRan and jobsLastApplied on user document
+    const userDocUpdate = {
+        jobsLastRan: firebase_1.admin.firestore.FieldValue.serverTimestamp()
+    };
+    if (successfullyAppliedJobs.length > 0) {
+        userDocUpdate.jobsLastApplied = firebase_1.admin.firestore.FieldValue.serverTimestamp();
+    }
+    await firebase_1.db.collection("users").doc(uid).set(userDocUpdate, { merge: true });
     // Send push notification if applications were sent
     if (successfullyAppliedJobs.length > 0) {
         try {

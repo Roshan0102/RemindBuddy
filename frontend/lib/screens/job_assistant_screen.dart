@@ -5,7 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:async';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import '../models/job_application.dart';
 import '../services/job_assistant_service.dart';
 
@@ -72,6 +76,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   String _autoApplyStatusMessage = '';
   final ScrollController _autoAppScrollController = ScrollController();
 
+  // Execution & Application Timestamps
+  DateTime? _jobsLastRan;
+  DateTime? _jobsLastApplied;
+  StreamSubscription? _userDocSub;
+  StreamSubscription? _appsSub;
+
   // History Tab Filter
   String _historyFilter = 'all'; // 'all', 'auto', 'manual'
 
@@ -80,10 +90,81 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadUserConfig();
+    _setupTimestampsListeners();
+  }
+
+  void _setupTimestampsListeners() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      _userDocSub = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .snapshots()
+          .listen((snap) {
+        if (!snap.exists || snap.data() == null) return;
+        final data = snap.data()!;
+        final lastRan = data['jobsLastRan'] ?? data['autoApplyLastRan'] ?? data['autoApplySettings']?['lastRan'];
+        final lastApplied = data['jobsLastApplied'] ?? data['autoApplyLastApplied'];
+
+        DateTime? parsedRan;
+        if (lastRan is Timestamp) {
+          parsedRan = lastRan.toDate();
+        } else if (lastRan is String) {
+          parsedRan = DateTime.tryParse(lastRan);
+        }
+
+        DateTime? parsedApplied;
+        if (lastApplied is Timestamp) {
+          parsedApplied = lastApplied.toDate();
+        } else if (lastApplied is String) {
+          parsedApplied = DateTime.tryParse(lastApplied);
+        }
+
+        if (mounted) {
+          setState(() {
+            if (parsedRan != null) _jobsLastRan = parsedRan;
+            if (parsedApplied != null) _jobsLastApplied = parsedApplied;
+          });
+        }
+      });
+    }
+
+    _appsSub = _service.getJobApplicationsStream().listen((apps) {
+      final sentApps = apps.where((a) => a.status == 'sent' || a.isAutoApplied).toList();
+      if (sentApps.isNotEmpty && mounted) {
+        final latest = sentApps.first.appliedAt;
+        setState(() {
+          if (_jobsLastApplied == null || latest.isAfter(_jobsLastApplied!)) {
+            _jobsLastApplied = latest;
+          }
+        });
+      }
+    });
+  }
+
+  String _formatRelativeTimestamp(DateTime? dt) {
+    if (dt == null) return 'Never';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = DateTime(dt.year, dt.month, dt.day);
+    final diffDays = today.difference(date).inDays;
+
+    final timeStr = DateFormat('hh:mm a').format(dt);
+    if (diffDays == 0) {
+      return 'Today at $timeStr';
+    } else if (diffDays == 1) {
+      return 'Yesterday at $timeStr';
+    } else if (diffDays < 7) {
+      return '${DateFormat('EEEE').format(dt)} at $timeStr';
+    } else {
+      return '${DateFormat('dd MMM').format(dt)} at $timeStr';
+    }
   }
 
   @override
   void dispose() {
+    _userDocSub?.cancel();
+    _appsSub?.cancel();
     _tabController.dispose();
     _autoAppScrollController.dispose();
     _newAppScrollController.dispose();
@@ -1146,6 +1227,94 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Last Run & Last Applied Timestamps Card
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.black.withValues(alpha: 0.35) : Colors.white.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              const Icon(Icons.history_toggle_off_rounded, color: Colors.blueAccent, size: 16),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'LAST RUN',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                        color: isDark ? Colors.white54 : Colors.grey[600],
+                                      ),
+                                    ),
+                                    Text(
+                                      _formatRelativeTimestamp(_jobsLastRan),
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          height: 22,
+                          width: 1,
+                          color: isDark ? Colors.white12 : Colors.black12,
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              const Icon(Icons.send_rounded, color: Color(0xFF10B981), size: 15),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'LAST APPLIED',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                        color: isDark ? Colors.white54 : Colors.grey[600],
+                                      ),
+                                    ),
+                                    Text(
+                                      _formatRelativeTimestamp(_jobsLastApplied),
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

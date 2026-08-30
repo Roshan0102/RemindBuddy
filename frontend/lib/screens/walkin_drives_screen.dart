@@ -129,13 +129,22 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
   Future<void> _triggerFetchWalkIns() async {
     setState(() => _isFetchingWalkIns = true);
     try {
-      final HttpsCallable callable =
-          FirebaseFunctions.instance.httpsCallable('fetchUserWalkInDrives');
-      final result = await callable.call();
+      dynamic result;
+      try {
+        final HttpsCallable callable =
+            FirebaseFunctions.instance.httpsCallable('fetchUserWalkIns');
+        result = await callable.call();
+      } catch (err) {
+        // Fallback to fetchUserWalkInDrives if alias exists
+        final HttpsCallable fallbackCallable =
+            FirebaseFunctions.instance.httpsCallable('fetchUserWalkInDrives');
+        result = await fallbackCallable.call();
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Successfully loaded ${result.data['count'] ?? 0} walk-in drives'),
+            content: Text('✅ Successfully loaded ${result.data?['count'] ?? 0} walk-in drives'),
             backgroundColor: Colors.green,
           ),
         );

@@ -195,6 +195,8 @@ export const fetchUserWalkIns = functions.runWith({ timeoutSeconds: 120, memory:
     }
 });
 
+export const fetchUserWalkInDrives = fetchUserWalkIns;
+
 export async function internalDailyWalkInsFetcher() {
     console.log("Starting dailyWalkInsFetcher at 8 PM IST");
     try {

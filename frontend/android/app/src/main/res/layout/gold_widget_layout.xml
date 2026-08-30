@@ -19,25 +19,25 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="🥇 Live Gold Rates (22K)"
+            android:text="🥇 Live 22K Gold"
             android:textColor="#FDE047"
-            android:textSize="12sp"
+            android:textSize="12.5sp"
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/widget_gold_city"
+            android:id="@+id/widget_gold_time"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Bengaluru"
+            android:text="Updated Today"
             android:textColor="#94A3B8"
-            android:textSize="10.5sp" />
+            android:textSize="10sp" />
     </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="5dp"
-        android:layout_marginBottom="5dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="6dp"
         android:background="#1E293B" />
 
     <!-- 22K Prices: Row 1 (Per Gram) & Row 2 (Per Sovereign / 8 Grams) -->
@@ -52,7 +52,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="3dp"
+            android:layout_marginBottom="4dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -60,9 +60,9 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="22K (Per Gram)"
+                android:text="22K (Per 1 Gram)"
                 android:textColor="#E2E8F0"
-                android:textSize="11sp" />
+                android:textSize="11.5sp" />
 
             <TextView
                 android:id="@+id/widget_gold_22k_gram"
@@ -70,11 +70,11 @@
                 android:layout_height="wrap_content"
                 android:text="₹0/g"
                 android:textColor="#FDE047"
-                android:textSize="12sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Row 2: 22K 1 Sovereign (8 Grams / Pavan) -->
+        <!-- Row 2: 22K 1 Sovereign (8 Grams) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -85,9 +85,9 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="22K (1 Sovereign / 8g)"
+                android:text="22K (Per 8 Grams)"
                 android:textColor="#E2E8F0"
-                android:textSize="11sp" />
+                android:textSize="11.5sp" />
 
             <TextView
                 android:id="@+id/widget_gold_22k_sovereign"
@@ -95,7 +95,7 @@
                 android:layout_height="wrap_content"
                 android:text="₹0 (8g)"
                 android:textColor="#FDE047"
-                android:textSize="12sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
@@ -103,11 +103,11 @@
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="5dp"
-        android:layout_marginBottom="5dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="6dp"
         android:background="#1E293B" />
 
-    <!-- Footer Row: Trend & Time -->
+    <!-- Footer Row: Trend & Tap action -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -119,23 +119,22 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/widget_pill_green"
-            android:paddingLeft="5dp"
-            android:paddingRight="5dp"
+            android:paddingLeft="6dp"
+            android:paddingRight="6dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
-            android:text="Live Rates"
+            android:text="Live Rate"
             android:textColor="#22C55E"
-            android:textSize="9.5sp"
+            android:textSize="10sp"
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/widget_gold_time"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:gravity="end"
-            android:text="Updated"
+            android:text="Tap to view insights →"
             android:textColor="#64748B"
-            android:textSize="9sp" />
+            android:textSize="9.5sp" />
     </LinearLayout>
 </LinearLayout>
