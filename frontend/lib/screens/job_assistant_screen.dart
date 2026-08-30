@@ -142,22 +142,35 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     });
   }
 
-  String _formatRelativeTimestamp(DateTime? dt) {
-    if (dt == null) return 'Never';
+  DateTime _getFallbackLastRun() {
+    final now = DateTime.now();
+    if (now.hour >= 22) {
+      return DateTime(now.year, now.month, now.day, 22, 0);
+    } else if (now.hour >= 10) {
+      return DateTime(now.year, now.month, now.day, 10, 0);
+    } else {
+      final yest = now.subtract(const Duration(days: 1));
+      return DateTime(yest.year, yest.month, yest.day, 22, 0);
+    }
+  }
+
+  String _formatRelativeTimestamp(DateTime? dt, {bool isLastRun = false}) {
+    final effectiveDt = dt ?? (isLastRun ? _getFallbackLastRun() : null);
+    if (effectiveDt == null) return 'Never';
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final date = DateTime(dt.year, dt.month, dt.day);
+    final date = DateTime(effectiveDt.year, effectiveDt.month, effectiveDt.day);
     final diffDays = today.difference(date).inDays;
 
-    final timeStr = DateFormat('hh:mm a').format(dt);
+    final timeStr = DateFormat('h:mm a').format(effectiveDt);
     if (diffDays == 0) {
-      return 'Today at $timeStr';
+      return 'Today, $timeStr';
     } else if (diffDays == 1) {
-      return 'Yesterday at $timeStr';
+      return 'Yesterday, $timeStr';
     } else if (diffDays < 7) {
-      return '${DateFormat('EEEE').format(dt)} at $timeStr';
+      return '${DateFormat('EEE').format(effectiveDt)}, $timeStr';
     } else {
-      return '${DateFormat('dd MMM').format(dt)} at $timeStr';
+      return '${DateFormat('dd MMM').format(effectiveDt)}, $timeStr';
     }
   }
 
@@ -1258,9 +1271,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                       ),
                                     ),
                                     Text(
-                                      _formatRelativeTimestamp(_jobsLastRan),
+                                      _formatRelativeTimestamp(_jobsLastRan, isLastRun: true),
                                       style: TextStyle(
-                                        fontSize: 11.5,
+                                        fontSize: 11,
                                         fontWeight: FontWeight.w600,
                                         color: isDark ? Colors.white : const Color(0xFF0F172A),
                                       ),
@@ -1300,7 +1313,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                     Text(
                                       _formatRelativeTimestamp(_jobsLastApplied),
                                       style: TextStyle(
-                                        fontSize: 11.5,
+                                        fontSize: 11,
                                         fontWeight: FontWeight.w600,
                                         color: isDark ? Colors.white : const Color(0xFF0F172A),
                                       ),

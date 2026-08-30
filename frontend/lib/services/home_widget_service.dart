@@ -61,40 +61,20 @@ class HomeWidgetService {
       await HomeWidget.saveWidgetData<String>('finance_out', outText);
       await HomeWidget.saveWidgetData<String>('finance_time', timeText);
 
-      // Account 1
-      if (accounts.isNotEmpty) {
-        final a1 = accounts[0];
-        final name = a1['name']?.toString() ?? 'Bank Account';
-        final bal = (a1['balance'] as num?)?.toDouble() ?? 0.0;
-        await HomeWidget.saveWidgetData<String>('finance_acc1_name', name);
-        await HomeWidget.saveWidgetData<String>('finance_acc1_bal', '₹${currencyFormat.format(bal)}');
-      } else {
-        await HomeWidget.saveWidgetData<String>('finance_acc1_name', '');
-        await HomeWidget.saveWidgetData<String>('finance_acc1_bal', '');
-      }
-
-      // Account 2
-      if (accounts.length > 1) {
-        final a2 = accounts[1];
-        final name = a2['name']?.toString() ?? 'Bank Account';
-        final bal = (a2['balance'] as num?)?.toDouble() ?? 0.0;
-        await HomeWidget.saveWidgetData<String>('finance_acc2_name', name);
-        await HomeWidget.saveWidgetData<String>('finance_acc2_bal', '₹${currencyFormat.format(bal)}');
-      } else {
-        await HomeWidget.saveWidgetData<String>('finance_acc2_name', '');
-        await HomeWidget.saveWidgetData<String>('finance_acc2_bal', '');
-      }
-
-      // Account 3
-      if (accounts.length > 2) {
-        final a3 = accounts[2];
-        final name = a3['name']?.toString() ?? 'Bank Account';
-        final bal = (a3['balance'] as num?)?.toDouble() ?? 0.0;
-        await HomeWidget.saveWidgetData<String>('finance_acc3_name', name);
-        await HomeWidget.saveWidgetData<String>('finance_acc3_bal', '₹${currencyFormat.format(bal)}');
-      } else {
-        await HomeWidget.saveWidgetData<String>('finance_acc3_name', '');
-        await HomeWidget.saveWidgetData<String>('finance_acc3_bal', '');
+      // Save each connected account up to 4 accounts
+      for (int i = 0; i < 4; i++) {
+        if (i < accounts.length) {
+          final a = accounts[i];
+          final name = (a['name'] ?? a['accountName'] ?? a['bankName'] ?? 'Bank Account').toString();
+          final bal = (a['currentBalance'] as num?)?.toDouble() ?? 
+                      (a['balance'] as num?)?.toDouble() ?? 
+                      (a['initialBalance'] as num?)?.toDouble() ?? 0.0;
+          await HomeWidget.saveWidgetData<String>('finance_acc${i + 1}_name', name);
+          await HomeWidget.saveWidgetData<String>('finance_acc${i + 1}_bal', '₹${currencyFormat.format(bal)}');
+        } else {
+          await HomeWidget.saveWidgetData<String>('finance_acc${i + 1}_name', '');
+          await HomeWidget.saveWidgetData<String>('finance_acc${i + 1}_bal', '');
+        }
       }
 
       await HomeWidget.updateWidget(androidName: 'FinanceWidgetProvider');
@@ -203,20 +183,22 @@ class HomeWidgetService {
 
       for (final doc in manualTxSnap.docs) {
         final data = doc.data();
-        final date = data['date'];
+        final ts = data['timestamp'] ?? data['date'];
         DateTime? dt;
-        if (date is Timestamp) {
-          dt = date.toDate();
-        } else if (date is String) {
-          dt = DateTime.tryParse(date);
+        if (ts is Timestamp) {
+          dt = ts.toDate();
+        } else if (ts is String) {
+          dt = DateTime.tryParse(ts);
+        } else if (ts is int) {
+          dt = DateTime.fromMillisecondsSinceEpoch(ts);
         }
 
         if (dt != null && DateFormat('yyyy-MM-dd').format(dt) == todayStr) {
           final amt = (data['amount'] as num? ?? 0.0).toDouble();
           final type = (data['type'] ?? '').toString().toLowerCase();
-          if (type == 'income' || type == 'credit') {
+          if (type == 'income' || type == 'credit' || type == 'received' || type == 'credited') {
             todayIn += amt;
-          } else if (type == 'expense' || type == 'debit') {
+          } else if (type == 'expense' || type == 'debit' || type == 'sent' || type == 'debited') {
             todayOut += amt;
           }
         }
@@ -231,7 +213,7 @@ class HomeWidgetService {
       for (final doc in smsTxSnap.docs) {
         final data = doc.data();
         DateTime? dt;
-        final ts = data['timestamp'];
+        final ts = data['timestamp'] ?? data['date'];
         if (ts is Timestamp) {
           dt = ts.toDate();
         } else if (ts is String) {
@@ -246,9 +228,9 @@ class HomeWidgetService {
         if (dt != null && DateFormat('yyyy-MM-dd').format(dt) == todayStr) {
           final amt = (data['amount'] as num? ?? 0.0).toDouble();
           final type = (data['type'] ?? '').toString().toLowerCase();
-          if (type == 'credit' || type == 'income') {
+          if (type == 'credit' || type == 'income' || type == 'received' || type == 'credited') {
             todayIn += amt;
-          } else if (type == 'debit' || type == 'expense') {
+          } else if (type == 'debit' || type == 'expense' || type == 'sent' || type == 'debited') {
             todayOut += amt;
           }
         }

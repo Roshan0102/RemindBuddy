@@ -24,6 +24,7 @@ import 'settings_screen.dart';
 import 'admin_screen.dart';
 import 'notification_history_screen.dart';
 import '../services/update_service.dart';
+import '../services/home_widget_service.dart';
 import 'voice_assistant_screen.dart';
 import 'astro_calendar_screen.dart';
 import 'gcp_cost_screen.dart';
@@ -41,7 +42,7 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   String _activeFeatureOverride = 'home';
   bool _isDarkMode = false;
@@ -86,12 +87,24 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadInitialData();
     _setupNotificationListener();
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
       _loadPreferences();
       _listenToUserPreferences();
+      HomeWidgetService().syncAllWidgets();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.inactive) {
+      HomeWidgetService().syncAllWidgets();
+    }
   }
 
   Future<void> _loadInitialData() async {
@@ -371,6 +384,7 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _notificationSubscription?.cancel();
     _authSubscription?.cancel();
     _userPrefsSubscription?.cancel();
@@ -680,12 +694,16 @@ class _MainScreenState extends State<MainScreen> {
     } else if (id == 'expenses') {
       Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen(initialFeatureIndex: 4)));
       return;
-    } else if (id == 'gold_price') {
+    } else if (id == 'gold_price' || id == 'gold_rates') {
       id = 'gold';
     } else if (id == 'events_walkins' || id == 'tech_events') {
       id = 'events';
-    } else if (id == 'walkin') {
+    } else if (id == 'walkin' || id == 'walkin_drives' || id == 'walkins') {
       id = 'walkins';
+    } else if (id == 'job_discovery' || id == 'job_assistant') {
+      id = 'job_assistant';
+    } else if (id == 'quick_notes') {
+      id = 'notes';
     }
 
     final active = _activeFeatures;

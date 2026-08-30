@@ -67,6 +67,10 @@ async function discoverAndApplyForUser(uid, options) {
         console.log(`[JobDiscovery] User ${uid} has not uploaded a Master Resume. Skipping.`);
         return { success: false, appliedCount: 0, jobs: [], message: "Master Resume PDF not uploaded in Job Assistant Settings." };
     }
+    // Record jobsLastRan timestamp immediately
+    await firebase_1.db.collection("users").doc(uid).set({
+        jobsLastRan: firebase_1.admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
     // Resolve roles & locations from options or user profile
     const autoApplySettings = userData.autoApplySettings || {};
     let targetRoles = (options === null || options === void 0 ? void 0 : options.targetRoles) || autoApplySettings.targetRoles || [

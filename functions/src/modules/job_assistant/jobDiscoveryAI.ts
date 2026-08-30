@@ -87,6 +87,11 @@ export async function discoverAndApplyForUser(
         return { success: false, appliedCount: 0, jobs: [], message: "Master Resume PDF not uploaded in Job Assistant Settings." };
     }
 
+    // Record jobsLastRan timestamp immediately
+    await db.collection("users").doc(uid).set({
+        jobsLastRan: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
     // Resolve roles & locations from options or user profile
     const autoApplySettings = userData.autoApplySettings || {};
     let targetRoles: string[] = options?.targetRoles || autoApplySettings.targetRoles || [

@@ -29,6 +29,8 @@ class FinanceWidgetProvider : AppWidgetProvider() {
                 val acc2Bal = widgetData.getString("finance_acc2_bal", "")
                 val acc3Name = widgetData.getString("finance_acc3_name", "")
                 val acc3Bal = widgetData.getString("finance_acc3_bal", "")
+                val acc4Name = widgetData.getString("finance_acc4_name", "")
+                val acc4Bal = widgetData.getString("finance_acc4_bal", "")
 
                 setTextViewText(R.id.widget_finance_balance, balance)
                 setTextViewText(R.id.widget_finance_in, todayIn)
@@ -43,7 +45,7 @@ class FinanceWidgetProvider : AppWidgetProvider() {
                 } else {
                     setViewVisibility(R.id.widget_finance_acc1_row, View.VISIBLE)
                     setTextViewText(R.id.widget_finance_acc1_name, "No Connected Accounts")
-                    setTextViewText(R.id.widget_finance_acc1_bal, "₹0.00")
+                    setTextViewText(R.id.widget_finance_acc1_bal, "₹0")
                 }
 
                 // Account 2
@@ -62,6 +64,15 @@ class FinanceWidgetProvider : AppWidgetProvider() {
                     setTextViewText(R.id.widget_finance_acc3_bal, acc3Bal)
                 } else {
                     setViewVisibility(R.id.widget_finance_acc3_row, View.GONE)
+                }
+
+                // Account 4
+                if (!acc4Name.isNullOrEmpty()) {
+                    setViewVisibility(R.id.widget_finance_acc4_row, View.VISIBLE)
+                    setTextViewText(R.id.widget_finance_acc4_name, acc4Name)
+                    setTextViewText(R.id.widget_finance_acc4_bal, acc4Bal)
+                } else {
+                    setViewVisibility(R.id.widget_finance_acc4_row, View.GONE)
                 }
 
                 // Launch RemindBuddy on click

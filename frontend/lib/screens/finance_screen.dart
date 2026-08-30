@@ -17,6 +17,7 @@ import '../services/sms_parser_service.dart';
 import '../services/payment_notification_tracker_service.dart';
 import '../services/app_permission_service.dart';
 import '../widgets/nightly_expense_tag_sheet.dart';
+import '../services/home_widget_service.dart';
 
 class FinanceScreen extends StatefulWidget {
   final int? initialFeatureIndex;
@@ -29,7 +30,7 @@ class FinanceScreen extends StatefulWidget {
 class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final FinanceService _financeService = FinanceService();
-  static const EventChannel _smsStreamChannel = EventChannel('com.remindbuddy/sms_stream');
+  static const EventChannel _smsStreamChannel = EventChannel('com.remindbuddy.remindbuddy/sms_stream');
   bool _isScanningInbox = false;
   bool _isSyncingStudySms = false;
   DateTime _smsMonthFilter = DateTime.now();
@@ -47,6 +48,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     _tabController = TabController(length: 2, vsync: this);
     _initSmsRealtimeListener();
     _financeService.checkAndProcessPendingBackgroundSms();
+    HomeWidgetService().syncAllWidgets();
   }
 
   void _initSmsRealtimeListener() {
@@ -59,6 +61,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
         final parsed = SmsParserService.parseSms(sender, body, timestamp);
         if (parsed != null) {
           _financeService.saveSmsTransaction(parsed);
+          HomeWidgetService().syncAllWidgets();
         }
       }
     }, onError: (err) {
@@ -68,6 +71,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
   @override
   void dispose() {
+    HomeWidgetService().syncAllWidgets();
     _tabController.dispose();
     _smsPageController.dispose();
     _smsSubTabNotifier.dispose();

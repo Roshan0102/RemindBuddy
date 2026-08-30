@@ -423,8 +423,15 @@ class _HomeScreenState extends State<HomeScreen> {
       double total = 0.0;
       final accs = snap.docs.map((d) {
         final data = d.data();
-        total += (data['currentBalance'] as num? ?? data['balance'] as num? ?? 0.0).toDouble();
-        return data;
+        final bal = (data['currentBalance'] as num?)?.toDouble() ?? 
+                    (data['balance'] as num?)?.toDouble() ?? 
+                    (data['initialBalance'] as num?)?.toDouble() ?? 0.0;
+        total += bal;
+        return {
+          'name': (data['name'] ?? data['accountName'] ?? data['bankName'] ?? 'Bank Account').toString(),
+          'balance': bal,
+          'currentBalance': bal,
+        };
       }).toList();
 
       if (mounted) {
@@ -432,10 +439,15 @@ class _HomeScreenState extends State<HomeScreen> {
           _bankAccounts = accs;
           _totalBalance = total;
           _activeBankName = accs.length == 1
-              ? (accs.first['name'] ?? 'Active Bank')
+              ? (accs.first['name']?.toString() ?? 'Active Bank')
               : '${accs.length} Active Accounts';
         });
-        HomeWidgetService().syncAllWidgets();
+        HomeWidgetService().updateFinanceWidget(
+          totalBalance: _totalBalance,
+          todayIn: _todayCredited,
+          todayOut: _todayDebited,
+          accounts: _bankAccounts,
+        );
       }
     });
 
@@ -456,20 +468,22 @@ class _HomeScreenState extends State<HomeScreen> {
       double d = 0.0;
       for (final doc in snap.docs) {
         final data = doc.data();
-        final date = data['date'];
+        final ts = data['timestamp'] ?? data['date'];
         DateTime? dt;
-        if (date is Timestamp) {
-          dt = date.toDate();
-        } else if (date is String) {
-          dt = DateTime.tryParse(date);
+        if (ts is Timestamp) {
+          dt = ts.toDate();
+        } else if (ts is String) {
+          dt = DateTime.tryParse(ts);
+        } else if (ts is int) {
+          dt = DateTime.fromMillisecondsSinceEpoch(ts);
         }
 
         final type = (data['type'] ?? '').toString().toLowerCase();
         if (dt != null && DateFormat('yyyy-MM-dd').format(dt) == todayStr) {
           final amt = (data['amount'] as num? ?? 0.0).toDouble();
-          if (type == 'income' || type == 'credit' || type == 'received') {
+          if (type == 'income' || type == 'credit' || type == 'received' || type == 'credited') {
             c += amt;
-          } else if (type == 'expense' || type == 'debit' || type == 'sent') {
+          } else if (type == 'expense' || type == 'debit' || type == 'sent' || type == 'debited') {
             d += amt;
           }
         }
@@ -481,7 +495,12 @@ class _HomeScreenState extends State<HomeScreen> {
           _todayCredited = manualCred + smsCred;
           _todayDebited = manualDeb + smsDeb;
         });
-        HomeWidgetService().syncAllWidgets();
+        HomeWidgetService().updateFinanceWidget(
+          totalBalance: _totalBalance,
+          todayIn: _todayCredited,
+          todayOut: _todayDebited,
+          accounts: _bankAccounts,
+        );
       }
     });
 
@@ -496,7 +515,7 @@ class _HomeScreenState extends State<HomeScreen> {
       for (final doc in snap.docs) {
         final data = doc.data();
         DateTime? dt;
-        final ts = data['timestamp'];
+        final ts = data['timestamp'] ?? data['date'];
         if (ts is Timestamp) {
           dt = ts.toDate();
         } else if (ts is String) {
@@ -511,9 +530,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (dt != null && DateFormat('yyyy-MM-dd').format(dt) == todayStr) {
           final amt = (data['amount'] as num? ?? 0.0).toDouble();
-          if (type == 'credit' || type == 'income') {
+          if (type == 'credit' || type == 'income' || type == 'received' || type == 'credited') {
             c += amt;
-          } else if (type == 'debit' || type == 'expense') {
+          } else if (type == 'debit' || type == 'expense' || type == 'sent' || type == 'debited') {
             d += amt;
           }
         }
@@ -525,7 +544,12 @@ class _HomeScreenState extends State<HomeScreen> {
           _todayCredited = manualCred + smsCred;
           _todayDebited = manualDeb + smsDeb;
         });
-        HomeWidgetService().syncAllWidgets();
+        HomeWidgetService().updateFinanceWidget(
+          totalBalance: _totalBalance,
+          todayIn: _todayCredited,
+          todayOut: _todayDebited,
+          accounts: _bankAccounts,
+        );
       }
     });
 

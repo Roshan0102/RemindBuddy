@@ -115,6 +115,7 @@
             android:id="@+id/widget_finance_acc3_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="3dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -125,12 +126,41 @@
                 android:layout_weight="1"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:text="Other Bank"
+                android:text="Bank 3"
                 android:textColor="#E2E8F0"
                 android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/widget_finance_acc3_bal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="₹0.00"
+                android:textColor="#38BDF8"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Account 4 -->
+        <LinearLayout
+            android:id="@+id/widget_finance_acc4_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/widget_finance_acc4_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="Bank 4"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/widget_finance_acc4_bal"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="₹0.00"
