@@ -1,8 +1,8 @@
 import * as functions from "firebase-functions";
-import axios from "axios";
 import * as moment from "moment-timezone";
 import { admin, db } from "../../config/firebase";
 import { fetchLatestGoldNews } from "./goldScrapers";
+import { callGeminiAPI } from "../../utils/geminiHelper";
 
 export async function runGoldAIPredictionInternal(): Promise<any> {
     const nowIST = moment().tz('Asia/Kolkata');
@@ -21,38 +21,30 @@ export async function runGoldAIPredictionInternal(): Promise<any> {
         }
     }
 
-    // 1. Fetch Gemini API key from Firestore
-    const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
-    let apiKey = "";
-    if (configDoc.exists) {
-        apiKey = configDoc.data()?.apiKey || "";
-    }
-    if (!apiKey) {
-        throw new Error('Gemini API key is not configured in admin console.');
-    }
+    // 2. Fetch historical gold price trends (Last 14 records for technical analysis)
+    const historySnap = await db.collection("gold_prices")
+        .orderBy("timestamp", "desc")
+        .limit(14)
+        .get();
 
-    // 2. Fetch recent gold prices (last 15 records)
-    const priceSnap = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(15).get();
     const priceHistory: any[] = [];
-    priceSnap.forEach(d => {
-        const val = d.data();
+    historySnap.forEach(doc => {
+        const d = doc.data();
         priceHistory.push({
-            date: val.date,
-            price: val.price,
-            priceChange: val.priceChange,
-            source: val.source
+            date: d.date,
+            rate24k: d.rate24k,
+            rate22k: d.rate22k,
+            rate18k: d.rate18k,
+            silver: d.silver
         });
     });
 
-    // 3. Fetch latest news from Google News RSS using fetchLatestGoldNews helper
+    // 3. Fetch curated real-time gold market news
     const newsItems = await fetchLatestGoldNews();
 
     // 4. Prepare prompt for Gemini
     const currentPriceInfo = priceHistory.length > 0 ? priceHistory[0] : null;
-    const prompt = `You are a financial analyst specializing in precious metals, especially Gold rates in India.
-Analyze the following recent historical 22K gold prices (per 2 grams or current units) and the latest gold market news headlines.
-
-CRITICAL INSTRUCTIONS:
+    const prompt = `You are a world-class financial analyst and commodity markets researcher specializing in retail and institutional gold price forecasting in India.
 - You must carefully analyze only active real-time events and occurrences reported in the provided latest gold news headlines and price history.
 - Specifically mention US economic data (like CPI/inflation), Federal Reserve decisions, statements from major banks (like JPMorgan, Goldman Sachs), or geopolitical tensions/wars ONLY if they are actually present and reported in the provided news headlines. Do not write generic template sentences about them, and do not mention them if they are not actively happening (do not say "no CPI data was released" or "no war tensions exist").
 - Ensure your predictionRationale is a concise, summarized explanation containing all key aspects, but it MUST be strictly under 1000 characters in total (including spaces). 
@@ -65,7 +57,7 @@ Provide:
 2. Sentiment Score: An integer from -100 (extremely bearish/falling) to 100 (extremely bullish/rising).
 3. Sentiment Summary: A concise, 1-2 sentence summary of what is driving this sentiment using simple English.
 4. Predicted Trend: "upward", "downward", or "stable" for the next 1-3 days.
-5. Predicted Price Range: A realistic price range (e.g. "13,100 - 13,300") in the same format/currency unit as the input price (the current latest price is ${currentPriceInfo ? currentPriceInfo.price : 'unknown'}).
+5. Predicted Price Range: A realistic price range (e.g. "13,100 - 13,300") in the same format/currency unit as the input price (the current latest price is ${currentPriceInfo ? currentPriceInfo.rate22k : 'unknown'}).
 6. Prediction Rationale: A summarized explanation of why you predict this trend. Keep it concise, containing every important driver (referencing specific news events, inflation, or geopolitical factors only if they are actively reported in the news), but strictly under 1000 characters (including spaces).
 
 Input Data:
@@ -85,7 +77,6 @@ Respond ONLY with a JSON object matching this schema:
   "predictionRationale": "string"
 }`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
             {
@@ -111,60 +102,30 @@ Respond ONLY with a JSON object matching this schema:
         }
     };
 
-    let attempts = 0;
-    const maxAttempts = 3;
-    let lastError: any = null;
-
-    while (attempts < maxAttempts) {
-        try {
-            attempts++;
-            console.log(`Calling Gemini API for market forecast prediction (attempt ${attempts}/${maxAttempts})...`);
-            const response = await axios.post(url, payload, {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 60000
-            });
-
-            const candidates = response.data?.candidates;
-            if (!candidates || candidates.length === 0) {
-                throw new Error('No response candidates returned from Gemini API.');
-            }
-
-            const textResponse = candidates[0].content?.parts[0]?.text;
-            if (!textResponse) {
-                throw new Error('Empty content returned from Gemini API.');
-            }
-
-            const parsedResult = JSON.parse(textResponse);
-            
-            // 6. Store the result in Firestore
-            const nowIST = moment().tz('Asia/Kolkata');
-            const timestampStr = nowIST.toISOString();
-            const docId = timestampStr.replace(/[:.]/g, '-');
-            
-            const insightData = {
-                ...parsedResult,
-                news: newsItems,
-                priceHistoryAnalyzed: priceHistory,
-                timestamp: timestampStr,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            };
-
-            await db.collection("gold_ai_insights").doc(docId).set(insightData);
-            await db.collection("gold_ai_insights").doc("latest").set(insightData);
-
-            return insightData;
-        } catch (error: any) {
-            lastError = error;
-            console.error(`Attempt ${attempts} failed for market forecast:`, error.message);
-            if (attempts < maxAttempts) {
-                const backoffMs = attempts * 10000;
-                console.log(`Waiting ${backoffMs / 1000}s before retrying...`);
-                await new Promise(resolve => setTimeout(resolve, backoffMs));
-            }
-        }
+    const geminiResult = await callGeminiAPI(payload, { timeout: 60000 });
+    const textResponse = geminiResult.text;
+    if (!textResponse) {
+        throw new Error('Empty content returned from Gemini API.');
     }
 
-    throw lastError || new Error("Failed to generate gold AI insights after maximum attempts.");
+    const parsedResult = JSON.parse(textResponse);
+    
+    // Store the result in Firestore
+    const timestampStr = nowIST.toISOString();
+    const docId = timestampStr.replace(/[:.]/g, '-');
+    
+    const insightData = {
+        ...parsedResult,
+        news: newsItems,
+        priceHistoryAnalyzed: priceHistory,
+        timestamp: timestampStr,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    await db.collection("gold_ai_insights").doc(docId).set(insightData);
+    await db.collection("gold_ai_insights").doc("latest").set(insightData);
+
+    return insightData;
 }
 
 export const generateGoldAIInsights = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
@@ -179,11 +140,11 @@ export const generateGoldAIInsights = functions.runWith({ timeoutSeconds: 120, m
     }
 });
 
-export async function generateGoldChitRecommendation(apiKey: string, priceHistory: any[], newsItems: any[]): Promise<{ recommendation: string, shortReason: string, fullAnalysis: string }> {
+export async function generateGoldChitRecommendation(priceHistory: any[], newsItems: any[]): Promise<{ recommendation: string, shortReason: string, fullAnalysis: string }> {
     const nowIST = moment().tz('Asia/Kolkata');
     const dayOfMonth = nowIST.date();
     const currentMonthName = nowIST.format('MMMM YYYY');
-    const currentPriceStr = priceHistory.length > 0 ? `₹${priceHistory[0].price}` : 'unknown';
+    const currentPriceStr = priceHistory.length > 0 ? `₹${priceHistory[0].price || priceHistory[0].rate22k}` : 'unknown';
 
     // Override advice if it is between 26th and the end of the month
     if (dayOfMonth >= 26) {
@@ -219,7 +180,6 @@ Respond ONLY with a JSON object matching this schema:
   "fullAnalysis": "string (A detailed 2-3 sentence analysis in Tanglish explaining why, referencing the trend or news.)"
 }`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
             {
@@ -242,17 +202,8 @@ Respond ONLY with a JSON object matching this schema:
         }
     };
 
-    const response = await axios.post(url, payload, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 60000
-    });
-
-    const candidates = response.data?.candidates;
-    if (!candidates || candidates.length === 0) {
-        throw new Error('No response candidates returned from Gemini API.');
-    }
-
-    const textResponse = candidates[0].content?.parts[0]?.text;
+    const geminiResult = await callGeminiAPI(payload, { timeout: 60000 });
+    const textResponse = geminiResult.text;
     if (!textResponse) {
         throw new Error('Empty content returned from Gemini API.');
     }
@@ -265,15 +216,6 @@ export const generateGoldChitAdvice = functions.runWith({ timeoutSeconds: 120, m
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
     }
     try {
-        const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
-        let apiKey = "";
-        if (configDoc.exists) {
-            apiKey = configDoc.data()?.apiKey || "";
-        }
-        if (!apiKey) {
-            throw new Error('Gemini API key is not configured in admin console.');
-        }
-
         // 1. Fetch prices
         const priceSnap = await db.collection("global_gold_prices").orderBy("timestamp", "desc").limit(15).get();
         const priceHistory: any[] = [];
@@ -290,7 +232,7 @@ export const generateGoldChitAdvice = functions.runWith({ timeoutSeconds: 120, m
         // 2. Fetch news
         const newsItems = await fetchLatestGoldNews();
 
-        const advice = await generateGoldChitRecommendation(apiKey, priceHistory, newsItems);
+        const advice = await generateGoldChitRecommendation(priceHistory, newsItems);
         
         const nowIST = moment().tz('Asia/Kolkata');
         const timestampStr = nowIST.toISOString();

@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg_dark"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:padding="12dp">
 
     <!-- Header Row -->
     <LinearLayout
@@ -19,87 +19,93 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="🥇 Live Gold Rates"
+            android:text="🥇 Live Gold Rates (22K)"
             android:textColor="#FDE047"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/widget_gold_city"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Chennai"
+            android:text="Bengaluru"
             android:textColor="#94A3B8"
-            android:textSize="11sp" />
+            android:textSize="10.5sp" />
     </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="6dp"
-        android:layout_marginBottom="8dp"
-        android:background="#334155" />
+        android:layout_marginTop="5dp"
+        android:layout_marginBottom="5dp"
+        android:background="#1E293B" />
 
-    <!-- Prices Row -->
+    <!-- 22K Prices: Row 1 (Per Gram) & Row 2 (Per Sovereign / 8 Grams) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="vertical">
 
-        <!-- 24K Column -->
+        <!-- Row 1: 22K 1 Gram -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:layout_marginBottom="3dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="24K (99.9%)"
-                android:textColor="#94A3B8"
-                android:textSize="10sp"
-                android:textStyle="bold" />
+                android:layout_weight="1"
+                android:text="22K (Per Gram)"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp" />
 
             <TextView
-                android:id="@+id/widget_gold_24k"
+                android:id="@+id/widget_gold_22k_gram"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="₹7,850/g"
-                android:textColor="#FFFFFF"
-                android:textSize="15sp"
+                android:text="₹0/g"
+                android:textColor="#FDE047"
+                android:textSize="12sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- 22K Column -->
+        <!-- Row 2: 22K 1 Sovereign (8 Grams / Pavan) -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="22K (91.6%)"
-                android:textColor="#94A3B8"
-                android:textSize="10sp"
-                android:textStyle="bold" />
+                android:layout_weight="1"
+                android:text="22K (1 Sovereign / 8g)"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp" />
 
             <TextView
-                android:id="@+id/widget_gold_22k"
+                android:id="@+id/widget_gold_22k_sovereign"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="₹7,200/g"
-                android:textColor="#FFFFFF"
-                android:textSize="15sp"
+                android:text="₹0 (8g)"
+                android:textColor="#FDE047"
+                android:textSize="12sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="5dp"
+        android:layout_marginBottom="5dp"
+        android:background="#1E293B" />
 
     <!-- Footer Row: Trend & Time -->
     <LinearLayout
@@ -113,13 +119,13 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/widget_pill_green"
-            android:paddingLeft="6dp"
-            android:paddingRight="6dp"
+            android:paddingLeft="5dp"
+            android:paddingRight="5dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
-            android:text="▲ +₹40 Today"
+            android:text="Live Rates"
             android:textColor="#22C55E"
-            android:textSize="10sp"
+            android:textSize="9.5sp"
             android:textStyle="bold" />
 
         <TextView
@@ -128,7 +134,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:gravity="end"
-            android:text="Updated 10:00 AM"
+            android:text="Updated"
             android:textColor="#64748B"
             android:textSize="9sp" />
     </LinearLayout>

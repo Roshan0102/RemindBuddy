@@ -1,10 +1,10 @@
 import * as functions from "firebase-functions";
-import axios from "axios";
 import * as nodemailer from "nodemailer";
 import * as moment from "moment-timezone";
 import * as dns from "dns";
 import { admin, db } from "../../config/firebase";
 import { logNotification } from "../../utils/logger";
+import { callGeminiAPI } from "../../utils/geminiHelper";
 
 interface DiscoveredJob {
     jobTitle: string;
@@ -198,7 +198,6 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         });
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
             {
@@ -210,23 +209,21 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         ],
         tools: [
             {
-                google_search: {}
+                googleSearch: {}
             }
         ]
     };
 
     console.log(`[JobDiscovery] Running Gemini Search Grounding for user ${uid} (Roles: ${targetRoles.join(', ')})...`);
-    const response = await axios.post(url, payload, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 240000
-    });
-
-    const candidates = response.data?.candidates;
-    if (!candidates || candidates.length === 0) {
-        return { success: true, appliedCount: 0, jobs: [], message: "No search candidates returned." };
+    let rawText = "";
+    try {
+        const geminiResult = await callGeminiAPI(payload, { timeout: 240000 });
+        rawText = geminiResult.text || "";
+    } catch (apiErr: any) {
+        console.error("[JobDiscovery] Gemini search failed:", apiErr.message);
+        return { success: false, appliedCount: 0, jobs: [], message: `Job Search AI temporarily busy: ${apiErr.message}` };
     }
 
-    const rawText = candidates[0].content?.parts?.[0]?.text || "";
     if (!rawText) {
         return { success: true, appliedCount: 0, jobs: [], message: "Empty response from search agent." };
     }

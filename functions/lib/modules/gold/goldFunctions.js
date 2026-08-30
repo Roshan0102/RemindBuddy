@@ -143,7 +143,7 @@ exports.onGoldPriceCreated = functions.runWith({ timeoutSeconds: 300, memory: "5
         const newsItems = await (0, goldScrapers_1.fetchLatestGoldNews)();
         // -- PART A: GOLD CHIT ASSISTANT --
         try {
-            const advice = await (0, goldAI_1.generateGoldChitRecommendation)(apiKey, priceHistory, newsItems);
+            const advice = await (0, goldAI_1.generateGoldChitRecommendation)(priceHistory, newsItems);
             const nowIST = moment().tz('Asia/Kolkata');
             const timestampStr = nowIST.toISOString();
             const docData = Object.assign(Object.assign({}, advice), { timestamp: timestampStr, createdAt: firebase_1.admin.firestore.FieldValue.serverTimestamp() });

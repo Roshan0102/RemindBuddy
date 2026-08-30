@@ -17,9 +17,9 @@ class ShiftWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             val widgetData = HomeWidgetPlugin.getData(context)
             val views = RemoteViews(context.packageName, R.layout.shift_widget_layout).apply {
-                val shiftName = widgetData.getString("shift_name", "No Shift Scheduled")
-                val shiftTime = widgetData.getString("shift_time", "Check Roster")
-                val shiftTomorrow = widgetData.getString("shift_tomorrow", "Tomorrow: No Shift")
+                val shiftName = widgetData.getString("shift_name", "Week Off 🏖️")
+                val shiftTime = widgetData.getString("shift_time", "Off Duty")
+                val shiftTomorrow = widgetData.getString("shift_tomorrow", "Tomorrow: Week Off")
                 val shiftDate = widgetData.getString("shift_date", "Today")
 
                 setTextViewText(R.id.widget_shift_name, shiftName)

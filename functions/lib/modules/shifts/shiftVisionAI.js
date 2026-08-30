@@ -2,10 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.analyzeRosterImage = void 0;
 const functions = require("firebase-functions");
-const axios_1 = require("axios");
-const firebase_1 = require("../../config/firebase");
+const geminiHelper_1 = require("../../utils/geminiHelper");
 exports.analyzeRosterImage = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
     // Ensure user is authenticated
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
@@ -14,17 +12,7 @@ exports.analyzeRosterImage = functions.runWith({ timeoutSeconds: 120, memory: "1
     if (!image || !employeeName) {
         throw new functions.https.HttpsError('invalid-argument', 'Image and employeeName are required.');
     }
-    // 1. Fetch the Gemini API key from Firestore admin_creds/gemini_config
-    const configDoc = await firebase_1.db.collection("admin_creds").doc("gemini_config").get();
-    let apiKey = "";
-    if (configDoc.exists) {
-        apiKey = ((_a = configDoc.data()) === null || _a === void 0 ? void 0 : _a.apiKey) || "";
-    }
-    if (!apiKey) {
-        throw new functions.https.HttpsError('failed-precondition', 'Gemini API key is not configured in admin console.');
-    }
-    // 2. Prepare payload for Gemini API
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    // 1. Prepare payload for Gemini API
     const prompt = `Analyze the work roster image. Extract the shift schedule for employee "${employeeName}".
 The output MUST be a JSON object matching this schema. If a shift date is unclear or missing, mark it as "week_off".
 
@@ -90,15 +78,8 @@ Required JSON format:
         }
     };
     try {
-        const response = await axios_1.default.post(url, payload, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 60000
-        });
-        const candidates = (_b = response.data) === null || _b === void 0 ? void 0 : _b.candidates;
-        if (!candidates || candidates.length === 0) {
-            throw new functions.https.HttpsError('internal', 'No response candidates returned from Gemini API.');
-        }
-        const textResponse = (_d = (_c = candidates[0].content) === null || _c === void 0 ? void 0 : _c.parts[0]) === null || _d === void 0 ? void 0 : _d.text;
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 60000 });
+        const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new functions.https.HttpsError('internal', 'Empty content returned from Gemini API.');
         }
@@ -106,8 +87,8 @@ Required JSON format:
         return JSON.parse(textResponse);
     }
     catch (error) {
-        console.error("Gemini API Error:", ((_e = error === null || error === void 0 ? void 0 : error.response) === null || _e === void 0 ? void 0 : _e.data) || error.message);
-        throw new functions.https.HttpsError('internal', `Error calling Gemini API: ${((_h = (_g = (_f = error === null || error === void 0 ? void 0 : error.response) === null || _f === void 0 ? void 0 : _f.data) === null || _g === void 0 ? void 0 : _g.error) === null || _h === void 0 ? void 0 : _h.message) || error.message}`);
+        console.error("Gemini API Error:", error.message);
+        throw new functions.https.HttpsError('internal', `Error calling Gemini API: ${error.message}`);
     }
 });
 //# sourceMappingURL=shiftVisionAI.js.map

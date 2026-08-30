@@ -10,24 +10,26 @@ class HomeWidgetService {
   factory HomeWidgetService() => _instance;
   HomeWidgetService._internal();
 
-  /// Updates the Gold Rates Home Screen Widget
+  /// Updates the Gold Rates Home Screen Widget (22K Per Gram & 22K 8g Sovereign)
   Future<void> updateGoldWidget({
-    required double rate24k,
     required double rate22k,
     required double changeToday,
     required String city,
   }) async {
     if (kIsWeb) return;
     try {
+      final currencyFormat = NumberFormat('#,##,##0');
+      final double sovereign22k = rate22k * 8;
+
       final String changeText = changeToday >= 0
-          ? '▲ +₹${changeToday.abs().toStringAsFixed(0)} Today'
-          : '▼ -₹${changeToday.abs().toStringAsFixed(0)} Today';
+          ? '▲ +₹${currencyFormat.format(changeToday.abs())} Today'
+          : '▼ -₹${currencyFormat.format(changeToday.abs())} Today';
 
       final String timeText = 'Updated ${DateFormat('hh:mm a').format(DateTime.now())}';
 
-      await HomeWidget.saveWidgetData<String>('gold_24k', '₹${rate24k.toStringAsFixed(0)}/g');
-      await HomeWidget.saveWidgetData<String>('gold_22k', '₹${rate22k.toStringAsFixed(0)}/g');
-      await HomeWidget.saveWidgetData<String>('gold_city', city.isNotEmpty ? city : 'Chennai');
+      await HomeWidget.saveWidgetData<String>('gold_22k_gram', '₹${currencyFormat.format(rate22k)}/g');
+      await HomeWidget.saveWidgetData<String>('gold_22k_sovereign', '₹${currencyFormat.format(sovereign22k)} (8g)');
+      await HomeWidget.saveWidgetData<String>('gold_city', city.isNotEmpty ? city : 'Bengaluru');
       await HomeWidget.saveWidgetData<String>('gold_change', changeText);
       await HomeWidget.saveWidgetData<String>('gold_time', timeText);
 
@@ -42,21 +44,56 @@ class HomeWidgetService {
     required double totalBalance,
     required double todayIn,
     required double todayOut,
-    required String bankName,
+    required List<Map<String, dynamic>> accounts,
   }) async {
     if (kIsWeb) return;
     try {
       final currencyFormat = NumberFormat('#,##,##0');
-      final String balanceText = '₹${currencyFormat.format(totalBalance)}';
-      final String inText = '↓ +₹${currencyFormat.format(todayIn)} In';
-      final String outText = '↑ -₹${currencyFormat.format(todayOut)} Out';
+      final String balanceText = 'Total: ₹${currencyFormat.format(totalBalance)}';
+      final String inText = '+₹${currencyFormat.format(todayIn)}';
+      final String outText = '-₹${currencyFormat.format(todayOut)}';
       final String timeText = 'Synced ${DateFormat('hh:mm a').format(DateTime.now())}';
 
       await HomeWidget.saveWidgetData<String>('finance_balance', balanceText);
       await HomeWidget.saveWidgetData<String>('finance_in', inText);
       await HomeWidget.saveWidgetData<String>('finance_out', outText);
-      await HomeWidget.saveWidgetData<String>('finance_bank', bankName.isNotEmpty ? bankName : 'Active Accounts');
       await HomeWidget.saveWidgetData<String>('finance_time', timeText);
+
+      // Account 1
+      if (accounts.isNotEmpty) {
+        final a1 = accounts[0];
+        final name = a1['name']?.toString() ?? 'Bank Account';
+        final bal = (a1['balance'] as num?)?.toDouble() ?? 0.0;
+        await HomeWidget.saveWidgetData<String>('finance_acc1_name', name);
+        await HomeWidget.saveWidgetData<String>('finance_acc1_bal', '₹${currencyFormat.format(bal)}');
+      } else {
+        await HomeWidget.saveWidgetData<String>('finance_acc1_name', '');
+        await HomeWidget.saveWidgetData<String>('finance_acc1_bal', '');
+      }
+
+      // Account 2
+      if (accounts.length > 1) {
+        final a2 = accounts[1];
+        final name = a2['name']?.toString() ?? 'Bank Account';
+        final bal = (a2['balance'] as num?)?.toDouble() ?? 0.0;
+        await HomeWidget.saveWidgetData<String>('finance_acc2_name', name);
+        await HomeWidget.saveWidgetData<String>('finance_acc2_bal', '₹${currencyFormat.format(bal)}');
+      } else {
+        await HomeWidget.saveWidgetData<String>('finance_acc2_name', '');
+        await HomeWidget.saveWidgetData<String>('finance_acc2_bal', '');
+      }
+
+      // Account 3
+      if (accounts.length > 2) {
+        final a3 = accounts[2];
+        final name = a3['name']?.toString() ?? 'Bank Account';
+        final bal = (a3['balance'] as num?)?.toDouble() ?? 0.0;
+        await HomeWidget.saveWidgetData<String>('finance_acc3_name', name);
+        await HomeWidget.saveWidgetData<String>('finance_acc3_bal', '₹${currencyFormat.format(bal)}');
+      } else {
+        await HomeWidget.saveWidgetData<String>('finance_acc3_name', '');
+        await HomeWidget.saveWidgetData<String>('finance_acc3_bal', '');
+      }
 
       await HomeWidget.updateWidget(androidName: 'FinanceWidgetProvider');
     } catch (e) {
@@ -73,11 +110,10 @@ class HomeWidgetService {
     if (kIsWeb) return;
     try {
       final String dateText = 'Today (${DateFormat('dd MMM').format(DateTime.now())})';
-      final String tomorrowText = 'Tomorrow: $tomorrowShiftName';
 
       await HomeWidget.saveWidgetData<String>('shift_name', todayShiftName);
       await HomeWidget.saveWidgetData<String>('shift_time', todayShiftTime);
-      await HomeWidget.saveWidgetData<String>('shift_tomorrow', tomorrowText);
+      await HomeWidget.saveWidgetData<String>('shift_tomorrow', tomorrowShiftName);
       await HomeWidget.saveWidgetData<String>('shift_date', dateText);
 
       await HomeWidget.updateWidget(androidName: 'ShiftWidgetProvider');
@@ -91,7 +127,7 @@ class HomeWidgetService {
     if (kIsWeb) return;
 
     try {
-      // 1. Sync Gold Widget (Available globally, doesn't require user auth)
+      // 1. Sync Gold Widget
       final goldSnap = await FirebaseFirestore.instance
           .collection('gold_prices')
           .orderBy('timestamp', descending: true)
@@ -100,29 +136,20 @@ class HomeWidgetService {
 
       if (goldSnap.docs.isNotEmpty) {
         final latest = goldSnap.docs.first.data();
-        final double rate24k = (latest['rate24k'] as num?)?.toDouble() ?? 7850.0;
-        final double rate22k = (latest['rate22k'] as num?)?.toDouble() ?? 7200.0;
+        final double rate22k = (latest['rate22k'] as num?)?.toDouble() ?? (latest['rate24k'] as num?)?.toDouble() ?? 7200.0;
         final String city = latest['city']?.toString() ?? 'Bengaluru';
 
         double change = 0.0;
         if (goldSnap.docs.length > 1) {
           final prev = goldSnap.docs[1].data();
-          final double prev24k = (prev['rate24k'] as num?)?.toDouble() ?? rate24k;
-          change = rate24k - prev24k;
+          final double prev22k = (prev['rate22k'] as num?)?.toDouble() ?? rate22k;
+          change = rate22k - prev22k;
         }
 
         await updateGoldWidget(
-          rate24k: rate24k,
           rate22k: rate22k,
           changeToday: change,
           city: city,
-        );
-      } else {
-        await updateGoldWidget(
-          rate24k: 7850.0,
-          rate22k: 7200.0,
-          changeToday: 0.0,
-          city: 'Bengaluru',
         );
       }
 
@@ -133,34 +160,84 @@ class HomeWidgetService {
       final accountsSnap = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .collection('bank_accounts')
+          .collection('finance_accounts')
+          .orderBy('updatedAt', descending: true)
           .get();
 
+      final List<Map<String, dynamic>> accountsList = [];
       double totalBalance = 0.0;
+
       for (var d in accountsSnap.docs) {
-        final bal = (d.data()['balance'] as num?)?.toDouble() ?? 0.0;
+        final data = d.data();
+        final name = data['name']?.toString() ?? 'Account';
+        final bal = (data['currentBalance'] as num?)?.toDouble() ?? (data['balance'] as num?)?.toDouble() ?? 0.0;
         totalBalance += bal;
+        accountsList.add({'name': name, 'balance': bal});
       }
 
       final now = DateTime.now();
-      final startOfDay = DateTime(now.year, now.month, now.day);
-      final todayTxs = await FirebaseFirestore.instance
+      final todayStr = DateFormat('yyyy-MM-dd').format(now);
+
+      // Compute Inflow and Outflow for Today
+      double todayIn = 0.0;
+      double todayOut = 0.0;
+
+      final manualTxSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('finance_transactions')
+          .get();
+
+      for (final doc in manualTxSnap.docs) {
+        final data = doc.data();
+        final date = data['date'];
+        DateTime? dt;
+        if (date is Timestamp) {
+          dt = date.toDate();
+        } else if (date is String) {
+          dt = DateTime.tryParse(date);
+        }
+
+        if (dt != null && DateFormat('yyyy-MM-dd').format(dt) == todayStr) {
+          final amt = (data['amount'] as num? ?? 0.0).toDouble();
+          final type = (data['type'] ?? '').toString().toLowerCase();
+          if (type == 'income' || type == 'credit') {
+            todayIn += amt;
+          } else if (type == 'expense' || type == 'debit') {
+            todayOut += amt;
+          }
+        }
+      }
+
+      final smsTxSnap = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('sms_transactions')
-          .where('timestamp', isGreaterThanOrEqualTo: startOfDay.toIso8601String())
           .get();
 
-      double todayIn = 0.0;
-      double todayOut = 0.0;
-      for (var d in todayTxs.docs) {
-        final data = d.data();
-        final amt = (data['amount'] as num?)?.toDouble() ?? 0.0;
-        final type = data['type']?.toString() ?? 'Debit';
-        if (type == 'Credit') {
-          todayIn += amt;
-        } else {
-          todayOut += amt;
+      for (final doc in smsTxSnap.docs) {
+        final data = doc.data();
+        DateTime? dt;
+        final ts = data['timestamp'];
+        if (ts is Timestamp) {
+          dt = ts.toDate();
+        } else if (ts is String) {
+          dt = DateTime.tryParse(ts);
+        } else if (ts is int) {
+          dt = DateTime.fromMillisecondsSinceEpoch(ts);
+        }
+
+        final cat = (data['category'] ?? '').toString();
+        if (cat.contains('Ignored') || cat == 'Self Transfer') continue;
+
+        if (dt != null && DateFormat('yyyy-MM-dd').format(dt) == todayStr) {
+          final amt = (data['amount'] as num? ?? 0.0).toDouble();
+          final type = (data['type'] ?? '').toString().toLowerCase();
+          if (type == 'credit' || type == 'income') {
+            todayIn += amt;
+          } else if (type == 'debit' || type == 'expense') {
+            todayOut += amt;
+          }
         }
       }
 
@@ -168,64 +245,67 @@ class HomeWidgetService {
         totalBalance: totalBalance,
         todayIn: todayIn,
         todayOut: todayOut,
-        bankName: accountsSnap.docs.length == 1
-            ? (accountsSnap.docs.first.data()['bankName'] ?? 'Active Bank')
-            : '${accountsSnap.docs.length} Active Accounts',
+        accounts: accountsList,
       );
 
       // 3. Sync Shift Widget
-      final todayStr = DateFormat('yyyy-MM-dd').format(now);
-      final tomorrowStr = DateFormat('yyyy-MM-dd').format(now.add(const Duration(days: 1)));
-
-      final shiftDoc = await FirebaseFirestore.instance
+      final currentRosterMonth = DateFormat('yyyy-MM').format(now);
+      final todayShiftDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('shifts')
-          .doc('metadata')
+          .doc(currentRosterMonth)
+          .collection('daily_shifts')
+          .doc(todayStr)
           .get();
 
-      if (shiftDoc.exists) {
-        final data = shiftDoc.data() ?? {};
-        final activeRosterId = data['activeRosterId']?.toString();
+      String todayName = 'Week Off 🏖️';
+      String todayTime = 'Off Duty';
 
-        if (activeRosterId != null && activeRosterId.isNotEmpty) {
-          final rosterDoc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .collection('monthly_rosters')
-              .doc(activeRosterId)
-              .get();
-
-          if (rosterDoc.exists) {
-            final shiftsList = (rosterDoc.data()?['shifts'] as List<dynamic>?) ?? [];
-            String todayName = 'No Shift';
-            String todayTime = 'Off Duty';
-            String tomorrowName = 'No Shift';
-
-            for (var item in shiftsList) {
-              if (item is Map) {
-                final date = item['date']?.toString() ?? '';
-                final title = item['title']?.toString() ?? item['type']?.toString() ?? 'Shift';
-                final start = item['startTime']?.toString() ?? '';
-                final end = item['endTime']?.toString() ?? '';
-
-                if (date == todayStr) {
-                  todayName = title;
-                  todayTime = (start.isNotEmpty && end.isNotEmpty) ? '$start - $end' : 'Scheduled Shift';
-                } else if (date == tomorrowStr) {
-                  tomorrowName = (start.isNotEmpty) ? '$title ($start)' : title;
-                }
-              }
-            }
-
-            await updateShiftWidget(
-              todayShiftName: todayName,
-              todayShiftTime: todayTime,
-              tomorrowShiftName: tomorrowName,
-            );
+      if (todayShiftDoc.exists) {
+        final data = todayShiftDoc.data() ?? {};
+        final rawType = (data['shift_type'] ?? data['shiftType'] ?? '').toString().toLowerCase();
+        if (!rawType.contains('off') && rawType.isNotEmpty) {
+          todayName = '${rawType.toUpperCase().replaceAll('_', ' ')} SHIFT';
+          final start = (data['start_time'] ?? data['startTime'] ?? '').toString();
+          final end = (data['end_time'] ?? data['endTime'] ?? '').toString();
+          if (start.isNotEmpty && end.isNotEmpty) {
+            todayTime = '$start - $end';
+          } else {
+            todayTime = 'Scheduled Shift';
           }
         }
       }
+
+      final tomorrow = now.add(const Duration(days: 1));
+      final tomorrowMonth = DateFormat('yyyy-MM').format(tomorrow);
+      final tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
+
+      final tomorrowShiftDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('shifts')
+          .doc(tomorrowMonth)
+          .collection('daily_shifts')
+          .doc(tomorrowStr)
+          .get();
+
+      String tomorrowName = 'Tomorrow: Week Off';
+      if (tomorrowShiftDoc.exists) {
+        final data = tomorrowShiftDoc.data() ?? {};
+        final rawType = (data['shift_type'] ?? data['shiftType'] ?? '').toString().toLowerCase();
+        if (!rawType.contains('off') && rawType.isNotEmpty) {
+          final title = rawType.toUpperCase().replaceAll('_', ' ');
+          final start = (data['start_time'] ?? data['startTime'] ?? '').toString();
+          tomorrowName = start.isNotEmpty ? 'Tomorrow: $title ($start)' : 'Tomorrow: $title';
+        }
+      }
+
+      await updateShiftWidget(
+        todayShiftName: todayName,
+        todayShiftTime: todayTime,
+        tomorrowShiftName: tomorrowName,
+      );
     } catch (e) {
       LogService().error('Error in syncAllWidgets', e);
     }

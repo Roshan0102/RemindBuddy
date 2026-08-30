@@ -2,10 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseJobPostersWithAI = void 0;
 const functions = require("firebase-functions");
-const axios_1 = require("axios");
-const firebase_1 = require("../../config/firebase");
+const geminiHelper_1 = require("../../utils/geminiHelper");
 exports.parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
-    var _a, _b, _c, _d;
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
     }
@@ -13,14 +11,6 @@ exports.parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 120, memory:
         const { imagesBase64, mode, resumeBase64, applicantName, customPrompt } = data;
         if (!imagesBase64 || !Array.isArray(imagesBase64) || imagesBase64.length === 0) {
             throw new functions.https.HttpsError('invalid-argument', 'No image data provided.');
-        }
-        const configDoc = await firebase_1.db.collection("admin_creds").doc("gemini_config").get();
-        let apiKey = "";
-        if (configDoc.exists) {
-            apiKey = ((_a = configDoc.data()) === null || _a === void 0 ? void 0 : _a.apiKey) || "";
-        }
-        if (!apiKey) {
-            throw new functions.https.HttpsError('internal', 'Gemini API key is not configured.');
         }
         const isSingleJob = (mode === 'single_job');
         const promptName = applicantName || "Roshan J";
@@ -101,7 +91,6 @@ Respond ONLY with a JSON object matching this schema:
                 }
             });
         });
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
         const payload = {
             contents: [
                 {
@@ -115,15 +104,8 @@ Respond ONLY with a JSON object matching this schema:
                 responseMimeType: "application/json"
             }
         };
-        const response = await axios_1.default.post(url, payload, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 90000
-        });
-        const candidates = (_b = response.data) === null || _b === void 0 ? void 0 : _b.candidates;
-        if (!candidates || candidates.length === 0) {
-            throw new Error('No candidates returned from Gemini API.');
-        }
-        const textResponse = (_d = (_c = candidates[0].content) === null || _c === void 0 ? void 0 : _c.parts[0]) === null || _d === void 0 ? void 0 : _d.text;
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 90000 });
+        const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new Error('Empty response from Gemini API.');
         }

@@ -2,10 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.refineCoverLetterWithAI = exports.generateManualJobApplicationWithAI = void 0;
 const functions = require("firebase-functions");
-const axios_1 = require("axios");
-const firebase_1 = require("../../config/firebase");
+const geminiHelper_1 = require("../../utils/geminiHelper");
 exports.generateManualJobApplicationWithAI = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
-    var _a, _b, _c, _d;
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
     }
@@ -14,35 +12,28 @@ exports.generateManualJobApplicationWithAI = functions.runWith({ timeoutSeconds:
         if (!companyName || !jobTitle) {
             throw new functions.https.HttpsError('invalid-argument', 'Company name and Job title are required.');
         }
-        const configDoc = await firebase_1.db.collection("admin_creds").doc("gemini_config").get();
-        let apiKey = "";
-        if (configDoc.exists) {
-            apiKey = ((_a = configDoc.data()) === null || _a === void 0 ? void 0 : _a.apiKey) || "";
-        }
-        if (!apiKey) {
-            throw new functions.https.HttpsError('internal', 'Gemini API key is not configured.');
-        }
         const promptName = applicantName || "Roshan J";
-        const prompt = `Generate a highly personalized, human-sounding job application cover letter and email subject for the following opportunity:
-Target Company Name: "${companyName}"
-Job Role / Title: "${jobTitle}"
-Company Website / URL: "${companyUrl || 'N/A'}"
-Recipient HR Email(s): "${recipientEmails || 'N/A'}"
-Company Context & Notes: "${companyNotes || 'N/A'}"
-User Specific Guidance / Instructions: "${customPrompt || 'N/A'}"
+        const prompt = `You are an elite, top-tier executive career coach and professional copywriter.
+Write an exceptionally well-crafted, natural, and compelling job application cover letter email for the candidate "${promptName}" applying for the role of "${jobTitle}" at "${companyName}".
+${companyUrl ? `Company URL: ${companyUrl}` : ''}
+${recipientEmails ? `Recipient(s): ${recipientEmails}` : ''}
+${companyNotes ? `Job Details / Company Context: "${companyNotes}"` : ''}
+${customPrompt ? `Candidate's Custom Directive / Specific Request: "${customPrompt}"` : ''}
 
-CRITICAL INSTRUCTIONS FOR COVER LETTER & SUBJECT:
-1. Candidate's Full Name is: "${promptName}".
-2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, certifications (e.g. AWS certifications, DevOps platform operations, Kubernetes, etc.), work history, and key projects.
-3. Align candidate's actual experience from their resume with the target company (${companyName}), its domain/services, and the ${jobTitle} position.
-4. The cover letter MUST sound authentically human-written (not robotic, generic, or boilerplate AI output). Address key candidate strengths and enthusiasm for joining ${companyName}.
-5. Format the generated subject as: "${promptName} - ${jobTitle}".
-6. Sign off the cover letter with:
+CRITICAL INSTRUCTIONS:
+1. Examine the candidate's attached Resume PDF thoroughly. Extract concrete accomplishments, technical skills (e.g. Flutter, Dart, Android/iOS, State Management, Cloud, REST APIs, CI/CD, Git, DevOps), and relate them directly to the target role.
+2. Structure:
+   a) Engaging Opening: Express enthusiasm for "${jobTitle}" at "${companyName}".
+   b) Concrete Value: Highlighting 2-3 specific achievements or competencies from the candidate's resume that make them an outstanding fit.
+   c) Strategic Alignment: How the candidate can solve challenges or create value for ${companyName}.
+   d) Clear, professional closing and Call to Action proposing a brief discussion.
+3. Sign-off MUST be:
 "Sincerely,
 ${promptName}"
-NEVER leave generic placeholders like "[Your Name]", "[Applicant Name]", or "[Name]".
+Never use generic placeholders like "[Your Name]".
+4. Tone: Confident, professional, clear, and authentic. No generic template-style cliches.
 
-Respond ONLY with a JSON object matching this schema:
+Respond ONLY with a JSON object in this format:
 {
   "job": {
     "jobTitle": "${jobTitle}",
@@ -64,7 +55,6 @@ Respond ONLY with a JSON object matching this schema:
                 }
             });
         }
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
         const payload = {
             contents: [
                 {
@@ -78,15 +68,8 @@ Respond ONLY with a JSON object matching this schema:
                 responseMimeType: "application/json"
             }
         };
-        const response = await axios_1.default.post(url, payload, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 90000
-        });
-        const candidates = (_b = response.data) === null || _b === void 0 ? void 0 : _b.candidates;
-        if (!candidates || candidates.length === 0) {
-            throw new Error('No candidates returned from Gemini API.');
-        }
-        const textResponse = (_d = (_c = candidates[0].content) === null || _c === void 0 ? void 0 : _c.parts[0]) === null || _d === void 0 ? void 0 : _d.text;
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 90000 });
+        const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new Error('Empty response from Gemini API.');
         }
@@ -120,7 +103,6 @@ Respond ONLY with a JSON object matching this schema:
     }
 });
 exports.refineCoverLetterWithAI = functions.runWith({ timeoutSeconds: 60, memory: "512MB" }).https.onCall(async (data, context) => {
-    var _a, _b, _c, _d;
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
     }
@@ -129,14 +111,6 @@ exports.refineCoverLetterWithAI = functions.runWith({ timeoutSeconds: 60, memory
         throw new functions.https.HttpsError('invalid-argument', 'Missing cover letter or user prompt.');
     }
     try {
-        const configDoc = await firebase_1.db.collection("admin_creds").doc("gemini_config").get();
-        let apiKey = "";
-        if (configDoc.exists) {
-            apiKey = ((_a = configDoc.data()) === null || _a === void 0 ? void 0 : _a.apiKey) || "";
-        }
-        if (!apiKey) {
-            throw new functions.https.HttpsError('internal', 'Gemini API key is not configured.');
-        }
         const promptName = applicantName || "Roshan J";
         const prompt = `You are an expert executive career advisor and professional writer.
 Candidate's Full Name: "${promptName}".
@@ -175,20 +149,12 @@ Respond ONLY with a JSON object in this format:
                 }
             });
         }
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
         const payload = {
             contents: [{ parts: inlineParts }],
             generationConfig: { responseMimeType: "application/json" }
         };
-        const response = await axios_1.default.post(url, payload, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 60000
-        });
-        const candidates = (_b = response.data) === null || _b === void 0 ? void 0 : _b.candidates;
-        if (!candidates || candidates.length === 0) {
-            throw new Error('No response from Gemini API.');
-        }
-        const textResponse = (_d = (_c = candidates[0].content) === null || _c === void 0 ? void 0 : _c.parts[0]) === null || _d === void 0 ? void 0 : _d.text;
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 60000 });
+        const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new Error('Empty response from Gemini API.');
         }

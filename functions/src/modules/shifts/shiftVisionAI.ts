@@ -1,6 +1,5 @@
 import * as functions from "firebase-functions";
-import axios from "axios";
-import { db } from "../../config/firebase";
+import { callGeminiAPI } from "../../utils/geminiHelper";
 
 export const analyzeRosterImage = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
     // Ensure user is authenticated
@@ -13,20 +12,7 @@ export const analyzeRosterImage = functions.runWith({ timeoutSeconds: 120, memor
         throw new functions.https.HttpsError('invalid-argument', 'Image and employeeName are required.');
     }
 
-    // 1. Fetch the Gemini API key from Firestore admin_creds/gemini_config
-    const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
-    let apiKey = "";
-    if (configDoc.exists) {
-        apiKey = configDoc.data()?.apiKey || "";
-    }
-
-    if (!apiKey) {
-        throw new functions.https.HttpsError('failed-precondition', 'Gemini API key is not configured in admin console.');
-    }
-
-    // 2. Prepare payload for Gemini API
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
+    // 1. Prepare payload for Gemini API
     const prompt = `Analyze the work roster image. Extract the shift schedule for employee "${employeeName}".
 The output MUST be a JSON object matching this schema. If a shift date is unclear or missing, mark it as "week_off".
 
@@ -94,17 +80,8 @@ Required JSON format:
     };
 
     try {
-        const response = await axios.post(url, payload, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 60000
-        });
-
-        const candidates = response.data?.candidates;
-        if (!candidates || candidates.length === 0) {
-            throw new functions.https.HttpsError('internal', 'No response candidates returned from Gemini API.');
-        }
-
-        const textResponse = candidates[0].content?.parts[0]?.text;
+        const geminiResult = await callGeminiAPI(payload, { timeout: 60000 });
+        const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new functions.https.HttpsError('internal', 'Empty content returned from Gemini API.');
         }
@@ -112,7 +89,7 @@ Required JSON format:
         // Return parsed JSON object
         return JSON.parse(textResponse);
     } catch (error: any) {
-        console.error("Gemini API Error:", error?.response?.data || error.message);
-        throw new functions.https.HttpsError('internal', `Error calling Gemini API: ${error?.response?.data?.error?.message || error.message}`);
+        console.error("Gemini API Error:", error.message);
+        throw new functions.https.HttpsError('internal', `Error calling Gemini API: ${error.message}`);
     }
 });

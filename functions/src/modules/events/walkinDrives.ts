@@ -1,8 +1,9 @@
 import * as functions from "firebase-functions";
-import axios from "axios";
 import * as moment from "moment-timezone";
 import { admin, db } from "../../config/firebase";
 import { logNotification } from "../../utils/logger";
+
+import { callGeminiAPI } from "../../utils/geminiHelper";
 
 export async function fetchAndStoreWalkInsForUserInternal(uid: string, triggerNotification: boolean): Promise<any> {
     const userDoc = await db.collection("users").doc(uid).get();
@@ -16,15 +17,6 @@ export async function fetchAndStoreWalkInsForUserInternal(uid: string, triggerNo
         if (data && data.walkinLocation && typeof data.walkinLocation === "string" && data.walkinLocation.trim().length > 0) {
             location = data.walkinLocation.trim();
         }
-    }
-    
-    const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
-    let apiKey = "";
-    if (configDoc.exists) {
-        apiKey = configDoc.data()?.apiKey || "";
-    }
-    if (!apiKey) {
-        throw new Error('Gemini API key is not configured in admin console.');
     }
 
     const today = moment().tz('Asia/Kolkata');
@@ -51,7 +43,6 @@ Respond ONLY with a JSON array matching this schema:
   }
 ]`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
             {
@@ -62,22 +53,13 @@ Respond ONLY with a JSON array matching this schema:
         ],
         tools: [
             {
-                google_search: {}
+                googleSearch: {}
             }
         ]
     };
 
-    const response = await axios.post(url, payload, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 240000
-    });
-
-    const candidates = response.data?.candidates;
-    if (!candidates || candidates.length === 0) {
-        throw new Error('No response candidates returned from Gemini API.');
-    }
-
-    const textResponse = candidates[0].content?.parts[0]?.text;
+    const geminiResult = await callGeminiAPI(payload, { timeout: 240000 });
+    const textResponse = geminiResult.text;
     if (!textResponse) {
         throw new Error('Empty content returned from Gemini API.');
     }

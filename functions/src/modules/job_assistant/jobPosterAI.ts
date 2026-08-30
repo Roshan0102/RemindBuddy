@@ -1,6 +1,5 @@
 import * as functions from "firebase-functions";
-import axios from "axios";
-import { db } from "../../config/firebase";
+import { callGeminiAPI } from "../../utils/geminiHelper";
 
 export const parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
@@ -11,15 +10,6 @@ export const parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 120, me
         const { imagesBase64, mode, resumeBase64, applicantName, customPrompt } = data;
         if (!imagesBase64 || !Array.isArray(imagesBase64) || imagesBase64.length === 0) {
             throw new functions.https.HttpsError('invalid-argument', 'No image data provided.');
-        }
-
-        const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
-        let apiKey = "";
-        if (configDoc.exists) {
-            apiKey = configDoc.data()?.apiKey || "";
-        }
-        if (!apiKey) {
-            throw new functions.https.HttpsError('internal', 'Gemini API key is not configured.');
         }
 
         const isSingleJob = (mode === 'single_job');
@@ -106,7 +96,6 @@ Respond ONLY with a JSON object matching this schema:
             });
         });
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
         const payload = {
             contents: [
                 {
@@ -121,17 +110,8 @@ Respond ONLY with a JSON object matching this schema:
             }
         };
 
-        const response = await axios.post(url, payload, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 90000
-        });
-
-        const candidates = response.data?.candidates;
-        if (!candidates || candidates.length === 0) {
-            throw new Error('No candidates returned from Gemini API.');
-        }
-
-        const textResponse = candidates[0].content?.parts[0]?.text;
+        const geminiResult = await callGeminiAPI(payload, { timeout: 90000 });
+        const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new Error('Empty response from Gemini API.');
         }

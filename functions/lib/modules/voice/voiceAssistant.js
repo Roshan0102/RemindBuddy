@@ -2,11 +2,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.voiceAssistantQuery = void 0;
 const functions = require("firebase-functions");
-const axios_1 = require("axios");
 const moment = require("moment-timezone");
 const firebase_1 = require("../../config/firebase");
+const geminiHelper_1 = require("../../utils/geminiHelper");
 exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
-    var _a, _b;
+    var _a;
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
     }
@@ -26,16 +26,7 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
         if (!enabledModules.includes("voice_assistant")) {
             throw new functions.https.HttpsError('permission-denied', 'Voice Assistant feature is disabled.');
         }
-        // 2. Fetch Gemini API configuration
-        const configDoc = await firebase_1.db.collection("admin_creds").doc("gemini_config").get();
-        let apiKey = "";
-        if (configDoc.exists) {
-            apiKey = ((_a = configDoc.data()) === null || _a === void 0 ? void 0 : _a.apiKey) || "";
-        }
-        if (!apiKey) {
-            throw new functions.https.HttpsError('failed-precondition', 'Gemini API key is not configured.');
-        }
-        // 3. Gather state context in parallel
+        // 2. Gather state context in parallel
         const nowKolkata = moment().tz('Asia/Kolkata');
         const currentMonth = nowKolkata.format('YYYY-MM');
         const remindersPromise = firebase_1.db.collection("users").doc(uid).collection("calendar_reminders")
@@ -192,7 +183,7 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
         if (goldInsightsSnap && goldInsightsSnap.exists) {
             const gid = goldInsightsSnap.data();
             if (gid) {
-                contextText += `Sentiment: ${gid.sentiment || ''} (Score: ${(_b = gid.sentimentScore) !== null && _b !== void 0 ? _b : 0})\n`;
+                contextText += `Sentiment: ${gid.sentiment || ''} (Score: ${(_a = gid.sentimentScore) !== null && _a !== void 0 ? _a : 0})\n`;
                 contextText += `Sentiment Summary: "${gid.sentimentSummary || ''}"\n`;
                 contextText += `Predicted Trend: ${gid.predictedTrend || ''}\n`;
                 contextText += `Predicted Range: ${gid.predictedPriceRange || ''}\n`;
@@ -302,7 +293,6 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
             contextText += "No upcoming walk-in drives.\n";
         }
         // 4. Send query to Gemini
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
         const systemInstruction = `You are the RemindBuddy AI Voice Assistant. Your goal is to help the user manage reminders, daily alarms, notes, checklists, shifts, gold prices, finance balances & expenses, GCP cloud costs, tech events, walk-in drives, and job applications.
 CRITICAL PRIVACY RULE: The Secure Vault feature is strictly private/encrypted and must NEVER be queried or spoken by the voice assistant.
 Look at the user's voice search or typed query, and the current state of their app data:
@@ -388,8 +378,8 @@ Output MUST be a JSON object matching this schema:
                 }
             }
         };
-        const response = await axios_1.default.post(url, payload, { timeout: 15000 });
-        const geminiText = response.data.candidates[0].content.parts[0].text;
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 30000 });
+        const geminiText = geminiResult.text;
         const result = JSON.parse(geminiText);
         let actionExecuted = null;
         // 5. Execute action in Firestore if applicable

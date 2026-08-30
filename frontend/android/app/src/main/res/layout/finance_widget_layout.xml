@@ -5,9 +5,9 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg_dark"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:padding="12dp">
 
-    <!-- Header Row -->
+    <!-- Header Row: Title & Total Net Balance -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -19,75 +19,168 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="💳 Net Bank Balance"
+            android:text="🏦 Bank Balances"
             android:textColor="#38BDF8"
             android:textSize="12sp"
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/widget_finance_bank"
+            android:id="@+id/widget_finance_balance"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Active Accounts"
-            android:textColor="#94A3B8"
-            android:textSize="10sp" />
+            android:text="Total: ₹0"
+            android:textColor="#38BDF8"
+            android:textSize="12sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Main Balance Display -->
-    <TextView
-        android:id="@+id/widget_finance_balance"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:text="₹1,45,200.00"
-        android:textColor="#FFFFFF"
-        android:textSize="20sp"
-        android:textStyle="bold" />
-
-    <!-- Divider Line -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="6dp"
-        android:layout_marginBottom="6dp"
-        android:background="#334155" />
+        android:layout_marginTop="5dp"
+        android:layout_marginBottom="5dp"
+        android:background="#1E293B" />
 
-    <!-- Today's Cashflow Row -->
+    <!-- Connected Bank Accounts List (Up to 3 accounts displayed dynamically) -->
+    <LinearLayout
+        android:id="@+id/widget_finance_acc_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:orientation="vertical">
+
+        <!-- Account 1 -->
+        <LinearLayout
+            android:id="@+id/widget_finance_acc1_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="3dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/widget_finance_acc1_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="Primary Bank"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/widget_finance_acc1_bal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="₹0.00"
+                android:textColor="#38BDF8"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Account 2 -->
+        <LinearLayout
+            android:id="@+id/widget_finance_acc2_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="3dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/widget_finance_acc2_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="Secondary Bank"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/widget_finance_acc2_bal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="₹0.00"
+                android:textColor="#38BDF8"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Account 3 -->
+        <LinearLayout
+            android:id="@+id/widget_finance_acc3_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/widget_finance_acc3_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="Other Bank"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/widget_finance_acc3_bal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="₹0.00"
+                android:textColor="#38BDF8"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="5dp"
+        android:layout_marginBottom="5dp"
+        android:background="#1E293B" />
+
+    <!-- Footer: Today Inflow / Outflow & Synced Time -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <!-- Today In -->
         <TextView
             android:id="@+id/widget_finance_in"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginRight="6dp"
             android:background="@drawable/widget_pill_green"
-            android:paddingLeft="6dp"
-            android:paddingRight="6dp"
+            android:paddingLeft="5dp"
+            android:paddingRight="5dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
-            android:text="↓ +₹1,500 In"
+            android:text="+₹0"
             android:textColor="#22C55E"
-            android:textSize="10sp"
+            android:textSize="9.5sp"
             android:textStyle="bold" />
 
-        <!-- Today Out -->
         <TextView
             android:id="@+id/widget_finance_out"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/widget_pill_red"
-            android:paddingLeft="6dp"
-            android:paddingRight="6dp"
+            android:paddingLeft="5dp"
+            android:paddingRight="5dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
-            android:text="↑ -₹450 Out"
+            android:text="-₹0"
             android:textColor="#EF4444"
-            android:textSize="10sp"
+            android:textSize="9.5sp"
             android:textStyle="bold" />
 
         <TextView
@@ -96,7 +189,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:gravity="end"
-            android:text="Synced Today"
+            android:text="Synced"
             android:textColor="#64748B"
             android:textSize="9sp" />
     </LinearLayout>

@@ -5,12 +5,11 @@ exports.fetchAndStoreEventsForUserInternal = fetchAndStoreEventsForUserInternal;
 exports.internalDailyTechEventsFetcher = internalDailyTechEventsFetcher;
 exports.internalCheckInterestedEventsNotifications = internalCheckInterestedEventsNotifications;
 const functions = require("firebase-functions");
-const axios_1 = require("axios");
 const moment = require("moment-timezone");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
+const geminiHelper_1 = require("../../utils/geminiHelper");
 async function fetchAndStoreEventsForUserInternal(uid, triggerNotification) {
-    var _a, _b, _c, _d;
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     let interests = ["Cloud", "Devops", "AI", "Agentic AI"];
     let location = "Bengaluru, India";
@@ -29,14 +28,6 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification) {
             }
         }
     }
-    const configDoc = await firebase_1.db.collection("admin_creds").doc("gemini_config").get();
-    let apiKey = "";
-    if (configDoc.exists) {
-        apiKey = ((_a = configDoc.data()) === null || _a === void 0 ? void 0 : _a.apiKey) || "";
-    }
-    if (!apiKey) {
-        throw new Error('Gemini API key is not configured in admin console.');
-    }
     const today = moment().tz('Asia/Kolkata');
     const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
     const endDateStr = today.clone().add(2, 'months').endOf('month').format('YYYY-MM-DD');
@@ -50,16 +41,16 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification) {
     else {
         modeConstraint = `Include both physical in-person events in ${location} and online webinars/virtual workshops.`;
     }
-    const prompt = `Find upcoming Tech events, meetups, workshops, hackathons happening in ${location} related to the following interests: ${interests.join(', ')}.
+    const prompt = `Find upcoming real Tech events, developer meetups, workshops, hackathons happening in ${location} strictly focused on these user interests: ${interests.join(', ')}.
 The events must happen between ${startDateStr} and ${endDateStr}.
 CRITICAL CONSTRAINTS:
 1. ${modeConstraint}
-2. Do NOT include large academic or commercial sales conferences. Focus on tech meetups, community workshops, tech talks, and hands-on hackathons.
-3. Ensure events strictly match the user's specific tech interests (${interests.join(', ')}). Do NOT include non-technical commercial marketing or general HR events.
-Use Google Search grounding to find real, current upcoming events. Search luma.com, eventbrite.com, meetup.com, hackerearth.com, 10times.com, and linkedin.com.
-Provide a clean JSON list of events. The "registrationLink" property in the JSON should point directly to the specific event source page URL from where you found the event.
+2. ONLY include technical topics relevant to: ${interests.join(', ')}.
+3. Strictly EXCLUDE non-technical events, school/college general quizzes, IQ competitions, marketing sales pitches, and unrelated general hackathons.
+4. Use Google Search grounding to find real, currently active upcoming events from luma.com, eventbrite.com, meetup.com, hackerearth.com, 10times.com, and linkedin.com.
+5. Provide a clean JSON list of events. The "registrationLink" property must point directly to the actual event source registration/info page.
 
-If no events match the criteria, respond ONLY with an empty JSON array: []. Do not include any conversational explanation, preamble, or notes.
+If no events match the criteria, respond ONLY with an empty JSON array: []. Do not include any conversational explanation or markdown preamble.
 Respond ONLY with a JSON array matching this schema:
 [
   {
@@ -68,10 +59,9 @@ Respond ONLY with a JSON array matching this schema:
     "timings": "string",
     "location": "string",
     "registrationLink": "string (direct link to the event source page)",
-    "sourcePlatform": "string (Identify the platform from where you fetched this event, e.g. Luma, Eventbrite, Meetup, HackerEarth, 10times, LinkedIn, or Google Search)"
+    "sourcePlatform": "string (Luma, Eventbrite, Meetup, HackerEarth, 10times, LinkedIn, or Google Search)"
   }
 ]`;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
             {
@@ -82,19 +72,12 @@ Respond ONLY with a JSON array matching this schema:
         ],
         tools: [
             {
-                google_search: {}
+                googleSearch: {}
             }
         ]
     };
-    const response = await axios_1.default.post(url, payload, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 240000
-    });
-    const candidates = (_b = response.data) === null || _b === void 0 ? void 0 : _b.candidates;
-    if (!candidates || candidates.length === 0) {
-        throw new Error('No response candidates returned from Gemini API.');
-    }
-    const textResponse = (_d = (_c = candidates[0].content) === null || _c === void 0 ? void 0 : _c.parts[0]) === null || _d === void 0 ? void 0 : _d.text;
+    const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 240000 });
+    const textResponse = geminiResult.text;
     if (!textResponse) {
         throw new Error('Empty content returned from Gemini API.');
     }

@@ -1,8 +1,9 @@
 import * as functions from "firebase-functions";
-import axios from "axios";
 import * as moment from "moment-timezone";
 import { admin, db } from "../../config/firebase";
 import { logNotification } from "../../utils/logger";
+
+import { callGeminiAPI } from "../../utils/geminiHelper";
 
 export async function fetchAndStoreEventsForUserInternal(uid: string, triggerNotification: boolean): Promise<any> {
     const userDoc = await db.collection("users").doc(uid).get();
@@ -25,15 +26,6 @@ export async function fetchAndStoreEventsForUserInternal(uid: string, triggerNot
         }
     }
 
-    const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
-    let apiKey = "";
-    if (configDoc.exists) {
-        apiKey = configDoc.data()?.apiKey || "";
-    }
-    if (!apiKey) {
-        throw new Error('Gemini API key is not configured in admin console.');
-    }
-
     const today = moment().tz('Asia/Kolkata');
     const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
     const endDateStr = today.clone().add(2, 'months').endOf('month').format('YYYY-MM-DD');
@@ -47,16 +39,16 @@ export async function fetchAndStoreEventsForUserInternal(uid: string, triggerNot
         modeConstraint = `Include both physical in-person events in ${location} and online webinars/virtual workshops.`;
     }
 
-    const prompt = `Find upcoming Tech events, meetups, workshops, hackathons happening in ${location} related to the following interests: ${interests.join(', ')}.
+    const prompt = `Find upcoming real Tech events, developer meetups, workshops, hackathons happening in ${location} strictly focused on these user interests: ${interests.join(', ')}.
 The events must happen between ${startDateStr} and ${endDateStr}.
 CRITICAL CONSTRAINTS:
 1. ${modeConstraint}
-2. Do NOT include large academic or commercial sales conferences. Focus on tech meetups, community workshops, tech talks, and hands-on hackathons.
-3. Ensure events strictly match the user's specific tech interests (${interests.join(', ')}). Do NOT include non-technical commercial marketing or general HR events.
-Use Google Search grounding to find real, current upcoming events. Search luma.com, eventbrite.com, meetup.com, hackerearth.com, 10times.com, and linkedin.com.
-Provide a clean JSON list of events. The "registrationLink" property in the JSON should point directly to the specific event source page URL from where you found the event.
+2. ONLY include technical topics relevant to: ${interests.join(', ')}.
+3. Strictly EXCLUDE non-technical events, school/college general quizzes, IQ competitions, marketing sales pitches, and unrelated general hackathons.
+4. Use Google Search grounding to find real, currently active upcoming events from luma.com, eventbrite.com, meetup.com, hackerearth.com, 10times.com, and linkedin.com.
+5. Provide a clean JSON list of events. The "registrationLink" property must point directly to the actual event source registration/info page.
 
-If no events match the criteria, respond ONLY with an empty JSON array: []. Do not include any conversational explanation, preamble, or notes.
+If no events match the criteria, respond ONLY with an empty JSON array: []. Do not include any conversational explanation or markdown preamble.
 Respond ONLY with a JSON array matching this schema:
 [
   {
@@ -65,11 +57,10 @@ Respond ONLY with a JSON array matching this schema:
     "timings": "string",
     "location": "string",
     "registrationLink": "string (direct link to the event source page)",
-    "sourcePlatform": "string (Identify the platform from where you fetched this event, e.g. Luma, Eventbrite, Meetup, HackerEarth, 10times, LinkedIn, or Google Search)"
+    "sourcePlatform": "string (Luma, Eventbrite, Meetup, HackerEarth, 10times, LinkedIn, or Google Search)"
   }
 ]`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
             {
@@ -80,22 +71,13 @@ Respond ONLY with a JSON array matching this schema:
         ],
         tools: [
             {
-                google_search: {}
+                googleSearch: {}
             }
         ]
     };
 
-    const response = await axios.post(url, payload, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 240000
-    });
-
-    const candidates = response.data?.candidates;
-    if (!candidates || candidates.length === 0) {
-        throw new Error('No response candidates returned from Gemini API.');
-    }
-
-    const textResponse = candidates[0].content?.parts[0]?.text;
+    const geminiResult = await callGeminiAPI(payload, { timeout: 240000 });
+    const textResponse = geminiResult.text;
     if (!textResponse) {
         throw new Error('Empty content returned from Gemini API.');
     }

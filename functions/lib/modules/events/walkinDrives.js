@@ -4,12 +4,11 @@ exports.fetchUserWalkInsTrigger = exports.fetchUserWalkIns = void 0;
 exports.fetchAndStoreWalkInsForUserInternal = fetchAndStoreWalkInsForUserInternal;
 exports.internalDailyWalkInsFetcher = internalDailyWalkInsFetcher;
 const functions = require("firebase-functions");
-const axios_1 = require("axios");
 const moment = require("moment-timezone");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
+const geminiHelper_1 = require("../../utils/geminiHelper");
 async function fetchAndStoreWalkInsForUserInternal(uid, triggerNotification) {
-    var _a, _b, _c, _d;
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     let roles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"];
     let location = "Bengaluru";
@@ -21,14 +20,6 @@ async function fetchAndStoreWalkInsForUserInternal(uid, triggerNotification) {
         if (data && data.walkinLocation && typeof data.walkinLocation === "string" && data.walkinLocation.trim().length > 0) {
             location = data.walkinLocation.trim();
         }
-    }
-    const configDoc = await firebase_1.db.collection("admin_creds").doc("gemini_config").get();
-    let apiKey = "";
-    if (configDoc.exists) {
-        apiKey = ((_a = configDoc.data()) === null || _a === void 0 ? void 0 : _a.apiKey) || "";
-    }
-    if (!apiKey) {
-        throw new Error('Gemini API key is not configured in admin console.');
     }
     const today = moment().tz('Asia/Kolkata');
     const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
@@ -52,7 +43,6 @@ Respond ONLY with a JSON array matching this schema:
     "registrationLink": "string (direct link to where this walk-in info was found)"
   }
 ]`;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
             {
@@ -63,19 +53,12 @@ Respond ONLY with a JSON array matching this schema:
         ],
         tools: [
             {
-                google_search: {}
+                googleSearch: {}
             }
         ]
     };
-    const response = await axios_1.default.post(url, payload, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 240000
-    });
-    const candidates = (_b = response.data) === null || _b === void 0 ? void 0 : _b.candidates;
-    if (!candidates || candidates.length === 0) {
-        throw new Error('No response candidates returned from Gemini API.');
-    }
-    const textResponse = (_d = (_c = candidates[0].content) === null || _c === void 0 ? void 0 : _c.parts[0]) === null || _d === void 0 ? void 0 : _d.text;
+    const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 240000 });
+    const textResponse = geminiResult.text;
     if (!textResponse) {
         throw new Error('Empty content returned from Gemini API.');
     }

@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.net.Uri
+import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
@@ -17,17 +18,51 @@ class FinanceWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             val widgetData = HomeWidgetPlugin.getData(context)
             val views = RemoteViews(context.packageName, R.layout.finance_widget_layout).apply {
-                val balance = widgetData.getString("finance_balance", "₹0.00")
-                val todayIn = widgetData.getString("finance_in", "↓ +₹0 In")
-                val todayOut = widgetData.getString("finance_out", "↑ -₹0 Out")
-                val bank = widgetData.getString("finance_bank", "Active Accounts")
+                val balance = widgetData.getString("finance_balance", "Total: ₹0")
+                val todayIn = widgetData.getString("finance_in", "+₹0")
+                val todayOut = widgetData.getString("finance_out", "-₹0")
                 val time = widgetData.getString("finance_time", "Synced Today")
+
+                val acc1Name = widgetData.getString("finance_acc1_name", "")
+                val acc1Bal = widgetData.getString("finance_acc1_bal", "")
+                val acc2Name = widgetData.getString("finance_acc2_name", "")
+                val acc2Bal = widgetData.getString("finance_acc2_bal", "")
+                val acc3Name = widgetData.getString("finance_acc3_name", "")
+                val acc3Bal = widgetData.getString("finance_acc3_bal", "")
 
                 setTextViewText(R.id.widget_finance_balance, balance)
                 setTextViewText(R.id.widget_finance_in, todayIn)
                 setTextViewText(R.id.widget_finance_out, todayOut)
-                setTextViewText(R.id.widget_finance_bank, bank)
                 setTextViewText(R.id.widget_finance_time, time)
+
+                // Account 1
+                if (!acc1Name.isNullOrEmpty()) {
+                    setViewVisibility(R.id.widget_finance_acc1_row, View.VISIBLE)
+                    setTextViewText(R.id.widget_finance_acc1_name, acc1Name)
+                    setTextViewText(R.id.widget_finance_acc1_bal, acc1Bal)
+                } else {
+                    setViewVisibility(R.id.widget_finance_acc1_row, View.VISIBLE)
+                    setTextViewText(R.id.widget_finance_acc1_name, "No Connected Accounts")
+                    setTextViewText(R.id.widget_finance_acc1_bal, "₹0.00")
+                }
+
+                // Account 2
+                if (!acc2Name.isNullOrEmpty()) {
+                    setViewVisibility(R.id.widget_finance_acc2_row, View.VISIBLE)
+                    setTextViewText(R.id.widget_finance_acc2_name, acc2Name)
+                    setTextViewText(R.id.widget_finance_acc2_bal, acc2Bal)
+                } else {
+                    setViewVisibility(R.id.widget_finance_acc2_row, View.GONE)
+                }
+
+                // Account 3
+                if (!acc3Name.isNullOrEmpty()) {
+                    setViewVisibility(R.id.widget_finance_acc3_row, View.VISIBLE)
+                    setTextViewText(R.id.widget_finance_acc3_name, acc3Name)
+                    setTextViewText(R.id.widget_finance_acc3_bal, acc3Bal)
+                } else {
+                    setViewVisibility(R.id.widget_finance_acc3_row, View.GONE)
+                }
 
                 // Launch RemindBuddy on click
                 val pendingIntent = HomeWidgetLaunchIntent.getActivity(

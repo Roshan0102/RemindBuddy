@@ -73,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _remindersSub;
   StreamSubscription? _notesSub;
   StreamSubscription? _dailyRemindersSub;
+  Timer? _widgetSyncTimer;
 
   final Map<String, Map<String, dynamic>> _widgetMetadata = {
     'gold_price': {
@@ -88,40 +89,46 @@ class _HomeScreenState extends State<HomeScreen> {
       'color': Colors.lightBlueAccent,
     },
     'expenses': {
-      'title': 'Cumulative Cashflow',
+      'title': 'Cashflow Today',
       'module': 'finance',
-      'icon': Icons.swap_vert_rounded,
-      'color': const Color(0xFFF43F5E),
-    },
-    'shifts': {
-      'title': 'Work Duty & Shift',
-      'module': 'shifts',
-      'icon': Icons.work_history_rounded,
-      'color': Colors.purpleAccent,
-    },
-    'events_walkins': {
-      'title': 'Tech & Walk-Ins',
-      'module': 'events',
-      'icon': Icons.rocket_launch_rounded,
+      'icon': Icons.swap_horiz_rounded,
       'color': Colors.tealAccent,
     },
-    'reminders': {
-      'title': 'Calendar Tasks',
-      'module': 'reminders',
+    'shifts': {
+      'title': 'Work Roster',
+      'module': 'shifts',
       'icon': Icons.calendar_month_rounded,
-      'color': Colors.indigoAccent,
+      'color': Colors.deepPurpleAccent,
     },
-    'daily_reminders': {
-      'title': 'Daily Habit Check-ins',
-      'module': 'daily_reminders',
-      'icon': Icons.alarm_on_rounded,
+    'reminders': {
+      'title': 'Reminders',
+      'module': 'reminders',
+      'icon': Icons.notifications_active_rounded,
       'color': Colors.orangeAccent,
     },
     'notes': {
       'title': 'Quick Notes',
       'module': 'notes',
-      'icon': Icons.note_alt_rounded,
+      'icon': Icons.edit_note_rounded,
+      'color': Colors.purpleAccent,
+    },
+    'tech_events': {
+      'title': 'Tech Events',
+      'module': 'all',
+      'icon': Icons.event_available_rounded,
+      'color': Colors.indigoAccent,
+    },
+    'walkin_drives': {
+      'title': 'Walk-in Drives',
+      'module': 'all',
+      'icon': Icons.work_outline_rounded,
       'color': Colors.cyanAccent,
+    },
+    'job_discovery': {
+      'title': 'AI Job Discovery',
+      'module': 'all',
+      'icon': Icons.rocket_launch_rounded,
+      'color': Colors.blueAccent,
     },
     'voice_assistant': {
       'title': 'Ask Buddy (Voice AI)',
@@ -138,6 +145,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadDashboardData();
     _fetchWeather();
     HomeWidgetService().syncAllWidgets();
+    // Periodic sync every 45 seconds to keep home screen Android widgets fresh
+    _widgetSyncTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      HomeWidgetService().syncAllWidgets();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       AppPermissionService().checkAndPromptInitialPermissions(context);
     });
@@ -145,6 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _widgetSyncTimer?.cancel();
     _userDocSub?.cancel();
     _goldSub?.cancel();
     _accountsSub?.cancel();
@@ -387,12 +399,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (prices.isNotEmpty && mounted) {
         final latest = prices.first;
         final double rate22k = latest.price;
-        final double rate24k = rate22k > 0 ? (rate22k / 22 * 24) : 0.0;
         setState(() {
           _latestGoldPrice = latest;
         });
         HomeWidgetService().updateGoldWidget(
-          rate24k: rate24k,
           rate22k: rate22k,
           changeToday: latest.priceChange,
           city: _weatherCity,
@@ -422,12 +432,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ? (accs.first['name'] ?? 'Active Bank')
               : '${accs.length} Active Accounts';
         });
-        HomeWidgetService().updateFinanceWidget(
-          totalBalance: _totalBalance,
-          todayIn: _todayCredited,
-          todayOut: _todayDebited,
-          bankName: _activeBankName,
-        );
+        HomeWidgetService().syncAllWidgets();
       }
     });
 
@@ -448,14 +453,12 @@ class _HomeScreenState extends State<HomeScreen> {
       double d = 0.0;
       for (final doc in snap.docs) {
         final data = doc.data();
+        final date = data['date'];
         DateTime? dt;
-        final ts = data['timestamp'];
-        if (ts is Timestamp) {
-          dt = ts.toDate();
-        } else if (ts is String) {
-          dt = DateTime.tryParse(ts);
-        } else if (ts is int) {
-          dt = DateTime.fromMillisecondsSinceEpoch(ts);
+        if (date is Timestamp) {
+          dt = date.toDate();
+        } else if (date is String) {
+          dt = DateTime.tryParse(date);
         }
 
         final type = (data['type'] ?? '').toString().toLowerCase();
@@ -475,6 +478,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _todayCredited = manualCred + smsCred;
           _todayDebited = manualDeb + smsDeb;
         });
+        HomeWidgetService().syncAllWidgets();
       }
     });
 
@@ -518,6 +522,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _todayCredited = manualCred + smsCred;
           _todayDebited = manualDeb + smsDeb;
         });
+        HomeWidgetService().syncAllWidgets();
       }
     });
 
@@ -535,6 +540,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .listen((snap) {
       if (mounted) {
         setState(() => _todayShift = snap.exists ? snap.data() : null);
+        HomeWidgetService().syncAllWidgets();
       }
     });
 
@@ -1083,7 +1089,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final dateStr = DateFormat('EEEE, d MMMM').format(DateTime.now());
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF131C2E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -1101,30 +1107,19 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Left side: Clean 3-line hierarchy (Greeting -> Username -> Date)
+          // Left side: Single-line greeting + date with icon
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  greeting,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white70 : const Color(0xFF64748B),
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                const SizedBox(height: 2),
                 Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Flexible(
                       child: Text(
-                        cleanName,
+                        '$greeting, $cleanName $emoji',
                         style: GoogleFonts.outfit(
-                          fontSize: 20,
+                          fontSize: 17.5,
                           fontWeight: FontWeight.bold,
                           color: isDark ? Colors.white : const Color(0xFF0F172A),
                         ),
@@ -1132,77 +1127,83 @@ class _HomeScreenState extends State<HomeScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      emoji,
-                      style: const TextStyle(fontSize: 18),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 3),
-                Text(
-                  dateStr,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white54 : Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.calendar_today_rounded,
+                      size: 12,
+                      color: isDark ? Colors.white54 : Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      dateStr,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white54 : Colors.grey.shade600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          // Right side: Compact, responsive Weather Widget
+          const SizedBox(width: 10),
+          // Right side: Compact, polished Weather Widget Chip
           Tooltip(
-            message: '$_weatherCondition (Tap to refresh)',
+            message: '$_weatherCondition in $_weatherCity (Tap to refresh)',
             child: InkWell(
               onTap: () => _fetchWeather(force: true),
               borderRadius: BorderRadius.circular(16),
               child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50.withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isDark ? Colors.white10 : Colors.blue.shade100,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(_weatherIcon, color: Colors.blueAccent, size: 20),
-                  const SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _weatherTemp,
-                        style: GoogleFonts.outfit(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: isDark ? Colors.white : const Color(0xFF0F172A),
-                        ),
-                      ),
-                      Text(
-                        _weatherCity,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? Colors.white60 : Colors.blueGrey.shade700,
-                        ),
-                      ),
-                    ],
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isDark ? Colors.blueAccent.withValues(alpha: 0.3) : Colors.blue.shade100,
                   ),
-                ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(_weatherIcon, color: Colors.blueAccent, size: 20),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _weatherTemp,
+                          style: GoogleFonts.outfit(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                        ),
+                        Text(
+                          _weatherCity,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white60 : Colors.blueGrey.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
-}
+        ],
+      ),
+    );
+  }
 
   // ==========================================
   // 🌟 2. Dedicated Featured Hero Bento Cards (For ALL Categories)
@@ -2048,29 +2049,33 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(6),
+                      padding: const EdgeInsets.all(5.5),
                       decoration: BoxDecoration(
                         color: col.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(icon, color: col, size: 15),
+                      child: Icon(icon, color: col, size: 14),
                     ),
-                    Icon(Icons.arrow_forward_ios_rounded, size: 11, color: isDark ? Colors.white30 : Colors.black26),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: GoogleFonts.outfit(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF334155),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 10, color: isDark ? Colors.white30 : Colors.black26),
                   ],
                 ),
-                body,
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white54 : Colors.grey[600],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Expanded(
+                  child: Center(child: body),
                 ),
               ],
             ),

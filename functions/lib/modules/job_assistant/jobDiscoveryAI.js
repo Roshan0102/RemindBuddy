@@ -4,12 +4,12 @@ exports.triggerAutoJobDiscoveryAndApply = void 0;
 exports.discoverAndApplyForUser = discoverAndApplyForUser;
 exports.internalAutoJobDiscoveryAndApply = internalAutoJobDiscoveryAndApply;
 const functions = require("firebase-functions");
-const axios_1 = require("axios");
 const nodemailer = require("nodemailer");
 const moment = require("moment-timezone");
 const dns = require("dns");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
+const geminiHelper_1 = require("../../utils/geminiHelper");
 /**
  * Helper to validate email strings
  */
@@ -46,7 +46,7 @@ async function verifyEmailDomainMx(email) {
  * Searches and automatically applies to matching jobs for a specific user
  */
 async function discoverAndApplyForUser(uid, options) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d;
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     if (!userDoc.exists) {
         return { success: false, appliedCount: 0, jobs: [], message: "User not found" };
@@ -168,7 +168,6 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             }
         });
     }
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [
             {
@@ -180,20 +179,20 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         ],
         tools: [
             {
-                google_search: {}
+                googleSearch: {}
             }
         ]
     };
     console.log(`[JobDiscovery] Running Gemini Search Grounding for user ${uid} (Roles: ${targetRoles.join(', ')})...`);
-    const response = await axios_1.default.post(url, payload, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 240000
-    });
-    const candidates = (_d = response.data) === null || _d === void 0 ? void 0 : _d.candidates;
-    if (!candidates || candidates.length === 0) {
-        return { success: true, appliedCount: 0, jobs: [], message: "No search candidates returned." };
+    let rawText = "";
+    try {
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 240000 });
+        rawText = geminiResult.text || "";
     }
-    const rawText = ((_g = (_f = (_e = candidates[0].content) === null || _e === void 0 ? void 0 : _e.parts) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.text) || "";
+    catch (apiErr) {
+        console.error("[JobDiscovery] Gemini search failed:", apiErr.message);
+        return { success: false, appliedCount: 0, jobs: [], message: `Job Search AI temporarily busy: ${apiErr.message}` };
+    }
     if (!rawText) {
         return { success: true, appliedCount: 0, jobs: [], message: "Empty response from search agent." };
     }
@@ -305,7 +304,7 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         try {
             const userTokenDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
             if (!userTokenDoc.empty) {
-                const fcmToken = (_h = userTokenDoc.docs[0].data()) === null || _h === void 0 ? void 0 : _h.fcmToken;
+                const fcmToken = (_d = userTokenDoc.docs[0].data()) === null || _d === void 0 ? void 0 : _d.fcmToken;
                 if (fcmToken) {
                     const compNames = successfullyAppliedJobs.map(j => j.companyName).filter(Boolean).slice(0, 3).join(', ');
                     const notifTitle = `🚀 Auto-Applied to ${successfullyAppliedJobs.length} New Job${successfullyAppliedJobs.length > 1 ? 's' : ''}!`;

@@ -3,7 +3,6 @@ package com.remindbuddy.remindbuddy
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
@@ -18,14 +17,14 @@ class GoldWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             val widgetData = HomeWidgetPlugin.getData(context)
             val views = RemoteViews(context.packageName, R.layout.gold_widget_layout).apply {
-                val rate24k = widgetData.getString("gold_24k", "₹7,850/g")
-                val rate22k = widgetData.getString("gold_22k", "₹7,200/g")
-                val city = widgetData.getString("gold_city", "Chennai")
+                val rate22kGram = widgetData.getString("gold_22k_gram", "₹0/g")
+                val rate22kSovereign = widgetData.getString("gold_22k_sovereign", "₹0 (8g)")
+                val city = widgetData.getString("gold_city", "Bengaluru")
                 val change = widgetData.getString("gold_change", "Live Rates")
                 val time = widgetData.getString("gold_time", "Updated Today")
 
-                setTextViewText(R.id.widget_gold_24k, rate24k)
-                setTextViewText(R.id.widget_gold_22k, rate22k)
+                setTextViewText(R.id.widget_gold_22k_gram, rate22kGram)
+                setTextViewText(R.id.widget_gold_22k_sovereign, rate22kSovereign)
                 setTextViewText(R.id.widget_gold_city, city)
                 setTextViewText(R.id.widget_gold_change, change)
                 setTextViewText(R.id.widget_gold_time, time)

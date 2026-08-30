@@ -1,7 +1,7 @@
 import * as functions from "firebase-functions";
-import axios from "axios";
 import * as moment from "moment-timezone";
 import { admin, db } from "../../config/firebase";
+import { callGeminiAPI } from "../../utils/geminiHelper";
 
 export const voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
@@ -25,17 +25,7 @@ export const voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memor
             throw new functions.https.HttpsError('permission-denied', 'Voice Assistant feature is disabled.');
         }
 
-        // 2. Fetch Gemini API configuration
-        const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
-        let apiKey = "";
-        if (configDoc.exists) {
-            apiKey = configDoc.data()?.apiKey || "";
-        }
-        if (!apiKey) {
-            throw new functions.https.HttpsError('failed-precondition', 'Gemini API key is not configured.');
-        }
-
-        // 3. Gather state context in parallel
+        // 2. Gather state context in parallel
         const nowKolkata = moment().tz('Asia/Kolkata');
         const currentMonth = nowKolkata.format('YYYY-MM');
 
@@ -327,8 +317,6 @@ export const voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memor
         }
 
         // 4. Send query to Gemini
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-        
         const systemInstruction = `You are the RemindBuddy AI Voice Assistant. Your goal is to help the user manage reminders, daily alarms, notes, checklists, shifts, gold prices, finance balances & expenses, GCP cloud costs, tech events, walk-in drives, and job applications.
 CRITICAL PRIVACY RULE: The Secure Vault feature is strictly private/encrypted and must NEVER be queried or spoken by the voice assistant.
 Look at the user's voice search or typed query, and the current state of their app data:
@@ -416,8 +404,8 @@ Output MUST be a JSON object matching this schema:
             }
         };
 
-        const response = await axios.post(url, payload, { timeout: 15000 });
-        const geminiText = response.data.candidates[0].content.parts[0].text;
+        const geminiResult = await callGeminiAPI(payload, { timeout: 30000 });
+        const geminiText = geminiResult.text;
         const result = JSON.parse(geminiText);
 
         let actionExecuted = null;

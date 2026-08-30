@@ -151,7 +151,7 @@ export const onGoldPriceCreated = functions.runWith({ timeoutSeconds: 300, memor
 
             // -- PART A: GOLD CHIT ASSISTANT --
             try {
-                const advice = await generateGoldChitRecommendation(apiKey, priceHistory, newsItems);
+                const advice = await generateGoldChitRecommendation(priceHistory, newsItems);
                 
                 const nowIST = moment().tz('Asia/Kolkata');
                 const timestampStr = nowIST.toISOString();
