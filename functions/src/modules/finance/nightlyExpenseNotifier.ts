@@ -21,7 +21,7 @@ export async function internalDailyUntaggedExpenseNotifier() {
             const enabledModules = uData?.enabledModules || [];
             const notifPrefs = uData?.notificationPreferences || {};
 
-            if (!enabledModules.includes("finance") || notifPrefs.finance === false) {
+            if (!enabledModules.includes("finance") || notifPrefs.finance === false || notifPrefs.finance_nightly_tagging === false) {
                 continue;
             }
 

@@ -208,6 +208,7 @@ class FinanceService {
       notes: bill.notes,
     );
     await ref.set(newBill.toMap());
+    HomeWidgetService().syncAllWidgets();
   }
 
   Future<void> updateBill(RecurringBill bill) async {
@@ -215,6 +216,7 @@ class FinanceService {
     if (doc == null) return;
 
     await doc.collection('finance_bills').doc(bill.id).update(bill.toMap());
+    HomeWidgetService().syncAllWidgets();
   }
 
   Future<void> deleteBill(String billId) async {
@@ -222,6 +224,7 @@ class FinanceService {
     if (doc == null) return;
 
     await doc.collection('finance_bills').doc(billId).delete();
+    HomeWidgetService().syncAllWidgets();
   }
 
   // ============================================================================
@@ -503,6 +506,7 @@ class FinanceService {
 
     // Route through 5-Stage Smart Deduplication Engine
     await PaymentNotificationTrackerService().processAndReconcileTransaction(tx);
+    HomeWidgetService().syncAllWidgets();
   }
 
   Future<void> updateSmsTransaction(SmsTransaction tx, {String? destinationBankAccountId}) async {
@@ -515,6 +519,7 @@ class FinanceService {
     if (tx.isVerified) {
       await _reconcileSmsTransactionWithAccount(tx, destinationBankAccountId: destinationBankAccountId);
     }
+    HomeWidgetService().syncAllWidgets();
   }
 
   Future<void> deleteSmsTransaction(String id) async {
@@ -522,6 +527,7 @@ class FinanceService {
     if (doc == null) return;
 
     await doc.collection('sms_transactions').doc(id).delete();
+    HomeWidgetService().syncAllWidgets();
   }
 
   /// Deletes all SMS transaction records for a specific month & year
@@ -553,6 +559,7 @@ class FinanceService {
 
     if (count > 0) {
       await batch.commit();
+      HomeWidgetService().syncAllWidgets();
     }
     return count;
   }

@@ -28,7 +28,7 @@ export async function fetchAndStoreEventsForUserInternal(uid: string, triggerNot
 
     const today = moment().tz('Asia/Kolkata');
     const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
-    const endDateStr = today.clone().add(2, 'months').endOf('month').format('YYYY-MM-DD');
+    const endDateStr = today.clone().add(60, 'days').format('YYYY-MM-DD');
 
     let modeConstraint = "";
     if (eventMode === "In-Person") {
@@ -260,9 +260,9 @@ export const fetchUserTechEventsTrigger = functions.runWith({ timeoutSeconds: 30
     }
 });
 
-export async function internalCheckInterestedEventsNotifications() {
+export async function internalCheckInterestedTechEventsNotifications() {
     const tomorrowStr = moment().tz('Asia/Kolkata').add(1, 'days').format('YYYY-MM-DD');
-    console.log(`Running checkInterestedEventsNotifications at ${moment().tz('Asia/Kolkata').format()} (Target Date: ${tomorrowStr})`);
+    console.log(`Running checkInterestedTechEventsNotifications at ${moment().tz('Asia/Kolkata').format()} (Target Date: ${tomorrowStr})`);
 
     const users = await db.collection('usernames').get();
     for (const u of users.docs) {
@@ -271,7 +271,6 @@ export async function internalCheckInterestedEventsNotifications() {
 
         const uid = userData.uid;
         try {
-            // Check if user profile exists and if modules are enabled
             const userProfileDoc = await db.collection("users").doc(uid).get();
             if (!userProfileDoc.exists) continue;
 
@@ -279,75 +278,40 @@ export async function internalCheckInterestedEventsNotifications() {
             const enabledModules = uData?.enabledModules || [];
             const notifPrefs = uData?.notificationPreferences || {};
 
-            // We only process if either events or walkins module is enabled
-            const checkEvents = enabledModules.includes("events") && notifPrefs.events !== false;
-            const checkWalkins = enabledModules.includes("walkin") && notifPrefs.walkin !== false;
+            if (!enabledModules.includes("events") || notifPrefs.events === false) continue;
 
-            if (!checkEvents && !checkWalkins) continue;
+            const eventsSnap = await db.collection('users').doc(uid).collection('events')
+                .where('interested', '==', true)
+                .where('date', '==', tomorrowStr)
+                .get();
 
-            if (checkEvents) {
-                const eventsSnap = await db.collection('users').doc(uid).collection('events')
-                    .where('interested', '==', true)
-                    .where('date', '==', tomorrowStr)
-                    .get();
+            for (const doc of eventsSnap.docs) {
+                const eventData = doc.data();
+                if (eventData.notifiedInterested === true) continue;
 
-                for (const doc of eventsSnap.docs) {
-                    const eventData = doc.data();
-                    if (eventData.notifiedInterested === true) continue;
+                const title = `📅 Upcoming Event: ${eventData.title || 'Tech Event'}`;
+                const body = `Reminder: "${eventData.title}" is happening tomorrow at ${eventData.timings || 'scheduled time'}.`;
+                
+                console.log(`Sending interested event reminder: ${title} to user ${uid}`);
+                await admin.messaging().send({
+                    token: userData.fcmToken,
+                    notification: { title, body },
+                    android: {
+                        notification: {
+                            channelId: 'events_reminder_channel',
+                            tag: `event_interest_${doc.id}`
+                        }
+                    },
+                    data: { type: "event_interest_reminder", eventId: doc.id }
+                });
 
-                    const title = `📅 Upcoming Event: ${eventData.title || 'Tech Event'}`;
-                    const body = `Reminder: "${eventData.title}" is happening tomorrow at ${eventData.timings || 'scheduled time'}.`;
-                    
-                    console.log(`Sending interested event reminder: ${title} to user ${uid}`);
-                    await admin.messaging().send({
-                        token: userData.fcmToken,
-                        notification: { title, body },
-                        android: {
-                            notification: {
-                                channelId: 'events_reminder_channel',
-                                tag: `event_interest_${doc.id}`
-                            }
-                        },
-                        data: { type: "event_interest_reminder", eventId: doc.id }
-                    });
-
-                    await logNotification(uid, title, body, "TECH_EVENTS");
-                    await doc.ref.update({ notifiedInterested: true });
-                }
-            }
-
-            if (checkWalkins) {
-                const walkinsSnap = await db.collection('users').doc(uid).collection('walkins')
-                    .where('interested', '==', true)
-                    .where('date', '==', tomorrowStr)
-                    .get();
-
-                for (const doc of walkinsSnap.docs) {
-                    const walkinData = doc.data();
-                    if (walkinData.notifiedInterested === true) continue;
-
-                    const title = `🚶 Upcoming Walk-In: ${walkinData.title || 'Walk-In'}`;
-                    const body = `Reminder: Walk-In for "${walkinData.title}" is happening tomorrow at ${walkinData.timings || 'scheduled time'}.`;
-
-                    console.log(`Sending interested walkin reminder: ${title} to user ${uid}`);
-                    await admin.messaging().send({
-                        token: userData.fcmToken,
-                        notification: { title, body },
-                        android: {
-                            notification: {
-                                channelId: 'events_reminder_channel',
-                                tag: `walkin_interest_${doc.id}`
-                            }
-                        },
-                        data: { type: "walkin_interest_reminder", walkinId: doc.id }
-                    });
-
-                    await logNotification(uid, title, body, "WALK_INS");
-                    await doc.ref.update({ notifiedInterested: true });
-                }
+                await logNotification(uid, title, body, "TECH_EVENTS");
+                await doc.ref.update({ notifiedInterested: true });
             }
         } catch (error) {
-            console.error(`Failed to check/send interested notifications for user ${uid}:`, error);
+            console.error(`Failed to check/send interested event notifications for user ${uid}:`, error);
         }
     }
 }
+
+export const internalCheckInterestedEventsNotifications = internalCheckInterestedTechEventsNotifications;

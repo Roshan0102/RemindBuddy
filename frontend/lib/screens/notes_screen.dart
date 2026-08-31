@@ -96,33 +96,45 @@ class _NotesScreenState extends State<NotesScreen> {
     final List<TextEditingController> itemControllers = checklistItems.map((item) => LinkTextEditingController(text: item['text'] as String)).toList();
     final List<FocusNode> itemFocusNodes = checklistItems.map((_) => FocusNode()).toList();
 
-    void reorderChecklist(void Function(void Function()) setDialogState) {
+    void toggleItemChecked(int index, bool isChecked, void Function(void Function()) setDialogState) {
       setDialogState(() {
-        List<Map<String, dynamic>> combined = [];
-        for (int i = 0; i < checklistItems.length; i++) {
-          combined.add({
-            'item': checklistItems[i],
-            'controller': itemControllers[i],
-            'focusNode': itemFocusNodes[i],
-          });
-        }
+        if (index < 0 || index >= checklistItems.length) return;
 
-        // Sort: unchecked first, checked last
-        combined.sort((a, b) {
-          bool aChecked = a['item']['isChecked'] == true;
-          bool bChecked = b['item']['isChecked'] == true;
-          if (aChecked && !bChecked) return 1;
-          if (!aChecked && bChecked) return -1;
-          return 0;
-        });
+        final item = checklistItems[index];
+        final controller = itemControllers[index];
+        final focusNode = itemFocusNodes[index];
 
-        checklistItems.clear();
-        itemControllers.clear();
-        itemFocusNodes.clear();
-        for (var pair in combined) {
-          checklistItems.add(pair['item'] as Map<String, dynamic>);
-          itemControllers.add(pair['controller'] as TextEditingController);
-          itemFocusNodes.add(pair['focusNode'] as FocusNode);
+        item['isChecked'] = isChecked;
+
+        // Remove from current position
+        checklistItems.removeAt(index);
+        itemControllers.removeAt(index);
+        itemFocusNodes.removeAt(index);
+
+        if (isChecked) {
+          // When marked done, place at the VERY TOP of the checked items section (above previously checked items)
+          int firstCheckedIndex = checklistItems.indexWhere((it) => it['isChecked'] == true);
+          if (firstCheckedIndex == -1) {
+            checklistItems.add(item);
+            itemControllers.add(controller);
+            itemFocusNodes.add(focusNode);
+          } else {
+            checklistItems.insert(firstCheckedIndex, item);
+            itemControllers.insert(firstCheckedIndex, controller);
+            itemFocusNodes.insert(firstCheckedIndex, focusNode);
+          }
+        } else {
+          // When unchecked, place at the bottom of the unchecked items section (just before the first checked item)
+          int firstCheckedIndex = checklistItems.indexWhere((it) => it['isChecked'] == true);
+          if (firstCheckedIndex == -1) {
+            checklistItems.add(item);
+            itemControllers.add(controller);
+            itemFocusNodes.add(focusNode);
+          } else {
+            checklistItems.insert(firstCheckedIndex, item);
+            itemControllers.insert(firstCheckedIndex, controller);
+            itemFocusNodes.insert(firstCheckedIndex, focusNode);
+          }
         }
       });
     }
@@ -416,10 +428,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                           Checkbox(
                                             value: item['isChecked'] == true,
                                             onChanged: (val) {
-                                              setDialogState(() {
-                                                item['isChecked'] = val ?? false;
-                                              });
-                                              reorderChecklist(setDialogState);
+                                              toggleItemChecked(index, val ?? false, setDialogState);
                                             },
                                           ),
                                           Expanded(
@@ -525,7 +534,6 @@ class _NotesScreenState extends State<NotesScreen> {
                                         itemControllers.insert(0, LinkTextEditingController(text: ''));
                                         final newFocusNode = FocusNode();
                                         itemFocusNodes.insert(0, newFocusNode);
-                                        reorderChecklist(setDialogState);
                                         WidgetsBinding.instance.addPostFrameCallback((_) {
                                           newFocusNode.requestFocus();
                                         });

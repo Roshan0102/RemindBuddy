@@ -12,6 +12,7 @@ import '../services/gold_price_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/app_permission_service.dart';
 import '../models/gold_price.dart';
+import '../models/calendar_reminder.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(String featureId)? onNavigateToFeature;
@@ -615,11 +616,10 @@ class _HomeScreenState extends State<HomeScreen> {
         .collection('calendar_reminders')
         .snapshots()
         .listen((snap) {
-      final active = snap.docs.where((d) {
-        final date = (d.data()['date'] ?? '').toString();
-        final status = (d.data()['status'] ?? '').toString().toLowerCase();
-        return date == todayStr && status != 'completed';
-      }).length;
+      final rawReminders = snap.docs.map((d) => CalendarReminder.fromMap(d.data(), d.id)).toList();
+      final todayReminders = rawReminders.where((r) => r.date == todayStr).toList();
+      final grouped = GroupedCalendarReminder.groupList(todayReminders);
+      final active = grouped.where((g) => g.status != 'completed').length;
       if (mounted) setState(() => _todayRemindersCount = active);
     });
 

@@ -967,24 +967,51 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
           // 1. Search Bar (ALWAYS visible, never loses focus/keyboard!)
           Padding(
             padding: const EdgeInsets.all(12.0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search documents, Aadhar, accounts...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          FocusScope.of(context).unfocus();
-                        },
-                      )
-                    : null,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                filled: true,
-                fillColor: Colors.grey.shade50,
-              ),
+            child: Builder(
+              builder: (context) {
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+                return TextField(
+                  controller: _searchController,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 14,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Search documents, Aadhar, accounts...',
+                    hintStyle: TextStyle(
+                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                      fontSize: 14,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search,
+                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                    ),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.clear, color: isDark ? Colors.grey.shade300 : Colors.grey.shade700),
+                            onPressed: () {
+                              _searchController.clear();
+                              FocusScope.of(context).unfocus();
+                            },
+                          )
+                        : null,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: isDark ? BorderSide(color: Colors.grey.shade800) : BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: isDark ? BorderSide(color: Colors.grey.shade800) : BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1.5),
+                    ),
+                    filled: true,
+                    fillColor: isDark ? const Color(0xFF1E1E2E) : Colors.grey.shade100,
+                  ),
+                );
+              },
             ),
           ),
 

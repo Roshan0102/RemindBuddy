@@ -8,6 +8,7 @@ export interface GeminiCallOptions {
 }
 
 const DEFAULT_MODELS = [
+    "gemini-2.5-flash",
     "gemini-1.5-flash",
     "gemini-2.0-flash",
     "gemini-1.5-pro"
@@ -17,7 +18,7 @@ const DEFAULT_MODELS = [
  * Robust Gemini API caller that handles:
  * - Invalid model names
  * - HTTP 429 Rate Limiting with exponential backoff
- * - Multi-model fallback cascade (gemini-1.5-flash -> gemini-2.0-flash -> gemini-1.5-pro)
+ * - Multi-model fallback cascade (gemini-2.5-flash -> gemini-1.5-flash -> gemini-2.0-flash -> gemini-1.5-pro)
  * - Multi-API-key fallback if configured in Firestore admin_creds/gemini_config
  */
 export async function callGeminiAPI(
@@ -61,13 +62,15 @@ export async function callGeminiAPI(
         });
     }
 
-    for (const apiKey of allKeys) {
-        for (const model of modelsToTry) {
+    for (const model of modelsToTry) {
+        for (let keyIndex = 0; keyIndex < allKeys.length; keyIndex++) {
+            const apiKey = allKeys[keyIndex];
+            const keyLabel = keyIndex === 0 ? "Primary Key" : `Backup Key #${keyIndex}`;
             let attempt = 0;
             while (attempt <= maxRetries) {
                 try {
                     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-                    console.log(`[GeminiHelper] Calling model '${model}' (Key: ...${apiKey.slice(-4)}, Attempt: ${attempt + 1}/${maxRetries + 1})...`);
+                    console.log(`[GeminiHelper] Trying model '${model}' with ${keyLabel} (...${apiKey.slice(-4)}, Attempt: ${attempt + 1}/${maxRetries + 1})...`);
 
                     const response = await axios.post(url, normalizedPayload, {
                         headers: { "Content-Type": "application/json" },
@@ -80,36 +83,42 @@ export async function callGeminiAPI(
                     }
 
                     const text = candidates[0].content?.parts?.[0]?.text || "";
+                    console.log(`[GeminiHelper] Successfully executed '${model}' with ${keyLabel}!`);
                     return {
                         text,
                         raw: response.data,
-                        modelUsed: model
+                        modelUsed: `${model} (${keyLabel})`
                     };
                 } catch (err: any) {
                     lastError = err;
                     const status = err.response?.status;
                     const errData = err.response?.data?.error;
                     const errMsg = errData?.message || err.message;
-                    console.warn(`[GeminiHelper] Error calling '${model}' (Status ${status}): ${errMsg}`);
+                    console.warn(`[GeminiHelper] Error on '${model}' with ${keyLabel} (Status ${status}): ${errMsg}`);
 
                     if (status === 429) {
-                        // Rate limit exceeded - wait with exponential backoff then retry or switch model
+                        // Rate limit exceeded on this key for this model
                         attempt++;
-                        if (attempt <= maxRetries) {
+                        if (attempt <= maxRetries && keyIndex === allKeys.length - 1) {
                             const delayMs = attempt * 2000;
-                            console.log(`[GeminiHelper] 429 received. Backing off for ${delayMs}ms before retry...`);
+                            console.log(`[GeminiHelper] 429 on all keys for '${model}'. Backing off ${delayMs}ms before next model...`);
                             await new Promise((res) => setTimeout(res, delayMs));
                             continue;
                         }
+                        // Move to next key for the same model (or next model if all keys tried)
+                        break;
                     }
 
-                    // For 404 (model not found) or after retry exhaustion, break to try next fallback model
+                    // For other errors (e.g. 404 model not found), break to next key/model
                     break;
                 }
             }
         }
     }
 
-    const finalMessage = lastError?.response?.data?.error?.message || lastError?.message || "All Gemini API attempts failed.";
+    const isQuota = lastError?.response?.status === 429;
+    const finalMessage = isQuota
+        ? "Gemini API Quota Exceeded (HTTP 429). The daily or per-minute rate limit for Gemini API has been reached on this key. Please check your Google AI Studio / GCP quota or configure a backup API key."
+        : (lastError?.response?.data?.error?.message || lastError?.message || "All Gemini API attempts failed.");
     throw new Error(`Gemini Service Error: ${finalMessage}`);
 }

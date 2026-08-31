@@ -1,9 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fetchUserTechEventsTrigger = exports.fetchUserTechEvents = void 0;
+exports.internalCheckInterestedEventsNotifications = exports.fetchUserTechEventsTrigger = exports.fetchUserTechEvents = void 0;
 exports.fetchAndStoreEventsForUserInternal = fetchAndStoreEventsForUserInternal;
 exports.internalDailyTechEventsFetcher = internalDailyTechEventsFetcher;
-exports.internalCheckInterestedEventsNotifications = internalCheckInterestedEventsNotifications;
+exports.internalCheckInterestedTechEventsNotifications = internalCheckInterestedTechEventsNotifications;
 const functions = require("firebase-functions");
 const moment = require("moment-timezone");
 const firebase_1 = require("../../config/firebase");
@@ -30,7 +30,7 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification) {
     }
     const today = moment().tz('Asia/Kolkata');
     const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
-    const endDateStr = today.clone().add(2, 'months').endOf('month').format('YYYY-MM-DD');
+    const endDateStr = today.clone().add(60, 'days').format('YYYY-MM-DD');
     let modeConstraint = "";
     if (eventMode === "In-Person") {
         modeConstraint = `Include ONLY physical, in-person offline events hosted in or near ${location}. Do NOT include online webinars or virtual streams.`;
@@ -251,9 +251,9 @@ exports.fetchUserTechEventsTrigger = functions.runWith({ timeoutSeconds: 300, me
         console.error(`Error processing tech events for user ${uid}:`, err.message);
     }
 });
-async function internalCheckInterestedEventsNotifications() {
+async function internalCheckInterestedTechEventsNotifications() {
     const tomorrowStr = moment().tz('Asia/Kolkata').add(1, 'days').format('YYYY-MM-DD');
-    console.log(`Running checkInterestedEventsNotifications at ${moment().tz('Asia/Kolkata').format()} (Target Date: ${tomorrowStr})`);
+    console.log(`Running checkInterestedTechEventsNotifications at ${moment().tz('Asia/Kolkata').format()} (Target Date: ${tomorrowStr})`);
     const users = await firebase_1.db.collection('usernames').get();
     for (const u of users.docs) {
         const userData = u.data();
@@ -261,76 +261,44 @@ async function internalCheckInterestedEventsNotifications() {
             continue;
         const uid = userData.uid;
         try {
-            // Check if user profile exists and if modules are enabled
             const userProfileDoc = await firebase_1.db.collection("users").doc(uid).get();
             if (!userProfileDoc.exists)
                 continue;
             const uData = userProfileDoc.data();
             const enabledModules = (uData === null || uData === void 0 ? void 0 : uData.enabledModules) || [];
             const notifPrefs = (uData === null || uData === void 0 ? void 0 : uData.notificationPreferences) || {};
-            // We only process if either events or walkins module is enabled
-            const checkEvents = enabledModules.includes("events") && notifPrefs.events !== false;
-            const checkWalkins = enabledModules.includes("walkin") && notifPrefs.walkin !== false;
-            if (!checkEvents && !checkWalkins)
+            if (!enabledModules.includes("events") || notifPrefs.events === false)
                 continue;
-            if (checkEvents) {
-                const eventsSnap = await firebase_1.db.collection('users').doc(uid).collection('events')
-                    .where('interested', '==', true)
-                    .where('date', '==', tomorrowStr)
-                    .get();
-                for (const doc of eventsSnap.docs) {
-                    const eventData = doc.data();
-                    if (eventData.notifiedInterested === true)
-                        continue;
-                    const title = `📅 Upcoming Event: ${eventData.title || 'Tech Event'}`;
-                    const body = `Reminder: "${eventData.title}" is happening tomorrow at ${eventData.timings || 'scheduled time'}.`;
-                    console.log(`Sending interested event reminder: ${title} to user ${uid}`);
-                    await firebase_1.admin.messaging().send({
-                        token: userData.fcmToken,
-                        notification: { title, body },
-                        android: {
-                            notification: {
-                                channelId: 'events_reminder_channel',
-                                tag: `event_interest_${doc.id}`
-                            }
-                        },
-                        data: { type: "event_interest_reminder", eventId: doc.id }
-                    });
-                    await (0, logger_1.logNotification)(uid, title, body, "TECH_EVENTS");
-                    await doc.ref.update({ notifiedInterested: true });
-                }
-            }
-            if (checkWalkins) {
-                const walkinsSnap = await firebase_1.db.collection('users').doc(uid).collection('walkins')
-                    .where('interested', '==', true)
-                    .where('date', '==', tomorrowStr)
-                    .get();
-                for (const doc of walkinsSnap.docs) {
-                    const walkinData = doc.data();
-                    if (walkinData.notifiedInterested === true)
-                        continue;
-                    const title = `🚶 Upcoming Walk-In: ${walkinData.title || 'Walk-In'}`;
-                    const body = `Reminder: Walk-In for "${walkinData.title}" is happening tomorrow at ${walkinData.timings || 'scheduled time'}.`;
-                    console.log(`Sending interested walkin reminder: ${title} to user ${uid}`);
-                    await firebase_1.admin.messaging().send({
-                        token: userData.fcmToken,
-                        notification: { title, body },
-                        android: {
-                            notification: {
-                                channelId: 'events_reminder_channel',
-                                tag: `walkin_interest_${doc.id}`
-                            }
-                        },
-                        data: { type: "walkin_interest_reminder", walkinId: doc.id }
-                    });
-                    await (0, logger_1.logNotification)(uid, title, body, "WALK_INS");
-                    await doc.ref.update({ notifiedInterested: true });
-                }
+            const eventsSnap = await firebase_1.db.collection('users').doc(uid).collection('events')
+                .where('interested', '==', true)
+                .where('date', '==', tomorrowStr)
+                .get();
+            for (const doc of eventsSnap.docs) {
+                const eventData = doc.data();
+                if (eventData.notifiedInterested === true)
+                    continue;
+                const title = `📅 Upcoming Event: ${eventData.title || 'Tech Event'}`;
+                const body = `Reminder: "${eventData.title}" is happening tomorrow at ${eventData.timings || 'scheduled time'}.`;
+                console.log(`Sending interested event reminder: ${title} to user ${uid}`);
+                await firebase_1.admin.messaging().send({
+                    token: userData.fcmToken,
+                    notification: { title, body },
+                    android: {
+                        notification: {
+                            channelId: 'events_reminder_channel',
+                            tag: `event_interest_${doc.id}`
+                        }
+                    },
+                    data: { type: "event_interest_reminder", eventId: doc.id }
+                });
+                await (0, logger_1.logNotification)(uid, title, body, "TECH_EVENTS");
+                await doc.ref.update({ notifiedInterested: true });
             }
         }
         catch (error) {
-            console.error(`Failed to check/send interested notifications for user ${uid}:`, error);
+            console.error(`Failed to check/send interested event notifications for user ${uid}:`, error);
         }
     }
 }
+exports.internalCheckInterestedEventsNotifications = internalCheckInterestedTechEventsNotifications;
 //# sourceMappingURL=techEvents.js.map

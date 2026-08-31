@@ -38,8 +38,12 @@ class SmsParserService {
 
     // Step A: Strip out common bank security & dispute footers (e.g. "Not You? Call 1800.../SMS BLOCK UPI to 7308080808")
     final String body = _stripDisputeFooters(rawBody);
-
     final String lowerBody = body.toLowerCase();
+
+    // Step B: Filter out pure informational balance alerts (e.g. Union Bank "Balance Goes Above...", "Present Balance of Your SB A/c...")
+    if (_isPureBalanceAlert(lowerRaw) || _isPureBalanceAlert(lowerBody)) {
+      return null;
+    }
 
     // 1. Check if SMS contains financial transaction keywords
     final bool hasDebitKeyword = lowerBody.contains('debited') ||
@@ -327,6 +331,37 @@ class SmsParserService {
     }
 
     return 'Bank';
+  }
+
+  /// Checks if the SMS is purely an informational balance statement/alert without an actual transaction
+  static bool _isPureBalanceAlert(String lower) {
+    if (lower.contains('balance goes above') ||
+        lower.contains('balance goes below') ||
+        lower.contains('threshold limit') ||
+        lower.contains('daily balance alert') ||
+        lower.contains('balance alert:') ||
+        lower.contains('low balance alert') ||
+        lower.contains('present balance of your') ||
+        lower.contains('present balance of a/c') ||
+        lower.contains('current balance of your') ||
+        lower.contains('available balance of your') ||
+        lower.contains('balance in your a/c is') ||
+        lower.contains('your a/c balance is')) {
+      final bool hasExplicitTxnAction = lower.contains('debited') ||
+          lower.contains('credited') ||
+          lower.contains('spent') ||
+          lower.contains('paid to') ||
+          lower.contains('sent to') ||
+          lower.contains('withdrawn') ||
+          lower.contains('refund') ||
+          lower.contains('cash wdl') ||
+          lower.contains('atm wdl') ||
+          lower.contains('deposited');
+      if (!hasExplicitTxnAction) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Truncates SMS body before common bank dispute & security footers

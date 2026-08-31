@@ -948,28 +948,39 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
             }
 
             final remainingMonths = totalMonths - paidInstallments.length;
+            final isDark = Theme.of(context).brightness == Brightness.dark;
 
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Card(
                 elevation: 4,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                color: Colors.deepPurple.shade50,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: isDark
+                      ? BorderSide(color: Colors.deepPurple.shade700.withValues(alpha: 0.5))
+                      : BorderSide.none,
+                ),
+                color: isDark
+                    ? const Color(0xFF1E1A2E)
+                    : Colors.deepPurple.shade50,
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     children: [
                       Text(
                         _formatMonthHeader(_selectedPlan!['startMonth'], _selectedPlan!['endMonth']),
-                        style: TextStyle(fontWeight: FontWeight.w600, color: Colors.deepPurple.shade900),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.purple.shade200 : Colors.deepPurple.shade900,
+                        ),
                       ),
-                      const Divider(height: 20),
+                      Divider(height: 20, color: isDark ? Colors.white12 : Colors.deepPurple.shade100),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _buildSummaryItem('Total Paid', '₹${NumberFormat('#,##,###').format(totalPaid)}', Icons.payment),
-                          _buildSummaryItem('Total Grams', '${totalGrams.toStringAsFixed(4)} g', Icons.scale),
-                          _buildSummaryItem('Remaining', '$remainingMonths / $totalMonths m', Icons.timelapse),
+                          _buildSummaryItem('Total Paid', '₹${NumberFormat('#,##,###').format(totalPaid)}', Icons.payment, isDark),
+                          _buildSummaryItem('Total Grams', '${totalGrams.toStringAsFixed(4)} g', Icons.scale, isDark),
+                          _buildSummaryItem('Remaining', '$remainingMonths / $totalMonths m', Icons.timelapse, isDark),
                         ],
                       ),
                     ],
@@ -1068,14 +1079,27 @@ class _GoldChitTrackerScreenState extends State<GoldChitTrackerScreen> {
     );
   }
 
-  Widget _buildSummaryItem(String label, String value, IconData icon) {
+  Widget _buildSummaryItem(String label, String value, IconData icon, bool isDark) {
     return Column(
       children: [
-        Icon(icon, color: Colors.deepPurple.shade700, size: 24),
+        Icon(icon, color: isDark ? Colors.purpleAccent.shade100 : Colors.deepPurple.shade700, size: 24),
         const SizedBox(height: 6),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 15,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+        Text(
+          label,
+          style: TextStyle(
+            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+            fontSize: 11,
+          ),
+        ),
       ],
     );
   }

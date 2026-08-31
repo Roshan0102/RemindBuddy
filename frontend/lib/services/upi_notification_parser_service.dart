@@ -101,9 +101,31 @@ class UpiNotificationParserService {
       'claim now',
       'reward points',
       'check balance',
+      'balance goes above',
+      'balance goes below',
+      'threshold limit',
+      'daily balance alert',
+      'balance alert',
+      'low balance alert',
+      'present balance of',
     ];
     for (final kw in ignoredKeywords) {
-      if (lower.contains(kw)) return true;
+      if (lower.contains(kw)) {
+        if (kw.contains('balance') || kw.contains('threshold')) {
+          final bool hasExplicitTxn = lower.contains('debited') ||
+              lower.contains('credited') ||
+              lower.contains('you paid') ||
+              lower.contains('paid to') ||
+              lower.contains('sent to') ||
+              lower.contains('paid you') ||
+              lower.contains('sent you') ||
+              lower.contains('withdrawn') ||
+              lower.contains('spent');
+          if (!hasExplicitTxn) return true;
+        } else {
+          return true;
+        }
+      }
     }
     return false;
   }

@@ -449,20 +449,41 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                   child: Icon(_getIconData(acc.iconName), color: accColor, size: 14),
                                 ),
                                 SizedBox(
-                                  width: 20,
-                                  height: 20,
+                                  width: 24,
+                                  height: 24,
                                   child: PopupMenuButton<String>(
                                     padding: EdgeInsets.zero,
-                                    iconSize: 14,
+                                    iconSize: 16,
                                     onSelected: (val) {
-                                      if (val == 'delete') {
+                                      if (val == 'edit') {
+                                        _showEditAccountDialog(context, acc);
+                                      } else if (val == 'delete') {
                                         _financeService.deleteAccount(acc.id);
                                       }
                                     },
                                     itemBuilder: (_) => [
-                                      const PopupMenuItem(value: 'delete', child: Text('Delete Account', style: TextStyle(fontSize: 12))),
+                                      const PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit_outlined, size: 16),
+                                            SizedBox(width: 8),
+                                            Text('Edit Account / Balance', style: TextStyle(fontSize: 12)),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                                            SizedBox(width: 8),
+                                            Text('Delete Account', style: TextStyle(fontSize: 12, color: Colors.redAccent)),
+                                          ],
+                                        ),
+                                      ),
                                     ],
-                                    icon: const Icon(Icons.more_vert, size: 14, color: Colors.grey),
+                                    icon: const Icon(Icons.more_vert, size: 16, color: Colors.grey),
                                   ),
                                 ),
                               ],
@@ -961,6 +982,83 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               Navigator.pop(context);
             },
             child: const Text('Add Account'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditAccountDialog(BuildContext context, BankAccount acc) {
+    final nameCtrl = TextEditingController(text: acc.name);
+    final balanceCtrl = TextEditingController(text: acc.currentBalance.toStringAsFixed(2));
+    String selectedType = acc.accountType;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Bank Account / Balance'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Account Name (e.g. Union Bank *2683, HDFC Salary)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: selectedType,
+                decoration: const InputDecoration(
+                  labelText: 'Account Type',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'salary', child: Text('Salary Account')),
+                  DropdownMenuItem(value: 'savings', child: Text('Savings Account')),
+                  DropdownMenuItem(value: 'spending', child: Text('Daily Spending Account')),
+                  DropdownMenuItem(value: 'cash', child: Text('Physical Cash / Wallet')),
+                  DropdownMenuItem(value: 'credit', child: Text('Credit Card')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (val) => selectedType = val ?? 'savings',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: balanceCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Current Balance (₹)',
+                  border: OutlineInputBorder(),
+                  prefixText: '₹ ',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameCtrl.text.trim().isEmpty) return;
+              final newBal = double.tryParse(balanceCtrl.text.trim()) ?? acc.currentBalance;
+
+              final updatedAcc = acc.copyWith(
+                name: nameCtrl.text.trim(),
+                accountType: selectedType,
+                currentBalance: newBal,
+                updatedAt: DateTime.now(),
+              );
+
+              _financeService.updateAccount(updatedAcc);
+              Navigator.pop(context);
+            },
+            child: const Text('Save Changes'),
           ),
         ],
       ),

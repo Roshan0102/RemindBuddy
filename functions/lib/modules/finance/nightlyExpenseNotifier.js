@@ -20,7 +20,7 @@ async function internalDailyUntaggedExpenseNotifier() {
             const uData = userDoc.data();
             const enabledModules = (uData === null || uData === void 0 ? void 0 : uData.enabledModules) || [];
             const notifPrefs = (uData === null || uData === void 0 ? void 0 : uData.notificationPreferences) || {};
-            if (!enabledModules.includes("finance") || notifPrefs.finance === false) {
+            if (!enabledModules.includes("finance") || notifPrefs.finance === false || notifPrefs.finance_nightly_tagging === false) {
                 continue;
             }
             // Query today's sms_transactions

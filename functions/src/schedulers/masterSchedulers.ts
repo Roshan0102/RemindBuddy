@@ -5,21 +5,45 @@ import { internalCheckRecurringBillNotifications } from "../modules/reminders/re
 import { internalCheckPendingGoldChitNotifications, internalPerformGoldFetch } from "../modules/gold/goldFunctions";
 import { runGoldAIPredictionInternal } from "../modules/gold/goldAI";
 import { internalDailyAstroNotifier } from "../modules/astro/astroNotifications";
-import { internalCheckInterestedEventsNotifications, internalDailyTechEventsFetcher } from "../modules/events/techEvents";
-import { internalDailyWalkInsFetcher } from "../modules/events/walkinDrives";
+import { internalCheckInterestedTechEventsNotifications, internalDailyTechEventsFetcher } from "../modules/events/techEvents";
+import { internalCheckInterestedWalkinsNotifications, internalDailyWalkInsFetcher } from "../modules/events/walkinDrives";
 import { internalDailyShiftReminder } from "../modules/shifts/shiftNotifications";
 import { internalDailyUntaggedExpenseNotifier } from "../modules/finance/nightlyExpenseNotifier";
 import { internalAutoJobDiscoveryAndApply } from "../modules/job_assistant/jobDiscoveryAI";
 
 // --- CONSOLIDATED MASTER SCHEDULERS (2 Schedulers total for 100% Free GCP Tier) ---
 
-// 1. Minute Master Runner (Replaces checkDailyReminders & checkPendingGoldChitNotifications)
+// 1. Minute Master Runner (Replaces checkDailyReminders, checkPendingGoldChitNotifications, and handles targeted minute notifications)
 export const masterMinuteRunner = functions.pubsub.schedule('* * * * *')
     .timeZone('Asia/Kolkata')
     .onRun(async () => {
+        const nowKolkata = moment().tz('Asia/Kolkata');
+        const hour = nowKolkata.hour();
+        const minute = nowKolkata.minute();
+
         await internalCheckDailyReminders();
         await internalCheckPendingGoldChitNotifications();
         await internalCheckRecurringBillNotifications();
+
+        // 07:05 PM IST (19:05): Check & send interested Tech Events push notification for tomorrow (5 mins after 7 PM fetch)
+        if (hour === 19 && minute === 5) {
+            try {
+                console.log("[masterMinuteRunner] Executing 07:05 PM task: Interested Tech Events Notifications for tomorrow...");
+                await internalCheckInterestedTechEventsNotifications();
+            } catch (err) {
+                console.error("Error in internalCheckInterestedTechEventsNotifications inside masterMinuteRunner:", err);
+            }
+        }
+
+        // 08:05 PM IST (20:05): Check & send interested Walk-in Drives push notification for tomorrow (5 mins after 8 PM fetch)
+        if (hour === 20 && minute === 5) {
+            try {
+                console.log("[masterMinuteRunner] Executing 08:05 PM task: Interested Walk-in Drives Notifications for tomorrow...");
+                await internalCheckInterestedWalkinsNotifications();
+            } catch (err) {
+                console.error("Error in internalCheckInterestedWalkinsNotifications inside masterMinuteRunner:", err);
+            }
+        }
     });
 
 // 2. Periodic Master Runner (Runs every 30 minutes at :00 and :30, supporting any hourly or half-hourly scheduled task)
@@ -71,17 +95,7 @@ export const masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, m
                 }
             }
 
-            // 06:00 PM IST (Hour 18): Interested Events Notifications
-            if (hour === 18) {
-                console.log("[masterHalfHourlyRunner] Executing 06:00 PM tasks: Interested Events Notifications...");
-                try {
-                    await internalCheckInterestedEventsNotifications();
-                } catch (err) {
-                    console.error("Error in internalCheckInterestedEventsNotifications inside masterHalfHourlyRunner:", err);
-                }
-            }
-
-            // 07:00 PM IST (Hour 19): Tech Events Fetcher & Evening Gold Fetch
+            // 07:00 PM IST (Hour 19): Tech Events Fetcher (Next 60 Days) & Evening Gold Fetch
             if (hour === 19) {
                 console.log("[masterHalfHourlyRunner] Executing 07:00 PM tasks: Tech Events Fetcher & Evening Gold Fetch...");
                 try {
@@ -96,7 +110,7 @@ export const masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, m
                 }
             }
 
-            // 08:00 PM IST (Hour 20): Walk-Ins Fetcher
+            // 08:00 PM IST (Hour 20): Walk-Ins Fetcher (Next 60 Days)
             if (hour === 20) {
                 console.log("[masterHalfHourlyRunner] Executing 08:00 PM tasks: Walk-In Drives Fetcher...");
                 try {

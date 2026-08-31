@@ -12,10 +12,21 @@ async function internalCheckRecurringBillNotifications() {
         const usersSnap = await firebase_1.db.collection("users").get();
         for (const userDoc of usersSnap.docs) {
             const uid = userDoc.id;
-            const billsSnap = await userDoc.ref.collection("bills").where("isActive", "==", true).get();
-            if (billsSnap.empty)
+            const uData = userDoc.data() || {};
+            const enabledModules = uData.enabledModules || [];
+            const notifPrefs = uData.notificationPreferences || {};
+            if (!enabledModules.includes("finance") || notifPrefs.finance === false || notifPrefs.finance_bills === false) {
                 continue;
-            for (const billDoc of billsSnap.docs) {
+            }
+            // Support both finance_bills and bills subcollections
+            const [financeBillsSnap, legacyBillsSnap] = await Promise.all([
+                userDoc.ref.collection("finance_bills").where("isActive", "==", true).get(),
+                userDoc.ref.collection("bills").where("isActive", "==", true).get()
+            ]);
+            const allBillDocs = [...financeBillsSnap.docs, ...legacyBillsSnap.docs];
+            if (allBillDocs.length === 0)
+                continue;
+            for (const billDoc of allBillDocs) {
                 const bill = billDoc.data();
                 if (!bill.dueDate)
                     continue;

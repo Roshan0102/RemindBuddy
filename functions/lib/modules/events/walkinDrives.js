@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.fetchUserWalkInsTrigger = exports.fetchUserWalkInDrives = exports.fetchUserWalkIns = void 0;
 exports.fetchAndStoreWalkInsForUserInternal = fetchAndStoreWalkInsForUserInternal;
 exports.internalDailyWalkInsFetcher = internalDailyWalkInsFetcher;
+exports.internalCheckInterestedWalkinsNotifications = internalCheckInterestedWalkinsNotifications;
 const functions = require("firebase-functions");
 const moment = require("moment-timezone");
 const firebase_1 = require("../../config/firebase");
@@ -23,7 +24,7 @@ async function fetchAndStoreWalkInsForUserInternal(uid, triggerNotification) {
     }
     const today = moment().tz('Asia/Kolkata');
     const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
-    const endDateStr = today.clone().add(2, 'months').endOf('month').format('YYYY-MM-DD');
+    const endDateStr = today.clone().add(60, 'days').format('YYYY-MM-DD');
     const prompt = `Find Walk-in drives/interviews happening in ${location}, India for the following job roles: ${roles.join(', ')}.
 The drives/interviews must happen between ${startDateStr} and ${endDateStr}.
 Use Google Search grounding to find real, current upcoming walk-in interviews.
@@ -218,4 +219,53 @@ exports.fetchUserWalkInsTrigger = functions.runWith({ timeoutSeconds: 300, memor
         console.error(`Error processing walk-ins for user ${uid}:`, err.message);
     }
 });
+async function internalCheckInterestedWalkinsNotifications() {
+    const tomorrowStr = moment().tz('Asia/Kolkata').add(1, 'days').format('YYYY-MM-DD');
+    console.log(`Running checkInterestedWalkinsNotifications at ${moment().tz('Asia/Kolkata').format()} (Target Date: ${tomorrowStr})`);
+    const users = await firebase_1.db.collection('usernames').get();
+    for (const u of users.docs) {
+        const userData = u.data();
+        if (!userData.fcmToken || !userData.uid)
+            continue;
+        const uid = userData.uid;
+        try {
+            const userProfileDoc = await firebase_1.db.collection("users").doc(uid).get();
+            if (!userProfileDoc.exists)
+                continue;
+            const uData = userProfileDoc.data();
+            const enabledModules = (uData === null || uData === void 0 ? void 0 : uData.enabledModules) || [];
+            const notifPrefs = (uData === null || uData === void 0 ? void 0 : uData.notificationPreferences) || {};
+            if (!enabledModules.includes("walkin") || notifPrefs.walkin === false)
+                continue;
+            const walkinsSnap = await firebase_1.db.collection('users').doc(uid).collection('walkins')
+                .where('interested', '==', true)
+                .where('date', '==', tomorrowStr)
+                .get();
+            for (const doc of walkinsSnap.docs) {
+                const walkinData = doc.data();
+                if (walkinData.notifiedInterested === true)
+                    continue;
+                const title = `🚶 Upcoming Walk-In: ${walkinData.title || 'Walk-In'}`;
+                const body = `Reminder: Walk-In for "${walkinData.title}" is happening tomorrow at ${walkinData.timings || 'scheduled time'}.`;
+                console.log(`Sending interested walkin reminder: ${title} to user ${uid}`);
+                await firebase_1.admin.messaging().send({
+                    token: userData.fcmToken,
+                    notification: { title, body },
+                    android: {
+                        notification: {
+                            channelId: 'events_reminder_channel',
+                            tag: `walkin_interest_${doc.id}`
+                        }
+                    },
+                    data: { type: "walkin_interest_reminder", walkinId: doc.id }
+                });
+                await (0, logger_1.logNotification)(uid, title, body, "WALK_INS");
+                await doc.ref.update({ notifiedInterested: true });
+            }
+        }
+        catch (error) {
+            console.error(`Failed to check/send interested walkin notifications for user ${uid}:`, error);
+        }
+    }
+}
 //# sourceMappingURL=walkinDrives.js.map

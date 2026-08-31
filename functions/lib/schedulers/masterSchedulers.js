@@ -14,13 +14,36 @@ const shiftNotifications_1 = require("../modules/shifts/shiftNotifications");
 const nightlyExpenseNotifier_1 = require("../modules/finance/nightlyExpenseNotifier");
 const jobDiscoveryAI_1 = require("../modules/job_assistant/jobDiscoveryAI");
 // --- CONSOLIDATED MASTER SCHEDULERS (2 Schedulers total for 100% Free GCP Tier) ---
-// 1. Minute Master Runner (Replaces checkDailyReminders & checkPendingGoldChitNotifications)
+// 1. Minute Master Runner (Replaces checkDailyReminders, checkPendingGoldChitNotifications, and handles targeted minute notifications)
 exports.masterMinuteRunner = functions.pubsub.schedule('* * * * *')
     .timeZone('Asia/Kolkata')
     .onRun(async () => {
+    const nowKolkata = moment().tz('Asia/Kolkata');
+    const hour = nowKolkata.hour();
+    const minute = nowKolkata.minute();
     await (0, dailyReminders_1.internalCheckDailyReminders)();
     await (0, goldFunctions_1.internalCheckPendingGoldChitNotifications)();
     await (0, recurringBills_1.internalCheckRecurringBillNotifications)();
+    // 07:05 PM IST (19:05): Check & send interested Tech Events push notification for tomorrow (5 mins after 7 PM fetch)
+    if (hour === 19 && minute === 5) {
+        try {
+            console.log("[masterMinuteRunner] Executing 07:05 PM task: Interested Tech Events Notifications for tomorrow...");
+            await (0, techEvents_1.internalCheckInterestedTechEventsNotifications)();
+        }
+        catch (err) {
+            console.error("Error in internalCheckInterestedTechEventsNotifications inside masterMinuteRunner:", err);
+        }
+    }
+    // 08:05 PM IST (20:05): Check & send interested Walk-in Drives push notification for tomorrow (5 mins after 8 PM fetch)
+    if (hour === 20 && minute === 5) {
+        try {
+            console.log("[masterMinuteRunner] Executing 08:05 PM task: Interested Walk-in Drives Notifications for tomorrow...");
+            await (0, walkinDrives_1.internalCheckInterestedWalkinsNotifications)();
+        }
+        catch (err) {
+            console.error("Error in internalCheckInterestedWalkinsNotifications inside masterMinuteRunner:", err);
+        }
+    }
 });
 // 2. Periodic Master Runner (Runs every 30 minutes at :00 and :30, supporting any hourly or half-hourly scheduled task)
 exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory: "1GB" })
@@ -70,17 +93,7 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
                 console.error("Error in scheduledMarketForecast inside masterHalfHourlyRunner:", err);
             }
         }
-        // 06:00 PM IST (Hour 18): Interested Events Notifications
-        if (hour === 18) {
-            console.log("[masterHalfHourlyRunner] Executing 06:00 PM tasks: Interested Events Notifications...");
-            try {
-                await (0, techEvents_1.internalCheckInterestedEventsNotifications)();
-            }
-            catch (err) {
-                console.error("Error in internalCheckInterestedEventsNotifications inside masterHalfHourlyRunner:", err);
-            }
-        }
-        // 07:00 PM IST (Hour 19): Tech Events Fetcher & Evening Gold Fetch
+        // 07:00 PM IST (Hour 19): Tech Events Fetcher (Next 60 Days) & Evening Gold Fetch
         if (hour === 19) {
             console.log("[masterHalfHourlyRunner] Executing 07:00 PM tasks: Tech Events Fetcher & Evening Gold Fetch...");
             try {
@@ -96,7 +109,7 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
                 console.error("Error in internalDailyTechEventsFetcher inside masterHalfHourlyRunner:", err);
             }
         }
-        // 08:00 PM IST (Hour 20): Walk-Ins Fetcher
+        // 08:00 PM IST (Hour 20): Walk-Ins Fetcher (Next 60 Days)
         if (hour === 20) {
             console.log("[masterHalfHourlyRunner] Executing 08:00 PM tasks: Walk-In Drives Fetcher...");
             try {

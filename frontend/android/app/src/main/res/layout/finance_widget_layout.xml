@@ -55,7 +55,7 @@
             android:id="@+id/widget_finance_acc1_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="3dp"
+            android:layout_marginBottom="4dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -67,16 +67,17 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="Primary Bank"
-                android:textColor="#E2E8F0"
-                android:textSize="11sp" />
+                android:textColor="#F8FAFC"
+                android:textSize="13sp"
+                android:textStyle="normal" />
 
             <TextView
                 android:id="@+id/widget_finance_acc1_bal"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="₹0.00"
+                android:text="₹0"
                 android:textColor="#38BDF8"
-                android:textSize="11sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -85,7 +86,7 @@
             android:id="@+id/widget_finance_acc2_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="3dp"
+            android:layout_marginBottom="4dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -97,16 +98,17 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="Secondary Bank"
-                android:textColor="#E2E8F0"
-                android:textSize="11sp" />
+                android:textColor="#F8FAFC"
+                android:textSize="13sp"
+                android:textStyle="normal" />
 
             <TextView
                 android:id="@+id/widget_finance_acc2_bal"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="₹0.00"
+                android:text="₹0"
                 android:textColor="#38BDF8"
-                android:textSize="11sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -115,7 +117,7 @@
             android:id="@+id/widget_finance_acc3_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="3dp"
+            android:layout_marginBottom="4dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -127,16 +129,17 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="Bank 3"
-                android:textColor="#E2E8F0"
-                android:textSize="11sp" />
+                android:textColor="#F8FAFC"
+                android:textSize="13sp"
+                android:textStyle="normal" />
 
             <TextView
                 android:id="@+id/widget_finance_acc3_bal"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="₹0.00"
+                android:text="₹0"
                 android:textColor="#38BDF8"
-                android:textSize="11sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -156,16 +159,17 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="Bank 4"
-                android:textColor="#E2E8F0"
-                android:textSize="11sp" />
+                android:textColor="#F8FAFC"
+                android:textSize="13sp"
+                android:textStyle="normal" />
 
             <TextView
                 android:id="@+id/widget_finance_acc4_bal"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="₹0.00"
+                android:text="₹0"
                 android:textColor="#38BDF8"
-                android:textSize="11sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>

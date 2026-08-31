@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/sms_transaction.dart';
 import 'upi_notification_parser_service.dart';
 import 'log_service.dart';
+import 'home_widget_service.dart';
 
 class PaymentNotificationTrackerService {
   static final PaymentNotificationTrackerService _instance = PaymentNotificationTrackerService._internal();
@@ -283,6 +284,7 @@ class PaymentNotificationTrackerService {
         await txColl.doc(newTx.id).set(newTx.toMap(), SetOptions(merge: true));
         debugPrint("💾 Saved New Notification Transaction: ${newTx.id} (${newTx.payee} - ₹${newTx.amount})");
       }
+      HomeWidgetService().syncAllWidgets();
     } catch (e) {
       LogService().error('Error reconciling transaction', e);
     }

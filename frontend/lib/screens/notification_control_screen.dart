@@ -17,6 +17,8 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
     'gold_rates': true,
     'gold_advice': true,
     'shifts': true,
+    'finance_bills': true,
+    'finance_nightly_tagging': true,
     'calendar_reminders': true,
     'daily_reminders': true,
     'walkin': true,
@@ -49,6 +51,8 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
             'gold_rates': prefs['gold_rates'] ?? prefs['gold'] ?? true,
             'gold_advice': prefs['gold_advice'] ?? prefs['gold'] ?? true,
             'shifts': prefs['shifts'] ?? true,
+            'finance_bills': prefs['finance_bills'] ?? prefs['finance'] ?? true,
+            'finance_nightly_tagging': prefs['finance_nightly_tagging'] ?? prefs['finance'] ?? true,
             'calendar_reminders': prefs['calendar_reminders'] ?? prefs['reminders'] ?? true,
             'daily_reminders': prefs['daily_reminders'] ?? prefs['reminders'] ?? true,
             'walkin': prefs['walkin'] ?? true,
@@ -143,6 +147,24 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                       icon: Icons.work_history,
                       iconColor: Colors.purple,
                     ),
+
+                  // Finance & Bills
+                  if (_enabledModules.contains('finance')) ...[
+                    _buildPreferenceTile(
+                      key: 'finance_bills',
+                      title: 'Finance Bill Due Alerts',
+                      subtitle: 'Alerts for upcoming & overdue recurring bills (9:00 AM)',
+                      icon: Icons.receipt_long,
+                      iconColor: Colors.teal,
+                    ),
+                    _buildPreferenceTile(
+                      key: 'finance_nightly_tagging',
+                      title: 'Nightly Expense Tagging',
+                      subtitle: 'Reminder to categorize untagged spend & SMS transactions (10:00 PM)',
+                      icon: Icons.category,
+                      iconColor: Colors.cyan,
+                    ),
+                  ],
 
                   // Calendar Events
                   if (_enabledModules.contains('reminders'))

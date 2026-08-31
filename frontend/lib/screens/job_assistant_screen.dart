@@ -1774,25 +1774,70 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               runSpacing: 8,
               children: [
                 ChoiceChip(
-                  label: const Text('📄 1 Job (Multi-page Screenshot)'),
+                  label: Text(
+                    '📄 1 Job (Multi-page Screenshot)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: _uploadMode == 'single_job' ? FontWeight.bold : FontWeight.normal,
+                      color: _uploadMode == 'single_job'
+                          ? (isDark ? Colors.blue.shade200 : Colors.blue.shade900)
+                          : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                    ),
+                  ),
                   selected: _uploadMode == 'single_job',
-                  selectedColor: Colors.blue.shade100,
+                  selectedColor: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade100,
+                  backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
+                  side: BorderSide(
+                    color: _uploadMode == 'single_job'
+                        ? (isDark ? Colors.blueAccent : Colors.blue)
+                        : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                  ),
                   onSelected: (val) {
                     if (val) setState(() => _uploadMode = 'single_job');
                   },
                 ),
                 ChoiceChip(
-                  label: const Text('📁 Multiple Separate Screenshots'),
+                  label: Text(
+                    '📁 Multiple Separate Screenshots',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: _uploadMode == 'multiple_jobs' ? FontWeight.bold : FontWeight.normal,
+                      color: _uploadMode == 'multiple_jobs'
+                          ? (isDark ? Colors.blue.shade200 : Colors.blue.shade900)
+                          : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                    ),
+                  ),
                   selected: _uploadMode == 'multiple_jobs',
-                  selectedColor: Colors.blue.shade100,
+                  selectedColor: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade100,
+                  backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
+                  side: BorderSide(
+                    color: _uploadMode == 'multiple_jobs'
+                        ? (isDark ? Colors.blueAccent : Colors.blue)
+                        : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                  ),
                   onSelected: (val) {
                     if (val) setState(() => _uploadMode = 'multiple_jobs');
                   },
                 ),
                 ChoiceChip(
-                  label: const Text('✍️ Manual / Website URL (No Screenshot)'),
+                  label: Text(
+                    '✍️ Manual / Website URL (No Screenshot)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: _uploadMode == 'manual_url' ? FontWeight.bold : FontWeight.normal,
+                      color: _uploadMode == 'manual_url'
+                          ? (isDark ? Colors.purple.shade200 : Colors.purple.shade900)
+                          : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                    ),
+                  ),
                   selected: _uploadMode == 'manual_url',
-                  selectedColor: Colors.purple.shade100,
+                  selectedColor: isDark ? const Color(0xFF581C87) : Colors.purple.shade100,
+                  backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
+                  side: BorderSide(
+                    color: _uploadMode == 'manual_url'
+                        ? (isDark ? Colors.purpleAccent : Colors.purple)
+                        : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                  ),
                   onSelected: (val) {
                     if (val) setState(() => _uploadMode = 'manual_url');
                   },
@@ -2382,24 +2427,72 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               child: Row(
                 children: [
                   ChoiceChip(
-                    label: Text('All (${allApps.length})', style: const TextStyle(fontSize: 12)),
+                    label: Text(
+                      'All (${allApps.length})',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: _historyFilter == 'all' ? FontWeight.bold : FontWeight.normal,
+                        color: _historyFilter == 'all'
+                            ? (isDark ? Colors.blue.shade200 : Colors.blue.shade900)
+                            : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                      ),
+                    ),
                     selected: _historyFilter == 'all',
+                    selectedColor: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade100,
+                    backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
+                    side: BorderSide(
+                      color: _historyFilter == 'all'
+                          ? (isDark ? Colors.blueAccent : Colors.blue)
+                          : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                    ),
                     onSelected: (val) {
                       if (val) setState(() => _historyFilter = 'all');
                     },
                   ),
                   const SizedBox(width: 8),
                   ChoiceChip(
-                    label: Text('🤖 Auto (${autoApps.length})', style: const TextStyle(fontSize: 12)),
+                    label: Text(
+                      '🤖 Auto (${autoApps.length})',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: _historyFilter == 'auto' ? FontWeight.bold : FontWeight.normal,
+                        color: _historyFilter == 'auto'
+                            ? (isDark ? Colors.blue.shade200 : Colors.blue.shade900)
+                            : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                      ),
+                    ),
                     selected: _historyFilter == 'auto',
+                    selectedColor: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade100,
+                    backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
+                    side: BorderSide(
+                      color: _historyFilter == 'auto'
+                          ? (isDark ? Colors.blueAccent : Colors.blue)
+                          : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                    ),
                     onSelected: (val) {
                       if (val) setState(() => _historyFilter = 'auto');
                     },
                   ),
                   const SizedBox(width: 8),
                   ChoiceChip(
-                    label: Text('📸 Manual (${manualApps.length})', style: const TextStyle(fontSize: 12)),
+                    label: Text(
+                      '📸 Manual (${manualApps.length})',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: _historyFilter == 'manual' ? FontWeight.bold : FontWeight.normal,
+                        color: _historyFilter == 'manual'
+                            ? (isDark ? Colors.purple.shade200 : Colors.purple.shade900)
+                            : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                      ),
+                    ),
                     selected: _historyFilter == 'manual',
+                    selectedColor: isDark ? const Color(0xFF581C87) : Colors.purple.shade100,
+                    backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
+                    side: BorderSide(
+                      color: _historyFilter == 'manual'
+                          ? (isDark ? Colors.purpleAccent : Colors.purple)
+                          : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                    ),
                     onSelected: (val) {
                       if (val) setState(() => _historyFilter = 'manual');
                     },

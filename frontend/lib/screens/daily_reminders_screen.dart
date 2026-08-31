@@ -409,27 +409,6 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (reminder.isActive)
-                        IconButton(
-                          icon: Icon(
-                            isCompletedToday ? Icons.check_box : Icons.check_box_outline_blank,
-                            color: isCompletedToday ? Colors.green : null,
-                          ),
-                          tooltip: isCompletedToday ? 'Mark incomplete for today' : 'Mark done for today',
-                          onPressed: () async {
-                            if (isCompletedToday) {
-                              await _storageService.updateDailyReminder(reminder.copyWith(
-                                lastCompletedDate: '',
-                                currentSnoozeCount: 0,
-                              ));
-                            } else {
-                              await _storageService.updateDailyReminder(reminder.copyWith(
-                                lastCompletedDate: todayDateStr,
-                                currentSnoozeCount: 0,
-                              ));
-                            }
-                          },
-                        ),
                       Switch(
                         value: reminder.isActive,
                         onChanged: (_) => _toggleReminder(reminder),
