@@ -4,41 +4,66 @@ exports.callGeminiAPI = callGeminiAPI;
 const axios_1 = require("axios");
 const firebase_1 = require("../config/firebase");
 const DEFAULT_MODELS = [
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3-flash",
+    "gemini-3.0-flash",
     "gemini-2.5-flash",
-    "gemini-1.5-flash",
     "gemini-2.0-flash",
+    "gemini-1.5-flash",
     "gemini-1.5-pro"
 ];
 /**
  * Robust Gemini API caller that handles:
- * - Invalid model names
- * - HTTP 429 Rate Limiting with exponential backoff
- * - Multi-model fallback cascade (gemini-2.5-flash -> gemini-1.5-flash -> gemini-2.0-flash -> gemini-1.5-pro)
- * - Multi-API-key fallback if configured in Firestore admin_creds/gemini_config
+ * - Multi-model fallback cascade (gemini-3.7-flash -> gemini-3.6-flash -> gemini-3.5-flash -> gemini-3-flash -> gemini-2.5-flash -> ...)
+ * - Multi-API-key fallback across Primary & Secondary keys configured in Firestore admin_creds/gemini_config
+ * - Automatic retry & failover on rate limits (429), model unavailability (400/404), or server errors
  */
 async function callGeminiAPI(payload, options = {}) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
-    // 1. Fetch API Key(s)
+    // 1. Fetch API Key(s) from admin_creds/gemini_config
     const configDoc = await firebase_1.db.collection("admin_creds").doc("gemini_config").get();
     let primaryKey = "";
-    let backupKeys = [];
+    const backupKeys = [];
     if (configDoc.exists) {
         const data = configDoc.data() || {};
         primaryKey = (data.apiKey || "").trim();
+        // Support string secondaryApiKey from admin panel
+        if (typeof data.secondaryApiKey === "string" && data.secondaryApiKey.trim().length > 0) {
+            backupKeys.push(data.secondaryApiKey.trim());
+        }
+        if (typeof data.backupApiKey === "string" && data.backupApiKey.trim().length > 0) {
+            backupKeys.push(data.backupApiKey.trim());
+        }
         if (Array.isArray(data.backupApiKeys)) {
-            backupKeys = data.backupApiKeys.map((k) => String(k).trim()).filter((k) => k.length > 0);
+            for (const k of data.backupApiKeys) {
+                if (typeof k === "string" && k.trim().length > 0)
+                    backupKeys.push(k.trim());
+            }
         }
         else if (Array.isArray(data.apiKeys)) {
-            backupKeys = data.apiKeys.map((k) => String(k).trim()).filter((k) => k.length > 0);
+            for (const k of data.apiKeys) {
+                if (typeof k === "string" && k.trim().length > 0)
+                    backupKeys.push(k.trim());
+            }
         }
     }
-    const allKeys = [primaryKey, ...backupKeys].filter(k => k.length > 0);
+    // Deduplicate keys while keeping primary first
+    const seenKeys = new Set();
+    const allKeys = [];
+    for (const k of [primaryKey, ...backupKeys]) {
+        if (k && !seenKeys.has(k)) {
+            seenKeys.add(k);
+            allKeys.push(k);
+        }
+    }
     if (allKeys.length === 0) {
         throw new Error("Gemini API key is not configured in admin console.");
     }
     const modelsToTry = options.models && options.models.length > 0 ? options.models : DEFAULT_MODELS;
     const timeout = options.timeout || 240000;
-    const maxRetries = (_a = options.maxRetries) !== null && _a !== void 0 ? _a : 2;
+    const maxRetries = (_a = options.maxRetries) !== null && _a !== void 0 ? _a : 1;
     let lastError = null;
     // Normalize tools payload for Google Search if present
     const normalizedPayload = JSON.parse(JSON.stringify(payload));
@@ -82,18 +107,18 @@ async function callGeminiAPI(payload, options = {}) {
                     const errMsg = (errData === null || errData === void 0 ? void 0 : errData.message) || err.message;
                     console.warn(`[GeminiHelper] Error on '${model}' with ${keyLabel} (Status ${status}): ${errMsg}`);
                     if (status === 429) {
-                        // Rate limit exceeded on this key for this model
+                        // Rate limit exceeded on this key
                         attempt++;
                         if (attempt <= maxRetries && keyIndex === allKeys.length - 1) {
-                            const delayMs = attempt * 2000;
+                            const delayMs = attempt * 1500;
                             console.log(`[GeminiHelper] 429 on all keys for '${model}'. Backing off ${delayMs}ms before next model...`);
                             await new Promise((res) => setTimeout(res, delayMs));
                             continue;
                         }
-                        // Move to next key for the same model (or next model if all keys tried)
+                        // Move to next key for the same model
                         break;
                     }
-                    // For other errors (e.g. 404 model not found), break to next key/model
+                    // For other errors (e.g. 400 model no longer available, 404 not found), fail over to next key or model immediately
                     break;
                 }
             }
@@ -102,7 +127,7 @@ async function callGeminiAPI(payload, options = {}) {
     const isQuota = ((_j = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _j === void 0 ? void 0 : _j.status) === 429;
     const finalMessage = isQuota
         ? "Gemini API Quota Exceeded (HTTP 429). The daily or per-minute rate limit for Gemini API has been reached on this key. Please check your Google AI Studio / GCP quota or configure a backup API key."
-        : (((_m = (_l = (_k = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _k === void 0 ? void 0 : _k.data) === null || _l === void 0 ? void 0 : _l.error) === null || _m === void 0 ? void 0 : _m.message) || (lastError === null || lastError === void 0 ? void 0 : lastError.message) || "All Gemini API attempts failed.");
+        : (((_m = (_l = (_k = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _k === void 0 ? void 0 : _k.data) === null || _l === void 0 ? void 0 : _l.error) === null || _m === void 0 ? void 0 : _m.message) || (lastError === null || lastError === void 0 ? void 0 : lastError.message) || "All Gemini API attempts failed across all models.");
     throw new Error(`Gemini Service Error: ${finalMessage}`);
 }
 //# sourceMappingURL=geminiHelper.js.map

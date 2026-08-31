@@ -35,7 +35,11 @@ class HomeWidgetService {
       await HomeWidget.saveWidgetData<String>('gold_change', changeText);
       await HomeWidget.saveWidgetData<String>('gold_time', timeText);
 
-      await HomeWidget.updateWidget(androidName: 'GoldWidgetProvider');
+      await HomeWidget.updateWidget(
+        name: 'GoldWidgetProvider',
+        androidName: 'GoldWidgetProvider',
+        qualifiedAndroidName: 'com.remindbuddy.remindbuddy.GoldWidgetProvider',
+      );
     } catch (e) {
       LogService().error('Failed to update GoldWidget', e);
     }
@@ -77,7 +81,11 @@ class HomeWidgetService {
         }
       }
 
-      await HomeWidget.updateWidget(androidName: 'FinanceWidgetProvider');
+      await HomeWidget.updateWidget(
+        name: 'FinanceWidgetProvider',
+        androidName: 'FinanceWidgetProvider',
+        qualifiedAndroidName: 'com.remindbuddy.remindbuddy.FinanceWidgetProvider',
+      );
     } catch (e) {
       LogService().error('Failed to update FinanceWidget', e);
     }
@@ -98,7 +106,11 @@ class HomeWidgetService {
       await HomeWidget.saveWidgetData<String>('shift_tomorrow', tomorrowShiftName);
       await HomeWidget.saveWidgetData<String>('shift_date', dateText);
 
-      await HomeWidget.updateWidget(androidName: 'ShiftWidgetProvider');
+      await HomeWidget.updateWidget(
+        name: 'ShiftWidgetProvider',
+        androidName: 'ShiftWidgetProvider',
+        qualifiedAndroidName: 'com.remindbuddy.remindbuddy.ShiftWidgetProvider',
+      );
     } catch (e) {
       LogService().error('Failed to update ShiftWidget', e);
     }

@@ -283,6 +283,7 @@ class FinanceService {
     }
 
     await batch.commit();
+    HomeWidgetService().syncAllWidgets();
   }
 
   Future<void> settleDebt(DebtRecord debt, String targetAccountId) async {
@@ -326,12 +327,14 @@ class FinanceService {
     }
 
     await batch.commit();
+    HomeWidgetService().syncAllWidgets();
   }
 
   Future<void> settleDebtById(String debtId) async {
     final doc = _userDoc;
     if (doc == null) return;
     await doc.collection('finance_debts').doc(debtId).update({'isSettled': true});
+    HomeWidgetService().syncAllWidgets();
   }
 
   Future<void> deleteDebt(String debtId) async {
@@ -339,6 +342,7 @@ class FinanceService {
     if (doc == null) return;
 
     await doc.collection('finance_debts').doc(debtId).delete();
+    HomeWidgetService().syncAllWidgets();
   }
 
   // ============================================================================

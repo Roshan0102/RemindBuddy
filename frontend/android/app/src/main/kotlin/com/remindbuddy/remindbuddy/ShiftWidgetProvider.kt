@@ -2,13 +2,25 @@ package com.remindbuddy.remindbuddy
 
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
 
 class ShiftWidgetProvider : AppWidgetProvider() {
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        val appWidgetManager = AppWidgetManager.getInstance(context)
+        val thisWidget = ComponentName(context, ShiftWidgetProvider::class.java)
+        val appWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget)
+        if (appWidgetIds != null && appWidgetIds.isNotEmpty()) {
+            onUpdate(context, appWidgetManager, appWidgetIds)
+        }
+    }
+
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
