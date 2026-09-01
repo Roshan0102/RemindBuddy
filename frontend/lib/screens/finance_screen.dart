@@ -2395,8 +2395,14 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                   subtitle: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const SizedBox(height: 2),
-                                      Text('Payee: ${tx.payee}', style: TextStyle(color: subtextColor, fontSize: 12)),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        'Payee: ${tx.payee}',
+                                        style: TextStyle(color: subtextColor, fontSize: 12),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 3),
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
@@ -2404,76 +2410,76 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                             DateFormat('dd MMM, hh:mm a').format(tx.timestamp),
                                             style: TextStyle(color: subtextColor, fontSize: 11),
                                           ),
-                                          Row(
-                                            children: [
-                                              InkWell(
-                                                onTap: () => _showSmsDetailsDialog(context, tx),
-                                                child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                  margin: const EdgeInsets.only(right: 6),
-                                                  decoration: BoxDecoration(
-                                                    color: tx.source == 'both'
-                                                        ? Colors.green.withValues(alpha: 0.15)
-                                                        : (tx.source == 'notification'
-                                                            ? Colors.purple.withValues(alpha: 0.15)
-                                                            : Colors.blue.withValues(alpha: 0.15)),
-                                                    borderRadius: BorderRadius.circular(6),
-                                                    border: Border.all(
-                                                      color: tx.source == 'both'
-                                                          ? Colors.green.withValues(alpha: 0.5)
-                                                          : (tx.source == 'notification'
-                                                              ? Colors.purple.withValues(alpha: 0.5)
-                                                              : Colors.blue.withValues(alpha: 0.4)),
-                                                      width: 0.8,
-                                                    ),
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Icon(
-                                                        tx.source == 'both'
-                                                            ? Icons.verified_rounded
-                                                            : (tx.source == 'notification'
-                                                                ? Icons.notifications_active_rounded
-                                                                : Icons.sms_rounded),
-                                                        size: 11,
-                                                        color: tx.source == 'both'
-                                                            ? Colors.green
-                                                            : (tx.source == 'notification'
-                                                                ? Colors.purpleAccent
-                                                                : Colors.blueAccent),
-                                                      ),
-                                                      const SizedBox(width: 3),
-                                                      Text(
-                                                        tx.source == 'both'
-                                                            ? '⚡ Verified (${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'SMS + UPI'})'
-                                                            : (tx.source == 'notification'
-                                                                ? '🔔 ${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'UPI App'}'
-                                                                : 'SMS 📩'),
-                                                        style: TextStyle(
-                                                          color: tx.source == 'both'
-                                                              ? (isDark ? Colors.greenAccent : Colors.green.shade800)
-                                                              : (tx.source == 'notification'
-                                                                  ? (isDark ? Colors.purpleAccent : Colors.purple.shade800)
-                                                                  : Colors.blueAccent),
-                                                          fontSize: 10,
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: tx.isVerified ? Colors.green.withValues(alpha: 0.2) : Colors.amber.withValues(alpha: 0.2),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              tx.isVerified ? tx.category : 'Untagged (Tap to tag)',
+                                              style: TextStyle(
+                                                color: tx.isVerified ? (isDark ? Colors.greenAccent : Colors.green.shade800) : (isDark ? Colors.amberAccent : Colors.amber.shade900),
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
                                               ),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: tx.isVerified ? Colors.green.withValues(alpha: 0.2) : Colors.amber.withValues(alpha: 0.2),
-                                                  borderRadius: BorderRadius.circular(8),
-                                                ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      InkWell(
+                                        onTap: () => _showSmsDetailsDialog(context, tx),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                          decoration: BoxDecoration(
+                                            color: tx.source == 'both'
+                                                ? Colors.green.withValues(alpha: 0.15)
+                                                : (tx.source == 'notification'
+                                                    ? Colors.purple.withValues(alpha: 0.15)
+                                                    : Colors.blue.withValues(alpha: 0.15)),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(
+                                              color: tx.source == 'both'
+                                                  ? Colors.green.withValues(alpha: 0.5)
+                                                  : (tx.source == 'notification'
+                                                      ? Colors.purple.withValues(alpha: 0.5)
+                                                      : Colors.blue.withValues(alpha: 0.4)),
+                                              width: 0.8,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                tx.source == 'both'
+                                                    ? Icons.verified_rounded
+                                                    : (tx.source == 'notification'
+                                                        ? Icons.notifications_active_rounded
+                                                        : Icons.sms_rounded),
+                                                size: 11,
+                                                color: tx.source == 'both'
+                                                    ? Colors.green
+                                                    : (tx.source == 'notification'
+                                                        ? Colors.purpleAccent
+                                                        : Colors.blueAccent),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Flexible(
                                                 child: Text(
-                                                  tx.isVerified ? tx.category : 'Untagged (Tap to tag)',
+                                                  tx.source == 'both'
+                                                      ? '⚡ Verified (${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'SMS + UPI'})'
+                                                      : (tx.source == 'notification'
+                                                          ? '🔔 ${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'UPI App'}'
+                                                          : 'SMS 📩'),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
                                                   style: TextStyle(
-                                                    color: tx.isVerified ? (isDark ? Colors.greenAccent : Colors.green.shade800) : (isDark ? Colors.amberAccent : Colors.amber.shade900),
+                                                    color: tx.source == 'both'
+                                                        ? (isDark ? Colors.greenAccent : Colors.green.shade800)
+                                                        : (tx.source == 'notification'
+                                                            ? (isDark ? Colors.purpleAccent : Colors.purple.shade800)
+                                                            : Colors.blueAccent),
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.bold,
                                                   ),
@@ -2481,7 +2487,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                               ),
                                             ],
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ],
                                   ),

@@ -40,8 +40,8 @@ class SmsParserService {
     final String body = _stripDisputeFooters(rawBody);
     final String lowerBody = body.toLowerCase();
 
-    // Step B: Filter out pure informational balance alerts (e.g. Union Bank "Balance Goes Above...", "Present Balance of Your SB A/c...")
-    if (_isPureBalanceAlert(lowerRaw) || _isPureBalanceAlert(lowerBody)) {
+    // Step B: Filter out pure informational balance alerts and promotional offers (e.g. Pocket UPI ready, cashback on next transaction)
+    if (_isPromotionalOrInformational(lowerRaw) || _isPromotionalOrInformational(lowerBody)) {
       return null;
     }
 
@@ -333,9 +333,10 @@ class SmsParserService {
     return 'Bank';
   }
 
-  /// Checks if the SMS is purely an informational balance statement/alert without an actual transaction
-  static bool _isPureBalanceAlert(String lower) {
-    if (lower.contains('balance goes above') ||
+  /// Checks if the SMS is purely an informational balance statement/alert or promotional ad without an actual transaction
+  static bool _isPromotionalOrInformational(String lower) {
+    // 1. Balance statement / alert checks
+    final bool isBalanceAlert = lower.contains('balance goes above') ||
         lower.contains('balance goes below') ||
         lower.contains('threshold limit') ||
         lower.contains('daily balance alert') ||
@@ -343,12 +344,49 @@ class SmsParserService {
         lower.contains('low balance alert') ||
         lower.contains('present balance of your') ||
         lower.contains('present balance of a/c') ||
+        lower.contains('present balance of your sb a/c') ||
         lower.contains('current balance of your') ||
         lower.contains('available balance of your') ||
         lower.contains('balance in your a/c is') ||
-        lower.contains('your a/c balance is')) {
+        lower.contains('your a/c balance is');
+
+    // 2. Promotional & Marketing cashback ad checks (e.g. "Pocket UPI account is ready for use. Get up to ₹100 cashback...")
+    final bool isPromoAd = lower.contains('ready for use') ||
+        lower.contains('get up to') ||
+        lower.contains('win up to') ||
+        lower.contains('earn up to') ||
+        lower.contains('stand a chance') ||
+        lower.contains('t&c apply') ||
+        lower.contains('t&c') ||
+        lower.contains('terms & conditions') ||
+        lower.contains('terms and conditions') ||
+        lower.contains('on next transaction') ||
+        lower.contains('on your next') ||
+        lower.contains('cashback on') ||
+        lower.contains('cashback offer') ||
+        lower.contains('flat cashback') ||
+        lower.contains('clean bank statements') ||
+        lower.contains('pin-payments') ||
+        lower.contains('fast pin') ||
+        lower.contains('scratch card') ||
+        lower.contains('spin to win') ||
+        lower.contains('spin and win') ||
+        lower.contains('apply coupon') ||
+        lower.contains('promo code') ||
+        lower.contains('voucher') ||
+        lower.contains('pre-approved') ||
+        lower.contains('instant loan') ||
+        lower.contains('credit limit increased') ||
+        lower.contains('upgrade your card') ||
+        lower.contains('special offer') ||
+        lower.contains('limited period offer') ||
+        lower.contains('activate now') ||
+        lower.contains('link your account');
+
+    if (isBalanceAlert || isPromoAd) {
       final bool hasExplicitTxnAction = lower.contains('debited') ||
-          lower.contains('credited') ||
+          lower.contains('credited to') ||
+          lower.contains('credited in') ||
           lower.contains('spent') ||
           lower.contains('paid to') ||
           lower.contains('sent to') ||

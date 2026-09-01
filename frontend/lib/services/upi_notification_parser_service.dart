@@ -38,8 +38,8 @@ class UpiNotificationParserService {
 
     final lower = combined.toLowerCase();
 
-    // Ignore promotional, marketing, recharge reminders, loan ads, and OTP notifications
-    if (_isIgnoredNotification(lower)) return null;
+    // Ignore promotional, marketing, recharge reminders, loan ads, WhatsApp chats, and OTP notifications
+    if (_isIgnoredNotification(lower, packageName)) return null;
 
     final String displayAppName = appName.isNotEmpty
         ? appName
@@ -47,8 +47,9 @@ class UpiNotificationParserService {
 
     final DateTime timestamp = DateTime.fromMillisecondsSinceEpoch(timestampMillis > 0 ? timestampMillis : DateTime.now().millisecondsSinceEpoch);
 
-    // 1. Determine Credit vs Debit
-    final String type = _detectTransactionType(lower);
+    // 1. Determine Credit vs Debit (strictly returns null if no valid transaction verb is found)
+    final String? type = _detectTransactionType(lower);
+    if (type == null) return null;
 
     // 2. Extract Amount
     final double? parsedAmount = _extractAmount(combined);
@@ -83,13 +84,46 @@ class UpiNotificationParserService {
     );
   }
 
-  static bool _isIgnoredNotification(String lower) {
+  static bool _isIgnoredNotification(String lower, String packageName) {
+    // If notification is from WhatsApp, strictly require real WhatsApp Pay transaction phrases
+    if (packageName.contains('whatsapp')) {
+      final bool isWhatsAppPayment = lower.contains('paid you') ||
+          lower.contains('sent you') ||
+          lower.contains('you paid') ||
+          lower.contains('you sent') ||
+          lower.contains('payment received') ||
+          lower.contains('payment of') ||
+          lower.contains('payment completed') ||
+          lower.contains('payment successful') ||
+          lower.contains('transferred to your');
+      if (!isWhatsAppPayment) return true;
+    }
+
     const ignoredKeywords = [
+      'ready for use',
+      'get up to',
+      'win up to',
+      'earn up to',
+      'stand a chance',
+      't&c apply',
+      't&c',
+      'terms & conditions',
+      'terms and conditions',
+      'on next transaction',
+      'on your next',
+      'cashback on',
+      'cashback offer',
+      'flat cashback',
+      'clean bank statements',
+      'pin-payments',
+      'fast pin',
       'cashback won',
       'spin to win',
+      'spin and win',
       'scratch card',
       'loan approved',
       'instant loan',
+      'pre-approved',
       'credit card offer',
       'recharge now',
       'bill due',
@@ -100,6 +134,10 @@ class UpiNotificationParserService {
       'discount',
       'claim now',
       'reward points',
+      'promo code',
+      'apply coupon',
+      'voucher',
+      'special offer',
       'check balance',
       'balance goes above',
       'balance goes below',
@@ -109,28 +147,25 @@ class UpiNotificationParserService {
       'low balance alert',
       'present balance of',
     ];
+
     for (final kw in ignoredKeywords) {
       if (lower.contains(kw)) {
-        if (kw.contains('balance') || kw.contains('threshold')) {
-          final bool hasExplicitTxn = lower.contains('debited') ||
-              lower.contains('credited') ||
-              lower.contains('you paid') ||
-              lower.contains('paid to') ||
-              lower.contains('sent to') ||
-              lower.contains('paid you') ||
-              lower.contains('sent you') ||
-              lower.contains('withdrawn') ||
-              lower.contains('spent');
-          if (!hasExplicitTxn) return true;
-        } else {
-          return true;
-        }
+        final bool hasExplicitTxn = lower.contains('debited') ||
+            lower.contains('credited') ||
+            lower.contains('you paid') ||
+            lower.contains('paid to') ||
+            lower.contains('sent to') ||
+            lower.contains('paid you') ||
+            lower.contains('sent you') ||
+            lower.contains('withdrawn') ||
+            lower.contains('spent');
+        if (!hasExplicitTxn) return true;
       }
     }
     return false;
   }
 
-  static String _detectTransactionType(String lower) {
+  static String? _detectTransactionType(String lower) {
     final creditKeywords = [
       'received',
       'paid you',
@@ -160,7 +195,7 @@ class UpiNotificationParserService {
     for (final kw in debitKeywords) {
       if (lower.contains(kw)) return 'Debit';
     }
-    return 'Debit';
+    return null; // Return null if no transaction verb is present
   }
 
   static double? _extractAmount(String text) {
