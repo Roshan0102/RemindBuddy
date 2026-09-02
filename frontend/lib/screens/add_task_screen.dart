@@ -545,7 +545,108 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              const SizedBox(height: 32),
+              Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Auto-Snooze Reminder ⏰', style: TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: const Text('Automatically repeat notification if not acknowledged'),
+                        secondary: Icon(
+                          _snoozeEnabled ? Icons.snooze : Icons.snooze_outlined,
+                          color: _snoozeEnabled ? Colors.orangeAccent : Colors.grey,
+                        ),
+                        value: _snoozeEnabled,
+                        onChanged: (bool val) {
+                          setState(() {
+                            _snoozeEnabled = val;
+                          });
+                        },
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      if (_snoozeEnabled) ...[
+                        const Divider(),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                initialValue: _snoozeIntervalMinutes.toString(),
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'Interval (Mins)',
+                                  hintText: 'e.g. 1',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                  prefixIcon: Icon(Icons.timer_outlined),
+                                ),
+                                onChanged: (val) {
+                                  setState(() {
+                                    _snoozeIntervalMinutes = int.tryParse(val) ?? 15;
+                                  });
+                                },
+                                validator: (val) {
+                                  if (_snoozeEnabled) {
+                                    final n = int.tryParse(val ?? '');
+                                    if (n == null || n <= 0) return 'Min 1 min';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                initialValue: _maxSnoozeCount.toString(),
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'Max Repeats (Count)',
+                                  hintText: 'e.g. 3',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                  prefixIcon: Icon(Icons.repeat_outlined),
+                                ),
+                                onChanged: (val) {
+                                  setState(() {
+                                    _maxSnoozeCount = int.tryParse(val) ?? 3;
+                                  });
+                                },
+                                validator: (val) {
+                                  if (_snoozeEnabled) {
+                                    final n = int.tryParse(val ?? '');
+                                    if (n == null || n <= 0) return 'Min 1';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                          child: Text(
+                            'Will repeat notification every $_snoozeIntervalMinutes min(s) up to $_maxSnoozeCount times until marked Done.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.orange.shade900,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
               SizedBox(
                 height: 50,
                 child: ElevatedButton(

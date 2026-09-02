@@ -90,7 +90,8 @@ Respond ONLY with a JSON object in this format:
             recipientEmail: recipientEmails || rawJob.recipientEmail || '',
             extractedSkills: rawJob.extractedSkills || [],
             generatedSubject: subj,
-            generatedCoverLetter: body
+            generatedCoverLetter: body,
+            modelUsed: geminiResult.modelUsed || "gemini-3.7-flash"
         };
         return {
             success: true,
@@ -166,7 +167,8 @@ Respond ONLY with a JSON object in this format:
         return {
             success: true,
             generatedSubject: genSubject,
-            generatedCoverLetter: genBody
+            generatedCoverLetter: genBody,
+            modelUsed: geminiResult.modelUsed || "gemini-3.7-flash"
         };
     }
     catch (error) {

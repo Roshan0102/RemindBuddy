@@ -99,7 +99,7 @@ async function discoverAndApplyForUser(uid, options) {
     }
     const minExp = (options === null || options === void 0 ? void 0 : options.minExpYears) !== undefined ? Number(options.minExpYears) : Number((_a = autoApplySettings.minExpYears) !== null && _a !== void 0 ? _a : 0);
     const maxExp = (options === null || options === void 0 ? void 0 : options.maxExpYears) !== undefined ? Number(options.maxExpYears) : Number((_b = autoApplySettings.maxExpYears) !== null && _b !== void 0 ? _b : 3);
-    const maxApplyLimit = (options === null || options === void 0 ? void 0 : options.maxApplications) || autoApplySettings.maxPerRun || 4;
+    const maxApplyLimit = (options === null || options === void 0 ? void 0 : options.maxApplications) || autoApplySettings.maxPerRun || 6;
     // Fetch previously applied emails/companies to avoid duplicate applications
     const existingAppsSnap = await firebase_1.db.collection("users").doc(uid).collection("job_applications").get();
     const appliedEmails = new Set();
@@ -122,21 +122,38 @@ async function discoverAndApplyForUser(uid, options) {
     if (!apiKey) {
         throw new Error("Gemini API key is not configured in admin_creds.");
     }
-    const rolesQuery = targetRoles.join(" OR ");
+    const formattedRolesList = targetRoles.map((role, idx) => `   ${idx + 1}. "${role}"`).join("\n");
     const locQuery = targetLocations.join(" OR ");
     const todayStr = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
+    const isFresherCandidate = (minExp === 0 && maxExp === 0);
+    const expTargetStr = isFresherCandidate
+        ? "Seeking FRESHER / ENTRY-LEVEL / 0 YEARS EXPERIENCE roles ONLY."
+        : `Seeking ${minExp} to ${maxExp} Years Experience / Junior / Associate / Mid-level roles.`;
+    const expMandateStr = isFresherCandidate
+        ? "3. EXPERIENCE REQUIREMENT (FRESHERS / 0 YEARS ONLY): ONLY include openings explicitly accepting Freshers, Entry-Level candidates, Trainees, or 0 Years Experience. STRICTLY EXCLUDE any roles requiring > 0 years prior work experience."
+        : `3. EXPERIENCE REQUIREMENT (${minExp} TO ${maxExp} YEARS ONLY): ONLY include roles requiring between ${minExp} and ${maxExp} years experience (or Freshers/Entry-level if min is 0). EXCLUDE any roles requiring > ${maxExp} years experience (e.g. Senior, Lead, Staff, Principal).`;
     const prompt = `You are an elite automated job discovery and recruiter outreach AI agent.
-Target Roles: ${rolesQuery}
-Locations: ${locQuery}
+Target Roles to Search:
+${formattedRolesList}
+
+Target Locations: ${locQuery}
 Candidate Name: "${applicantName}"
-Candidate Experience Target: Seeking ${minExp} to ${maxExp} Years Experience / Junior / Associate / Mid-level roles.
+Candidate Experience Target: ${expTargetStr}
 
 CRITICAL SEARCH & EXTRACTION MANDATES:
-1. Use Google Search grounding to discover active, recent (past 24-72 hours) job openings, recruiter hiring updates, and posts from LinkedIn public posts, Wellfound/AngelList, Cutshort, Y Combinator, and tech company career pages.
+1. INDIVIDUAL SEARCH PER TARGET ROLE: You MUST perform dedicated web search grounding for EACH specific role listed above individually:
+${formattedRolesList}
+   - First, search for active postings specifically for role #1 across all platforms.
+   - Next, search for active postings specifically for role #2 across all platforms.
+   - Continue searching for each specified target role individually.
+   - Your final output list MUST contain matching job openings for EVERY role specified by the candidate (aiming for 1-2 fresh job openings per target role, up to 6 total jobs).
+
 2. RECRUITER EMAIL IS MANDATORY: Every single job item MUST contain a verified recruiter / HR / hiring contact email address (e.g. hr@company.com, careers@company.com, hiring@company.com, jobs@company.com, talent@company.com, or specific recruiter email). If NO valid email address is mentioned in the job posting/snippet, DO NOT INCLUDE THAT JOB.
-3. EXPERIENCE REQUIREMENT (${minExp} TO ${maxExp} YEARS ONLY): ONLY include roles requiring between ${minExp} and ${maxExp} years experience (or Freshers/Entry-level if min is 0). EXCLUDE any roles requiring > ${maxExp} years experience (e.g. Senior, Lead, Staff, Principal).
+
+${expMandateStr}
+
 4. HUMAN-WRITTEN, HIGH-CONVERTING APPLICATION EMAIL:
-   - For each matching job, write a highly authentic, natural, and engaging cover letter.
+   - For each matching job, write a highly authentic, natural, and engaging cover letter tailored specifically to that job title and company.
    - Read the candidate's attached Resume PDF to extract concrete accomplishments, technical skills (e.g., Flutter, Dart, State Management, REST APIs, Firebase, Cloud/DevOps, Docker, CI/CD), and align them specifically with the company's domain and job requirements.
    - Structure:
      a) Enthusiastic opening identifying the specific role and company.
@@ -145,6 +162,12 @@ CRITICAL SEARCH & EXTRACTION MANDATES:
      d) Professional closing & Call to Action proposing a brief discussion, mentioning the attached resume.
      e) Sign-off: "Sincerely,\\n${applicantName}" (Never use placeholders like [Your Name]).
    - Subject line format: "Application for [Job Title] - ${applicantName}"
+
+5. LOCATION & WORK MODE MATCHING:
+   - Candidate Target Locations: ${targetLocations.join(', ')}.
+   - On-Site / Hybrid Roles: City names (e.g. Bengaluru, Chennai, Hyderabad, Noida, Pune) or "India" target On-Site, In-Office, and Hybrid openings in those hubs across India.
+   - Remote / WFH Roles: "Remote" targets Fully Remote / Work-From-Home (WFH) openings.
+   - Match both On-Site/Hybrid roles in target Indian cities/India AND Remote/WFH openings when specified.
 
 Respond ONLY with a JSON array matching this schema:
 [
@@ -189,9 +212,11 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
     };
     console.log(`[JobDiscovery] Running Gemini Search Grounding for user ${uid} (Roles: ${targetRoles.join(', ')})...`);
     let rawText = "";
+    let modelUsed = "";
     try {
         const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 240000 });
         rawText = geminiResult.text || "";
+        modelUsed = geminiResult.modelUsed || "";
     }
     catch (apiErr) {
         console.error("[JobDiscovery] Gemini search failed:", apiErr.message);
@@ -293,7 +318,8 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
                 status: "sent",
                 messageId: info.messageId || "",
                 isAutoApplied: true,
-                appliedDateStr: todayStr
+                appliedDateStr: todayStr,
+                modelUsed: modelUsed || "gemini-3.7-flash"
             };
             const appDocRef = await firebase_1.db.collection("users").doc(uid).collection("job_applications").add(applicationRecord);
             appliedEmails.add(job.recipientEmail.toLowerCase().trim());

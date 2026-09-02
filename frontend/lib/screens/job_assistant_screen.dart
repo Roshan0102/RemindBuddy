@@ -71,6 +71,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   final TextEditingController _locationsController = TextEditingController();
   final TextEditingController _minExpController = TextEditingController(text: '0');
   final TextEditingController _maxExpController = TextEditingController(text: '3');
+  bool _isFresher = false;
   bool _isSavingAutoSettings = false;
   bool _isRunningAutoApply = false;
   String _autoApplyStatusMessage = '';
@@ -214,8 +215,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         _resumeFileName = masterResume['fileName'] ?? '';
         _hasResume = (masterResume['base64'] ?? '').isNotEmpty;
         _autoApplyEnabled = autoSettings['enabled'] ?? true;
-        _minExpController.text = (autoSettings['minExpYears'] ?? 0).toString();
-        _maxExpController.text = (autoSettings['maxExpYears'] ?? 3).toString();
+        final minE = autoSettings['minExpYears'] ?? 0;
+        final maxE = autoSettings['maxExpYears'] ?? 3;
+        _isFresher = autoSettings['isFresher'] == true || (minE == 0 && maxE == 0);
+        _minExpController.text = minE.toString();
+        _maxExpController.text = maxE.toString();
         _targetRolesController.text = targetRoles.isNotEmpty
             ? targetRoles.join(', ')
             : 'DevOps Engineer, Cloud Engineer, Site Reliability Engineer, Flutter Developer';
@@ -949,8 +953,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   Future<void> _saveAutoApplySettings() async {
     final roles = _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
     final locs = _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-    final minExp = int.tryParse(_minExpController.text.trim()) ?? 0;
-    final maxExp = int.tryParse(_maxExpController.text.trim()) ?? 3;
+    final minExp = _isFresher ? 0 : (int.tryParse(_minExpController.text.trim()) ?? 0);
+    final maxExp = _isFresher ? 0 : (int.tryParse(_maxExpController.text.trim()) ?? 3);
 
     setState(() => _isSavingAutoSettings = true);
     try {
@@ -960,7 +964,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         locations: locs.isNotEmpty ? locs : ['Bengaluru', 'India', 'Remote'],
         minExpYears: minExp,
         maxExpYears: maxExp,
-        maxPerRun: 4,
+        isFresher: _isFresher,
+        maxPerRun: 6,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1381,41 +1386,80 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // Configurable Experience Range (From - To Years)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _minExpController,
-                            keyboardType: TextInputType.number,
-                            decoration: InputDecoration(
-                              labelText: 'Min Exp (Years)',
-                              hintText: '0',
-                              prefixIcon: const Icon(Icons.timeline_rounded),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                              isDense: true,
-                            ),
-                            onChanged: (_) => setState(() {}),
-                          ),
+                    // Fresher Checkbox Toggle
+                    Container(
+                      decoration: BoxDecoration(
+                        color: _isFresher ? Colors.blue.withValues(alpha: 0.12) : Colors.grey.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: _isFresher ? Colors.blue.withValues(alpha: 0.4) : Colors.grey.withValues(alpha: 0.2),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _maxExpController,
-                            keyboardType: TextInputType.number,
-                            decoration: InputDecoration(
-                              labelText: 'Max Exp (Years)',
-                              hintText: '3',
-                              prefixIcon: const Icon(Icons.timeline_rounded),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                              isDense: true,
-                            ),
-                            onChanged: (_) => setState(() {}),
-                          ),
+                      ),
+                      child: CheckboxListTile(
+                        value: _isFresher,
+                        activeColor: Colors.blue,
+                        title: Text('I am a Fresher (0 Years Experience)', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13)),
+                        subtitle: Text(
+                          _isFresher
+                              ? 'Targeting Freshers / Entry-Level / 0 Yrs roles'
+                              : 'Check if you are seeking entry-level/fresher job openings',
+                          style: TextStyle(fontSize: 11, color: _isFresher ? Colors.blue.shade800 : Colors.grey),
                         ),
-                      ],
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                        onChanged: (val) {
+                          setState(() {
+                            _isFresher = val ?? false;
+                            if (_isFresher) {
+                              _minExpController.text = '0';
+                              _maxExpController.text = '0';
+                            }
+                          });
+                        },
+                      ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
+                    // Configurable Experience Range (Hidden if Fresher)
+                    if (!_isFresher)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _minExpController,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                labelText: 'Min Exp (Years)',
+                                hintText: '0',
+                                prefixIcon: const Icon(Icons.timeline_rounded),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                isDense: true,
+                              ),
+                              onChanged: (_) {
+                                setState(() {});
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: _maxExpController,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                labelText: 'Max Exp (Years)',
+                                hintText: '3',
+                                prefixIcon: const Icon(Icons.timeline_rounded),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                isDense: true,
+                              ),
+                              onChanged: (_) {
+                                setState(() {});
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    if (!_isFresher) const SizedBox(height: 14),
+                    if (_isFresher) const SizedBox(height: 4),
                     // Filter Badges
                     Wrap(
                       spacing: 8,
@@ -1434,7 +1478,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               const Icon(Icons.filter_alt_rounded, color: Colors.teal, size: 14),
                               const SizedBox(width: 4),
                               Text(
-                                'Experience: ${_minExpController.text.trim().isEmpty ? '0' : _minExpController.text.trim()} – ${_maxExpController.text.trim().isEmpty ? '3' : _maxExpController.text.trim()} Years',
+                                _isFresher
+                                    ? 'Experience: Fresher / Entry-Level (0 Yrs)'
+                                    : 'Experience: ${_minExpController.text.trim().isEmpty ? '0' : _minExpController.text.trim()} – ${_maxExpController.text.trim().isEmpty ? '3' : _maxExpController.text.trim()} Years',
                                 style: const TextStyle(fontSize: 11, color: Colors.teal, fontWeight: FontWeight.bold),
                               ),
                             ],
@@ -1659,6 +1705,22 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ],
                   ),
                 ),
+                if (app.modelUsed != null && app.modelUsed!.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.psychology_rounded, size: 10, color: Colors.purpleAccent),
+                        const SizedBox(width: 3),
+                        Text('AI: ${app.modelUsed}', style: const TextStyle(fontSize: 9.5, color: Colors.purpleAccent, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
                 Text(
                   '${app.appliedAt.day}/${app.appliedAt.month} ${app.appliedAt.hour.toString().padLeft(2, '0')}:${app.appliedAt.minute.toString().padLeft(2, '0')}',
                   style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.grey[500]),
@@ -2540,7 +2602,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                     style: TextStyle(fontSize: 11.5, color: subtextColor),
                                   ),
                                   const SizedBox(height: 4),
-                                  Row(
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
                                     children: [
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
@@ -2559,7 +2623,25 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                           ),
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
+                                      if (app.modelUsed != null && app.modelUsed!.isNotEmpty)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                          decoration: BoxDecoration(
+                                            color: Colors.indigo.withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(Icons.psychology_rounded, size: 10, color: Colors.indigoAccent),
+                                              const SizedBox(width: 3),
+                                              Text(
+                                                'AI: ${app.modelUsed}',
+                                                style: const TextStyle(fontSize: 9.5, color: Colors.indigoAccent, fontWeight: FontWeight.bold),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       Text(
                                         'Applied: ${app.appliedAt.day}/${app.appliedAt.month}/${app.appliedAt.year} ${app.appliedAt.hour.toString().padLeft(2, '0')}:${app.appliedAt.minute.toString().padLeft(2, '0')}',
                                         style: TextStyle(fontSize: 10, color: subtextColor),

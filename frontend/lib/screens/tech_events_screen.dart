@@ -563,7 +563,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                       }
 
                       final allDocs = snapshot.data?.docs ?? [];
-                      final todayStr = DateFormat('yyyy-MM-DD').format(DateTime.now());
+                      final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
                       final selectedMonthPrefix = DateFormat('yyyy-MM').format(_selectedMonth);
 
                       final Map<String, List<QueryDocumentSnapshot>> groupsMap = {};

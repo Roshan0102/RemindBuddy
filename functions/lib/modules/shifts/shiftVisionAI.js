@@ -12,31 +12,45 @@ exports.analyzeRosterImage = functions.runWith({ timeoutSeconds: 120, memory: "1
     if (!image || !employeeName) {
         throw new functions.https.HttpsError('invalid-argument', 'Image and employeeName are required.');
     }
-    // 1. Prepare payload for Gemini API
-    const prompt = `Analyze the work roster image. Extract the shift schedule for employee "${employeeName}".
-The output MUST be a JSON object matching this schema. If a shift date is unclear or missing, mark it as "week_off".
-
-Shift Types in roster:
-- M or morning: Morning shift (06:00 - 14:00)
-- A or afternoon: Afternoon shift (14:00 - 22:00)
-- N or night: Night shift (22:00 - 06:00)
-- L or holiday: Holiday / Week Off (is_week_off: true, shift_type: 'week_off')
-- Empty box: Week Off (is_week_off: true, shift_type: 'week_off')
-
-Required JSON format:
-{
-  "employee_name": "${employeeName}",
-  "month": "Month Year (e.g. March 2026)",
-  "shifts": [
-    {
-      "date": "YYYY-MM-DD",
-      "shift_type": "morning|afternoon|night|week_off",
-      "start_time": "HH:MM or null",
-      "end_time": "HH:MM or null",
-      "is_week_off": true|false
+    // Determine correct image MIME type
+    let mimeType = "image/jpeg";
+    if (image.startsWith("iVBOR")) {
+        mimeType = "image/png";
     }
-  ]
-}`;
+    else if (image.startsWith("/9j/")) {
+        mimeType = "image/jpeg";
+    }
+    else if (image.startsWith("UklGR")) {
+        mimeType = "image/webp";
+    }
+    // 1. Prepare detailed prompt for Gemini API
+    const prompt = `You are a precision OCR assistant specialized in reading monthly work rosters and shift schedule tables.
+
+TARGET EMPLOYEE TO EXTRACT: "${employeeName}"
+
+INSTRUCTIONS:
+1. IDENTIFY ROSTER STRUCTURE & MONTH:
+   - Check the top header, banner, or corner of the roster table (for example, "09-26" indicates Month 09, Year 2026 -> "September 2026").
+   - Count the total number of calendar days in that month (e.g. September has 30 days, August has 31 days).
+   - Set "month" field cleanly as "Month YYYY" (e.g., "September 2026").
+
+2. LOCATE EMPLOYEE ROW:
+   - Search the first column (Employee Names) for a row that matches, starts with, or contains "${employeeName}" (case-insensitive fuzzy match: e.g. "roshan" matches "Roshan J", "Roshan", "ROSHAN", etc.).
+
+3. EXTRACT EVERY SINGLE DAY (DAY 1 TO LAST DAY):
+   - You MUST extract an entry for EVERY DAY from Day 1 to the last day of the month (e.g., Day 1 to Day 30).
+   - DO NOT stop after 1 day! The "shifts" array MUST contain an entry for each calendar day of the month (e.g. 2026-09-01, 2026-09-02, ..., 2026-09-30) in chronological order.
+
+4. SHIFT CODE & TIMING MAPPING:
+   For each day column in this employee's row, inspect the cell text:
+   - 'M' or 'Morning' -> shift_type: "morning", start_time: "06:00", end_time: "14:00", is_week_off: false
+   - 'A' or 'Afternoon' -> shift_type: "afternoon", start_time: "14:00", end_time: "22:00", is_week_off: false
+   - 'N' or 'Night' -> shift_type: "night", start_time: "22:00", end_time: "06:00", is_week_off: false
+   - 'D' or 'G' or 'General' -> shift_type: "general", start_time: "09:00", end_time: "17:00", is_week_off: false
+   - 'L' (Leave), 'H' (Holiday), 'OFF', blank cell, or empty box -> shift_type: "week_off", start_time: null, end_time: null, is_week_off: true
+
+OUTPUT SCHEMA:
+Return ONLY the JSON object matching the requested schema with all days in "shifts".`;
     const payload = {
         contents: [
             {
@@ -44,7 +58,7 @@ Required JSON format:
                     { text: prompt },
                     {
                         inlineData: {
-                            mimeType: "image/jpeg",
+                            mimeType,
                             data: image // Base64 string without data:image/jpeg;base64 prefix
                         }
                     }
@@ -78,7 +92,7 @@ Required JSON format:
         }
     };
     try {
-        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 60000 });
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 90000 });
         const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new functions.https.HttpsError('internal', 'Empty content returned from Gemini API.');
@@ -87,7 +101,7 @@ Required JSON format:
         return JSON.parse(textResponse);
     }
     catch (error) {
-        console.error("Gemini API Error:", error.message);
+        console.error("Gemini API Error in analyzeRosterImage:", error.message);
         throw new functions.https.HttpsError('internal', `Error calling Gemini API: ${error.message}`);
     }
 });

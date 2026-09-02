@@ -268,7 +268,12 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                       ElevatedButton.icon(
                         onPressed: () async {
                           final ImagePicker picker = ImagePicker();
-                          final XFile? img = await picker.pickImage(source: ImageSource.gallery);
+                          final XFile? img = await picker.pickImage(
+                            source: ImageSource.gallery,
+                            maxWidth: 2048,
+                            maxHeight: 2048,
+                            imageQuality: 88,
+                          );
                           if (img != null) {
                             setDialogState(() {
                               selectedImage = img;
@@ -345,7 +350,10 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                           final bytes = await selectedImage!.readAsBytes();
                           final base64Image = base64Encode(bytes);
 
-                          final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('analyzeRosterImage');
+                          final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable(
+                            'analyzeRosterImage',
+                            options: HttpsCallableOptions(timeout: const Duration(seconds: 120)),
+                          );
                           final result = await callable.call(<String, dynamic>{
                             'image': base64Image,
                             'employeeName': nameController.text.trim(),
@@ -433,6 +441,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         separatorBuilder: (context, i) => const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final shift = parsedShifts[index];
+                          final validShiftType = ['morning', 'afternoon', 'night', 'general', 'week_off'].contains(shift.shiftType)
+                              ? shift.shiftType
+                              : 'week_off';
                           return ListTile(
                             dense: true,
                             leading: Icon(
@@ -445,12 +456,13 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                               style: const TextStyle(fontWeight: FontWeight.w500),
                             ),
                             trailing: DropdownButton<String>(
-                              value: shift.shiftType,
+                              value: validShiftType,
                               underline: const SizedBox(),
                               items: const [
                                 DropdownMenuItem(value: 'morning', child: Text('Morning')),
                                 DropdownMenuItem(value: 'afternoon', child: Text('Afternoon')),
                                 DropdownMenuItem(value: 'night', child: Text('Night')),
+                                DropdownMenuItem(value: 'general', child: Text('General')),
                                 DropdownMenuItem(value: 'week_off', child: Text('Week Off')),
                               ],
                               onChanged: (newType) {
@@ -468,6 +480,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                     } else if (newType == 'night') {
                                       start = '22:00';
                                       end = '06:00';
+                                    } else if (newType == 'general') {
+                                      start = '09:00';
+                                      end = '17:00';
                                     }
                                     parsedShifts[index] = Shift(
                                       date: shift.date,

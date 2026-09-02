@@ -7,23 +7,55 @@ export interface GeminiCallOptions {
     timeout?: number;
 }
 
+// Official active Gemini models ordered by speed, intelligence and fallback hierarchy
 const DEFAULT_MODELS = [
     "gemini-3.7-flash",
     "gemini-3.6-flash",
     "gemini-3.5-flash",
-    "gemini-3-flash",
-    "gemini-3.0-flash",
+    "gemini-flash-latest",
+    "gemini-3.5-flash-lite",
     "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro"
+    "gemini-3.1-pro-preview"
 ];
 
 /**
- * Robust Gemini API caller that handles:
- * - Multi-model fallback cascade (gemini-3.7-flash -> gemini-3.6-flash -> gemini-3.5-flash -> gemini-3-flash -> gemini-2.5-flash -> ...)
+ * Dynamically queries Google AI Studio REST API (/v1beta/models)
+ * to retrieve the exact list of active Gemini models supported for a given API key.
+ */
+export async function fetchAvailableModelsFromAPI(apiKey: string): Promise<string[]> {
+    try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+        const response = await axios.get(url, { timeout: 10000 });
+        const modelsList: any[] = response.data?.models || [];
+        const validModels = modelsList
+            .filter((m: any) =>
+                Array.isArray(m.supportedGenerationMethods) &&
+                m.supportedGenerationMethods.includes("generateContent") &&
+                typeof m.name === "string" &&
+                m.name.startsWith("models/gemini-")
+            )
+            .map((m: any) => m.name.replace(/^models\//, ""));
+
+        if (validModels.length > 0) {
+            console.log(`[GeminiHelper] Dynamically discovered ${validModels.length} models for API key:`, validModels);
+            return validModels;
+        }
+    } catch (e: any) {
+        console.warn(`[GeminiHelper] Could not fetch dynamic models list from Google API: ${e.message}`);
+    }
+    return DEFAULT_MODELS;
+}
+
+// In-memory runtime cache to eliminate 40-second latency on repeated calls
+const unsupportedModels = new Set<string>();
+let cachedWorkingModel: string | null = null;
+
+/**
+ * High-performance Gemini API caller:
+ * - Instant sub-second response via cached working model
  * - Multi-API-key fallback across Primary & Secondary keys configured in Firestore admin_creds/gemini_config
- * - Automatic retry & failover on rate limits (429), model unavailability (400/404), or server errors
+ * - Immediate 404/unsupported model pruning (no redundant second-key requests on non-existent models)
+ * - Automatic failover on rate limits (429) or server errors
  */
 export async function callGeminiAPI(
     payload: any,
@@ -70,8 +102,22 @@ export async function callGeminiAPI(
         throw new Error("Gemini API key is not configured in admin console.");
     }
 
-    const modelsToTry = options.models && options.models.length > 0 ? options.models : DEFAULT_MODELS;
-    const timeout = options.timeout || 240000;
+    let candidateModels = options.models && options.models.length > 0 ? [...options.models] : [...DEFAULT_MODELS];
+
+    // Filter out models that were already identified as 404/unsupported in this container instance
+    candidateModels = candidateModels.filter(m => !unsupportedModels.has(m));
+
+    // Prioritize the known working model to get instant responses
+    if (cachedWorkingModel && candidateModels.includes(cachedWorkingModel)) {
+        candidateModels = [cachedWorkingModel, ...candidateModels.filter(m => m !== cachedWorkingModel)];
+    }
+
+    if (candidateModels.length === 0) {
+        // Fallback in case all were filtered
+        candidateModels = [...DEFAULT_MODELS];
+    }
+
+    const timeout = options.timeout || 120000;
     const maxRetries = options.maxRetries ?? 1;
 
     let lastError: any = null;
@@ -87,7 +133,7 @@ export async function callGeminiAPI(
         });
     }
 
-    for (const model of modelsToTry) {
+    for (const model of candidateModels) {
         for (let keyIndex = 0; keyIndex < allKeys.length; keyIndex++) {
             const apiKey = allKeys[keyIndex];
             const keyLabel = keyIndex === 0 ? "Primary Key" : `Backup Key #${keyIndex}`;
@@ -109,6 +155,10 @@ export async function callGeminiAPI(
 
                     const text = candidates[0].content?.parts?.[0]?.text || "";
                     console.log(`[GeminiHelper] Successfully executed '${model}' with ${keyLabel}!`);
+
+                    // Remember working model for instant future executions
+                    cachedWorkingModel = model;
+
                     return {
                         text,
                         raw: response.data,
@@ -121,20 +171,30 @@ export async function callGeminiAPI(
                     const errMsg = errData?.message || err.message;
                     console.warn(`[GeminiHelper] Error on '${model}' with ${keyLabel} (Status ${status}): ${errMsg}`);
 
+                    // If model doesn't exist on Google API, prune it immediately so it doesn't waste time on backup keys or future calls
+                    if (status === 404 || (status === 400 && (errMsg.includes("no longer available") || errMsg.includes("not supported") || errMsg.includes("not found")))) {
+                        console.log(`[GeminiHelper] Model '${model}' is unavailable on Google API. Pruning from active list.`);
+                        unsupportedModels.add(model);
+                        if (cachedWorkingModel === model) {
+                            cachedWorkingModel = null;
+                        }
+                        // Skip remaining keys for this non-existent model
+                        break;
+                    }
+
                     if (status === 429) {
-                        // Rate limit exceeded on this key
+                        // Rate limit on this key -> switch to next backup key immediately
                         attempt++;
                         if (attempt <= maxRetries && keyIndex === allKeys.length - 1) {
-                            const delayMs = attempt * 1500;
+                            const delayMs = attempt * 1000;
                             console.log(`[GeminiHelper] 429 on all keys for '${model}'. Backing off ${delayMs}ms before next model...`);
                             await new Promise((res) => setTimeout(res, delayMs));
                             continue;
                         }
-                        // Move to next key for the same model
                         break;
                     }
 
-                    // For other errors (e.g. 400 model no longer available, 404 not found), fail over to next key or model immediately
+                    // For other errors, try next key or next model
                     break;
                 }
             }
@@ -147,3 +207,4 @@ export async function callGeminiAPI(
         : (lastError?.response?.data?.error?.message || lastError?.message || "All Gemini API attempts failed across all models.");
     throw new Error(`Gemini Service Error: ${finalMessage}`);
 }
+

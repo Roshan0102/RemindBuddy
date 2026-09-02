@@ -139,7 +139,8 @@ class JobAssistantService {
     required List<String> locations,
     int minExpYears = 0,
     int maxExpYears = 3,
-    int maxPerRun = 4,
+    bool isFresher = false,
+    int maxPerRun = 6,
   }) async {
     final doc = _userDoc;
     if (doc == null) return;
@@ -151,6 +152,7 @@ class JobAssistantService {
         'locations': locations,
         'minExpYears': minExpYears,
         'maxExpYears': maxExpYears,
+        'isFresher': isFresher,
         'maxPerRun': maxPerRun,
         'updatedAt': FieldValue.serverTimestamp(),
       }

@@ -16,6 +16,7 @@ class JobApplication {
   final String? location;
   final String? experienceRequired;
   final String? sourcePlatform;
+  final String? modelUsed;
 
   JobApplication({
     required this.id,
@@ -33,6 +34,7 @@ class JobApplication {
     this.location,
     this.experienceRequired,
     this.sourcePlatform,
+    this.modelUsed,
   });
 
   Map<String, dynamic> toMap() {
@@ -54,6 +56,7 @@ class JobApplication {
       'location': location,
       'experienceRequired': experienceRequired,
       'sourcePlatform': sourcePlatform,
+      'modelUsed': modelUsed,
     };
   }
 
@@ -97,6 +100,7 @@ class JobApplication {
       location: map['location'] as String?,
       experienceRequired: map['experienceRequired'] as String?,
       sourcePlatform: map['sourcePlatform'] as String?,
+      modelUsed: map['modelUsed'] as String?,
     );
   }
 }
