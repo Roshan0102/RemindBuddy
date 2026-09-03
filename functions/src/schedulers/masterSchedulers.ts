@@ -21,9 +21,23 @@ export const masterMinuteRunner = functions.pubsub.schedule('* * * * *')
         const hour = nowKolkata.hour();
         const minute = nowKolkata.minute();
 
-        await internalCheckDailyReminders();
-        await internalCheckPendingGoldChitNotifications();
-        await internalCheckRecurringBillNotifications();
+        try {
+            await internalCheckDailyReminders();
+        } catch (err) {
+            console.error("Error in internalCheckDailyReminders inside masterMinuteRunner:", err);
+        }
+
+        try {
+            await internalCheckPendingGoldChitNotifications();
+        } catch (err) {
+            console.error("Error in internalCheckPendingGoldChitNotifications inside masterMinuteRunner:", err);
+        }
+
+        try {
+            await internalCheckRecurringBillNotifications();
+        } catch (err) {
+            console.error("Error in internalCheckRecurringBillNotifications inside masterMinuteRunner:", err);
+        }
 
         // 07:05 PM IST (19:05): Check & send interested Tech Events push notification for tomorrow (5 mins after 7 PM fetch)
         if (hour === 19 && minute === 5) {

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.internalCheckInterestedEventsNotifications = exports.fetchUserTechEventsTrigger = exports.fetchUserTechEvents = void 0;
+exports.internalCheckInterestedEventsNotifications = exports.fetchUserTechEventsTrigger = exports.processTechEventsUserTask = exports.fetchUserTechEvents = void 0;
 exports.fetchAndStoreEventsForUserInternal = fetchAndStoreEventsForUserInternal;
 exports.internalDailyTechEventsFetcher = internalDailyTechEventsFetcher;
 exports.internalCheckInterestedTechEventsNotifications = internalCheckInterestedTechEventsNotifications;
@@ -9,6 +9,7 @@ const moment = require("moment-timezone");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
 const geminiHelper_1 = require("../../utils/geminiHelper");
+const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
 async function fetchAndStoreEventsForUserInternal(uid, triggerNotification) {
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     let interests = ["Cloud", "Devops", "AI", "Agentic AI"];
@@ -215,20 +216,74 @@ exports.fetchUserTechEvents = functions.runWith({ timeoutSeconds: 120, memory: "
         throw new functions.https.HttpsError('internal', error.message || 'Failed to fetch tech events.');
     }
 });
+/**
+ * Cloud Tasks queue handler for isolated sequential Tech Events processing per user.
+ * maxConcurrentDispatches: 1 guarantees strictly 1 user at a time.
+ */
+exports.processTechEventsUserTask = functions.runWith({ timeoutSeconds: 300, memory: "512MB" }).tasks
+    .taskQueue({
+    retryConfig: { maxAttempts: 2 },
+    rateLimits: { maxConcurrentDispatches: 1 },
+})
+    .onDispatch(async (rawPayload, context) => {
+    const payload = (rawPayload && typeof rawPayload === 'object' && rawPayload.data) ? rawPayload.data : rawPayload;
+    const uid = payload === null || payload === void 0 ? void 0 : payload.uid;
+    if (!uid) {
+        console.error("[processTechEventsUserTask] Missing uid in payload:", rawPayload);
+        return;
+    }
+    console.log(`[processTechEventsUserTask] Processing Tech Events for user ${uid}`);
+    try {
+        const res = await fetchAndStoreEventsForUserInternal(uid, true);
+        console.log(`[processTechEventsUserTask] Completed Tech Events fetch for user ${uid}:`, res);
+    }
+    catch (err) {
+        console.error(`[processTechEventsUserTask] Error fetching tech events for user ${uid}:`, err.message || err);
+        throw err;
+    }
+});
 async function internalDailyTechEventsFetcher() {
-    console.log("Starting dailyTechEventsFetcher at 7 PM IST");
+    console.log("[internalDailyTechEventsFetcher] Starting daily Tech Events dispatcher at 7 PM IST");
     try {
         const usersSnap = await firebase_1.db.collection("users").get();
-        console.log(`[internalDailyTechEventsFetcher] Found ${usersSnap.size} user documents.`);
+        const eligibleUids = [];
         for (const userDoc of usersSnap.docs) {
             const uid = userDoc.id;
-            console.log(`Processing tech events fetch for user: ${uid}`);
-            try {
-                const res = await fetchAndStoreEventsForUserInternal(uid, true);
-                console.log(`Tech events fetch completed for user ${uid}:`, res);
+            const uData = userDoc.data() || {};
+            const enabledModules = uData.enabledModules || [];
+            // 1. Must have module enabled
+            if (!enabledModules.includes("events")) {
+                console.log(`[internalDailyTechEventsFetcher] Skipping user ${uid}: 'events' module not enabled.`);
+                continue;
             }
-            catch (err) {
-                console.error(`Error fetching tech events for user ${uid}:`, err.message || err);
+            // 2. Must have valid preferences (interests and location) entered
+            const interests = uData.eventInterests;
+            const location = uData.eventLocation;
+            if (!Array.isArray(interests) || interests.length === 0 || !location || typeof location !== 'string' || location.trim().length === 0) {
+                console.log(`[internalDailyTechEventsFetcher] Skipping user ${uid}: missing eventInterests or eventLocation.`);
+                continue;
+            }
+            eligibleUids.push(uid);
+        }
+        console.log(`[internalDailyTechEventsFetcher] Found ${eligibleUids.length} eligible user(s) with configured preferences:`, eligibleUids);
+        if (eligibleUids.length === 0) {
+            return;
+        }
+        const nowUnix = moment().tz('Asia/Kolkata').unix();
+        for (let i = 0; i < eligibleUids.length; i++) {
+            const uid = eligibleUids[i];
+            const etaUnix = nowUnix + (i * 25); // Stagger by 25s for safe RPM rate limits
+            const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processTechEventsUserTask", "processTechEventsUserTask", { uid }, etaUnix);
+            // Fallback: If Cloud Tasks queue enqueue fails, process directly with safe delay
+            if (!taskId) {
+                console.warn(`[internalDailyTechEventsFetcher] Cloud Tasks queue unavailable for ${uid}. Running directly as fallback...`);
+                try {
+                    await fetchAndStoreEventsForUserInternal(uid, true);
+                }
+                catch (e) {
+                    console.error(`[internalDailyTechEventsFetcher] Error in fallback execution for ${uid}:`, e.message || e);
+                }
+                await new Promise((r) => setTimeout(r, 5000));
             }
         }
     }

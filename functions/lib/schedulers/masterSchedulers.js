@@ -21,9 +21,24 @@ exports.masterMinuteRunner = functions.pubsub.schedule('* * * * *')
     const nowKolkata = moment().tz('Asia/Kolkata');
     const hour = nowKolkata.hour();
     const minute = nowKolkata.minute();
-    await (0, dailyReminders_1.internalCheckDailyReminders)();
-    await (0, goldFunctions_1.internalCheckPendingGoldChitNotifications)();
-    await (0, recurringBills_1.internalCheckRecurringBillNotifications)();
+    try {
+        await (0, dailyReminders_1.internalCheckDailyReminders)();
+    }
+    catch (err) {
+        console.error("Error in internalCheckDailyReminders inside masterMinuteRunner:", err);
+    }
+    try {
+        await (0, goldFunctions_1.internalCheckPendingGoldChitNotifications)();
+    }
+    catch (err) {
+        console.error("Error in internalCheckPendingGoldChitNotifications inside masterMinuteRunner:", err);
+    }
+    try {
+        await (0, recurringBills_1.internalCheckRecurringBillNotifications)();
+    }
+    catch (err) {
+        console.error("Error in internalCheckRecurringBillNotifications inside masterMinuteRunner:", err);
+    }
     // 07:05 PM IST (19:05): Check & send interested Tech Events push notification for tomorrow (5 mins after 7 PM fetch)
     if (hour === 19 && minute === 5) {
         try {

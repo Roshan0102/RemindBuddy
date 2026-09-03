@@ -270,9 +270,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                           final ImagePicker picker = ImagePicker();
                           final XFile? img = await picker.pickImage(
                             source: ImageSource.gallery,
-                            maxWidth: 2048,
-                            maxHeight: 2048,
-                            imageQuality: 88,
+                            maxWidth: 1600,
+                            maxHeight: 1600,
+                            imageQuality: 82,
                           );
                           if (img != null) {
                             setDialogState(() {
@@ -352,7 +352,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
                           final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable(
                             'analyzeRosterImage',
-                            options: HttpsCallableOptions(timeout: const Duration(seconds: 120)),
+                            options: HttpsCallableOptions(timeout: const Duration(seconds: 180)),
                           );
                           final result = await callable.call(<String, dynamic>{
                             'image': base64Image,

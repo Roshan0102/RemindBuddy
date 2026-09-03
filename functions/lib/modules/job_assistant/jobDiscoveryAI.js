@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.triggerAutoJobDiscoveryAndApply = void 0;
+exports.triggerAutoJobDiscoveryAndApply = exports.processAutoApplyUserTask = void 0;
 exports.discoverAndApplyForUser = discoverAndApplyForUser;
 exports.internalAutoJobDiscoveryAndApply = internalAutoJobDiscoveryAndApply;
 const functions = require("firebase-functions");
@@ -10,6 +10,7 @@ const dns = require("dns");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
 const geminiHelper_1 = require("../../utils/geminiHelper");
+const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
 /**
  * Helper to validate email strings
  */
@@ -382,30 +383,81 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
 /**
  * Scheduled Master Runner: Runs twice daily at 10:00 AM & 10:00 PM IST
  */
+/**
+ * Cloud Tasks queue handler for isolated sequential Auto-Apply processing per user.
+ * maxConcurrentDispatches: 1 guarantees strictly 1 user at a time.
+ */
+exports.processAutoApplyUserTask = functions.runWith({ timeoutSeconds: 300, memory: "1GB" }).tasks
+    .taskQueue({
+    retryConfig: { maxAttempts: 2 },
+    rateLimits: { maxConcurrentDispatches: 1 },
+})
+    .onDispatch(async (rawPayload, context) => {
+    const payload = (rawPayload && typeof rawPayload === 'object' && rawPayload.data) ? rawPayload.data : rawPayload;
+    const uid = payload === null || payload === void 0 ? void 0 : payload.uid;
+    if (!uid) {
+        console.error("[processAutoApplyUserTask] Missing uid in payload:", rawPayload);
+        return;
+    }
+    console.log(`[processAutoApplyUserTask] Processing automated job discovery & apply for user ${uid}`);
+    try {
+        const result = await discoverAndApplyForUser(uid, { isManualTrigger: false });
+        console.log(`[processAutoApplyUserTask] Successfully finished auto-apply for user ${uid}:`, result);
+    }
+    catch (err) {
+        console.error(`[processAutoApplyUserTask] Error in auto-apply for user ${uid}:`, err.message || err);
+        throw err;
+    }
+});
+/**
+ * Twice-Daily Automated Job Discovery & Auto-Apply Dispatcher (10 AM & 10 PM IST)
+ */
 async function internalAutoJobDiscoveryAndApply() {
-    var _a, _b;
-    console.log("[internalAutoJobDiscoveryAndApply] Starting twice-daily automated job discovery & apply cycle...");
+    var _a, _b, _c;
+    console.log("[internalAutoJobDiscoveryAndApply] Starting twice-daily automated job discovery & apply dispatcher (10 AM & 10 PM IST)...");
     try {
         const usersSnap = await firebase_1.db.collection("users").get();
+        const eligibleUids = [];
         for (const doc of usersSnap.docs) {
             const uid = doc.id;
             const data = doc.data() || {};
             const enabledModules = data.enabledModules || [];
-            // Check if job_assistant is enabled for this user and autoApply is not explicitly disabled
-            if (enabledModules.includes("job_assistant") || ((_a = data.autoApplySettings) === null || _a === void 0 ? void 0 : _a.enabled) === true) {
-                if (((_b = data.autoApplySettings) === null || _b === void 0 ? void 0 : _b.enabled) === false) {
-                    console.log(`[internalAutoJobDiscoveryAndApply] User ${uid} disabled autoApply. Skipping.`);
-                    continue;
-                }
+            // 1. Must have job_assistant enabled and autoApply not disabled
+            const isModuleEnabled = enabledModules.includes("job_assistant") || ((_a = data.autoApplySettings) === null || _a === void 0 ? void 0 : _a.enabled) === true;
+            if (!isModuleEnabled || ((_b = data.autoApplySettings) === null || _b === void 0 ? void 0 : _b.enabled) === false) {
+                console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: job_assistant not enabled or autoApply disabled.`);
+                continue;
+            }
+            // 2. Must have uploaded a Master Resume
+            const resumeDoc = await firebase_1.db.collection("users").doc(uid).collection("job_profiles").doc("master_resume").get();
+            const resumeBase64 = (_c = resumeDoc.data()) === null || _c === void 0 ? void 0 : _c.base64Data;
+            if (!resumeBase64) {
+                console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: Master Resume PDF not uploaded.`);
+                continue;
+            }
+            eligibleUids.push(uid);
+        }
+        console.log(`[internalAutoJobDiscoveryAndApply] Found ${eligibleUids.length} eligible user(s) with configured resumes:`, eligibleUids);
+        if (eligibleUids.length === 0) {
+            return;
+        }
+        const nowUnix = moment().tz('Asia/Kolkata').unix();
+        for (let i = 0; i < eligibleUids.length; i++) {
+            const uid = eligibleUids[i];
+            const etaUnix = nowUnix + (i * 30); // Stagger by 30s for safe AI + email throughput
+            const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processAutoApplyUserTask", "processAutoApplyUserTask", { uid }, etaUnix);
+            // Fallback: If Cloud Tasks queue enqueue fails, process directly with safe delay
+            if (!taskId) {
+                console.warn(`[internalAutoJobDiscoveryAndApply] Cloud Tasks queue unavailable for ${uid}. Running directly as fallback...`);
                 try {
                     await discoverAndApplyForUser(uid, { isManualTrigger: false });
                 }
-                catch (userErr) {
-                    console.error(`[internalAutoJobDiscoveryAndApply] Error processing user ${uid}:`, userErr);
+                catch (e) {
+                    console.error(`[internalAutoJobDiscoveryAndApply] Error in fallback execution for ${uid}:`, e.message || e);
                 }
+                await new Promise((r) => setTimeout(r, 5000));
             }
         }
-        console.log("[internalAutoJobDiscoveryAndApply] Completed automated job discovery & apply cycle.");
     }
     catch (err) {
         console.error("[internalAutoJobDiscoveryAndApply] Error in scheduled job runner:", err);

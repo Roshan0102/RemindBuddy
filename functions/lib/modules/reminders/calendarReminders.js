@@ -13,13 +13,25 @@ exports.processCalendarReminderTask = functions.tasks
     retryConfig: { maxAttempts: 3 },
     rateLimits: { maxConcurrentDispatches: 10 },
 })
-    .onDispatch(async (data) => {
-    const { uid, reminderId, title, body } = data;
+    .onDispatch(async (rawPayload, context) => {
+    var _a;
+    const payload = (rawPayload && typeof rawPayload === 'object' && rawPayload.data) ? rawPayload.data : rawPayload;
+    const uid = payload === null || payload === void 0 ? void 0 : payload.uid;
+    const reminderId = payload === null || payload === void 0 ? void 0 : payload.reminderId;
+    const title = payload === null || payload === void 0 ? void 0 : payload.title;
+    const body = payload === null || payload === void 0 ? void 0 : payload.body;
+    console.log(`[processCalendarReminderTask] Executing task for reminder ${reminderId} (user: ${uid})`);
     try {
+        if (!uid || !reminderId) {
+            console.error("[processCalendarReminderTask] Missing uid or reminderId in payload:", rawPayload);
+            return;
+        }
         const reminderRef = firebase_1.db.collection("users").doc(uid).collection("calendar_reminders").doc(reminderId);
         const reminderDoc = await reminderRef.get();
-        if (!reminderDoc.exists)
+        if (!reminderDoc.exists) {
+            console.warn(`[processCalendarReminderTask] Reminder ${reminderId} does not exist for user ${uid}.`);
             return;
+        }
         const userProfileDoc = await firebase_1.db.collection("users").doc(uid).get();
         let isEnabled = true;
         if (userProfileDoc.exists) {
@@ -33,32 +45,40 @@ exports.processCalendarReminderTask = functions.tasks
         const rData = reminderDoc.data();
         const snoozeEnabled = rData ? rData.snoozeEnabled === true : false;
         if (isEnabled) {
+            let token = "";
             const userDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
             if (!userDoc.empty) {
-                const token = userDoc.docs[0].data().fcmToken;
-                if (token) {
-                    const message = {
-                        token,
-                        notification: { title, body },
-                        android: {
-                            notification: {
-                                channelId: "calendar_reminder_channel",
-                                tag: `calendar_reminder_${reminderId}`
-                            }
-                        },
-                        data: {
-                            type: "CALENDAR_REMINDER",
-                            reminderId: reminderId,
-                            snoozeEnabled: snoozeEnabled ? "true" : "false",
-                            snoozeIntervalMinutes: String((rData === null || rData === void 0 ? void 0 : rData.snoozeIntervalMinutes) || 15),
-                            maxSnoozeCount: String((rData === null || rData === void 0 ? void 0 : rData.maxSnoozeCount) || 3),
-                            currentSnoozeCount: String((rData === null || rData === void 0 ? void 0 : rData.currentSnoozeCount) || 0),
-                            uid: uid
+                token = userDoc.docs[0].data().fcmToken;
+            }
+            if (!token && userProfileDoc.exists) {
+                token = (_a = userProfileDoc.data()) === null || _a === void 0 ? void 0 : _a.fcmToken;
+            }
+            if (token) {
+                const message = {
+                    token,
+                    notification: { title, body },
+                    android: {
+                        notification: {
+                            channelId: "calendar_reminder_channel",
+                            tag: `calendar_reminder_${reminderId}`
                         }
-                    };
-                    await firebase_1.admin.messaging().send(message);
-                    await (0, logger_1.logNotification)(uid, title, body, "CALENDAR_REMINDER");
-                }
+                    },
+                    data: {
+                        type: "CALENDAR_REMINDER",
+                        reminderId: reminderId,
+                        snoozeEnabled: snoozeEnabled ? "true" : "false",
+                        snoozeIntervalMinutes: String((rData === null || rData === void 0 ? void 0 : rData.snoozeIntervalMinutes) || 15),
+                        maxSnoozeCount: String((rData === null || rData === void 0 ? void 0 : rData.maxSnoozeCount) || 3),
+                        currentSnoozeCount: String((rData === null || rData === void 0 ? void 0 : rData.currentSnoozeCount) || 0),
+                        uid: uid
+                    }
+                };
+                await firebase_1.admin.messaging().send(message);
+                await (0, logger_1.logNotification)(uid, title, body, "CALENDAR_REMINDER");
+                console.log(`[processCalendarReminderTask] Successfully sent notification to user ${uid} for reminder ${reminderId}`);
+            }
+            else {
+                console.warn(`[processCalendarReminderTask] No FCM token found for user ${uid}, cannot send push notification.`);
             }
         }
         else {
@@ -186,9 +206,16 @@ exports.autoSnoozeReminderCheckTask = functions.tasks
     retryConfig: { maxAttempts: 3 },
     rateLimits: { maxConcurrentDispatches: 10 },
 })
-    .onDispatch(async (data) => {
-    const { uid, reminderId } = data;
+    .onDispatch(async (rawPayload, context) => {
+    const payload = (rawPayload && typeof rawPayload === 'object' && rawPayload.data) ? rawPayload.data : rawPayload;
+    const uid = payload === null || payload === void 0 ? void 0 : payload.uid;
+    const reminderId = payload === null || payload === void 0 ? void 0 : payload.reminderId;
+    console.log(`[autoSnoozeReminderCheckTask] Running auto-snooze check for reminder ${reminderId} (user: ${uid})`);
     try {
+        if (!uid || !reminderId) {
+            console.error("[autoSnoozeReminderCheckTask] Missing uid or reminderId in payload:", rawPayload);
+            return;
+        }
         const reminderRef = firebase_1.db.collection("users").doc(uid).collection("calendar_reminders").doc(reminderId);
         const reminderDoc = await reminderRef.get();
         if (!reminderDoc.exists)

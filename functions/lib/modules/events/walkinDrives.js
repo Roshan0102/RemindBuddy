@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fetchUserWalkInsTrigger = exports.fetchUserWalkInDrives = exports.fetchUserWalkIns = void 0;
+exports.fetchUserWalkInsTrigger = exports.processWalkInUserTask = exports.fetchUserWalkInDrives = exports.fetchUserWalkIns = void 0;
 exports.fetchAndStoreWalkInsForUserInternal = fetchAndStoreWalkInsForUserInternal;
 exports.internalDailyWalkInsFetcher = internalDailyWalkInsFetcher;
 exports.internalCheckInterestedWalkinsNotifications = internalCheckInterestedWalkinsNotifications;
@@ -9,6 +9,7 @@ const moment = require("moment-timezone");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
 const geminiHelper_1 = require("../../utils/geminiHelper");
+const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
 async function fetchAndStoreWalkInsForUserInternal(uid, triggerNotification) {
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     let roles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"];
@@ -183,20 +184,74 @@ exports.fetchUserWalkIns = functions.runWith({ timeoutSeconds: 120, memory: "256
     }
 });
 exports.fetchUserWalkInDrives = exports.fetchUserWalkIns;
+/**
+ * Cloud Tasks queue handler for isolated sequential Walk-In Drives processing per user.
+ * maxConcurrentDispatches: 1 guarantees strictly 1 user at a time.
+ */
+exports.processWalkInUserTask = functions.runWith({ timeoutSeconds: 300, memory: "512MB" }).tasks
+    .taskQueue({
+    retryConfig: { maxAttempts: 2 },
+    rateLimits: { maxConcurrentDispatches: 1 },
+})
+    .onDispatch(async (rawPayload, context) => {
+    const payload = (rawPayload && typeof rawPayload === 'object' && rawPayload.data) ? rawPayload.data : rawPayload;
+    const uid = payload === null || payload === void 0 ? void 0 : payload.uid;
+    if (!uid) {
+        console.error("[processWalkInUserTask] Missing uid in payload:", rawPayload);
+        return;
+    }
+    console.log(`[processWalkInUserTask] Processing Walk-In Drives for user ${uid}`);
+    try {
+        const res = await fetchAndStoreWalkInsForUserInternal(uid, true);
+        console.log(`[processWalkInUserTask] Completed Walk-In Drives fetch for user ${uid}:`, res);
+    }
+    catch (err) {
+        console.error(`[processWalkInUserTask] Error fetching walk-in drives for user ${uid}:`, err.message || err);
+        throw err;
+    }
+});
 async function internalDailyWalkInsFetcher() {
-    console.log("Starting dailyWalkInsFetcher at 8 PM IST");
+    console.log("[internalDailyWalkInsFetcher] Starting daily Walk-In Drives dispatcher at 8 PM IST");
     try {
         const usersSnap = await firebase_1.db.collection("users").get();
-        console.log(`[internalDailyWalkInsFetcher] Found ${usersSnap.size} user documents.`);
+        const eligibleUids = [];
         for (const userDoc of usersSnap.docs) {
             const uid = userDoc.id;
-            console.log(`Processing walk-in drives fetch for user: ${uid}`);
-            try {
-                const res = await fetchAndStoreWalkInsForUserInternal(uid, true);
-                console.log(`Walk-in drives fetch completed for user ${uid}:`, res);
+            const uData = userDoc.data() || {};
+            const enabledModules = uData.enabledModules || [];
+            // 1. Must have module enabled
+            if (!enabledModules.includes("walkin")) {
+                console.log(`[internalDailyWalkInsFetcher] Skipping user ${uid}: 'walkin' module not enabled.`);
+                continue;
             }
-            catch (err) {
-                console.error(`Error fetching walk-in drives for user ${uid}:`, err.message || err);
+            // 2. Must have valid preferences (roles and location) entered
+            const roles = uData.walkinRoles;
+            const location = uData.walkinLocation;
+            if (!Array.isArray(roles) || roles.length === 0 || !location || typeof location !== 'string' || location.trim().length === 0) {
+                console.log(`[internalDailyWalkInsFetcher] Skipping user ${uid}: missing walkinRoles or walkinLocation.`);
+                continue;
+            }
+            eligibleUids.push(uid);
+        }
+        console.log(`[internalDailyWalkInsFetcher] Found ${eligibleUids.length} eligible user(s) with configured preferences:`, eligibleUids);
+        if (eligibleUids.length === 0) {
+            return;
+        }
+        const nowUnix = moment().tz('Asia/Kolkata').unix();
+        for (let i = 0; i < eligibleUids.length; i++) {
+            const uid = eligibleUids[i];
+            const etaUnix = nowUnix + (i * 25); // Stagger by 25s for safe RPM rate limits
+            const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processWalkInUserTask", "processWalkInUserTask", { uid }, etaUnix);
+            // Fallback: If Cloud Tasks queue enqueue fails, process directly with safe delay
+            if (!taskId) {
+                console.warn(`[internalDailyWalkInsFetcher] Cloud Tasks queue unavailable for ${uid}. Running directly as fallback...`);
+                try {
+                    await fetchAndStoreWalkInsForUserInternal(uid, true);
+                }
+                catch (e) {
+                    console.error(`[internalDailyWalkInsFetcher] Error in fallback execution for ${uid}:`, e.message || e);
+                }
+                await new Promise((r) => setTimeout(r, 5000));
             }
         }
     }

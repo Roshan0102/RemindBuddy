@@ -11,12 +11,27 @@ export const processCalendarReminderTask = functions.tasks
         retryConfig: { maxAttempts: 3 },
         rateLimits: { maxConcurrentDispatches: 10 },
     })
-    .onDispatch(async (data) => {
-        const { uid, reminderId, title, body } = data;
+    .onDispatch(async (rawPayload: any, context?: any) => {
+        const payload = (rawPayload && typeof rawPayload === 'object' && rawPayload.data) ? rawPayload.data : rawPayload;
+        const uid = payload?.uid;
+        const reminderId = payload?.reminderId;
+        const title = payload?.title;
+        const body = payload?.body;
+
+        console.log(`[processCalendarReminderTask] Executing task for reminder ${reminderId} (user: ${uid})`);
+
         try {
+            if (!uid || !reminderId) {
+                console.error("[processCalendarReminderTask] Missing uid or reminderId in payload:", rawPayload);
+                return;
+            }
+
             const reminderRef = db.collection("users").doc(uid).collection("calendar_reminders").doc(reminderId);
             const reminderDoc = await reminderRef.get();
-            if (!reminderDoc.exists) return;
+            if (!reminderDoc.exists) {
+                console.warn(`[processCalendarReminderTask] Reminder ${reminderId} does not exist for user ${uid}.`);
+                return;
+            }
 
             const userProfileDoc = await db.collection("users").doc(uid).get();
             let isEnabled = true;
@@ -33,33 +48,41 @@ export const processCalendarReminderTask = functions.tasks
             const snoozeEnabled = rData ? rData.snoozeEnabled === true : false;
 
             if (isEnabled) {
+                let token = "";
                 const userDoc = await db.collection("usernames").where("uid", "==", uid).limit(1).get();
                 if (!userDoc.empty) {
-                    const token = userDoc.docs[0].data().fcmToken;
-                    if (token) {
-                        const message: any = {
-                            token,
-                            notification: { title, body },
-                            android: { 
-                                notification: { 
-                                    channelId: "calendar_reminder_channel",
-                                    tag: `calendar_reminder_${reminderId}`
-                                } 
-                            },
-                            data: { 
-                                type: "CALENDAR_REMINDER", 
-                                reminderId: reminderId,
-                                snoozeEnabled: snoozeEnabled ? "true" : "false",
-                                snoozeIntervalMinutes: String(rData?.snoozeIntervalMinutes || 15),
-                                maxSnoozeCount: String(rData?.maxSnoozeCount || 3),
-                                currentSnoozeCount: String(rData?.currentSnoozeCount || 0),
-                                uid: uid
-                            }
-                        };
+                    token = userDoc.docs[0].data().fcmToken;
+                }
+                if (!token && userProfileDoc.exists) {
+                    token = userProfileDoc.data()?.fcmToken;
+                }
 
-                        await admin.messaging().send(message);
-                        await logNotification(uid, title, body, "CALENDAR_REMINDER");
-                    }
+                if (token) {
+                    const message: any = {
+                        token,
+                        notification: { title, body },
+                        android: { 
+                            notification: { 
+                                channelId: "calendar_reminder_channel",
+                                tag: `calendar_reminder_${reminderId}`
+                            } 
+                        },
+                        data: { 
+                            type: "CALENDAR_REMINDER", 
+                            reminderId: reminderId,
+                            snoozeEnabled: snoozeEnabled ? "true" : "false",
+                            snoozeIntervalMinutes: String(rData?.snoozeIntervalMinutes || 15),
+                            maxSnoozeCount: String(rData?.maxSnoozeCount || 3),
+                            currentSnoozeCount: String(rData?.currentSnoozeCount || 0),
+                            uid: uid
+                        }
+                    };
+
+                    await admin.messaging().send(message);
+                    await logNotification(uid, title, body, "CALENDAR_REMINDER");
+                    console.log(`[processCalendarReminderTask] Successfully sent notification to user ${uid} for reminder ${reminderId}`);
+                } else {
+                    console.warn(`[processCalendarReminderTask] No FCM token found for user ${uid}, cannot send push notification.`);
                 }
             } else {
                 console.log(`Skipping notification for calendar reminder ${reminderId} (user ${uid}): disabled.`);
@@ -191,9 +214,16 @@ export const autoSnoozeReminderCheckTask = functions.tasks
         retryConfig: { maxAttempts: 3 },
         rateLimits: { maxConcurrentDispatches: 10 },
     })
-    .onDispatch(async (data) => {
-        const { uid, reminderId } = data;
+    .onDispatch(async (rawPayload: any, context?: any) => {
+        const payload = (rawPayload && typeof rawPayload === 'object' && rawPayload.data) ? rawPayload.data : rawPayload;
+        const uid = payload?.uid;
+        const reminderId = payload?.reminderId;
+        console.log(`[autoSnoozeReminderCheckTask] Running auto-snooze check for reminder ${reminderId} (user: ${uid})`);
         try {
+            if (!uid || !reminderId) {
+                console.error("[autoSnoozeReminderCheckTask] Missing uid or reminderId in payload:", rawPayload);
+                return;
+            }
             const reminderRef = db.collection("users").doc(uid).collection("calendar_reminders").doc(reminderId);
             const reminderDoc = await reminderRef.get();
             if (!reminderDoc.exists) return;

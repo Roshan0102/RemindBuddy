@@ -332,7 +332,6 @@ export async function internalCheckPendingGoldChitNotifications() {
     const now = admin.firestore.Timestamp.now();
     const pendingSnap = await db.collection('pending_gold_chit_notifications')
         .where('status', '==', 'pending')
-        .where('sendAt', '<=', now)
         .get();
 
     if (pendingSnap.empty) {
@@ -341,6 +340,11 @@ export async function internalCheckPendingGoldChitNotifications() {
 
     for (const doc of pendingSnap.docs) {
         const data = doc.data();
+        if (data.sendAt && typeof data.sendAt.toMillis === 'function') {
+            if (data.sendAt.toMillis() > now.toMillis()) {
+                continue;
+            }
+        }
         const { planId, monthKey, updatedBy } = data;
 
         try {

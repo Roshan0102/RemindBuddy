@@ -303,13 +303,17 @@ async function internalCheckPendingGoldChitNotifications() {
     const now = firebase_1.admin.firestore.Timestamp.now();
     const pendingSnap = await firebase_1.db.collection('pending_gold_chit_notifications')
         .where('status', '==', 'pending')
-        .where('sendAt', '<=', now)
         .get();
     if (pendingSnap.empty) {
         return;
     }
     for (const doc of pendingSnap.docs) {
         const data = doc.data();
+        if (data.sendAt && typeof data.sendAt.toMillis === 'function') {
+            if (data.sendAt.toMillis() > now.toMillis()) {
+                continue;
+            }
+        }
         const { planId, monthKey, updatedBy } = data;
         try {
             // Get plan details

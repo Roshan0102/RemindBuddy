@@ -52,13 +52,15 @@ export {
 // Tech Events & Walk-ins
 export {
     fetchUserTechEvents,
-    fetchUserTechEventsTrigger
+    fetchUserTechEventsTrigger,
+    processTechEventsUserTask
 } from "./modules/events/techEvents";
 
 export {
     fetchUserWalkIns,
     fetchUserWalkInDrives,
-    fetchUserWalkInsTrigger
+    fetchUserWalkInsTrigger,
+    processWalkInUserTask
 } from "./modules/events/walkinDrives";
 
 // Voice Assistant
@@ -81,7 +83,8 @@ export {
 } from "./modules/job_assistant/emailSender";
 
 export {
-    triggerAutoJobDiscoveryAndApply
+    triggerAutoJobDiscoveryAndApply,
+    processAutoApplyUserTask
 } from "./modules/job_assistant/jobDiscoveryAI";
 
 // Consolidated Master Schedulers

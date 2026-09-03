@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.analyzeRosterImage = void 0;
 const functions = require("firebase-functions");
 const geminiHelper_1 = require("../../utils/geminiHelper");
-exports.analyzeRosterImage = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
+exports.analyzeRosterImage = functions.runWith({ timeoutSeconds: 180, memory: "1GB" }).https.onCall(async (data, context) => {
     // Ensure user is authenticated
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
@@ -92,7 +92,10 @@ Return ONLY the JSON object matching the requested schema with all days in "shif
         }
     };
     try {
-        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 90000 });
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, {
+            timeout: 35000,
+            models: ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-latest"]
+        });
         const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new functions.https.HttpsError('internal', 'Empty content returned from Gemini API.');

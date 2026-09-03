@@ -4,7 +4,7 @@
  * Modularized Architecture
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.masterHalfHourlyRunner = exports.masterMinuteRunner = exports.triggerAutoJobDiscoveryAndApply = exports.sendJobApplicationEmail = exports.refineCoverLetterWithAI = exports.generateManualJobApplicationWithAI = exports.parseJobPostersWithAI = exports.voiceAssistantQuery = exports.fetchUserWalkInsTrigger = exports.fetchUserWalkInDrives = exports.fetchUserWalkIns = exports.fetchUserTechEventsTrigger = exports.fetchUserTechEvents = exports.getGcpMonthlyCost = exports.adminUpdateAllowedCollaborators = exports.adminUpdateUserModules = exports.adminDeleteUser = exports.adminChangePassword = exports.adminCreateUser = exports.analyzeRosterImage = exports.onInstallmentUpdated = exports.onGoldPriceCreated = exports.forceGoldFetch = exports.checkGoldSources = exports.generateGoldChitAdvice = exports.generateGoldAIInsights = exports.onCollaborationRequestUpdated = exports.onCollaborationRequestCreated = exports.onCalendarReminderCreated = exports.onCalendarReminderUpdated = exports.onCalendarReminderDeleted = exports.autoSnoozeReminderCheckTask = exports.processCalendarReminderTask = void 0;
+exports.masterHalfHourlyRunner = exports.masterMinuteRunner = exports.processAutoApplyUserTask = exports.triggerAutoJobDiscoveryAndApply = exports.sendJobApplicationEmail = exports.refineCoverLetterWithAI = exports.generateManualJobApplicationWithAI = exports.parseJobPostersWithAI = exports.voiceAssistantQuery = exports.processWalkInUserTask = exports.fetchUserWalkInsTrigger = exports.fetchUserWalkInDrives = exports.fetchUserWalkIns = exports.processTechEventsUserTask = exports.fetchUserTechEventsTrigger = exports.fetchUserTechEvents = exports.getGcpMonthlyCost = exports.adminUpdateAllowedCollaborators = exports.adminUpdateUserModules = exports.adminDeleteUser = exports.adminChangePassword = exports.adminCreateUser = exports.analyzeRosterImage = exports.onInstallmentUpdated = exports.onGoldPriceCreated = exports.forceGoldFetch = exports.checkGoldSources = exports.generateGoldChitAdvice = exports.generateGoldAIInsights = exports.onCollaborationRequestUpdated = exports.onCollaborationRequestCreated = exports.onCalendarReminderCreated = exports.onCalendarReminderUpdated = exports.onCalendarReminderDeleted = exports.autoSnoozeReminderCheckTask = exports.processCalendarReminderTask = void 0;
 // Reminders & Tasks
 var calendarReminders_1 = require("./modules/reminders/calendarReminders");
 Object.defineProperty(exports, "processCalendarReminderTask", { enumerable: true, get: function () { return calendarReminders_1.processCalendarReminderTask; } });
@@ -41,10 +41,12 @@ Object.defineProperty(exports, "getGcpMonthlyCost", { enumerable: true, get: fun
 var techEvents_1 = require("./modules/events/techEvents");
 Object.defineProperty(exports, "fetchUserTechEvents", { enumerable: true, get: function () { return techEvents_1.fetchUserTechEvents; } });
 Object.defineProperty(exports, "fetchUserTechEventsTrigger", { enumerable: true, get: function () { return techEvents_1.fetchUserTechEventsTrigger; } });
+Object.defineProperty(exports, "processTechEventsUserTask", { enumerable: true, get: function () { return techEvents_1.processTechEventsUserTask; } });
 var walkinDrives_1 = require("./modules/events/walkinDrives");
 Object.defineProperty(exports, "fetchUserWalkIns", { enumerable: true, get: function () { return walkinDrives_1.fetchUserWalkIns; } });
 Object.defineProperty(exports, "fetchUserWalkInDrives", { enumerable: true, get: function () { return walkinDrives_1.fetchUserWalkInDrives; } });
 Object.defineProperty(exports, "fetchUserWalkInsTrigger", { enumerable: true, get: function () { return walkinDrives_1.fetchUserWalkInsTrigger; } });
+Object.defineProperty(exports, "processWalkInUserTask", { enumerable: true, get: function () { return walkinDrives_1.processWalkInUserTask; } });
 // Voice Assistant
 var voiceAssistant_1 = require("./modules/voice/voiceAssistant");
 Object.defineProperty(exports, "voiceAssistantQuery", { enumerable: true, get: function () { return voiceAssistant_1.voiceAssistantQuery; } });
@@ -58,6 +60,7 @@ var emailSender_1 = require("./modules/job_assistant/emailSender");
 Object.defineProperty(exports, "sendJobApplicationEmail", { enumerable: true, get: function () { return emailSender_1.sendJobApplicationEmail; } });
 var jobDiscoveryAI_1 = require("./modules/job_assistant/jobDiscoveryAI");
 Object.defineProperty(exports, "triggerAutoJobDiscoveryAndApply", { enumerable: true, get: function () { return jobDiscoveryAI_1.triggerAutoJobDiscoveryAndApply; } });
+Object.defineProperty(exports, "processAutoApplyUserTask", { enumerable: true, get: function () { return jobDiscoveryAI_1.processAutoApplyUserTask; } });
 // Consolidated Master Schedulers
 var masterSchedulers_1 = require("./schedulers/masterSchedulers");
 Object.defineProperty(exports, "masterMinuteRunner", { enumerable: true, get: function () { return masterSchedulers_1.masterMinuteRunner; } });
