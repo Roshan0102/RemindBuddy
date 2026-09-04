@@ -1,4 +1,5 @@
 import * as functions from "firebase-functions";
+import { db } from "../../config/firebase";
 import { callGeminiAPI } from "../../utils/geminiHelper";
 
 export const generateManualJobApplicationWithAI = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
@@ -7,6 +8,17 @@ export const generateManualJobApplicationWithAI = functions.runWith({ timeoutSec
     }
 
     try {
+        const uid = context.auth.uid;
+        let userGeminiKey = "";
+        try {
+            const userDoc = await db.collection("users").doc(uid).get();
+            if (userDoc.exists) {
+                const uData = userDoc.data() || {};
+                userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();
+            }
+        } catch (e: any) {
+            console.warn("[CoverLetterAI] Could not fetch userGeminiKey:", e.message);
+        }
         const { companyName, jobTitle, companyUrl, recipientEmails, companyNotes, customPrompt, resumeBase64, applicantName } = data;
         if (!companyName || !jobTitle) {
             throw new functions.https.HttpsError('invalid-argument', 'Company name and Job title are required.');
@@ -72,7 +84,7 @@ Respond ONLY with a JSON object in this format:
             }
         };
 
-        const geminiResult = await callGeminiAPI(payload, { timeout: 90000 });
+        const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 90000 });
         const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new Error('Empty response from Gemini API.');
@@ -122,6 +134,18 @@ export const refineCoverLetterWithAI = functions.runWith({ timeoutSeconds: 60, m
     }
 
     try {
+        const uid = context.auth.uid;
+        let userGeminiKey = "";
+        try {
+            const userDoc = await db.collection("users").doc(uid).get();
+            if (userDoc.exists) {
+                const uData = userDoc.data() || {};
+                userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();
+            }
+        } catch (e: any) {
+            console.warn("[CoverLetterAI] Could not fetch userGeminiKey:", e.message);
+        }
+
         const promptName = applicantName || "Roshan J";
         const prompt = `You are an expert executive career advisor and professional writer.
 Candidate's Full Name: "${promptName}".
@@ -167,7 +191,7 @@ Respond ONLY with a JSON object in this format:
             generationConfig: { responseMimeType: "application/json" }
         };
 
-        const geminiResult = await callGeminiAPI(payload, { timeout: 60000 });
+        const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 60000 });
         const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new Error('Empty response from Gemini API.');

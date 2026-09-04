@@ -20,9 +20,7 @@ class _AdminScreenState extends State<AdminScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _geminiApiKeyController = TextEditingController();
-  final _geminiSecondaryApiKeyController = TextEditingController();
   bool _obscurePrimaryGemini = true;
-  bool _obscureSecondaryGemini = true;
   final _adminUserUsernameController = TextEditingController();
   final _adminUserPasswordController = TextEditingController();
   final _latestStableVersionController = TextEditingController();
@@ -72,7 +70,6 @@ class _AdminScreenState extends State<AdminScreen> {
     _usernameController.dispose();
     _passwordController.dispose();
     _geminiApiKeyController.dispose();
-    _geminiSecondaryApiKeyController.dispose();
     _adminUserUsernameController.dispose();
     _adminUserPasswordController.dispose();
     _latestStableVersionController.dispose();
@@ -148,7 +145,6 @@ class _AdminScreenState extends State<AdminScreen> {
       _usernameController.clear();
       _passwordController.clear();
       _geminiApiKeyController.clear();
-      _geminiSecondaryApiKeyController.clear();
     });
   }
 
@@ -161,12 +157,6 @@ class _AdminScreenState extends State<AdminScreen> {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         _geminiApiKeyController.text = data['apiKey'] ?? '';
-        final backupKeys = data['backupApiKeys'];
-        if (backupKeys is List && backupKeys.isNotEmpty) {
-          _geminiSecondaryApiKeyController.text = backupKeys.first?.toString() ?? '';
-        } else {
-          _geminiSecondaryApiKeyController.text = data['secondaryApiKey'] ?? '';
-        }
       }
     } catch (e) {
       debugPrint('Error fetching Gemini API key: $e');
@@ -232,24 +222,8 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
-  void _swapGeminiApiKeys() {
-    final temp = _geminiApiKeyController.text;
-    setState(() {
-      _geminiApiKeyController.text = _geminiSecondaryApiKeyController.text;
-      _geminiSecondaryApiKeyController.text = temp;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Swapped Primary ⇄ Secondary Keys. Tap "Save Keys" to commit changes.'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
   Future<void> _updateGeminiApiKey() async {
     final primaryKey = _geminiApiKeyController.text.trim();
-    final secondaryKey = _geminiSecondaryApiKeyController.text.trim();
-    final List<String> backupList = secondaryKey.isNotEmpty ? [secondaryKey] : [];
 
     setState(() => _isLoading = true);
 
@@ -259,13 +233,11 @@ class _AdminScreenState extends State<AdminScreen> {
           .doc('gemini_config')
           .set({
         'apiKey': primaryKey,
-        'secondaryApiKey': secondaryKey,
-        'backupApiKeys': backupList,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       setState(() {
-        _geminiApiKeySuccessMessage = 'Gemini API Keys updated successfully!';
+        _geminiApiKeySuccessMessage = 'Admin Gemini API Key updated successfully!';
         _isLoading = false;
       });
 
@@ -277,12 +249,10 @@ class _AdminScreenState extends State<AdminScreen> {
         }
       });
     } catch (e) {
-      setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update Gemini API Key: $e')),
-        );
-      }
+      setState(() {
+        _geminiApiKeySuccessMessage = 'Error updating key: $e';
+        _isLoading = false;
+      });
     }
   }
 
@@ -838,62 +808,34 @@ $firebaseApkUrl
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
+                  const Row(
                     children: [
-                      const Text(
-                        '🤖 Gemini AI Multi-Key Pool',
+                      Text(
+                        '🤖 Central Gemini API Key',
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      const Spacer(),
-                      OutlinedButton.icon(
-                        onPressed: _swapGeminiApiKeys,
-                        icon: const Icon(Icons.swap_vert_rounded, size: 16),
-                        label: const Text('Swap Keys ⇄', style: TextStyle(fontSize: 12)),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          visualDensity: VisualDensity.compact,
-                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Configure Primary & Backup API keys from Google AI Studio. Cloud Functions automatically rotate keys and fallback models upon rate limits.',
+                    'Used centrally by Cloud Functions for Gold Market Forecast & Voice Assistant AI. Model fallback cascade: Gemini 3.7 Flash ➔ Gemini 3.6 Flash ➔ Gemini 3.5 Flash.',
                     style: TextStyle(color: Colors.grey, fontSize: 12.5),
                   ),
                   const SizedBox(height: 14),
 
-                  // Primary API Key
+                  // Gemini API Key
                   TextField(
                     controller: _geminiApiKeyController,
                     obscureText: _obscurePrimaryGemini,
                     decoration: InputDecoration(
-                      labelText: 'Primary Gemini API Key (Key 1)',
+                      labelText: 'Admin Gemini API Key',
+                      hintText: 'AIzaSy...',
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.vpn_key_rounded, color: Colors.blueAccent),
                       suffixIcon: IconButton(
                         icon: Icon(_obscurePrimaryGemini ? Icons.visibility_off : Icons.visibility),
                         onPressed: () {
                           setState(() => _obscurePrimaryGemini = !_obscurePrimaryGemini);
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Secondary (Backup) API Key
-                  TextField(
-                    controller: _geminiSecondaryApiKeyController,
-                    obscureText: _obscureSecondaryGemini,
-                    decoration: InputDecoration(
-                      labelText: 'Secondary / Backup Gemini API Key (Key 2)',
-                      hintText: 'e.g. Jio Account / 2nd Account API Key',
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.key_rounded, color: Colors.green),
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscureSecondaryGemini ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () {
-                          setState(() => _obscureSecondaryGemini = !_obscureSecondaryGemini);
                         },
                       ),
                     ),
@@ -915,7 +857,7 @@ $firebaseApkUrl
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Cascade Flow: Gemini 2.5 Flash (Key 1 → Key 2) ➔ Gemini 1.5 Flash (Key 1 → Key 2) ➔ Gemini 2.0 Flash ➔ Gemini 1.5 Pro. Preserves top model intelligence without failures.',
+                            'Active Model: Gemini 3.7 Flash with automatic fallback to Gemini 3.6 Flash & 3.5 Flash. Heavy search modules (Jobs, Tech Events, Walk-Ins) use each user\'s personal BYOK keys.',
                             style: TextStyle(fontSize: 11.5, color: Colors.blueAccent, height: 1.3),
                           ),
                         ),
@@ -927,7 +869,7 @@ $firebaseApkUrl
                   ElevatedButton.icon(
                     onPressed: _updateGeminiApiKey,
                     icon: const Icon(Icons.save_rounded),
-                    label: const Text('Save Both Keys', style: TextStyle(fontWeight: FontWeight.bold)),
+                    label: const Text('Save Gemini API Key', style: TextStyle(fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),

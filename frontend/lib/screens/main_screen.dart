@@ -94,11 +94,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _loadPreferences();
       _listenToUserPreferences();
       HomeWidgetService().syncAllWidgets();
+      if (user != null) {
+        HomeWidgetService().startFinanceWidgetLiveSync();
+      } else {
+        HomeWidgetService().stopFinanceWidgetLiveSync();
+      }
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    HomeWidgetService().syncFinanceWidget();
     if (state == AppLifecycleState.resumed ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
@@ -385,6 +391,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    HomeWidgetService().stopFinanceWidgetLiveSync();
     _notificationSubscription?.cancel();
     _authSubscription?.cancel();
     _userPrefsSubscription?.cancel();

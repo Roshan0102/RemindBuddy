@@ -28,7 +28,7 @@ class SmsTransaction {
     required this.payee,
     required this.timestamp,
     this.isVerified = false,
-    this.category = 'Uncategorized',
+    this.category = 'Untagged',
     this.notes = '',
     this.source = 'sms',
     this.sourceApp = '',
@@ -71,7 +71,7 @@ class SmsTransaction {
           ? DateTime.tryParse(map['timestamp'].toString()) ?? DateTime.now()
           : DateTime.now(),
       isVerified: map['isVerified'] ?? false,
-      category: map['category'] ?? 'Uncategorized',
+      category: map['category'] ?? 'Untagged',
       notes: map['notes'] ?? '',
       source: map['source'] ?? 'sms',
       sourceApp: map['sourceApp'] ?? (map['source'] == 'notification' ? 'UPI App' : 'Bank SMS'),

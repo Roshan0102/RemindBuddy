@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/log_service.dart';
+import 'ai_keys_settings_screen.dart';
 
 class TechEventsScreen extends StatefulWidget {
   const TechEventsScreen({super.key});
@@ -462,6 +463,16 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
         title: Text('Tech Events', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.vpn_key_rounded),
+            tooltip: 'AI & Search Keys',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AIKeysSettingsScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.tune_rounded),
             tooltip: 'Event Preferences',

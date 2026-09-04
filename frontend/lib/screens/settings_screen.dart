@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'auth_screen.dart';
 import 'notification_control_screen.dart';
+import 'ai_keys_settings_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/update_service.dart';
 
@@ -120,6 +121,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const NotificationControlScreen()),
+                );
+              },
+            ),
+          ),
+
+          // AI & Web Search Keys (BYOK) Option
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              leading: const Icon(Icons.vpn_key_rounded, color: Colors.teal, size: 28),
+              title: const Text('AI & Search Keys (BYOK)', style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text('Configure your Gemini & Tavily keys for Jobs, Events & Walk-Ins'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AIKeysSettingsScreen()),
                 );
               },
             ),

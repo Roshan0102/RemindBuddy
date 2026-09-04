@@ -6,6 +6,7 @@ import '../models/bank_account.dart';
 import '../models/debt_record.dart';
 import '../models/sms_transaction.dart';
 import '../services/finance_service.dart';
+import '../services/home_widget_service.dart';
 
 class NightlyExpenseTagSheet extends StatefulWidget {
   final List<SmsTransaction> pendingTransactions;
@@ -53,7 +54,10 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     super.initState();
     _items = List.from(widget.pendingTransactions);
     for (var tx in _items) {
-      _selectedCategories[tx.id] = tx.category == 'Uncategorized' ? 'Food & Dining' : tx.category;
+      final catLower = tx.category.trim().toLowerCase();
+      _selectedCategories[tx.id] = (catLower == 'uncategorized' || catLower == 'untagged' || catLower == 'upi transfer') 
+          ? 'Food & Dining' 
+          : tx.category;
       _noteControllers[tx.id] = TextEditingController(text: '');
       _selectedBankNames[tx.id] = tx.bankName;
       _personNameControllers[tx.id] = TextEditingController(text: tx.payee.isNotEmpty ? tx.payee : '');
@@ -137,6 +141,8 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
         }
       }
     }
+
+    await HomeWidgetService().syncFinanceWidget();
 
     if (mounted) {
       Navigator.of(context).pop();

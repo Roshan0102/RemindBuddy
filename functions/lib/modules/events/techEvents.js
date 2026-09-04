@@ -9,12 +9,15 @@ const moment = require("moment-timezone");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
 const geminiHelper_1 = require("../../utils/geminiHelper");
+const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
 async function fetchAndStoreEventsForUserInternal(uid, triggerNotification) {
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     let interests = ["Cloud", "Devops", "AI", "Agentic AI"];
     let location = "Bengaluru, India";
     let eventMode = "In-Person";
+    let userTavilyKey = "";
+    let userGeminiKey = "";
     if (userDoc.exists) {
         const data = userDoc.data();
         if (data) {
@@ -27,11 +30,19 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification) {
             if (data.eventMode && typeof data.eventMode === "string" && data.eventMode.trim().length > 0) {
                 eventMode = data.eventMode.trim();
             }
+            const userApiKeys = data.userApiKeys || {};
+            userTavilyKey = (userApiKeys.tavilyApiKey || data.tavilyApiKey || "").trim();
+            userGeminiKey = (userApiKeys.geminiApiKey || data.geminiApiKey || "").trim();
         }
+    }
+    if (!userTavilyKey || !userGeminiKey) {
+        console.log(`[TechEvents] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
+        return { success: false, events: [], message: "Tavily and Gemini API keys not configured in Settings." };
     }
     const today = moment().tz('Asia/Kolkata');
     const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
     const endDateStr = today.clone().add(60, 'days').format('YYYY-MM-DD');
+    const currentMonthYear = today.format("MMMM YYYY");
     let modeConstraint = "";
     if (eventMode === "In-Person") {
         modeConstraint = `Include ONLY physical, in-person offline events hosted in or near ${location}. Do NOT include online webinars or virtual streams.`;
@@ -42,14 +53,59 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification) {
     else {
         modeConstraint = `Include both physical in-person events in ${location} and online webinars/virtual workshops.`;
     }
-    const prompt = `Find upcoming real Tech events, developer meetups, workshops, hackathons happening in ${location} strictly focused on these user interests: ${interests.join(', ')}.
-The events must happen between ${startDateStr} and ${endDateStr}.
+    // Run targeted Tavily search query per interest
+    const allTavilyResults = [];
+    const seenUrls = new Set();
+    for (const interest of interests.slice(0, 4)) {
+        try {
+            let modeTerm = "meetup OR hackathon OR tech workshop";
+            if (eventMode === "In-Person") {
+                modeTerm = `in-person meetup OR developer workshop OR hackathon "${location}"`;
+            }
+            else if (eventMode === "Online") {
+                modeTerm = "online meetup OR virtual workshop OR developer session";
+            }
+            else {
+                modeTerm = `meetup OR workshop OR hackathon "${location}" OR online`;
+            }
+            const query = `"${interest}" (${modeTerm}) "${currentMonthYear}" "register" -conference -journal -paper -symposium`;
+            console.log(`[TechEvents] Querying Tavily for user ${uid} (Interest: "${interest}")...`);
+            const tavilyResp = await (0, tavilyHelper_1.searchTavily)({
+                apiKey: userTavilyKey,
+                query,
+                searchDepth: "basic",
+                maxResults: 4
+            });
+            for (const item of tavilyResp.results) {
+                if (item.url && !seenUrls.has(item.url)) {
+                    seenUrls.add(item.url);
+                    allTavilyResults.push(item);
+                }
+            }
+        }
+        catch (tavilyErr) {
+            console.warn(`[TechEvents] Tavily search error for interest "${interest}":`, tavilyErr.message);
+        }
+    }
+    if (allTavilyResults.length === 0) {
+        console.log(`[TechEvents] No search results returned from Tavily for user ${uid}.`);
+        return { success: true, events: [], message: "No upcoming events found from search." };
+    }
+    const searchResultsSummary = allTavilyResults.map((r, i) => `[Event Search Result ${i + 1}]\nTitle: ${r.title}\nSource: ${r.url}\nDetails: ${r.content}`).join("\n\n");
+    const prompt = `You are an expert event curator. Below are real-time search results for upcoming tech events, developer meetups, workshops, and hackathons:
+
+${searchResultsSummary}
+
+Target User Interests: ${interests.join(', ')}
+Target Location: ${location}
+Event Mode: ${eventMode}
+Target Date Range: between ${startDateStr} and ${endDateStr}.
+
 CRITICAL CONSTRAINTS:
 1. ${modeConstraint}
 2. ONLY include technical topics relevant to: ${interests.join(', ')}.
-3. Strictly EXCLUDE non-technical events, school/college general quizzes, IQ competitions, marketing sales pitches, and unrelated general hackathons.
-4. Use Google Search grounding to find real, currently active upcoming events from luma.com, eventbrite.com, meetup.com, hackerearth.com, 10times.com, and linkedin.com.
-5. Provide a clean JSON list of events. The "registrationLink" property must point directly to the actual event source registration/info page.
+3. Strictly EXCLUDE academic conferences, journal publications, call for papers, academic symposiums, non-technical marketing pitches, and general quizzes.
+4. Extract only real upcoming events with direct registration links.
 
 If no events match the criteria, respond ONLY with an empty JSON array: []. Do not include any conversational explanation or markdown preamble.
 Respond ONLY with a JSON array matching this schema:
@@ -60,7 +116,7 @@ Respond ONLY with a JSON array matching this schema:
     "timings": "string",
     "location": "string",
     "registrationLink": "string (direct link to the event source page)",
-    "sourcePlatform": "string (Luma, Eventbrite, Meetup, HackerEarth, 10times, LinkedIn, or Google Search)"
+    "sourcePlatform": "string (Luma, Eventbrite, Meetup, HackerEarth, 10times, LinkedIn, or Web)"
   }
 ]`;
     const payload = {
@@ -70,14 +126,9 @@ Respond ONLY with a JSON array matching this schema:
                     { text: prompt }
                 ]
             }
-        ],
-        tools: [
-            {
-                googleSearch: {}
-            }
         ]
     };
-    const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 240000 });
+    const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { apiKey: userGeminiKey, timeout: 60000 });
     const textResponse = geminiResult.text;
     if (!textResponse) {
         throw new Error('Empty content returned from Gemini API.');

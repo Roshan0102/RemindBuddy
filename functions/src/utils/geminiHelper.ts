@@ -2,20 +2,17 @@ import axios from "axios";
 import { db } from "../config/firebase";
 
 export interface GeminiCallOptions {
+    apiKey?: string;
     models?: string[];
     maxRetries?: number;
     timeout?: number;
 }
 
-// Official active Gemini models ordered by speed, intelligence and fallback hierarchy
+// Active Gemini models ordered by speed, intelligence and fallback hierarchy
 const DEFAULT_MODELS = [
     "gemini-3.7-flash",
     "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-flash-latest",
-    "gemini-3.5-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-3.1-pro-preview"
+    "gemini-3.5-flash"
 ];
 
 /**
@@ -46,60 +43,34 @@ export async function fetchAvailableModelsFromAPI(apiKey: string): Promise<strin
     return DEFAULT_MODELS;
 }
 
-// In-memory runtime cache to eliminate 40-second latency on repeated calls
+// In-memory runtime cache to eliminate latency on repeated calls
 const unsupportedModels = new Set<string>();
 let cachedWorkingModel: string | null = null;
 
 /**
  * High-performance Gemini API caller:
- * - Instant sub-second response via cached working model
- * - Multi-API-key fallback across Primary & Secondary keys configured in Firestore admin_creds/gemini_config
- * - Immediate 404/unsupported model pruning (no redundant second-key requests on non-existent models)
- * - Automatic failover on rate limits (429) or server errors
+ * - Supports custom user BYOK apiKey via options.apiKey
+ * - Falls back to central admin Gemini API key from admin_creds/gemini_config
+ * - Cascade failover across models: Gemini 3.7 Flash -> Gemini 3.6 Flash -> Gemini 3.5 Flash
+ * - Instant response via cached working model
  */
 export async function callGeminiAPI(
     payload: any,
     options: GeminiCallOptions = {}
 ): Promise<{ text: string; raw: any; modelUsed: string }> {
-    // 1. Fetch API Key(s) from admin_creds/gemini_config
-    const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
-    let primaryKey = "";
-    const backupKeys: string[] = [];
+    let targetApiKey = (options.apiKey || "").trim();
 
-    if (configDoc.exists) {
-        const data = configDoc.data() || {};
-        primaryKey = (data.apiKey || "").trim();
-
-        // Support string secondaryApiKey from admin panel
-        if (typeof data.secondaryApiKey === "string" && data.secondaryApiKey.trim().length > 0) {
-            backupKeys.push(data.secondaryApiKey.trim());
-        }
-        if (typeof data.backupApiKey === "string" && data.backupApiKey.trim().length > 0) {
-            backupKeys.push(data.backupApiKey.trim());
-        }
-        if (Array.isArray(data.backupApiKeys)) {
-            for (const k of data.backupApiKeys) {
-                if (typeof k === "string" && k.trim().length > 0) backupKeys.push(k.trim());
-            }
-        } else if (Array.isArray(data.apiKeys)) {
-            for (const k of data.apiKeys) {
-                if (typeof k === "string" && k.trim().length > 0) backupKeys.push(k.trim());
-            }
+    // If no custom user key provided, fetch admin key from Firestore
+    if (!targetApiKey) {
+        const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
+        if (configDoc.exists) {
+            const data = configDoc.data() || {};
+            targetApiKey = (data.apiKey || "").trim();
         }
     }
 
-    // Deduplicate keys while keeping primary first
-    const seenKeys = new Set<string>();
-    const allKeys: string[] = [];
-    for (const k of [primaryKey, ...backupKeys]) {
-        if (k && !seenKeys.has(k)) {
-            seenKeys.add(k);
-            allKeys.push(k);
-        }
-    }
-
-    if (allKeys.length === 0) {
-        throw new Error("Gemini API key is not configured in admin console.");
+    if (!targetApiKey) {
+        throw new Error("Gemini API key is not configured (neither user key nor admin key available).");
     }
 
     let candidateModels = options.models && options.models.length > 0 ? [...options.models] : [...DEFAULT_MODELS];
@@ -113,7 +84,6 @@ export async function callGeminiAPI(
     }
 
     if (candidateModels.length === 0) {
-        // Fallback in case all were filtered
         candidateModels = [...DEFAULT_MODELS];
     }
 
@@ -133,70 +103,66 @@ export async function callGeminiAPI(
         });
     }
 
+    const apiKey = targetApiKey;
+    const keyLabel = options.apiKey ? "User BYOK Key" : "Admin Key";
+
     for (const model of candidateModels) {
-        for (let keyIndex = 0; keyIndex < allKeys.length; keyIndex++) {
-            const apiKey = allKeys[keyIndex];
-            const keyLabel = keyIndex === 0 ? "Primary Key" : `Backup Key #${keyIndex}`;
-            let attempt = 0;
-            while (attempt <= maxRetries) {
-                try {
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-                    console.log(`[GeminiHelper] Trying model '${model}' with ${keyLabel} (...${apiKey.slice(-4)}, Attempt: ${attempt + 1}/${maxRetries + 1})...`);
+        let attempt = 0;
+        while (attempt <= maxRetries) {
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                console.log(`[GeminiHelper] Trying model '${model}' with ${keyLabel} (...${apiKey.slice(-4)}, Attempt: ${attempt + 1}/${maxRetries + 1})...`);
 
-                    const response = await axios.post(url, normalizedPayload, {
-                        headers: { "Content-Type": "application/json" },
-                        timeout
-                    });
+                const response = await axios.post(url, normalizedPayload, {
+                    headers: { "Content-Type": "application/json" },
+                    timeout
+                });
 
-                    const candidates = response.data?.candidates;
-                    if (!candidates || candidates.length === 0) {
-                        throw new Error(`No candidates returned from Gemini model ${model}`);
+                const candidates = response.data?.candidates;
+                if (!candidates || candidates.length === 0) {
+                    throw new Error(`No candidates returned from Gemini model ${model}`);
+                }
+
+                const text = candidates[0].content?.parts?.[0]?.text || "";
+                console.log(`[GeminiHelper] Successfully executed '${model}' with ${keyLabel}!`);
+
+                // Remember working model for instant future executions
+                cachedWorkingModel = model;
+
+                return {
+                    text,
+                    raw: response.data,
+                    modelUsed: `${model} (${keyLabel})`
+                };
+            } catch (err: any) {
+                lastError = err;
+                const status = err.response?.status;
+                const errData = err.response?.data?.error;
+                const errMsg = errData?.message || err.message;
+                console.warn(`[GeminiHelper] Error on '${model}' with ${keyLabel} (Status ${status}): ${errMsg}`);
+
+                // If model doesn't exist on Google API, prune it immediately
+                if (status === 404 || (status === 400 && (errMsg.includes("no longer available") || errMsg.includes("not supported") || errMsg.includes("not found")))) {
+                    console.log(`[GeminiHelper] Model '${model}' is unavailable on Google API. Pruning from active list.`);
+                    unsupportedModels.add(model);
+                    if (cachedWorkingModel === model) {
+                        cachedWorkingModel = null;
                     }
-
-                    const text = candidates[0].content?.parts?.[0]?.text || "";
-                    console.log(`[GeminiHelper] Successfully executed '${model}' with ${keyLabel}!`);
-
-                    // Remember working model for instant future executions
-                    cachedWorkingModel = model;
-
-                    return {
-                        text,
-                        raw: response.data,
-                        modelUsed: `${model} (${keyLabel})`
-                    };
-                } catch (err: any) {
-                    lastError = err;
-                    const status = err.response?.status;
-                    const errData = err.response?.data?.error;
-                    const errMsg = errData?.message || err.message;
-                    console.warn(`[GeminiHelper] Error on '${model}' with ${keyLabel} (Status ${status}): ${errMsg}`);
-
-                    // If model doesn't exist on Google API, prune it immediately so it doesn't waste time on backup keys or future calls
-                    if (status === 404 || (status === 400 && (errMsg.includes("no longer available") || errMsg.includes("not supported") || errMsg.includes("not found")))) {
-                        console.log(`[GeminiHelper] Model '${model}' is unavailable on Google API. Pruning from active list.`);
-                        unsupportedModels.add(model);
-                        if (cachedWorkingModel === model) {
-                            cachedWorkingModel = null;
-                        }
-                        // Skip remaining keys for this non-existent model
-                        break;
-                    }
-
-                    if (status === 429) {
-                        // Rate limit on this key -> switch to next backup key immediately
-                        attempt++;
-                        if (attempt <= maxRetries && keyIndex === allKeys.length - 1) {
-                            const delayMs = attempt * 1000;
-                            console.log(`[GeminiHelper] 429 on all keys for '${model}'. Backing off ${delayMs}ms before next model...`);
-                            await new Promise((res) => setTimeout(res, delayMs));
-                            continue;
-                        }
-                        break;
-                    }
-
-                    // For other errors, try next key or next model
                     break;
                 }
+
+                if (status === 429) {
+                    attempt++;
+                    if (attempt <= maxRetries) {
+                        const delayMs = attempt * 1000;
+                        console.log(`[GeminiHelper] 429 for '${model}'. Backing off ${delayMs}ms before retry...`);
+                        await new Promise((res) => setTimeout(res, delayMs));
+                        continue;
+                    }
+                    break; // Move to next model in cascade
+                }
+
+                break; // For other errors, move to next model
             }
         }
     }

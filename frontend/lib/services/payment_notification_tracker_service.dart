@@ -258,21 +258,28 @@ class PaymentNotificationTrackerService {
       }
 
       if (bestMatch != null && bestMatchDocId != null) {
-        // MATCH FOUND: Reconcile and merge into a single verified record
+        // MATCH FOUND: Reconcile and merge into a single record
         final String combinedSourceApp = bestMatch.source == 'sms'
             ? '${bestMatch.bankName} + ${newTx.sourceApp}'
             : '${newTx.bankName} + ${bestMatch.sourceApp}';
 
         // Prefer the clean human payee name from the notification over SMS
-        final String cleanPayee = (newTx.source == 'notification' && newTx.payee != 'UPI Transfer' && newTx.payee != 'UPI Income')
+        final String cleanPayee = (newTx.source == 'notification' && newTx.payee != 'UPI Transfer' && newTx.payee != 'UPI Income' && newTx.payee != 'Unknown Payee')
             ? newTx.payee
-            : (bestMatch.payee != 'UPI Transfer' && bestMatch.payee != 'UPI Income' ? bestMatch.payee : newTx.payee);
+            : (bestMatch.payee != 'UPI Transfer' && bestMatch.payee != 'UPI Income' && bestMatch.payee != 'Unknown Payee' ? bestMatch.payee : newTx.payee);
+
+        // A transaction should remain untagged/unverified until explicitly tagged by the user
+        final bool isAlreadyVerified = bestMatch.isVerified &&
+            bestMatch.category != 'Untagged' &&
+            bestMatch.category != 'Uncategorized' &&
+            bestMatch.category != 'UPI Transfer';
 
         final mergedTx = bestMatch.copyWith(
           source: 'both',
           sourceApp: combinedSourceApp,
           payee: cleanPayee,
-          isVerified: true,
+          isVerified: isAlreadyVerified,
+          category: isAlreadyVerified ? bestMatch.category : 'Untagged',
           upiRef: bestMatch.upiRef.isNotEmpty ? bestMatch.upiRef : newTx.upiRef,
           notes: '${bestMatch.notes}\n[App Notification: ${newTx.rawBody}]'.trim(),
         );
@@ -281,10 +288,14 @@ class PaymentNotificationTrackerService {
         debugPrint("⚡ Reconciled & Paired Transaction: $bestMatchDocId (${mergedTx.payee} - ₹${mergedTx.amount})");
       } else {
         // NO MATCH FOUND: Save as a standalone transaction
-        await txColl.doc(newTx.id).set(newTx.toMap(), SetOptions(merge: true));
-        debugPrint("💾 Saved New Notification Transaction: ${newTx.id} (${newTx.payee} - ₹${newTx.amount})");
+        final standaloneTx = newTx.copyWith(
+          isVerified: false,
+          category: 'Untagged',
+        );
+        await txColl.doc(standaloneTx.id).set(standaloneTx.toMap(), SetOptions(merge: true));
+        debugPrint("💾 Saved New Notification Transaction: ${standaloneTx.id} (${standaloneTx.payee} - ₹${standaloneTx.amount})");
       }
-      HomeWidgetService().syncAllWidgets();
+      HomeWidgetService().syncFinanceWidget();
     } catch (e) {
       LogService().error('Error reconciling transaction', e);
     }

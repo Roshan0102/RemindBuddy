@@ -5,6 +5,7 @@ import * as dns from "dns";
 import { admin, db } from "../../config/firebase";
 import { logNotification } from "../../utils/logger";
 import { callGeminiAPI } from "../../utils/geminiHelper";
+import { searchTavily, TavilySearchResult } from "../../utils/tavilyHelper";
 import { enqueueUserCloudTask } from "../../utils/cloudTasksHelper";
 
 interface DiscoveredJob {
@@ -141,19 +142,25 @@ export async function discoverAndApplyForUser(
         }
     });
 
-    // Fetch Gemini API Key
-    const configDoc = await db.collection("admin_creds").doc("gemini_config").get();
-    let apiKey = "";
-    if (configDoc.exists) {
-        apiKey = configDoc.data()?.apiKey || "";
-    }
-    if (!apiKey) {
-        throw new Error("Gemini API key is not configured in admin_creds.");
+    // Fetch User BYOK API Keys from user document
+    const userApiKeys = userData.userApiKeys || {};
+    const userTavilyKey = (userApiKeys.tavilyApiKey || userData.tavilyApiKey || "").trim();
+    const userGeminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
+
+    if (!userTavilyKey || !userGeminiKey) {
+        console.log(`[JobDiscovery] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
+        return { 
+            success: false, 
+            appliedCount: 0, 
+            jobs: [], 
+            message: "Please configure your free Tavily & Gemini API keys in Settings -> AI & Search Keys." 
+        };
     }
 
     const formattedRolesList = targetRoles.map((role, idx) => `   ${idx + 1}. "${role}"`).join("\n");
-    const locQuery = targetLocations.join(" OR ");
+    const locQuery = targetLocations.map(l => `"${l}"`).join(" OR ");
     const todayStr = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
+    const currentYear = moment().tz("Asia/Kolkata").format("YYYY");
 
     const isFresherCandidate = (minExp === 0 && maxExp === 0);
     const expTargetStr = isFresherCandidate
@@ -164,27 +171,66 @@ export async function discoverAndApplyForUser(
         ? "3. EXPERIENCE REQUIREMENT (FRESHERS / 0 YEARS ONLY): ONLY include openings explicitly accepting Freshers, Entry-Level candidates, Trainees, or 0 Years Experience. STRICTLY EXCLUDE any roles requiring > 0 years prior work experience."
         : `3. EXPERIENCE REQUIREMENT (${minExp} TO ${maxExp} YEARS ONLY): ONLY include roles requiring between ${minExp} and ${maxExp} years experience (or Freshers/Entry-level if min is 0). EXCLUDE any roles requiring > ${maxExp} years experience (e.g. Senior, Lead, Staff, Principal).`;
 
+    // 1. Perform intelligent multi-query web search via Tavily for each target role
+    const allTavilyResults: TavilySearchResult[] = [];
+    const seenUrls = new Set<string>();
+
+    for (const role of targetRoles.slice(0, 4)) {
+        try {
+            const expQuery = isFresherCandidate
+                ? '("fresher" OR "entry level" OR "trainee" OR "0 years")'
+                : (minExp === 0 
+                    ? `("0-${maxExp} years" OR "fresher" OR "junior")`
+                    : `("${minExp}-${maxExp} years")`);
+
+            const query = `"${role}" ${expQuery} ("send resume to" OR "share your resume at" OR "email CV to" OR "send CV to" OR "mail your resume") "@" (${locQuery}) ${currentYear}`;
+            console.log(`[JobDiscovery] Querying Tavily for user ${uid} (Role: "${role}")...`);
+            
+            const tavilyResp = await searchTavily({
+                apiKey: userTavilyKey,
+                query,
+                searchDepth: "advanced",
+                maxResults: 5
+            });
+
+            for (const item of tavilyResp.results) {
+                if (item.url && !seenUrls.has(item.url)) {
+                    seenUrls.add(item.url);
+                    allTavilyResults.push(item);
+                }
+            }
+        } catch (tavilyErr: any) {
+            console.warn(`[JobDiscovery] Tavily search error for role "${role}":`, tavilyErr.message);
+        }
+    }
+
+    if (allTavilyResults.length === 0) {
+        console.log(`[JobDiscovery] No search results returned from Tavily for user ${uid}.`);
+        return { success: true, appliedCount: 0, jobs: [], message: "No fresh matching job postings with recruiter emails found." };
+    }
+
+    const searchResultsSummary = allTavilyResults.map((r, i) =>
+        `[Live Job Post ${i + 1}]\nTitle: ${r.title}\nSource: ${r.url}\nPost Details: ${r.content}`
+    ).join("\n\n");
+
     const prompt = `You are an elite automated job discovery and recruiter outreach AI agent.
+Below are real-time, live web search results for open job postings and recruiter hiring calls:
+
+${searchResultsSummary}
+
 Target Roles to Search:
 ${formattedRolesList}
 
-Target Locations: ${locQuery}
+Target Locations: ${targetLocations.join(', ')}
 Candidate Name: "${applicantName}"
 Candidate Experience Target: ${expTargetStr}
 
-CRITICAL SEARCH & EXTRACTION MANDATES:
-1. INDIVIDUAL SEARCH PER TARGET ROLE: You MUST perform dedicated web search grounding for EACH specific role listed above individually:
-${formattedRolesList}
-   - First, search for active postings specifically for role #1 across all platforms.
-   - Next, search for active postings specifically for role #2 across all platforms.
-   - Continue searching for each specified target role individually.
-   - Your final output list MUST contain matching job openings for EVERY role specified by the candidate (aiming for 1-2 fresh job openings per target role, up to 6 total jobs).
+CRITICAL VERIFICATION & EXTRACTION MANDATES:
+1. RECRUITER EMAIL IS MANDATORY: Every single job item MUST contain a verified recruiter / HR / hiring contact email address (e.g. hr@company.com, careers@company.com, hiring@company.com, jobs@company.com, talent@company.com, or specific recruiter email) found in the post snippet or source. If NO valid email address is present in the post details, DO NOT INCLUDE THAT JOB.
 
-2. RECRUITER EMAIL IS MANDATORY: Every single job item MUST contain a verified recruiter / HR / hiring contact email address (e.g. hr@company.com, careers@company.com, hiring@company.com, jobs@company.com, talent@company.com, or specific recruiter email). If NO valid email address is mentioned in the job posting/snippet, DO NOT INCLUDE THAT JOB.
+2. ${expMandateStr}
 
-${expMandateStr}
-
-4. HUMAN-WRITTEN, HIGH-CONVERTING APPLICATION EMAIL:
+3. HUMAN-WRITTEN, HIGH-CONVERTING APPLICATION EMAIL:
    - For each matching job, write a highly authentic, natural, and engaging cover letter tailored specifically to that job title and company.
    - Read the candidate's attached Resume PDF to extract concrete accomplishments, technical skills (e.g., Flutter, Dart, State Management, REST APIs, Firebase, Cloud/DevOps, Docker, CI/CD), and align them specifically with the company's domain and job requirements.
    - Structure:
@@ -195,11 +241,8 @@ ${expMandateStr}
      e) Sign-off: "Sincerely,\\n${applicantName}" (Never use placeholders like [Your Name]).
    - Subject line format: "Application for [Job Title] - ${applicantName}"
 
-5. LOCATION & WORK MODE MATCHING:
-   - Candidate Target Locations: ${targetLocations.join(', ')}.
-   - On-Site / Hybrid Roles: City names (e.g. Bengaluru, Chennai, Hyderabad, Noida, Pune) or "India" target On-Site, In-Office, and Hybrid openings in those hubs across India.
-   - Remote / WFH Roles: "Remote" targets Fully Remote / Work-From-Home (WFH) openings.
-   - Match both On-Site/Hybrid roles in target Indian cities/India AND Remote/WFH openings when specified.
+4. LOCATION & WORK MODE MATCHING:
+   - Match On-Site/Hybrid roles in target Indian cities/India AND Remote/WFH openings when specified.
 
 Respond ONLY with a JSON array matching this schema:
 [
@@ -209,7 +252,7 @@ Respond ONLY with a JSON array matching this schema:
     "recipientEmail": "string (MUST be a valid email address)",
     "location": "string",
     "experienceRequired": "string (e.g. ${minExp}-${maxExp} years)",
-    "sourcePlatform": "string (e.g. LinkedIn, Wellfound, Google Jobs, Company Careers)",
+    "sourcePlatform": "string (e.g. LinkedIn, Company Careers, Indeed, Glassdoor)",
     "sourceUrl": "string",
     "keySkills": ["string"],
     "generatedSubject": "string",
@@ -237,23 +280,18 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
                     ...inlineParts
                 ]
             }
-        ],
-        tools: [
-            {
-                googleSearch: {}
-            }
         ]
     };
 
-    console.log(`[JobDiscovery] Running Gemini Search Grounding for user ${uid} (Roles: ${targetRoles.join(', ')})...`);
+    console.log(`[JobDiscovery] Analyzing Tavily search results with Gemini 3.7 Flash for user ${uid} (Roles: ${targetRoles.join(', ')})...`);
     let rawText = "";
     let modelUsed = "";
     try {
-        const geminiResult = await callGeminiAPI(payload, { timeout: 240000 });
+        const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 120000 });
         rawText = geminiResult.text || "";
         modelUsed = geminiResult.modelUsed || "";
     } catch (apiErr: any) {
-        console.error("[JobDiscovery] Gemini search failed:", apiErr.message);
+        console.error("[JobDiscovery] Gemini analysis failed:", apiErr.message);
         return { success: false, appliedCount: 0, jobs: [], message: `Job Search AI temporarily busy: ${apiErr.message}` };
     }
 

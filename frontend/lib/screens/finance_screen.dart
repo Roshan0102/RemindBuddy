@@ -1946,7 +1946,13 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               return tx.timestamp.year == _smsMonthFilter.year && tx.timestamp.month == _smsMonthFilter.month;
             }).toList();
 
-            final pendingUntagged = monthTransactions.where((t) => !t.isVerified).toList();
+            bool isTxUntagged(SmsTransaction tx) {
+              if (!tx.isVerified) return true;
+              final cat = tx.category.trim().toLowerCase();
+              return cat == 'untagged' || cat == 'uncategorized' || cat == 'upi transfer';
+            }
+
+            final pendingUntagged = monthTransactions.where((t) => isTxUntagged(t)).toList();
 
             double totalSpent = 0.0;
             double totalReceived = 0.0;
@@ -1955,7 +1961,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             for (final tx in monthTransactions) {
               if (tx.type == 'Debit') {
                 totalSpent += tx.amount;
-                final cat = tx.isVerified ? tx.category : 'Uncategorized';
+                final cat = isTxUntagged(tx) ? 'Untagged' : tx.category;
                 categoryTotals[cat] = (categoryTotals[cat] ?? 0.0) + tx.amount;
               } else {
                 totalReceived += tx.amount;
@@ -2410,21 +2416,27 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                             DateFormat('dd MMM, hh:mm a').format(tx.timestamp),
                                             style: TextStyle(color: subtextColor, fontSize: 11),
                                           ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: tx.isVerified ? Colors.green.withValues(alpha: 0.2) : Colors.amber.withValues(alpha: 0.2),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              tx.isVerified ? tx.category : 'Untagged (Tap to tag)',
-                                              style: TextStyle(
-                                                color: tx.isVerified ? (isDark ? Colors.greenAccent : Colors.green.shade800) : (isDark ? Colors.amberAccent : Colors.amber.shade900),
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
+                                          Builder(builder: (context) {
+                                            final bool isItemUntagged = !tx.isVerified ||
+                                                tx.category.trim().toLowerCase() == 'untagged' ||
+                                                tx.category.trim().toLowerCase() == 'uncategorized' ||
+                                                tx.category.trim().toLowerCase() == 'upi transfer';
+                                            return Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: !isItemUntagged ? Colors.green.withValues(alpha: 0.2) : Colors.amber.withValues(alpha: 0.2),
+                                                borderRadius: BorderRadius.circular(8),
                                               ),
-                                            ),
-                                          ),
+                                              child: Text(
+                                                !isItemUntagged ? tx.category : 'Untagged (Tap to tag)',
+                                                style: TextStyle(
+                                                  color: !isItemUntagged ? (isDark ? Colors.greenAccent : Colors.green.shade800) : (isDark ? Colors.amberAccent : Colors.amber.shade900),
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            );
+                                          }),
                                         ],
                                       ),
                                       const SizedBox(height: 4),

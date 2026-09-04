@@ -68,8 +68,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         _selectedRecipients.add(_myUid!);
       }
     } else {
-      _date = widget.selectedDate ?? DateTime.now();
-      _time = TimeOfDay.now();
+      final now = DateTime.now();
+      _date = widget.selectedDate ?? DateTime(now.year, now.month, now.day);
+      final defaultTime = now.add(const Duration(minutes: 5));
+      _time = TimeOfDay(hour: defaultTime.hour, minute: defaultTime.minute);
       _snoozeEnabled = false;
       _snoozeIntervalMinutes = 15;
       _maxSnoozeCount = 3;
@@ -101,70 +103,121 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   Future<void> _selectDate(BuildContext context) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final initialDate = _date.isBefore(today) ? today : _date;
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _date,
-      firstDate: DateTime(2000),
+      initialDate: initialDate,
+      firstDate: today,
       lastDate: DateTime(2101),
     );
-    if (picked != null && picked != _date) {
+    if (picked != null) {
       setState(() {
         _date = picked;
+        // If today is selected and currently chosen time is already in the past, adjust time forward
+        if (picked.year == today.year && picked.month == today.month && picked.day == today.day) {
+          final nowTime = TimeOfDay.now();
+          final isPast = _time.hour < nowTime.hour || (_time.hour == nowTime.hour && _time.minute <= nowTime.minute);
+          if (isPast) {
+            final futureTime = DateTime.now().add(const Duration(minutes: 5));
+            _time = TimeOfDay(hour: futureTime.hour, minute: futureTime.minute);
+          }
+        }
       });
     }
   }
 
   Future<void> _selectTime(BuildContext context) async {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final now = DateTime.now();
+    final isToday = _date.year == now.year && _date.month == now.month && _date.day == now.day;
+
+    TimeOfDay initialTime = _time;
+    final selectedDateTime = DateTime(_date.year, _date.month, _date.day, _time.hour, _time.minute);
+    if (isToday && selectedDateTime.isBefore(now)) {
+      final futureTime = now.add(const Duration(minutes: 5));
+      initialTime = TimeOfDay(hour: futureTime.hour, minute: futureTime.minute);
+    }
+    TimeOfDay tempTime = initialTime;
+
     showModalBottomSheet(
       context: context,
       builder: (BuildContext builder) {
-        return CupertinoTheme(
-          data: CupertinoThemeData(
-            brightness: isDarkMode ? Brightness.dark : Brightness.light,
-          ),
-          child: Container(
-            height: MediaQuery.of(context).size.height / 3,
-            color: isDarkMode ? Colors.grey[900] : Colors.white,
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            final isTempPast = isToday &&
+                DateTime(_date.year, _date.month, _date.day, tempTime.hour, tempTime.minute)
+                    .isBefore(DateTime.now());
+
+            return CupertinoTheme(
+              data: CupertinoThemeData(
+                brightness: isDarkMode ? Brightness.dark : Brightness.light,
+              ),
+              child: Container(
+                height: MediaQuery.of(context).size.height / 3 + 40,
+                color: isDarkMode ? Colors.grey[900] : Colors.white,
+                child: Column(
                   children: [
-                    TextButton(
-                      child: const Text('Cancel'),
-                      onPressed: () => Navigator.of(context).pop(),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton(
+                            child: const Text('Cancel'),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                          if (isTempPast)
+                            const Text(
+                              'Time is in the past',
+                              style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                          TextButton(
+                            child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
+                            onPressed: () {
+                              final pickedDateTime = DateTime(_date.year, _date.month, _date.day, tempTime.hour, tempTime.minute);
+                              if (isToday && pickedDateTime.isBefore(DateTime.now())) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Cannot select a past time for today. Please choose a future time.'),
+                                    backgroundColor: Colors.redAccent,
+                                  ),
+                                );
+                                return;
+                              }
+                              setState(() {
+                                _time = tempTime;
+                              });
+                              Navigator.of(context).pop();
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                    TextButton(
-                      child: const Text('Done'),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        setState(() {}); // Refresh UI
-                      },
+                    Expanded(
+                      child: CupertinoDatePicker(
+                        mode: CupertinoDatePickerMode.time,
+                        initialDateTime: DateTime(
+                          now.year,
+                          now.month,
+                          now.day,
+                          initialTime.hour,
+                          initialTime.minute,
+                        ),
+                        onDateTimeChanged: (DateTime newDateTime) {
+                          setModalState(() {
+                            tempTime = TimeOfDay.fromDateTime(newDateTime);
+                          });
+                        },
+                        use24hFormat: false,
+                      ),
                     ),
                   ],
                 ),
-                Expanded(
-                  child: CupertinoDatePicker(
-                    mode: CupertinoDatePickerMode.time,
-                    initialDateTime: DateTime(
-                      DateTime.now().year,
-                      DateTime.now().month,
-                      DateTime.now().day,
-                      _time.hour,
-                      _time.minute,
-                    ),
-                    onDateTimeChanged: (DateTime newDateTime) {
-                      setState(() {
-                        _time = TimeOfDay.fromDateTime(newDateTime);
-                      });
-                    },
-                    use24hFormat: false,
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -174,6 +227,20 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     if (widget.existingReminder == null && _selectedRecipients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select at least one recipient.')),
+      );
+      return;
+    }
+
+    final now = DateTime.now();
+    final isToday = _date.year == now.year && _date.month == now.month && _date.day == now.day;
+    final scheduledDateTime = DateTime(_date.year, _date.month, _date.day, _time.hour, _time.minute);
+
+    if (isToday && scheduledDateTime.isBefore(now.add(const Duration(seconds: 30)))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot schedule a reminder for a past time. Please select a future time.'),
+          backgroundColor: Colors.redAccent,
+        ),
       );
       return;
     }
@@ -200,6 +267,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             snoozeIntervalMinutes: _snoozeIntervalMinutes,
             maxSnoozeCount: _maxSnoozeCount,
             currentSnoozeCount: 0,
+            taskId: widget.existingReminder!.taskId,
           );
           await storage.updateCalendarReminder(updated);
         } else {
@@ -402,6 +470,12 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                       ListTile(
                         leading: const Icon(Icons.access_time),
                         title: Text('Time: ${_time.format(context)}'),
+                        subtitle: (_date.year == DateTime.now().year &&
+                                _date.month == DateTime.now().month &&
+                                _date.day == DateTime.now().day &&
+                                DateTime(_date.year, _date.month, _date.day, _time.hour, _time.minute).isBefore(DateTime.now()))
+                            ? const Text('Past time selected - please choose a future time', style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600))
+                            : null,
                         trailing: const Icon(Icons.edit),
                         onTap: () => _selectTime(context),
                       ),

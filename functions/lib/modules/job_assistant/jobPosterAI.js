@@ -2,12 +2,26 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseJobPostersWithAI = void 0;
 const functions = require("firebase-functions");
+const firebase_1 = require("../../config/firebase");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 exports.parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
+    var _a;
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
     }
     try {
+        const uid = context.auth.uid;
+        let userGeminiKey = "";
+        try {
+            const userDoc = await firebase_1.db.collection("users").doc(uid).get();
+            if (userDoc.exists) {
+                const uData = userDoc.data() || {};
+                userGeminiKey = (((_a = uData.userApiKeys) === null || _a === void 0 ? void 0 : _a.geminiApiKey) || uData.geminiApiKey || "").trim();
+            }
+        }
+        catch (e) {
+            console.warn("[JobPosterAI] Could not fetch userGeminiKey:", e.message);
+        }
         const { imagesBase64, mode, resumeBase64, applicantName, customPrompt } = data;
         if (!imagesBase64 || !Array.isArray(imagesBase64) || imagesBase64.length === 0) {
             throw new functions.https.HttpsError('invalid-argument', 'No image data provided.');
@@ -104,7 +118,7 @@ Respond ONLY with a JSON object matching this schema:
                 responseMimeType: "application/json"
             }
         };
-        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { timeout: 90000 });
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { apiKey: userGeminiKey, timeout: 90000 });
         const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new Error('Empty response from Gemini API.');

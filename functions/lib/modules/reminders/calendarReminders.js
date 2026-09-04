@@ -43,7 +43,30 @@ exports.processCalendarReminderTask = functions.tasks
             }
         }
         const rData = reminderDoc.data();
-        const snoozeEnabled = rData ? rData.snoozeEnabled === true : false;
+        if (!rData)
+            return;
+        // Guard 1: Abort if already completed or expired
+        if (rData.status === "completed" || rData.status === "expired") {
+            console.log(`[processCalendarReminderTask] Reminder ${reminderId} is already '${rData.status}'. Skipping.`);
+            return;
+        }
+        // Guard 2: Stale task check - if reminder was rescheduled to a future time, abort this stale task!
+        const nowKolkata = moment().tz('Asia/Kolkata');
+        const currentScheduled = moment.tz(`${rData.date} ${rData.time}`, "YYYY-MM-DD HH:mm", "Asia/Kolkata");
+        if (currentScheduled.isValid() && currentScheduled.diff(nowKolkata, 'seconds') > 45) {
+            console.log(`[processCalendarReminderTask] Reminder ${reminderId} was rescheduled to ${currentScheduled.format()} (Now: ${nowKolkata.format()}). Aborting stale task.`);
+            return;
+        }
+        // Guard 3: Duplicate notification throttle - if notified within last 45s, skip duplicate
+        if (rData.notifiedAt) {
+            const lastNotified = rData.notifiedAt.toDate ? rData.notifiedAt.toDate() : new Date(rData.notifiedAt);
+            const secondsSince = (Date.now() - lastNotified.getTime()) / 1000;
+            if (secondsSince < 45) {
+                console.log(`[processCalendarReminderTask] Reminder ${reminderId} was already notified ${secondsSince}s ago. Skipping duplicate notification.`);
+                return;
+            }
+        }
+        const snoozeEnabled = rData.snoozeEnabled === true;
         if (isEnabled) {
             let token = "";
             const userDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
@@ -356,6 +379,24 @@ exports.onCalendarReminderUpdated = functions.firestore
             }
         }
     }
+    // If reminder is completed, expired, or cancelled, delete any scheduled task!
+    if (after.status === "completed" || after.status === "expired" || after.status === "cancelled") {
+        const taskIdToDelete = after.taskId || before.taskId;
+        if (taskIdToDelete) {
+            try {
+                await firebase_1.tasksClient.deleteTask({ name: taskIdToDelete });
+                console.log(`Deleted task ${taskIdToDelete} because reminder became ${after.status}`);
+            }
+            catch (e) {
+                console.log(`Note when deleting task on ${after.status}:`, (e === null || e === void 0 ? void 0 : e.message) || e);
+            }
+        }
+        return;
+    }
+    // If reminder is in notified state, no scheduling is needed
+    if (after.status === "notified") {
+        return;
+    }
     if (after.scheduledForUid && after.scheduledForUid !== uid) {
         console.log(`Reminder update for creator copy. Status is ${after.status}.`);
         if (after.status === "pending") {
@@ -363,6 +404,15 @@ exports.onCalendarReminderUpdated = functions.firestore
         }
         return;
     }
+    // Avoid infinite loop / double task creation:
+    // Do NOT reschedule if the change was simply marking the reminder "scheduled" with taskId!
+    if (before.status === "pending" && after.status === "scheduled") {
+        return;
+    }
+    if (before.taskId !== after.taskId && after.status === "scheduled") {
+        return;
+    }
+    // Only reschedule if timing, content, recurrence, or status reset to "pending" occurred
     const changed = before.title !== after.title ||
         before.description !== after.description ||
         before.date !== after.date ||
@@ -370,22 +420,24 @@ exports.onCalendarReminderUpdated = functions.firestore
         before.isRecurring !== after.isRecurring ||
         before.recurrenceValue !== after.recurrenceValue ||
         before.recurrenceUnit !== after.recurrenceUnit ||
-        (before.status !== after.status && (after.status === "pending" || after.status === "scheduled"));
+        (before.status !== "pending" && after.status === "pending");
     if (!changed)
         return;
-    if (before.taskId) {
+    // Delete old task if one existed
+    const oldTaskId = after.taskId || before.taskId;
+    if (oldTaskId) {
         try {
-            await firebase_1.tasksClient.deleteTask({ name: before.taskId });
-            console.log(`Deleted task ${before.taskId} for rescheduling`);
+            await firebase_1.tasksClient.deleteTask({ name: oldTaskId });
+            console.log(`Deleted old task ${oldTaskId} for reminder ${reminderId} prior to rescheduling`);
         }
         catch (error) {
-            console.error("Failed to delete old scheduled task:", error);
+            console.log(`Note when deleting old task ${oldTaskId}:`, (error === null || error === void 0 ? void 0 : error.message) || error);
         }
     }
     const nowKolkata = moment().tz('Asia/Kolkata');
     const scheduledTime = moment.tz(`${after.date} ${after.time}`, "YYYY-MM-DD HH:mm", "Asia/Kolkata");
-    if (!scheduledTime.isValid()) {
-        console.log(`Rescheduled reminder ${reminderId} is invalid. Marking as expired.`);
+    if (!scheduledTime.isValid() || scheduledTime.isBefore(nowKolkata.subtract(30, 'seconds'))) {
+        console.log(`Rescheduled reminder ${reminderId} is invalid or in the past. Marking as expired.`);
         return change.after.ref.update({
             status: "expired",
             taskId: firebase_1.admin.firestore.FieldValue.delete(),

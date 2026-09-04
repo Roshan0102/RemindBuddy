@@ -20,6 +20,7 @@ class CalendarReminder {
   final int snoozeIntervalMinutes;
   final int maxSnoozeCount;
   final int currentSnoozeCount;
+  final String? taskId;
 
   CalendarReminder({
     this.id,
@@ -41,6 +42,7 @@ class CalendarReminder {
     this.snoozeIntervalMinutes = 15,
     this.maxSnoozeCount = 3,
     this.currentSnoozeCount = 0,
+    this.taskId,
   });
 
   factory CalendarReminder.fromMap(Map<String, dynamic> json, String docId) {
@@ -64,6 +66,7 @@ class CalendarReminder {
       snoozeIntervalMinutes: json['snoozeIntervalMinutes'] ?? 15,
       maxSnoozeCount: json['maxSnoozeCount'] ?? 3,
       currentSnoozeCount: json['currentSnoozeCount'] ?? 0,
+      taskId: json['taskId'] as String?,
     );
   }
 
@@ -90,6 +93,7 @@ class CalendarReminder {
       if (scheduledByUsername != null) 'scheduledByUsername': scheduledByUsername,
       if (scheduledForUid != null) 'scheduledForUid': scheduledForUid,
       if (scheduledForUsername != null) 'scheduledForUsername': scheduledForUsername,
+      if (taskId != null) 'taskId': taskId,
     };
   }
 
@@ -113,6 +117,7 @@ class CalendarReminder {
     int? snoozeIntervalMinutes,
     int? maxSnoozeCount,
     int? currentSnoozeCount,
+    String? taskId,
   }) {
     return CalendarReminder(
       id: id ?? this.id,
@@ -134,6 +139,7 @@ class CalendarReminder {
       snoozeIntervalMinutes: snoozeIntervalMinutes ?? this.snoozeIntervalMinutes,
       maxSnoozeCount: maxSnoozeCount ?? this.maxSnoozeCount,
       currentSnoozeCount: currentSnoozeCount ?? this.currentSnoozeCount,
+      taskId: taskId ?? this.taskId,
     );
   }
 }

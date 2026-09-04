@@ -613,18 +613,19 @@ class FinanceService {
     for (final accountDoc in accountsSnap.docs) {
       final bank = BankAccount.fromMap(accountDoc.data(), accountDoc.id);
 
+      final bool idMatch = destinationBankAccountId != null && destinationBankAccountId == bank.id;
       final bool nameMatch = bank.name.toLowerCase().contains(tx.bankName.toLowerCase()) ||
           tx.bankName.toLowerCase().contains(bank.name.toLowerCase());
       final bool last4Match = tx.accountLast4.isNotEmpty && bank.name.contains(tx.accountLast4);
 
-      if (nameMatch || last4Match) {
+      if (idMatch || nameMatch || last4Match) {
         final double change = (tx.type == 'Debit') ? -tx.amount : tx.amount;
         final double newBal = bank.currentBalance + change;
         await accountDoc.reference.update({
           'currentBalance': newBal,
           'updatedAt': FieldValue.serverTimestamp(),
         });
-        HomeWidgetService().syncAllWidgets();
+        await HomeWidgetService().syncFinanceWidget();
         break; // Matched and updated
       }
     }

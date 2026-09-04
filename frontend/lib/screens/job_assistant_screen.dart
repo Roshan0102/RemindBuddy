@@ -12,6 +12,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import '../models/job_application.dart';
 import '../services/job_assistant_service.dart';
+import 'ai_keys_settings_screen.dart';
 
 class JobAssistantScreen extends StatefulWidget {
   const JobAssistantScreen({super.key});
@@ -360,6 +361,39 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         helperText: 'Google Account > Security > 2-Step Verification > App Passwords',
                         helperMaxLines: 2,
                         isDense: true,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+                    const Divider(),
+                    const SizedBox(height: 12),
+
+                    // Section 3: AI & Search Keys (BYOK)
+                    Text(
+                      '🔑 AI & Search Keys (BYOK)',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Configure your personal Gemini & Tavily API keys for automated job discovery and recruiter outreach.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.vpn_key_rounded, color: Colors.teal),
+                        label: const Text('Manage Gemini & Tavily Keys', style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const AIKeysSettingsScreen()),
+                          );
+                        },
                       ),
                     ),
                   ],

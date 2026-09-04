@@ -4,31 +4,85 @@ import { admin, db } from "../../config/firebase";
 import { logNotification } from "../../utils/logger";
 
 import { callGeminiAPI } from "../../utils/geminiHelper";
+import { searchTavily, TavilySearchResult } from "../../utils/tavilyHelper";
 import { enqueueUserCloudTask } from "../../utils/cloudTasksHelper";
 
 export async function fetchAndStoreWalkInsForUserInternal(uid: string, triggerNotification: boolean): Promise<any> {
     const userDoc = await db.collection("users").doc(uid).get();
     let roles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"];
     let location = "Bengaluru";
+    let userTavilyKey = "";
+    let userGeminiKey = "";
+
     if (userDoc.exists) {
         const data = userDoc.data();
-        if (data && data.walkinRoles && Array.isArray(data.walkinRoles) && data.walkinRoles.length > 0) {
-            roles = data.walkinRoles;
+        if (data) {
+            if (data.walkinRoles && Array.isArray(data.walkinRoles) && data.walkinRoles.length > 0) {
+                roles = data.walkinRoles;
+            }
+            if (data.walkinLocation && typeof data.walkinLocation === "string" && data.walkinLocation.trim().length > 0) {
+                location = data.walkinLocation.trim();
+            }
+            const userApiKeys = data.userApiKeys || {};
+            userTavilyKey = (userApiKeys.tavilyApiKey || data.tavilyApiKey || "").trim();
+            userGeminiKey = (userApiKeys.geminiApiKey || data.geminiApiKey || "").trim();
         }
-        if (data && data.walkinLocation && typeof data.walkinLocation === "string" && data.walkinLocation.trim().length > 0) {
-            location = data.walkinLocation.trim();
-        }
+    }
+
+    if (!userTavilyKey || !userGeminiKey) {
+        console.log(`[WalkinDrives] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
+        return { success: false, walkins: [], message: "Tavily and Gemini API keys not configured in Settings." };
     }
 
     const today = moment().tz('Asia/Kolkata');
     const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
     const endDateStr = today.clone().add(60, 'days').format('YYYY-MM-DD');
+    const currentMonthYear = today.format("MMMM YYYY");
 
-    const prompt = `Find Walk-in drives/interviews happening in ${location}, India for the following job roles: ${roles.join(', ')}.
-The drives/interviews must happen between ${startDateStr} and ${endDateStr}.
-Use Google Search grounding to find real, current upcoming walk-in interviews.
-Provide a clean JSON list of walk-in drives. The "registrationLink" property in the JSON should point directly to the specific page/post/posting URL from where you found the drive (e.g. LinkedIn post, company career post, event page, etc.).
-Extract the company name into the "company" field and the required experience level (e.g. "0-2 yrs", "Freshers", "3-5 yrs", or "N/A") into the "experience" field.
+    // Run targeted Tavily search query per role
+    const allTavilyResults: TavilySearchResult[] = [];
+    const seenUrls = new Set<string>();
+
+    for (const role of roles.slice(0, 4)) {
+        try {
+            const query = `"${role}" ("walk-in drive" OR "walk-in interview" OR "walk in hiring") "${location}" "${currentMonthYear}" "venue"`;
+            console.log(`[WalkinDrives] Querying Tavily for user ${uid} (Role: "${role}")...`);
+            const tavilyResp = await searchTavily({
+                apiKey: userTavilyKey,
+                query,
+                searchDepth: "basic",
+                maxResults: 4
+            });
+
+            for (const item of tavilyResp.results) {
+                if (item.url && !seenUrls.has(item.url)) {
+                    seenUrls.add(item.url);
+                    allTavilyResults.push(item);
+                }
+            }
+        } catch (tavilyErr: any) {
+            console.warn(`[WalkinDrives] Tavily search error for role "${role}":`, tavilyErr.message);
+        }
+    }
+
+    if (allTavilyResults.length === 0) {
+        console.log(`[WalkinDrives] No search results returned from Tavily for user ${uid}.`);
+        return { success: true, walkins: [], message: "No upcoming walk-in drives found from search." };
+    }
+
+    const searchResultsSummary = allTavilyResults.map((r, i) =>
+        `[Walk-In Search Result ${i + 1}]\nTitle: ${r.title}\nSource: ${r.url}\nDetails: ${r.content}`
+    ).join("\n\n");
+
+    const prompt = `You are an expert career and walk-in drive coordinator. Below are real-time search results for upcoming walk-in interviews and hiring drives:
+
+${searchResultsSummary}
+
+Target Roles: ${roles.join(', ')}
+Target Location: ${location}
+Target Date Range: between ${startDateStr} and ${endDateStr}.
+
+Provide a clean JSON list of walk-in drives. Extract the company name, exact interview date, reporting timings, venue location/address, required experience, and direct source link.
 
 If no walk-in drives or interviews match the criteria, respond ONLY with an empty JSON array: []. Do not include any conversational explanation, preamble, or notes.
 Respond ONLY with a JSON array matching this schema:
@@ -51,15 +105,10 @@ Respond ONLY with a JSON array matching this schema:
                     { text: prompt }
                 ]
             }
-        ],
-        tools: [
-            {
-                googleSearch: {}
-            }
         ]
     };
 
-    const geminiResult = await callGeminiAPI(payload, { timeout: 240000 });
+    const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 60000 });
     const textResponse = geminiResult.text;
     if (!textResponse) {
         throw new Error('Empty content returned from Gemini API.');

@@ -628,7 +628,7 @@ class SmsParserService {
       return 'Entertainment';
     }
 
-    return 'Uncategorized';
+    return 'Untagged';
   }
 
   static String _cleanPayeeCandidate(String raw) {

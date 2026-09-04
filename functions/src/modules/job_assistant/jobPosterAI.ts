@@ -1,4 +1,5 @@
 import * as functions from "firebase-functions";
+import { db } from "../../config/firebase";
 import { callGeminiAPI } from "../../utils/geminiHelper";
 
 export const parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
@@ -7,6 +8,17 @@ export const parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 120, me
     }
 
     try {
+        const uid = context.auth.uid;
+        let userGeminiKey = "";
+        try {
+            const userDoc = await db.collection("users").doc(uid).get();
+            if (userDoc.exists) {
+                const uData = userDoc.data() || {};
+                userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();
+            }
+        } catch (e: any) {
+            console.warn("[JobPosterAI] Could not fetch userGeminiKey:", e.message);
+        }
         const { imagesBase64, mode, resumeBase64, applicantName, customPrompt } = data;
         if (!imagesBase64 || !Array.isArray(imagesBase64) || imagesBase64.length === 0) {
             throw new functions.https.HttpsError('invalid-argument', 'No image data provided.');
@@ -110,7 +122,7 @@ Respond ONLY with a JSON object matching this schema:
             }
         };
 
-        const geminiResult = await callGeminiAPI(payload, { timeout: 90000 });
+        const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 90000 });
         const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new Error('Empty response from Gemini API.');
