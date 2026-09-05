@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
@@ -9,7 +8,6 @@ import 'notes_screen.dart';
 import 'reminders_screen.dart';
 import 'daily_reminders_screen.dart';
 import 'gold_screen.dart';
-import 'checklists_screen.dart';
 import 'my_shifts_screen.dart';
 import 'auth_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -32,6 +30,7 @@ import 'finance_screen.dart';
 import 'job_assistant_screen.dart';
 import 'tech_events_screen.dart';
 import 'walkin_drives_screen.dart';
+import 'ai_keys_settings_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../main.dart';
 
@@ -47,23 +46,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   String _activeFeatureOverride = 'home';
   bool _isDarkMode = false;
   List<String> _enabledModules = [
-    'gold',
+    'home',
     'reminders',
+    'gold',
     'notes',
-    'shifts',
-    'vault',
-    'astro_calendar',
-    'gcp_cost',
-    'finance',
-    'job_assistant',
     'daily_reminders',
-    'events',
-    'walkins',
-    'voice_assistant',
   ];
   List<String> _userSelectedBottomModules = [];
   List<String> _userMenuOrder = [];
-  List<String> _userFavoriteModules = ['gold', 'reminders', 'notes', 'shifts'];
+  List<String> _userFavoriteModules = ['home', 'gold', 'reminders', 'notes', 'daily_reminders'];
   bool _isLoading = true;
 
   Future<void> _toggleFavorite(String id) async {
@@ -76,6 +67,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       }
     });
     await prefs.setStringList('user_favorite_modules', _userFavoriteModules);
+    await StorageService().updateUserFavoriteModules(_userFavoriteModules);
   }
 
   bool get _isVaultEnabled => _enabledModules.contains('vault');
@@ -90,6 +82,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _loadInitialData();
     _setupNotificationListener();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkPendingNotification();
+    });
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
       _loadPreferences();
       _listenToUserPreferences();
@@ -135,14 +130,30 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         .listen((snapshot) async {
       if (snapshot.exists && snapshot.data() != null) {
         final data = snapshot.data()!;
-        final firestoreModules = List<String>.from(data['enabledModules'] ?? ['gold']);
-        
         final localPrefs = await SharedPreferences.getInstance();
-        await localPrefs.setStringList('cached_enabled_modules', firestoreModules);
         
+        List<String>? firestoreModules;
+        if (data.containsKey('enabledModules') && data['enabledModules'] is List) {
+          firestoreModules = List<String>.from(data['enabledModules']);
+          await localPrefs.setStringList('cached_enabled_modules', firestoreModules);
+        }
+
+        List<String>? firestoreFavorites;
+        if (data.containsKey('favoriteModules') && data['favoriteModules'] is List) {
+          firestoreFavorites = List<String>.from(data['favoriteModules']);
+          await localPrefs.setStringList('user_favorite_modules', firestoreFavorites);
+        } else if (FirebaseAuth.instance.currentUser != null && _userFavoriteModules.isNotEmpty) {
+          await StorageService().updateUserFavoriteModules(_userFavoriteModules);
+        }
+
         if (mounted) {
           setState(() {
-            _enabledModules = firestoreModules;
+            if (firestoreModules != null) {
+              _enabledModules = firestoreModules;
+            }
+            if (firestoreFavorites != null) {
+              _userFavoriteModules = firestoreFavorites;
+            }
           });
         }
       }
@@ -157,7 +168,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final cachedBottom = localPrefs.getStringList('user_bottom_modules') ?? [];
     final cachedModulesStr = localPrefs.getStringList('cached_enabled_modules');
     final cachedMenuOrder = localPrefs.getStringList('user_menu_order') ?? [];
-    final cachedFavorites = localPrefs.getStringList('user_favorite_modules') ?? ['gold', 'reminders', 'notes', 'shifts'];
+    final cachedFavorites = localPrefs.getStringList('user_favorite_modules') ?? ['home', 'gold', 'reminders', 'notes', 'daily_reminders'];
 
     if (mounted) {
       setState(() {
@@ -174,11 +185,23 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     try {
       final prefs = await StorageService().getUserPreferences();
-      final firestoreModules = List<String>.from(prefs['enabledModules'] ?? ['gold']);
+      final firestoreModules = List<String>.from(prefs['enabledModules'] ?? ['reminders', 'gold', 'notes', 'daily_reminders']);
       await localPrefs.setStringList('cached_enabled_modules', firestoreModules);
+
+      List<String>? firestoreFavorites;
+      if (prefs.containsKey('favoriteModules') && prefs['favoriteModules'] is List) {
+        firestoreFavorites = List<String>.from(prefs['favoriteModules']);
+        await localPrefs.setStringList('user_favorite_modules', firestoreFavorites);
+      } else if (FirebaseAuth.instance.currentUser != null && _userFavoriteModules.isNotEmpty) {
+        await StorageService().updateUserFavoriteModules(_userFavoriteModules);
+      }
+
       if (mounted) {
         setState(() {
           _enabledModules = firestoreModules;
+          if (firestoreFavorites != null) {
+            _userFavoriteModules = firestoreFavorites;
+          }
         });
       }
     } catch (e) {
@@ -190,36 +213,131 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _notificationSubscription = NotificationService().selectNotificationStream.listen((type) {
       LogService.staticLog("MainScreen received notification event: $type");
       if (!mounted) return;
-
-      if (type.startsWith('CALENDAR_REMINDER')) {
-        final parts = type.split('|');
-        if (parts.length >= 3) {
-          final reminderId = parts[1];
-          final uid = parts[2];
-          _showReminderActionDialog(reminderId, uid);
-        } else {
-          _selectTabOrPush('reminders');
-        }
-      } else {
-        switch (type) {
-          case 'GOLD_PRICE':
-            _selectTabOrPush('gold');
-            break;
-          case 'shift_reminder':
-            _selectTabOrPush('shifts');
-            break;
-          case 'daily_reminder':
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const DailyRemindersScreen()),
-            );
-            break;
-          case 'astro_calendar':
-            _selectTabOrPush('astro_calendar');
-            break;
-        }
-      }
+      _handleNotificationEvent(type);
     });
+  }
+
+  void _checkPendingNotification() {
+    final pending = NotificationService().consumePendingPayload();
+    if (pending != null && pending.isNotEmpty) {
+      LogService.staticLog("MainScreen consuming pending notification: $pending");
+      _handleNotificationEvent(pending);
+    }
+  }
+
+  Future<void> _handleNotificationEvent(String type) async {
+    LogService.staticLog("MainScreen handling notification event: $type");
+    if (!mounted) return;
+
+    // Pop any open modal dialogs, bottom sheets, or pushed routes so the user returns to the main central view
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+
+    if (type.startsWith('CALENDAR_REMINDER')) {
+      _selectTabOrPush('reminders');
+      final parts = type.split('|');
+      if (parts.length >= 3) {
+        final reminderId = parts[1];
+        final uid = parts[2];
+        _showReminderActionDialog(reminderId, uid);
+      }
+      return;
+    }
+
+    if (type.startsWith('DAILY_REMINDER')) {
+      _selectTabOrPush('daily_reminders');
+      return;
+    }
+
+    switch (type) {
+      case 'GOLD_PRICE':
+      case 'GOLD_CHIT_ADVICE':
+      case 'GOLD_CHIT_UPDATE':
+      case 'gold':
+      case 'gold_price':
+      case 'gold_rates':
+        _selectTabOrPush('gold');
+        break;
+
+      case 'shift_reminder':
+      case 'SHIFT_REMINDER':
+      case 'shifts':
+      case 'my_shifts':
+      case 'shift':
+        _selectTabOrPush('shifts');
+        break;
+
+      case 'daily_reminder':
+      case 'daily_reminders':
+      case 'daily_tasks':
+        _selectTabOrPush('daily_reminders');
+        break;
+
+      case 'events_reminder':
+      case 'event_interest_reminder':
+      case 'tech_events':
+      case 'events':
+      case 'events_walkins':
+        _selectTabOrPush('events');
+        break;
+
+      case 'walkin_reminder':
+      case 'walkin_interest_reminder':
+      case 'walkin_drives':
+      case 'walkins':
+      case 'walkin':
+        _selectTabOrPush('walkins');
+        break;
+
+      case 'JOB_ASSISTANT':
+      case 'job_assistant':
+      case 'job_discovery':
+        _selectTabOrPush('job_assistant');
+        break;
+
+      case 'NIGHTLY_EXPENSE_TAG':
+      case 'smart_bank':
+      case 'smart_bank_tracker':
+      case 'expenses':
+        FinanceScreen.selectedFeatureIndexNotifier.value = 4;
+        _selectTabOrPush('finance');
+        break;
+
+      case 'finance':
+        _selectTabOrPush('finance');
+        break;
+
+      case 'bank_accounts':
+        FinanceScreen.selectedFeatureIndexNotifier.value = 0;
+        _selectTabOrPush('finance');
+        break;
+
+      case 'BILL_REMINDER':
+      case 'bill_reminder':
+      case 'bills':
+        FinanceScreen.selectedFeatureIndexNotifier.value = 1;
+        _selectTabOrPush('finance');
+        break;
+
+      case 'collaboration_request':
+      case 'notes':
+      case 'note':
+      case 'quick_notes':
+        _selectTabOrPush('notes');
+        break;
+
+      case 'astro_reminder':
+      case 'astro_calendar':
+      case 'astro':
+        _selectTabOrPush('astro_calendar');
+        break;
+
+      default:
+        // Fallback for direct module names
+        _selectTabOrPush(type.toLowerCase());
+        break;
+    }
   }
 
   Future<void> _checkAstroNotification() async {
@@ -464,15 +582,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         label: 'Shifts',
       ),
     },
-    'checklist': {
-      'screen': const ChecklistsScreen(),
-      'name': 'Checklist',
-      'destination': const NavigationDestination(
-        icon: Icon(Icons.playlist_add_check_outlined, color: Colors.blue),
-        selectedIcon: Icon(Icons.playlist_add_check, color: Colors.blue),
-        label: 'Checklist',
-      ),
-    },
     'vault': {
       'screen': const VaultTabWrapper(),
       'name': 'Secure Vault',
@@ -540,7 +649,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   List<String> get _activeFeatures {
     final adminEnabled = _enabledModules
-        .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled) && (!kIsWeb || id != 'checklist'))
+        .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled))
         .toList();
 
     final activeUserSelected = _userSelectedBottomModules
@@ -561,9 +670,22 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   List<String> get _desktopActiveModules {
-    return _enabledModules
-        .where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled) && (!kIsWeb || id != 'checklist'))
-        .toList();
+    const allModules = [
+      'home',
+      'gold',
+      'finance',
+      'reminders',
+      'daily_reminders',
+      'notes',
+      'shifts',
+      'vault',
+      'job_assistant',
+      'events',
+      'walkins',
+      'astro_calendar',
+      'gcp_cost',
+    ];
+    return allModules.where((id) => _moduleRegistry.containsKey(id)).toList();
   }
 
   int get _menuIndex {
@@ -646,17 +768,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           stream: StorageService().getIncomingRequestsStream('note'),
         );
       }
-    } else if (id == 'checklist') {
-      icon = NavigationIconWithBadge(
-        icon: icon,
-        stream: StorageService().getIncomingRequestsStream('checklist'),
-      );
-      if (selectedIcon != null) {
-        selectedIcon = NavigationIconWithBadge(
-          icon: selectedIcon,
-          stream: StorageService().getIncomingRequestsStream('checklist'),
-        );
-      }
     } else if (id == 'vault') {
       icon = NavigationIconWithBadge(
         icon: icon,
@@ -696,21 +807,52 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
       return;
     } else if (id == 'bank_accounts') {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen(initialFeatureIndex: 0)));
-      return;
-    } else if (id == 'expenses') {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const FinanceScreen(initialFeatureIndex: 4)));
-      return;
-    } else if (id == 'gold_price' || id == 'gold_rates') {
+      FinanceScreen.selectedFeatureIndexNotifier.value = 0;
+      id = 'finance';
+    } else if (id == 'expenses' || id == 'smart_bank' || id == 'smart_bank_tracker' || id == 'smart_bank_tracker_transaction') {
+      FinanceScreen.selectedFeatureIndexNotifier.value = 4;
+      id = 'finance';
+    } else if (id == 'bills' || id == 'recurring_bills') {
+      FinanceScreen.selectedFeatureIndexNotifier.value = 1;
+      id = 'finance';
+    } else if (id == 'debts') {
+      FinanceScreen.selectedFeatureIndexNotifier.value = 2;
+      id = 'finance';
+    } else if (id == 'group_splits' || id == 'groups') {
+      FinanceScreen.selectedFeatureIndexNotifier.value = 3;
+      id = 'finance';
+    } else if (id == 'gold_price' || id == 'gold_rates' || id == 'gold_chit') {
       id = 'gold';
-    } else if (id == 'events_walkins' || id == 'tech_events') {
+    } else if (id == 'events_walkins' || id == 'tech_events' || id == 'events_reminder' || id == 'event_interest_reminder') {
       id = 'events';
-    } else if (id == 'walkin' || id == 'walkin_drives' || id == 'walkins') {
+    } else if (id == 'walkin' || id == 'walkin_drives' || id == 'walkins' || id == 'walkin_reminder' || id == 'walkin_interest_reminder') {
       id = 'walkins';
-    } else if (id == 'job_discovery' || id == 'job_assistant') {
+    } else if (id == 'job_discovery' || id == 'job_assistant' || id == 'JOB_ASSISTANT') {
       id = 'job_assistant';
-    } else if (id == 'quick_notes') {
+    } else if (id == 'quick_notes' || id == 'notes' || id == 'note' || id == 'collaboration_request') {
       id = 'notes';
+    } else if (id == 'astro' || id == 'astro_calendar' || id == 'astro_reminder') {
+      id = 'astro_calendar';
+    } else if (id == 'shift' || id == 'shifts' || id == 'my_shifts' || id == 'shift_reminder' || id == 'SHIFT_REMINDER') {
+      id = 'shifts';
+    } else if (id == 'daily_reminder' || id == 'daily_reminders' || id == 'daily_tasks') {
+      id = 'daily_reminders';
+    } else if (id == 'calendar_reminder' || id == 'reminders') {
+      id = 'reminders';
+    }
+
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isLargeScreen = screenWidth >= 768;
+    if (isLargeScreen) {
+      final desktopModules = _desktopActiveModules;
+      final desktopIdx = desktopModules.indexOf(id);
+      if (desktopIdx != -1) {
+        setState(() {
+          _selectedIndex = desktopIdx;
+          _activeFeatureOverride = id;
+        });
+        return;
+      }
     }
 
     final active = _activeFeatures;
@@ -728,7 +870,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   void _showCustomizeBottomBarDialog() async {
-    final adminEnabled = _enabledModules.where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled) && (!kIsWeb || id != 'checklist')).toList();
+    final adminEnabled = _enabledModules.where((id) => _moduleRegistry.containsKey(id) && (id != 'vault' || _isVaultEnabled)).toList();
     List<String> tempSelected = List<String>.from(_activeFeatures);
 
     showDialog(
@@ -1278,6 +1420,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       onTap: () {
                         setState(() {
                           _selectedIndex = index;
+                          _activeFeatureOverride = id;
                         });
                       },
                     ),
@@ -1335,6 +1478,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       onTap: () {
                         setState(() {
                           _selectedIndex = index;
+                          _activeFeatureOverride = id;
                         });
                       },
                     ),
@@ -1358,40 +1502,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   ),
                 ),
 
-                if (_enabledModules.contains('daily_reminders'))
-                  _buildSidebarItem(
-                    icon: Icons.alarm_on,
-                    color: Colors.blue,
-                    title: 'Daily Reminders',
-                    onTap: () => _selectTabOrPush('daily_reminders'),
-                  ),
-                if (_enabledModules.contains('events'))
-                  _buildSidebarItem(
-                    icon: Icons.event,
-                    color: Colors.green,
-                    title: 'Tech Events',
-                    onTap: () {
-                      Navigator.pop(context);
-                      _selectTabOrPush('events');
-                    },
-                  ),
-                if (_enabledModules.contains('walkin') || _enabledModules.contains('walkins'))
-                  _buildSidebarItem(
-                    icon: Icons.directions_walk,
-                    color: Colors.lightBlue,
-                    title: 'Walk-In Drives',
-                    onTap: () {
-                      Navigator.pop(context);
-                      _selectTabOrPush('walkins');
-                    },
-                  ),
-                if (_enabledModules.contains('voice_assistant'))
-                  _buildSidebarItem(
-                    icon: Icons.mic,
-                    color: Colors.redAccent,
-                    title: 'Voice Assistant',
-                    onTap: _openVoiceAssistant,
-                  ),
+                _buildSidebarItem(
+                  icon: Icons.mic,
+                  color: Colors.redAccent,
+                  title: 'Voice Assistant',
+                  onTap: _openVoiceAssistant,
+                ),
 
                 const SizedBox(height: 16),
                 const Divider(),
@@ -1410,6 +1526,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   ),
                 ),
 
+                _buildSidebarItem(
+                  icon: Icons.key_rounded,
+                  color: Colors.purpleAccent,
+                  title: 'AI Keys & Models',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AIKeysSettingsScreen()),
+                    );
+                  },
+                ),
                 _buildSidebarItem(
                   icon: Icons.history_toggle_off,
                   color: Colors.deepPurple,
@@ -1486,7 +1613,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'RemindBuddy v1.0.0',
+                  'RemindBuddy v1.10.13',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],
@@ -1694,8 +1821,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       const Text('• Calendar-based reminders'),
                       const Text('• Gold Price Tracker'),
                       const Text('• My Shifts - Work schedule manager'),
-                      const Text('• Checklists for everything'),
-                      const Text('• Secure notes with PIN lock'),
+                      const Text('• Notes & Checklists with PIN lock'),
                     ],
                   );
                 }
@@ -1787,11 +1913,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return NavigationIconWithBadge(
         icon: icon,
         stream: StorageService().getIncomingRequestsStream('note'),
-      );
-    } else if (id == 'checklist') {
-      return NavigationIconWithBadge(
-        icon: icon,
-        stream: StorageService().getIncomingRequestsStream('checklist'),
       );
     } else if (id == 'vault') {
       return NavigationIconWithBadge(

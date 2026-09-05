@@ -27,7 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final GoldPriceService _goldPriceService = GoldPriceService();
 
   // User's active enabled modules from Firestore/Preferences
-  List<String> _enabledModules = ['gold', 'finance', 'shifts', 'reminders', 'notes'];
+  List<String> _enabledModules = ['gold', 'reminders', 'notes', 'daily_reminders'];
   
   // Static Weather Cache across Screen Mounts (avoids re-fetching on tab/screen switch)
   static DateTime? _lastWeatherFetchTime;
@@ -37,7 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static IconData _cachedIcon = Icons.wb_sunny_rounded;
 
   // Custom dashboard widget list chosen by user (weather is in permanent top header)
-  List<String> _activeWidgets = ['gold_price', 'bank_accounts', 'expenses', 'shifts', 'voice_assistant'];
+  List<String> _activeWidgets = ['gold_price', 'reminders', 'daily_reminders', 'notes'];
   String _heroWidget = 'gold_price'; // Default hero card
 
   bool _isLoading = true;
@@ -115,27 +115,33 @@ class _HomeScreenState extends State<HomeScreen> {
       'icon': Icons.edit_note_rounded,
       'color': Colors.purpleAccent,
     },
+    'daily_reminders': {
+      'title': 'Daily Habits',
+      'module': 'daily_reminders',
+      'icon': Icons.alarm_on_rounded,
+      'color': Colors.blueAccent,
+    },
     'tech_events': {
       'title': 'Tech Events',
-      'module': 'all',
+      'module': 'events',
       'icon': Icons.event_available_rounded,
       'color': Colors.indigoAccent,
     },
     'walkin_drives': {
       'title': 'Walk-in Drives',
-      'module': 'all',
+      'module': 'walkins',
       'icon': Icons.work_outline_rounded,
       'color': Colors.cyanAccent,
     },
     'job_discovery': {
       'title': 'AI Job Discovery',
-      'module': 'all',
+      'module': 'job_assistant',
       'icon': Icons.rocket_launch_rounded,
       'color': Colors.blueAccent,
     },
     'voice_assistant': {
       'title': 'Ask Buddy (Voice AI)',
-      'module': 'all',
+      'module': 'voice_assistant',
       'icon': Icons.mic_rounded,
       'color': Colors.redAccent,
     },
@@ -212,7 +218,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (savedHero != null && _isWidgetAllowed(savedHero)) {
       _heroWidget = savedHero;
     } else {
-      _heroWidget = _activeWidgets.isNotEmpty ? _activeWidgets.first : 'gold_price';
+      _heroWidget = _activeWidgets.contains('gold_price')
+          ? 'gold_price'
+          : (_activeWidgets.isNotEmpty ? _activeWidgets.first : 'gold_price');
     }
 
     if (mounted) {
@@ -234,6 +242,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (meta == null) return false;
     final requiredMod = meta['module'] as String;
     if (requiredMod == 'all') return true;
+    if (requiredMod == 'walkins' || requiredMod == 'walkin') {
+      return _enabledModules.contains('walkins') || _enabledModules.contains('walkin');
+    }
     return _enabledModules.contains(requiredMod);
   }
 
@@ -245,7 +256,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
     _activeWidgets = list;
-    if (!_activeWidgets.contains(_heroWidget)) {
+    if (_activeWidgets.contains('gold_price')) {
+      _heroWidget = 'gold_price';
+    } else if (!_activeWidgets.contains(_heroWidget)) {
       _heroWidget = _activeWidgets.isNotEmpty ? _activeWidgets.first : 'gold_price';
     }
   }
@@ -384,7 +397,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .listen((snapshot) {
       if (snapshot.exists && snapshot.data() != null) {
         final data = snapshot.data()!;
-        final mods = List<String>.from(data['enabledModules'] ?? ['gold']);
+        final mods = List<String>.from(data['enabledModules'] ?? ['reminders', 'gold', 'notes', 'daily_reminders']);
         if (mounted) {
           setState(() {
             _enabledModules = mods;

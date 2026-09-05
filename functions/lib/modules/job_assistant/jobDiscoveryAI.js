@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.triggerAutoJobDiscoveryAndApply = exports.processAutoApplyUserTask = void 0;
+exports.getBestMatchingResumeProfile = getBestMatchingResumeProfile;
 exports.discoverAndApplyForUser = discoverAndApplyForUser;
 exports.internalAutoJobDiscoveryAndApply = internalAutoJobDiscoveryAndApply;
 const functions = require("firebase-functions");
@@ -45,10 +46,77 @@ async function verifyEmailDomainMx(email) {
     }
 }
 /**
- * Searches and automatically applies to matching jobs for a specific user
+ * Intelligently matches a discovered job role & skills to the best candidate resume profile.
+ * Defaults to isDefault profile if no specific match is found.
  */
+function getBestMatchingResumeProfile(jobTitle, keySkills, profiles) {
+    if (!profiles || profiles.length === 0) {
+        return {
+            id: "master_resume",
+            title: "Master Resume",
+            targetRoles: [],
+            fileName: "Resume.pdf",
+            base64: "",
+            isDefault: true
+        };
+    }
+    if (profiles.length === 1) {
+        return profiles[0];
+    }
+    const defaultProfile = profiles.find(p => p.isDefault) || profiles[0];
+    const cleanJobTitle = (jobTitle || "").toLowerCase();
+    const skillsList = (keySkills || []).map(s => s.toLowerCase());
+    let bestScore = -1;
+    let bestProfile = defaultProfile;
+    for (const profile of profiles) {
+        let score = 0;
+        const profileTitle = profile.title.toLowerCase();
+        // Exact / substring title match
+        if (cleanJobTitle.includes(profileTitle) || profileTitle.includes(cleanJobTitle)) {
+            score += 5;
+        }
+        // Check target roles configured on this profile
+        for (const role of profile.targetRoles) {
+            const rLower = role.toLowerCase().trim();
+            if (!rLower)
+                continue;
+            if (cleanJobTitle.includes(rLower) || rLower.includes(cleanJobTitle)) {
+                score += 6;
+            }
+            else {
+                // Word level overlap
+                const roleWords = rLower.split(/\s+/).filter(w => w.length > 2);
+                for (const w of roleWords) {
+                    if (cleanJobTitle.includes(w)) {
+                        score += 2;
+                    }
+                }
+            }
+        }
+        // Check key skills overlap
+        for (const skill of skillsList) {
+            if (!skill)
+                continue;
+            if (profile.targetRoles.some(r => r.toLowerCase().includes(skill))) {
+                score += 2;
+            }
+            if (profileTitle.includes(skill)) {
+                score += 2;
+            }
+        }
+        // Give a slight tie-breaker bump to default profile
+        if (profile.isDefault) {
+            score += 0.5;
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            bestProfile = profile;
+        }
+    }
+    return bestProfile;
+}
 async function discoverAndApplyForUser(uid, options) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     if (!userDoc.exists) {
         return { success: false, appliedCount: 0, jobs: [], message: "User not found" };
@@ -57,17 +125,50 @@ async function discoverAndApplyForUser(uid, options) {
     const emailConfig = userData.emailConfig || {};
     const userEmail = emailConfig.email;
     const appPassword = emailConfig.appPassword;
-    const masterResume = userData.masterResume || {};
-    const resumeBase64 = masterResume.base64;
-    const resumeFileName = masterResume.fileName || "Resume.pdf";
     const applicantName = userData.displayName || "Roshan J";
     if (!userEmail || !appPassword) {
         console.log(`[JobDiscovery] User ${uid} has not configured Gmail/App Password. Skipping.`);
         return { success: false, appliedCount: 0, jobs: [], message: "Gmail & App Password not configured in Job Assistant Settings." };
     }
-    if (!resumeBase64) {
-        console.log(`[JobDiscovery] User ${uid} has not uploaded a Master Resume. Skipping.`);
-        return { success: false, appliedCount: 0, jobs: [], message: "Master Resume PDF not uploaded in Job Assistant Settings." };
+    // Load Multi-Resume Profiles (with fallback to masterResume)
+    const resumeProfiles = [];
+    try {
+        const profilesSnap = await firebase_1.db.collection("users").doc(uid).collection("resume_profiles").get();
+        profilesSnap.forEach((doc) => {
+            const p = doc.data() || {};
+            if (p.base64) {
+                resumeProfiles.push({
+                    id: doc.id,
+                    title: (p.title || p.name || "Targeted Resume").toString(),
+                    targetRoles: Array.isArray(p.targetRoles)
+                        ? p.targetRoles.map((s) => s.toString().trim()).filter(Boolean)
+                        : (typeof p.targetRoles === 'string' ? p.targetRoles.split(',').map((s) => s.trim()).filter(Boolean) : []),
+                    fileName: (p.fileName || "Resume.pdf").toString(),
+                    base64: p.base64.toString(),
+                    isDefault: p.isDefault === true
+                });
+            }
+        });
+    }
+    catch (profErr) {
+        console.warn(`[JobDiscovery] Could not load resume_profiles for ${uid}:`, profErr.message);
+    }
+    const masterResume = userData.masterResume || {};
+    const resumeBase64 = masterResume.base64;
+    const resumeFileName = masterResume.fileName || "Resume.pdf";
+    if (resumeProfiles.length === 0 && resumeBase64) {
+        resumeProfiles.push({
+            id: "master_resume",
+            title: "Master Resume",
+            targetRoles: ["Flutter Developer", "DevOps Engineer", "Cloud Engineer"],
+            fileName: resumeFileName,
+            base64: resumeBase64,
+            isDefault: true
+        });
+    }
+    if (resumeProfiles.length === 0) {
+        console.log(`[JobDiscovery] User ${uid} has not uploaded any resumes. Skipping.`);
+        return { success: false, appliedCount: 0, jobs: [], message: "Please upload your resume PDF in Job Assistant Settings." };
     }
     // Record jobsLastRan timestamp immediately
     await firebase_1.db.collection("users").doc(uid).set({
@@ -98,6 +199,11 @@ async function discoverAndApplyForUser(uid, options) {
     }
     if (targetLocations.length === 0) {
         targetLocations = ["Bengaluru", "India", "Remote"];
+    }
+    // Resolve excluded companies / agencies (Blacklist)
+    let excludedCompanies = (options === null || options === void 0 ? void 0 : options.excludedCompanies) || autoApplySettings.excludedCompanies || [];
+    if (typeof excludedCompanies === 'string') {
+        excludedCompanies = excludedCompanies.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
     }
     const minExp = (options === null || options === void 0 ? void 0 : options.minExpYears) !== undefined ? Number(options.minExpYears) : Number((_a = autoApplySettings.minExpYears) !== null && _a !== void 0 ? _a : 0);
     const maxExp = (options === null || options === void 0 ? void 0 : options.maxExpYears) !== undefined ? Number(options.maxExpYears) : Number((_b = autoApplySettings.maxExpYears) !== null && _b !== void 0 ? _b : 3);
@@ -204,6 +310,8 @@ CRITICAL VERIFICATION & EXTRACTION MANDATES:
 4. LOCATION & WORK MODE MATCHING:
    - Match On-Site/Hybrid roles in target Indian cities/India AND Remote/WFH openings when specified.
 
+${excludedCompanies.length > 0 ? `5. EXCLUDED COMPANIES & AGENCIES BLACKLIST:
+   - STRICTLY DO NOT return any openings from these excluded companies, consultancies, or agencies: ${excludedCompanies.map(c => `"${c}"`).join(", ")}. If an opening is with any of these employers/agencies, SKIP IT COMPLETELY.\n` : ""}
 Respond ONLY with a JSON array matching this schema:
 [
   {
@@ -221,8 +329,9 @@ Respond ONLY with a JSON array matching this schema:
 ]
 If no matching jobs with verified emails and ${minExp}-${maxExp} years experience are found, respond with an empty JSON array: [].`;
     const inlineParts = [];
-    if (resumeBase64) {
-        const cleanResumeB64 = resumeBase64.replace(/^data:application\/pdf;base64,/, '');
+    const promptResumeB64 = ((_c = (resumeProfiles.find(p => p.isDefault) || resumeProfiles[0])) === null || _c === void 0 ? void 0 : _c.base64) || resumeBase64;
+    if (promptResumeB64) {
+        const cleanResumeB64 = promptResumeB64.replace(/^data:application\/pdf;base64,/, '');
         inlineParts.push({
             inlineData: {
                 mimeType: "application/pdf",
@@ -288,6 +397,21 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             console.log(`[JobDiscovery] Skipping duplicate application to ${emailLower} (${job.companyName})`);
             continue;
         }
+        // Check configurable excluded companies / recruitment consultancies blacklist
+        if (excludedCompanies.length > 0) {
+            const compLower = (job.companyName || '').toLowerCase().trim();
+            const emailDomainLower = (emailLower.split('@')[1] || '').trim();
+            const isExcluded = excludedCompanies.some(ex => {
+                const exLower = ex.toLowerCase().trim();
+                if (!exLower)
+                    return false;
+                return compLower.includes(exLower) || emailDomainLower.includes(exLower);
+            });
+            if (isExcluded) {
+                console.log(`[JobDiscovery] Skipping job at '${job.companyName}' (${email}) matching excluded companies blacklist.`);
+                continue;
+            }
+        }
         // Verify that the email domain actually has live MX mail exchange servers
         const hasValidMx = await verifyEmailDomainMx(email);
         if (!hasValidMx) {
@@ -300,8 +424,8 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         }
     }
     if (validFilteredJobs.length === 0) {
-        console.log(`[JobDiscovery] All discovered jobs were either duplicates, lacked valid emails, or had unreachable domains.`);
-        return { success: true, appliedCount: 0, jobs: [], message: "Discovered openings were already applied to or had unreachable domains." };
+        console.log(`[JobDiscovery] All discovered jobs were either duplicates, lacked valid emails, matched excluded blacklist, or had unreachable domains.`);
+        return { success: true, appliedCount: 0, jobs: [], message: "Discovered openings were excluded, already applied to, or had unreachable domains." };
     }
     // Initialize Nodemailer transporter with user's Gmail App Password
     const cleanPassword = appPassword.replace(/\s+/g, '');
@@ -312,26 +436,29 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             pass: cleanPassword
         }
     });
-    const cleanPdfB64 = resumeBase64.replace(/^data:application\/pdf;base64,/, '');
-    const attachments = [
-        {
-            filename: resumeFileName,
-            content: Buffer.from(cleanPdfB64, 'base64'),
-            contentType: 'application/pdf'
-        }
-    ];
     const successfullyAppliedJobs = [];
     for (const job of validFilteredJobs) {
         try {
+            // Determine best matching resume profile for this specific job role & skills
+            const matchedProfile = getBestMatchingResumeProfile(job.jobTitle, job.keySkills, resumeProfiles);
+            console.log(`[JobDiscovery] Matched resume profile '${matchedProfile.title}' for role '${job.jobTitle}' at '${job.companyName}'`);
+            const cleanPdfB64 = (matchedProfile.base64 || resumeBase64 || "").replace(/^data:application\/pdf;base64,/, '');
+            const jobAttachments = cleanPdfB64 ? [
+                {
+                    filename: matchedProfile.fileName || resumeFileName || "Resume.pdf",
+                    content: Buffer.from(cleanPdfB64, 'base64'),
+                    contentType: 'application/pdf'
+                }
+            ] : [];
             const mailOptions = {
                 from: `"${applicantName}" <${userEmail}>`,
                 to: job.recipientEmail.trim(),
                 subject: job.generatedSubject || `Application for ${job.jobTitle} - ${applicantName}`,
                 text: job.generatedCoverLetter,
-                attachments: attachments
+                attachments: jobAttachments
             };
             const info = await transporter.sendMail(mailOptions);
-            console.log(`[JobDiscovery] Emailed application for '${job.jobTitle}' at '${job.companyName}' (${job.recipientEmail}): ${info.messageId}`);
+            console.log(`[JobDiscovery] Emailed application for '${job.jobTitle}' at '${job.companyName}' (${job.recipientEmail}) with profile '${matchedProfile.title}': ${info.messageId}`);
             const applicationRecord = {
                 jobTitle: job.jobTitle,
                 companyName: job.companyName,
@@ -349,7 +476,8 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
                 messageId: info.messageId || "",
                 isAutoApplied: true,
                 appliedDateStr: todayStr,
-                modelUsed: modelUsed || "gemini-3.7-flash"
+                modelUsed: modelUsed || "gemini-3.7-flash",
+                resumeProfileName: matchedProfile.title
             };
             const appDocRef = await firebase_1.db.collection("users").doc(uid).collection("job_applications").add(applicationRecord);
             appliedEmails.add(job.recipientEmail.toLowerCase().trim());
@@ -372,7 +500,7 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         try {
             const userTokenDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
             if (!userTokenDoc.empty) {
-                const fcmToken = (_c = userTokenDoc.docs[0].data()) === null || _c === void 0 ? void 0 : _c.fcmToken;
+                const fcmToken = (_d = userTokenDoc.docs[0].data()) === null || _d === void 0 ? void 0 : _d.fcmToken;
                 if (fcmToken) {
                     const compNames = successfullyAppliedJobs.map(j => j.companyName).filter(Boolean).slice(0, 3).join(', ');
                     const notifTitle = `🚀 Auto-Applied to ${successfullyAppliedJobs.length} New Job${successfullyAppliedJobs.length > 1 ? 's' : ''}!`;
@@ -400,6 +528,35 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         }
         catch (notifErr) {
             console.error("[JobDiscovery] Failed to dispatch push notification:", notifErr);
+        }
+        // Send confirmation summary email to the user's Gmail if enabled
+        const notifPrefs = userData.notificationPreferences || {};
+        const isEmailEnabled = notifPrefs.job_assistant_email !== false;
+        if (isEmailEnabled) {
+            try {
+                const mailSummaryList = successfullyAppliedJobs.map(j => `<li style="margin-bottom: 10px;"><strong>${j.jobTitle}</strong> at <strong>${j.companyName}</strong> (${j.recipientEmail})<br><span style="color: #4F46E5; font-size: 12px; font-weight: bold;">📄 Attached Resume: ${j.resumeProfileName || 'Master Resume'}</span><br><span style="color: #6B7280; font-size: 12px;">Subject: ${j.generatedSubject || j.subject}</span></li>`).join('');
+                await transporter.sendMail({
+                    from: `"RemindBuddy Auto Apply" <${userEmail}>`,
+                    to: userEmail,
+                    subject: `🚀 [RemindBuddy] Auto-Applied to ${successfullyAppliedJobs.length} Job(s) (${moment().tz('Asia/Kolkata').format('hh:mm A, DD MMM')})`,
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                            <h2 style="color: #4F46E5; margin-top: 0;">Automated Job Application Summary</h2>
+                            <p>Hello <strong>${applicantName}</strong>,</p>
+                            <p>RemindBuddy AI Auto-Apply Agent has applied to <strong>${successfullyAppliedJobs.length}</strong> new job opening(s) with your tailored resume and cover letter:</p>
+                            <ul style="padding-left: 20px;">${mailSummaryList}</ul>
+                            <p style="color: #6B7280; font-size: 13px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">Executed automatically via RemindBuddy scheduled Job Agent.</p>
+                        </div>
+                    `
+                });
+                console.log(`[JobDiscovery] Sent email application report to: ${userEmail}`);
+            }
+            catch (sumMailErr) {
+                console.warn("[JobDiscovery] Could not send confirmation email to applicant:", sumMailErr.message);
+            }
+        }
+        else {
+            console.log(`[JobDiscovery] Skipping summary email to ${userEmail}: job_assistant_email is disabled in preferences.`);
         }
     }
     return {
@@ -442,7 +599,7 @@ exports.processAutoApplyUserTask = functions.runWith({ timeoutSeconds: 300, memo
  * Twice-Daily Automated Job Discovery & Auto-Apply Dispatcher (10 AM & 10 PM IST)
  */
 async function internalAutoJobDiscoveryAndApply() {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     console.log("[internalAutoJobDiscoveryAndApply] Starting twice-daily automated job discovery & apply dispatcher (10 AM & 10 PM IST)...");
     try {
         const usersSnap = await firebase_1.db.collection("users").get();
@@ -457,11 +614,26 @@ async function internalAutoJobDiscoveryAndApply() {
                 console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: job_assistant not enabled or autoApply disabled.`);
                 continue;
             }
-            // 2. Must have uploaded a Master Resume
-            const resumeDoc = await firebase_1.db.collection("users").doc(uid).collection("job_profiles").doc("master_resume").get();
-            const resumeBase64 = (_c = resumeDoc.data()) === null || _c === void 0 ? void 0 : _c.base64Data;
-            if (!resumeBase64) {
-                console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: Master Resume PDF not uploaded.`);
+            // 2. Must have uploaded a Master Resume or at least one Resume Profile
+            let hasResume = !!((_c = data.masterResume) === null || _c === void 0 ? void 0 : _c.base64);
+            if (!hasResume) {
+                const profilesSnap = await firebase_1.db.collection("users").doc(uid).collection("resume_profiles").limit(1).get();
+                if (!profilesSnap.empty) {
+                    hasResume = true;
+                }
+            }
+            if (!hasResume) {
+                const resumeDoc = await firebase_1.db.collection("users").doc(uid).collection("job_profiles").doc("master_resume").get();
+                hasResume = !!(((_d = resumeDoc.data()) === null || _d === void 0 ? void 0 : _d.base64Data) || ((_e = resumeDoc.data()) === null || _e === void 0 ? void 0 : _e.base64));
+            }
+            if (!hasResume) {
+                console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: Master Resume or Resume Profile PDF not uploaded.`);
+                continue;
+            }
+            // 3. Must have Gmail & App Password configured
+            const emailConfig = data.jobEmailConfig || {};
+            if (!emailConfig.email || !emailConfig.appPassword) {
+                console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: Gmail & App Password not configured.`);
                 continue;
             }
             eligibleUids.push(uid);
@@ -504,6 +676,7 @@ exports.triggerAutoJobDiscoveryAndApply = functions.runWith({ timeoutSeconds: 30
         const result = await discoverAndApplyForUser(uid, {
             targetRoles: data.targetRoles,
             locations: data.locations,
+            excludedCompanies: data.excludedCompanies,
             minExpYears: data.minExpYears,
             maxExpYears: data.maxExpYears,
             maxApplications: data.maxApplications || 4,

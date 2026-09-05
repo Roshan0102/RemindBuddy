@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import * as moment from "moment-timezone";
 import { admin, db } from "../../config/firebase";
 import { logNotification } from "../../utils/logger";
+import * as nodemailer from "nodemailer";
 
 import { callGeminiAPI } from "../../utils/geminiHelper";
 import { searchTavily, TavilySearchResult } from "../../utils/tavilyHelper";
@@ -248,7 +249,7 @@ Respond ONLY with a JSON array matching this schema:
                 const token = usernameDoc.docs[0].data().fcmToken;
                 if (token) {
                     const title = "New Tech Events Found";
-                    const body = `Found ${newCount} new tech event(s) and meetup(s) in Bengaluru.`;
+                    const body = `Found ${newCount} new tech event(s) and meetup(s) in ${location || 'your area'}.`;
                     await admin.messaging().send({
                         token,
                         notification: { title, body },
@@ -261,6 +262,45 @@ Respond ONLY with a JSON array matching this schema:
                         data: { type: "events_reminder" }
                     });
                     await logNotification(uid, title, body, "TECH_EVENTS");
+                }
+            }
+
+            // Send email summary if user has configured Gmail and enabled events_email
+            const notifPrefs = uData?.notificationPreferences || {};
+            const isEmailEnabled = notifPrefs.events_email !== false;
+            const emailConfig = uData?.jobEmailConfig || {};
+            if (isEmailEnabled && emailConfig.email && emailConfig.appPassword) {
+                try {
+                    const transporter = nodemailer.createTransport({
+                        service: "gmail",
+                        auth: {
+                            user: emailConfig.email,
+                            pass: emailConfig.appPassword
+                        }
+                    });
+                    const eventsListHtml = uniqueEvents.slice(0, 6).map(e => 
+                        `<li style="margin-bottom: 10px;"><strong>${e.title}</strong><br>` +
+                        `<span>📅 Date: ${e.date || 'Upcoming'} | ⏰ ${e.timings || 'Timings in posting'}</span><br>` +
+                        `<span>📍 Location: ${e.location || location}</span><br>` +
+                        `${e.registrationLink ? `<a href="${e.registrationLink}">Register / View Event</a>` : ''}</li>`
+                    ).join('');
+                    await transporter.sendMail({
+                        from: `"RemindBuddy Tech Events" <${emailConfig.email}>`,
+                        to: emailConfig.email,
+                        subject: `📅 [RemindBuddy] ${newCount} New Tech Event(s) Found in ${location || 'your area'}`,
+                        html: `
+                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                                <h2 style="color: #2563EB; margin-top: 0;">New Tech Events Discovered</h2>
+                                <p>Hello,</p>
+                                <p>RemindBuddy found <strong>${newCount}</strong> new tech event(s) and meetup(s) matching your interests (<strong>${interests.join(', ')}</strong>) in <strong>${location}</strong>:</p>
+                                <ul style="padding-left: 20px;">${eventsListHtml}</ul>
+                                <p style="color: #6B7280; font-size: 13px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">Discovered during your scheduled 7:00 PM IST daily run.</p>
+                            </div>
+                        `
+                    });
+                    console.log(`[TechEvents] Sent email alert to ${emailConfig.email}`);
+                } catch (emailErr: any) {
+                    console.warn(`[TechEvents] Failed to send email alert:`, emailErr.message);
                 }
             }
         }

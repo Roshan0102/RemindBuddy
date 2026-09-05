@@ -22,7 +22,11 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
     'calendar_reminders': true,
     'daily_reminders': true,
     'walkin': true,
+    'walkin_email': true,
     'events': true,
+    'events_email': true,
+    'job_assistant': true,
+    'job_assistant_email': true,
     'astro_calendar': false,
   };
 
@@ -55,8 +59,12 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
             'finance_nightly_tagging': prefs['finance_nightly_tagging'] ?? prefs['finance'] ?? true,
             'calendar_reminders': prefs['calendar_reminders'] ?? prefs['reminders'] ?? true,
             'daily_reminders': prefs['daily_reminders'] ?? prefs['reminders'] ?? true,
-            'walkin': prefs['walkin'] ?? true,
+            'walkin': prefs['walkin'] ?? prefs['walkins'] ?? true,
+            'walkin_email': prefs['walkin_email'] ?? prefs['walkins_email'] ?? true,
             'events': prefs['events'] ?? true,
+            'events_email': prefs['events_email'] ?? true,
+            'job_assistant': prefs['job_assistant'] ?? true,
+            'job_assistant_email': prefs['job_assistant_email'] ?? true,
             'astro_calendar': prefs['astro_calendar'] ?? false,
           };
           _isLoading = false;
@@ -115,7 +123,7 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
               child: ListView(
                 children: [
                   const Text(
-                    'Manage your push notifications for each enabled feature below.',
+                    'Manage your push notifications and email alerts for each enabled feature below.',
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                   const SizedBox(height: 20),
@@ -159,8 +167,8 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                     ),
                     _buildPreferenceTile(
                       key: 'finance_nightly_tagging',
-                      title: 'Nightly Expense Tagging',
-                      subtitle: 'Reminder to categorize untagged spend & SMS transactions (10:00 PM)',
+                      title: 'Daily Bank Expense Tagging',
+                      subtitle: 'Reminder to tag daily bank transactions & log manual spends (9:30 PM)',
                       icon: Icons.category,
                       iconColor: Colors.cyan,
                     ),
@@ -187,24 +195,58 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                     ),
 
                   // Walk-In Drives
-                  if (_enabledModules.contains('walkin'))
+                  if (_enabledModules.contains('walkin') || _enabledModules.contains('walkins')) ...[
                     _buildPreferenceTile(
                       key: 'walkin',
-                      title: 'Walk-In Drive Alerts',
-                      subtitle: 'Alerts when new DevOps/Cloud/SRE Walk-In drives are found (8:00 PM)',
+                      title: 'Walk-In Drive Push Alerts',
+                      subtitle: 'Push notification when new Walk-In drives are found (8:00 PM)',
                       icon: Icons.directions_walk,
                       iconColor: Colors.lightBlue,
                     ),
+                    _buildPreferenceTile(
+                      key: 'walkin_email',
+                      title: 'Walk-In Drive Email Summary',
+                      subtitle: 'Daily email summary with top walk-in venue links to your inbox',
+                      icon: Icons.mark_email_read_rounded,
+                      iconColor: Colors.lightBlueAccent,
+                    ),
+                  ],
 
                   // Tech Events
-                  if (_enabledModules.contains('events'))
+                  if (_enabledModules.contains('events')) ...[
                     _buildPreferenceTile(
                       key: 'events',
-                      title: 'Tech Event Alerts',
-                      subtitle: 'Alerts when new Tech events or meetups are found (7:00 PM)',
+                      title: 'Tech Event Push Alerts',
+                      subtitle: 'Push notification when new Tech events or meetups are found (7:00 PM)',
                       icon: Icons.event,
                       iconColor: Colors.green,
                     ),
+                    _buildPreferenceTile(
+                      key: 'events_email',
+                      title: 'Tech Event Email Summary',
+                      subtitle: 'Daily email summary with meetup registration links to your inbox',
+                      icon: Icons.email_rounded,
+                      iconColor: Colors.teal,
+                    ),
+                  ],
+
+                  // AI Job Assistant
+                  if (_enabledModules.contains('job_assistant')) ...[
+                    _buildPreferenceTile(
+                      key: 'job_assistant',
+                      title: 'Job Assistant Push Alerts',
+                      subtitle: 'Push notification when new job openings are auto-applied',
+                      icon: Icons.rocket_launch_rounded,
+                      iconColor: Colors.deepPurpleAccent,
+                    ),
+                    _buildPreferenceTile(
+                      key: 'job_assistant_email',
+                      title: 'Job Assistant Auto-Apply Email',
+                      subtitle: 'Automated email summary sent to your Gmail after applying',
+                      icon: Icons.mail_outline_rounded,
+                      iconColor: Colors.indigoAccent,
+                    ),
+                  ],
 
                   // Astro Calendar (New Moon & Full Moon)
                   if (_enabledModules.contains('astro_calendar'))
@@ -218,10 +260,13 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
 
                   if (!_enabledModules.contains('gold') &&
                       !_enabledModules.contains('shifts') &&
+                      !_enabledModules.contains('finance') &&
                       !_enabledModules.contains('reminders') &&
                       !_enabledModules.contains('daily_reminders') &&
                       !_enabledModules.contains('walkin') &&
+                      !_enabledModules.contains('walkins') &&
                       !_enabledModules.contains('events') &&
+                      !_enabledModules.contains('job_assistant') &&
                       !_enabledModules.contains('astro_calendar'))
                     const Center(
                       child: Padding(

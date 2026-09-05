@@ -1245,7 +1245,7 @@ $firebaseApkUrl
                     stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
                     builder: (context, userSnap) {
                       final userData = userSnap.data?.data() as Map<String, dynamic>?;
-                      final enabledModules = List<String>.from(userData?['enabledModules'] ?? ['gold']);
+                      final enabledModules = List<String>.from(userData?['enabledModules'] ?? ['reminders', 'gold', 'notes', 'daily_reminders']);
 
                       return Card(
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

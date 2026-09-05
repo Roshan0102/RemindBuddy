@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -21,6 +22,8 @@ import '../services/home_widget_service.dart';
 
 class FinanceScreen extends StatefulWidget {
   final int? initialFeatureIndex;
+  static final ValueNotifier<int?> selectedFeatureIndexNotifier = ValueNotifier<int?>(null);
+
   const FinanceScreen({super.key, this.initialFeatureIndex});
 
   @override
@@ -42,13 +45,26 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _selectedFeatureIndex = widget.initialFeatureIndex;
+    _selectedFeatureIndex = widget.initialFeatureIndex ?? FinanceScreen.selectedFeatureIndexNotifier.value;
+    FinanceScreen.selectedFeatureIndexNotifier.addListener(_onFeatureIndexNotified);
     final now = DateTime.now();
     _smsMonthFilter = DateTime(now.year, now.month);
     _tabController = TabController(length: 2, vsync: this);
-    _initSmsRealtimeListener();
-    _financeService.checkAndProcessPendingBackgroundSms();
-    HomeWidgetService().syncAllWidgets();
+    if (!kIsWeb) {
+      _initSmsRealtimeListener();
+      _financeService.checkAndProcessPendingBackgroundSms();
+      HomeWidgetService().syncAllWidgets();
+    }
+  }
+
+  void _onFeatureIndexNotified() {
+    final newIdx = FinanceScreen.selectedFeatureIndexNotifier.value;
+    if (newIdx != null && mounted) {
+      setState(() {
+        _selectedFeatureIndex = newIdx;
+      });
+      FinanceScreen.selectedFeatureIndexNotifier.value = null;
+    }
   }
 
   void _initSmsRealtimeListener() {
@@ -71,6 +87,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
   @override
   void dispose() {
+    FinanceScreen.selectedFeatureIndexNotifier.removeListener(_onFeatureIndexNotified);
     HomeWidgetService().syncAllWidgets();
     _tabController.dispose();
     _smsPageController.dispose();
@@ -285,6 +302,14 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   },
                 ),
                 title: _getFeatureTitle(_selectedFeatureIndex!),
+                actions: [
+                  if (_selectedFeatureIndex == 4)
+                    IconButton(
+                      icon: const Icon(Icons.add_circle, color: Colors.green),
+                      tooltip: 'Add Transaction 💳',
+                      onPressed: () => _openAddTransactionForSmartBank(context),
+                    ),
+                ],
               ),
               body: _buildFeatureWidget(_selectedFeatureIndex!),
             ),
@@ -358,7 +383,19 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               child: ElevatedButton.icon(
                                 onPressed: accounts.isEmpty
                                     ? null
-                                    : () => _showAddTransactionDialog(context, accounts),
+                                    : () async {
+                                        final customCats = await _financeService.getUserCustomCategoriesStream().first;
+                                        final customTags = await _financeService.getUserCustomTagsStream().first;
+                                        final allCustomCategories = <String>{...customCats, ...customTags}.toList();
+                                        if (context.mounted) {
+                                          _showAddTransactionDialog(
+                                            context,
+                                            accounts,
+                                            fromSmartBank: false,
+                                            initialCustomCategories: allCustomCategories,
+                                          );
+                                        }
+                                      },
                                 icon: const Icon(Icons.add_circle, size: 18),
                                 label: const Text('Add Transaction'),
                                 style: ElevatedButton.styleFrom(
@@ -403,117 +440,171 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                     ),
                   )
                 else
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: accounts.length,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                      childAspectRatio: 0.88,
-                    ),
-                    itemBuilder: (context, index) {
-                      final acc = accounts[index];
-                      final Color accColor = Color(acc.colorHex);
-                      final bool isPositive = acc.currentBalance >= 0;
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final width = constraints.maxWidth;
+                      final int crossAxisCount = width > 900
+                          ? 3
+                          : (width > 600 ? 3 : (width > 420 ? 3 : 2));
+                      final double mainAxisExtent = width > 700 ? 135.0 : 120.0;
 
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: accColor.withValues(alpha: 0.5), width: 1.5),
-                          boxShadow: [
-                            BoxShadow(
-                              color: isDark ? Colors.black26 : Colors.grey.withValues(alpha: 0.12),
-                              blurRadius: 6,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
+                      return GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: accounts.length,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxisCount,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          mainAxisExtent: mainAxisExtent,
                         ),
-                        padding: const EdgeInsets.all(10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            // Top Row: Small Icon & Compact Menu
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: accColor.withValues(alpha: 0.15),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(_getIconData(acc.iconName), color: accColor, size: 14),
-                                ),
-                                SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: PopupMenuButton<String>(
-                                    padding: EdgeInsets.zero,
-                                    iconSize: 16,
-                                    onSelected: (val) {
-                                      if (val == 'edit') {
-                                        _showEditAccountDialog(context, acc);
-                                      } else if (val == 'delete') {
-                                        _financeService.deleteAccount(acc.id);
-                                      }
-                                    },
-                                    itemBuilder: (_) => [
-                                      const PopupMenuItem(
-                                        value: 'edit',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.edit_outlined, size: 16),
-                                            SizedBox(width: 8),
-                                            Text('Edit Account / Balance', style: TextStyle(fontSize: 12)),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'delete',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
-                                            SizedBox(width: 8),
-                                            Text('Delete Account', style: TextStyle(fontSize: 12, color: Colors.redAccent)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                    icon: const Icon(Icons.more_vert, size: 16, color: Colors.grey),
-                                  ),
+                        itemBuilder: (context, index) {
+                          final acc = accounts[index];
+                          final Color accColor = Color(acc.colorHex);
+                          final bool isPositive = acc.currentBalance >= 0;
+
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: accColor.withValues(alpha: 0.45),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: isDark
+                                      ? Colors.black.withValues(alpha: 0.3)
+                                      : accColor.withValues(alpha: 0.08),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
                                 ),
                               ],
                             ),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                // Top Row: Icon badge + Account Type tag + Popup Menu
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(6),
+                                          decoration: BoxDecoration(
+                                            color: accColor.withValues(alpha: 0.15),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(_getIconData(acc.iconName), color: accColor, size: 16),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: isDark
+                                                ? Colors.white.withValues(alpha: 0.08)
+                                                : Colors.grey.shade100,
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            acc.accountType.toUpperCase(),
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w700,
+                                              color: isDark ? Colors.white60 : Colors.grey.shade600,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: PopupMenuButton<String>(
+                                        padding: EdgeInsets.zero,
+                                        iconSize: 16,
+                                        onSelected: (val) {
+                                          if (val == 'edit') {
+                                            _showEditAccountDialog(context, acc);
+                                          } else if (val == 'delete') {
+                                            _financeService.deleteAccount(acc.id);
+                                          }
+                                        },
+                                        itemBuilder: (_) => [
+                                          const PopupMenuItem(
+                                            value: 'edit',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.edit_outlined, size: 16),
+                                                SizedBox(width: 8),
+                                                Text('Edit Account / Balance', style: TextStyle(fontSize: 12)),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuItem(
+                                            value: 'delete',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                                                SizedBox(width: 8),
+                                                Text('Delete Account', style: TextStyle(fontSize: 12, color: Colors.redAccent)),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                        icon: const Icon(Icons.more_vert, size: 16, color: Colors.grey),
+                                      ),
+                                    ),
+                                  ],
+                                ),
 
-                            // Middle: Bank Name (BIGGER & BOLD)
-                            Text(
-                              acc.name,
-                              style: GoogleFonts.outfit(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: textColor,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                                // Middle: Bank Name (BOLD & ELEGANT)
+                                Text(
+                                  acc.name,
+                                  style: GoogleFonts.outfit(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: textColor,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
 
-                            // Bottom: Balance (BIGGER & PROMINENT)
-                            Text(
-                              '₹${NumberFormat('#,##,##0').format(acc.currentBalance)}',
-                              style: GoogleFonts.outfit(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
-                                color: isPositive ? Colors.green.shade600 : Colors.redAccent,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                                // Bottom: Balance with subtle label
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                                  textBaseline: TextBaseline.alphabetic,
+                                  children: [
+                                    Text(
+                                      '₹${NumberFormat('#,##,##0').format(acc.currentBalance)}',
+                                      style: GoogleFonts.outfit(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
+                                        color: isPositive ? Colors.green.shade600 : Colors.redAccent,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      isPositive ? 'Available' : 'Overdrawn',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w500,
+                                        color: isPositive ? Colors.green.shade700 : Colors.redAccent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       );
                     },
                   ),
@@ -1065,14 +1156,94 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     );
   }
 
-  void _showAddTransactionDialog(BuildContext context, List<BankAccount> accounts) {
+  Future<String?> _promptNewCategoryDialog(BuildContext context) async {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.category_rounded, color: Colors.blueAccent),
+            SizedBox(width: 8),
+            Text('Add Custom Category', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Category Name',
+            hintText: 'e.g. Water Can, Gym, Investment...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              final val = ctrl.text.trim();
+              if (val.isNotEmpty) {
+                Navigator.pop(dialogCtx, val);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openAddTransactionForSmartBank(BuildContext context) async {
+    try {
+      final accounts = await _financeService.getAccountsStream().first;
+      final customCats = await _financeService.getUserCustomCategoriesStream().first;
+      final customTags = await _financeService.getUserCustomTagsStream().first;
+      final allCustomCategories = <String>{...customCats, ...customTags}.toList();
+
+      if (!context.mounted) return;
+
+      _showAddTransactionDialog(
+        context,
+        accounts,
+        fromSmartBank: true,
+        initialCustomCategories: allCustomCategories,
+      );
+    } catch (e) {
+      debugPrint('Error opening add transaction for smart bank: $e');
+      if (context.mounted) {
+        _showAddTransactionDialog(
+          context,
+          [],
+          fromSmartBank: true,
+        );
+      }
+    }
+  }
+
+  void _showAddTransactionDialog(
+    BuildContext context,
+    List<BankAccount> accounts, {
+    bool fromSmartBank = false,
+    List<String>? initialCustomCategories,
+  }) {
     final amountCtrl = TextEditingController();
     final noteCtrl = TextEditingController(text: '');
-    String selectedAccountId = accounts.first.id;
+    String? selectedAccountId = accounts.isNotEmpty ? accounts.first.id : null;
     String type = 'expense';
     String selectedCategory = 'Food & Dining';
+    DateTime selectedDate = DateTime.now();
+    final Set<String> customCategories = Set.from(initialCustomCategories ?? []);
 
-    final List<Map<String, dynamic>> categories = [
+    final List<Map<String, dynamic>> defaultCategories = [
       {'name': 'Food & Dining', 'icon': Icons.fastfood, 'color': Colors.orange},
       {'name': 'Fuel & Travel', 'icon': Icons.local_gas_station, 'color': Colors.redAccent},
       {'name': 'Groceries', 'icon': Icons.shopping_basket, 'color': Colors.green},
@@ -1084,6 +1255,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
       {'name': 'Lended', 'icon': Icons.north_east_rounded, 'color': Colors.teal},
       {'name': 'Loan Repaid', 'icon': Icons.task_alt_rounded, 'color': Colors.green.shade700},
       {'name': 'Entertainment', 'icon': Icons.movie, 'color': Colors.pink},
+      {'name': 'Medical & Health', 'icon': Icons.medical_services_rounded, 'color': Colors.redAccent},
       {'name': 'Personal Care', 'icon': Icons.spa, 'color': Colors.deepOrangeAccent},
       {'name': 'Ignored / Not Needed', 'icon': Icons.block_rounded, 'color': Colors.blueGrey},
       {'name': 'Others', 'icon': Icons.more_horiz, 'color': Colors.grey},
@@ -1092,160 +1264,341 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add Transaction 💳'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+        builder: (context, setDialogState) {
+          final List<Map<String, dynamic>> allCategories = [
+            ...defaultCategories,
+            ...customCategories
+                .where((c) => !defaultCategories.any((dc) => dc['name'].toString().toLowerCase() == c.toLowerCase()))
+                .map((c) => {
+                      'name': c,
+                      'icon': Icons.label_rounded,
+                      'color': Colors.indigoAccent,
+                    }),
+          ];
+
+          return AlertDialog(
+            title: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: ChoiceChip(
-                        label: const Text('Expense (-)', textAlign: TextAlign.center),
-                        selected: type == 'expense',
-                        selectedColor: Colors.red.shade100,
-                        onSelected: (val) => setDialogState(() => type = 'expense'),
+                const Icon(Icons.account_balance_wallet_rounded, color: Colors.green, size: 22),
+                const SizedBox(width: 8),
+                Text(
+                  fromSmartBank ? 'Record Transaction 💳' : 'Add Transaction 💳',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Expense (-)', textAlign: TextAlign.center),
+                          selected: type == 'expense',
+                          selectedColor: Colors.red.shade100,
+                          onSelected: (val) => setDialogState(() => type = 'expense'),
+                        ),
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('Income (+)', textAlign: TextAlign.center),
+                          selected: type == 'income',
+                          selectedColor: Colors.green.shade100,
+                          onSelected: (val) => setDialogState(() => type = 'income'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (accounts.isNotEmpty) ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedAccountId,
+                      decoration: const InputDecoration(labelText: 'Select Bank / Account'),
+                      items: accounts
+                          .map((a) => DropdownMenuItem(
+                                value: a.id,
+                                child: Text('${a.name} (₹${a.currentBalance.toStringAsFixed(0)})'),
+                              ))
+                          .toList(),
+                      onChanged: (val) => selectedAccountId = val,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ChoiceChip(
-                        label: const Text('Income (+)', textAlign: TextAlign.center),
-                        selected: type == 'income',
-                        selectedColor: Colors.green.shade100,
-                        onSelected: (val) => setDialogState(() => type = 'income'),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.shade300),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.amber, size: 16),
+                          SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'No linked accounts found. Recording as Manual Entry.',
+                              style: TextStyle(fontSize: 11, color: Colors.amber),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedAccountId,
-                  decoration: const InputDecoration(labelText: 'Select Account'),
-                  items: accounts
-                      .map((a) => DropdownMenuItem(value: a.id, child: Text('${a.name} (₹${a.currentBalance.toStringAsFixed(0)})')))
-                      .toList(),
-                  onChanged: (val) => selectedAccountId = val!,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amountCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Amount (₹)'),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Select Category:',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: categories.map((cat) {
-                    final bool isSelected = selectedCategory == cat['name'];
-                    final Color catColor = cat['color'] as Color;
-
-                    return ChoiceChip(
-                      avatar: Icon(cat['icon'] as IconData, size: 14, color: isSelected ? Colors.white : catColor),
-                      label: Text(
-                        cat['name'] as String,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isSelected ? Colors.white : null,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: amountCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Amount (₹)', prefixText: '₹ '),
+                  ),
+                  const SizedBox(height: 12),
+                  // Date Picker Row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Date:',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_today, size: 13),
+                        label: Text(
+                          DateFormat('dd MMM yyyy').format(selectedDate),
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: selectedDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now().add(const Duration(days: 1)),
+                          );
+                          if (picked != null) {
+                            setDialogState(() {
+                              selectedDate = DateTime(
+                                picked.year,
+                                picked.month,
+                                picked.day,
+                                selectedDate.hour,
+                                selectedDate.minute,
+                              );
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Select Category:',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      InkWell(
+                        onTap: () async {
+                          final newCat = await _promptNewCategoryDialog(context);
+                          if (newCat != null && newCat.isNotEmpty) {
+                            await _financeService.saveUserCustomCategory(newCat);
+                            setDialogState(() {
+                              customCategories.add(newCat);
+                              selectedCategory = newCat;
+                            });
+                          }
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          child: Text(
+                            '+ Add Category',
+                            style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ),
-                      selected: isSelected,
-                      selectedColor: catColor,
-                      onSelected: (selected) {
-                        if (selected) {
-                          setDialogState(() {
-                            selectedCategory = cat['name'] as String;
-                          });
-                        }
-                      },
-                    );
-                  }).toList(),
-                ),
-                if (selectedCategory == 'Others' || selectedCategory == 'Borrowed' || selectedCategory == 'Lended') ...[
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: noteCtrl,
-                    decoration: InputDecoration(
-                      labelText: selectedCategory == 'Borrowed'
-                          ? 'Borrowed From (Person / Reason)'
-                          : selectedCategory == 'Lended'
-                              ? 'Lended To (Person / Reason)'
-                              : 'Custom Category / Reason',
-                      hintText: selectedCategory == 'Borrowed'
-                          ? 'e.g. Rahul, John...'
-                          : selectedCategory == 'Lended'
-                              ? 'e.g. Alex, Friend...'
-                              : 'Type custom reason...',
-                    ),
+                    ],
                   ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () async {
-                final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
-                if (amt <= 0) return;
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ...allCategories.map((cat) {
+                        final bool isSelected = selectedCategory == cat['name'];
+                        final Color catColor = cat['color'] as Color;
 
-                final customNote = noteCtrl.text.trim();
-                final finalCategory = (selectedCategory == 'Others' && customNote.isNotEmpty)
-                    ? customNote
-                    : selectedCategory;
-
-                if (selectedCategory == 'Others' && customNote.isNotEmpty) {
-                  await _financeService.saveUserCustomTag(customNote);
-                }
-
-                await _financeService.addTransaction(FinanceTransaction(
-                  id: '',
-                  accountId: selectedAccountId,
-                  type: type,
-                  amount: amt,
-                  category: finalCategory,
-                  note: customNote.isNotEmpty ? customNote : selectedCategory,
-                  timestamp: DateTime.now(),
-                ));
-
-                // If Category is Borrowed or Lended, also create a DebtRecord entry in Debts & Lended Money feature!
-                if (selectedCategory == 'Borrowed' || selectedCategory == 'Lended') {
-                  final String debtType = selectedCategory == 'Borrowed' ? 'borrowed' : 'lent';
-                  final String personName = customNote.isNotEmpty ? customNote : 'Person';
-                  final String noteText = customNote.isNotEmpty ? customNote : 'Manually added in Bank Accounts';
-
-                  await _financeService.addDebt(
-                    DebtRecord(
-                      id: '',
-                      personName: personName,
-                      type: debtType,
-                      amount: amt,
-                      note: noteText,
-                      date: DateTime.now(),
-                      isSettled: false,
-                      accountId: selectedAccountId,
+                        return ChoiceChip(
+                          avatar: Icon(cat['icon'] as IconData, size: 14, color: isSelected ? Colors.white : catColor),
+                          label: Text(
+                            cat['name'] as String,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isSelected ? Colors.white : null,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                          selected: isSelected,
+                          selectedColor: catColor,
+                          onSelected: (selected) {
+                            if (selected) {
+                              setDialogState(() {
+                                selectedCategory = cat['name'] as String;
+                              });
+                            }
+                          },
+                        );
+                      }),
+                      ActionChip(
+                        avatar: const Icon(Icons.add_rounded, size: 14, color: Colors.blueAccent),
+                        label: const Text(
+                          '+ Add Custom',
+                          style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                        backgroundColor: Colors.blue.withValues(alpha: 0.12),
+                        side: BorderSide(color: Colors.blueAccent.withValues(alpha: 0.4), width: 0.8),
+                        onPressed: () async {
+                          final newCat = await _promptNewCategoryDialog(context);
+                          if (newCat != null && newCat.isNotEmpty) {
+                            await _financeService.saveUserCustomCategory(newCat);
+                            setDialogState(() {
+                              customCategories.add(newCat);
+                              selectedCategory = newCat;
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  if (selectedCategory == 'Others' ||
+                      selectedCategory == 'Borrowed' ||
+                      selectedCategory == 'Lended' ||
+                      customCategories.contains(selectedCategory)) ...[
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: noteCtrl,
+                      decoration: InputDecoration(
+                        labelText: selectedCategory == 'Borrowed'
+                            ? 'Borrowed From (Person / Reason)'
+                            : selectedCategory == 'Lended'
+                                ? 'Lended To (Person / Reason)'
+                                : 'Notes / Payee (e.g. Shop Name, Purpose)',
+                        hintText: selectedCategory == 'Borrowed'
+                            ? 'e.g. Rahul, John...'
+                            : selectedCategory == 'Lended'
+                                ? 'e.g. Alex, Friend...'
+                                : 'Enter details or payee...',
+                      ),
                     ),
-                    updateAccountBalance: false, // Balance already updated by addTransaction above
-                  );
-                }
-
-                if (context.mounted) {
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text('Save'),
+                  ],
+                ],
+              ),
             ),
-          ],
-        ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () async {
+                  final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+                  if (amt <= 0) return;
+
+                  final customNote = noteCtrl.text.trim();
+                  final finalCategory = (selectedCategory == 'Others' && customNote.isNotEmpty)
+                      ? customNote
+                      : selectedCategory;
+
+                  if (selectedCategory == 'Others' && customNote.isNotEmpty) {
+                    await _financeService.saveUserCustomTag(customNote);
+                  }
+
+                  BankAccount? selectedAccount;
+                  if (selectedAccountId != null && selectedAccountId!.isNotEmpty) {
+                    selectedAccount = accounts.firstWhere(
+                      (a) => a.id == selectedAccountId,
+                      orElse: () => accounts.first,
+                    );
+                  }
+
+                  // 1. Record in finance_transactions (if an account is linked, update balance)
+                  if (selectedAccountId != null && selectedAccountId!.isNotEmpty) {
+                    await _financeService.addTransaction(FinanceTransaction(
+                      id: '',
+                      accountId: selectedAccountId!,
+                      type: type,
+                      amount: amt,
+                      category: finalCategory,
+                      note: customNote.isNotEmpty ? customNote : selectedCategory,
+                      timestamp: selectedDate,
+                    ));
+                  }
+
+                  // 2. Also record in sms_transactions so it appears immediately in Smart Bank Tracker
+                  final manualSms = SmsTransaction(
+                    id: '',
+                    sender: selectedAccount?.name ?? 'Manual Entry',
+                    bankName: selectedAccount?.name ?? 'Primary Account',
+                    accountLast4: 'Manual',
+                    type: type == 'expense' ? 'Debit' : 'Credit',
+                    amount: amt,
+                    payee: customNote.isNotEmpty ? customNote : finalCategory,
+                    timestamp: selectedDate,
+                    isVerified: true,
+                    category: finalCategory,
+                    notes: customNote,
+                    source: 'manual',
+                    sourceApp: 'Manual Entry',
+                    rawBody: 'Manually added transaction by user in Smart Bank Tracker (${type.toUpperCase()}) - $finalCategory',
+                  );
+
+                  // destinationBankAccountId is null because addTransaction above already updated account balance
+                  await _financeService.addManualSmsTransaction(manualSms, destinationBankAccountId: null);
+
+                  // 3. If Category is Borrowed or Lended, also create a DebtRecord entry!
+                  if (selectedCategory == 'Borrowed' || selectedCategory == 'Lended') {
+                    final String debtType = selectedCategory == 'Borrowed' ? 'borrowed' : 'lent';
+                    final String personName = customNote.isNotEmpty ? customNote : 'Person';
+                    final String noteText = customNote.isNotEmpty ? customNote : 'Manually added transaction';
+
+                    await _financeService.addDebt(
+                      DebtRecord(
+                        id: '',
+                        personName: personName,
+                        type: debtType,
+                        amount: amt,
+                        note: noteText,
+                        date: selectedDate,
+                        isSettled: false,
+                        accountId: selectedAccountId ?? '',
+                      ),
+                      updateAccountBalance: false, // Balance already updated
+                    );
+                  }
+
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    if (fromSmartBank) {
+                      setState(() {
+                        _smsMonthFilter = DateTime(selectedDate.year, selectedDate.month);
+                      });
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Transaction recorded! (₹${amt.toStringAsFixed(0)} $finalCategory)'),
+                        backgroundColor: Colors.green,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2043,7 +2396,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         color: cardBg,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.only(left: 6, right: 10, top: 4, bottom: 4),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -2051,29 +2404,29 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                                     padding: EdgeInsets.zero,
-                                    icon: const Icon(Icons.chevron_left, color: Colors.blueAccent, size: 24),
+                                    icon: const Icon(Icons.chevron_left, color: Colors.blueAccent, size: 22),
                                     onPressed: () {
                                       setState(() {
                                         _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month - 1);
                                       });
                                     },
                                   ),
-                                  const SizedBox(width: 2),
+                                  const SizedBox(width: 1),
                                   Text(
                                     DateFormat('MMM yyyy').format(_smsMonthFilter),
                                     style: GoogleFonts.outfit(
-                                      fontSize: 15,
+                                      fontSize: 14,
                                       fontWeight: FontWeight.bold,
                                       color: textColor,
                                     ),
                                   ),
-                                  const SizedBox(width: 2),
+                                  const SizedBox(width: 1),
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                                     padding: EdgeInsets.zero,
-                                    icon: const Icon(Icons.chevron_right, color: Colors.blueAccent, size: 24),
+                                    icon: const Icon(Icons.chevron_right, color: Colors.blueAccent, size: 22),
                                     onPressed: () {
                                       setState(() {
                                         _smsMonthFilter = DateTime(_smsMonthFilter.year, _smsMonthFilter.month + 1);
@@ -2086,35 +2439,47 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                    padding: const EdgeInsets.all(4),
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: const EdgeInsets.all(3),
+                                    tooltip: 'Add Transaction 💳',
+                                    icon: const Icon(Icons.add_circle, color: Colors.green, size: 19),
+                                    onPressed: () => _openAddTransactionForSmartBank(context),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  IconButton(
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: const EdgeInsets.all(3),
                                     tooltip: 'UPI Notification Tracker 🔔',
-                                    icon: const Icon(Icons.notifications_active_outlined, color: Colors.purpleAccent, size: 20),
+                                    icon: const Icon(Icons.notifications_active_outlined, color: Colors.purpleAccent, size: 19),
                                     onPressed: () => _showUpiNotificationSettingsDialog(context),
                                   ),
+                                  const SizedBox(width: 4),
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                    padding: const EdgeInsets.all(4),
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: const EdgeInsets.all(3),
                                     tooltip: 'Bank Header Rules ⚙️',
-                                    icon: const Icon(Icons.settings_suggest_rounded, color: Colors.blueAccent, size: 20),
+                                    icon: const Icon(Icons.settings_suggest_rounded, color: Colors.blueAccent, size: 19),
                                     onPressed: () => _showCustomHeaderRulesDialog(context),
                                   ),
+                                  const SizedBox(width: 4),
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                    padding: const EdgeInsets.all(4),
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: const EdgeInsets.all(3),
                                     tooltip: 'Sync Bank SMS',
                                     icon: _isScanningInbox
                                         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
-                                        : const Icon(Icons.sync_rounded, color: Colors.blueAccent, size: 20),
+                                        : const Icon(Icons.sync_rounded, color: Colors.blueAccent, size: 19),
                                     onPressed: _isScanningInbox ? null : _showSmsSyncDialog,
                                   ),
+                                  const SizedBox(width: 4),
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                    padding: const EdgeInsets.all(4),
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: const EdgeInsets.all(3),
                                     tooltip: 'Delete Month Transactions',
-                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 19),
                                     onPressed: () => _confirmDeleteMonthTransactions(context),
                                   ),
+                                  const SizedBox(width: 4),
                                 ],
                               ),
                             ],
@@ -2372,7 +2737,35 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                               fontSize: 14,
                                             ),
                                           ),
-                                          if (isGenericBank) ...[
+                                          if (tx.source == 'manual') ...[
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.amber.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: Colors.amber.shade700.withValues(alpha: 0.4),
+                                                  width: 0.8,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.edit_note_rounded, size: 12, color: Colors.amber.shade800),
+                                                  const SizedBox(width: 2),
+                                                  Text(
+                                                    'Manual',
+                                                    style: TextStyle(
+                                                      color: isDark ? Colors.amberAccent : Colors.amber.shade900,
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ] else if (isGenericBank) ...[
                                             const SizedBox(width: 6),
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -2445,18 +2838,22 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                                           decoration: BoxDecoration(
-                                            color: tx.source == 'both'
-                                                ? Colors.green.withValues(alpha: 0.15)
-                                                : (tx.source == 'notification'
-                                                    ? Colors.purple.withValues(alpha: 0.15)
-                                                    : Colors.blue.withValues(alpha: 0.15)),
+                                            color: tx.source == 'manual'
+                                                ? Colors.amber.withValues(alpha: 0.15)
+                                                : (tx.source == 'both'
+                                                    ? Colors.green.withValues(alpha: 0.15)
+                                                    : (tx.source == 'notification'
+                                                        ? Colors.purple.withValues(alpha: 0.15)
+                                                        : Colors.blue.withValues(alpha: 0.15))),
                                             borderRadius: BorderRadius.circular(6),
                                             border: Border.all(
-                                              color: tx.source == 'both'
-                                                  ? Colors.green.withValues(alpha: 0.5)
-                                                  : (tx.source == 'notification'
-                                                      ? Colors.purple.withValues(alpha: 0.5)
-                                                      : Colors.blue.withValues(alpha: 0.4)),
+                                              color: tx.source == 'manual'
+                                                  ? Colors.amber.withValues(alpha: 0.6)
+                                                  : (tx.source == 'both'
+                                                      ? Colors.green.withValues(alpha: 0.5)
+                                                      : (tx.source == 'notification'
+                                                          ? Colors.purple.withValues(alpha: 0.5)
+                                                          : Colors.blue.withValues(alpha: 0.4))),
                                               width: 0.8,
                                             ),
                                           ),
@@ -2464,34 +2861,42 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               Icon(
-                                                tx.source == 'both'
-                                                    ? Icons.verified_rounded
-                                                    : (tx.source == 'notification'
-                                                        ? Icons.notifications_active_rounded
-                                                        : Icons.sms_rounded),
+                                                tx.source == 'manual'
+                                                    ? Icons.edit_note_rounded
+                                                    : (tx.source == 'both'
+                                                        ? Icons.verified_rounded
+                                                        : (tx.source == 'notification'
+                                                            ? Icons.notifications_active_rounded
+                                                            : Icons.sms_rounded)),
                                                 size: 11,
-                                                color: tx.source == 'both'
-                                                    ? Colors.green
-                                                    : (tx.source == 'notification'
-                                                        ? Colors.purpleAccent
-                                                        : Colors.blueAccent),
+                                                color: tx.source == 'manual'
+                                                    ? Colors.amber.shade700
+                                                    : (tx.source == 'both'
+                                                        ? Colors.green
+                                                        : (tx.source == 'notification'
+                                                            ? Colors.purpleAccent
+                                                            : Colors.blueAccent)),
                                               ),
                                               const SizedBox(width: 4),
                                               Flexible(
                                                 child: Text(
-                                                  tx.source == 'both'
-                                                      ? '⚡ Verified (${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'SMS + UPI'})'
-                                                      : (tx.source == 'notification'
-                                                          ? '🔔 ${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'UPI App'}'
-                                                          : 'SMS 📩'),
+                                                  tx.source == 'manual'
+                                                      ? '✍️ Manual Entry'
+                                                      : (tx.source == 'both'
+                                                          ? '⚡ Verified (${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'SMS + UPI'})'
+                                                          : (tx.source == 'notification'
+                                                              ? '🔔 ${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'UPI App'}'
+                                                              : 'SMS 📩')),
                                                   maxLines: 1,
                                                   overflow: TextOverflow.ellipsis,
                                                   style: TextStyle(
-                                                    color: tx.source == 'both'
-                                                        ? (isDark ? Colors.greenAccent : Colors.green.shade800)
-                                                        : (tx.source == 'notification'
-                                                            ? (isDark ? Colors.purpleAccent : Colors.purple.shade800)
-                                                            : Colors.blueAccent),
+                                                    color: tx.source == 'manual'
+                                                        ? (isDark ? Colors.amberAccent : Colors.amber.shade900)
+                                                        : (tx.source == 'both'
+                                                            ? (isDark ? Colors.greenAccent : Colors.green.shade800)
+                                                            : (tx.source == 'notification'
+                                                                ? (isDark ? Colors.purpleAccent : Colors.purple.shade800)
+                                                                : Colors.blueAccent)),
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.bold,
                                                   ),
@@ -2690,20 +3095,27 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final Color subtextColor = isDark ? Colors.white70 : Colors.black54;
 
+    final isManual = tx.source == 'manual';
     final isBoth = tx.source == 'both';
     final isNotif = tx.source == 'notification';
 
-    final Color badgeThemeColor = isBoth
-        ? Colors.green
-        : (isNotif ? Colors.purpleAccent : Colors.blue);
+    final Color badgeThemeColor = isManual
+        ? Colors.amber.shade700
+        : (isBoth
+            ? Colors.green
+            : (isNotif ? Colors.purpleAccent : Colors.blue));
 
-    final IconData badgeIcon = isBoth
-        ? Icons.verified_rounded
-        : (isNotif ? Icons.notifications_active_rounded : Icons.sms_rounded);
+    final IconData badgeIcon = isManual
+        ? Icons.edit_note_rounded
+        : (isBoth
+            ? Icons.verified_rounded
+            : (isNotif ? Icons.notifications_active_rounded : Icons.sms_rounded));
 
-    final String dialogTitle = isBoth
-        ? 'Verified Bank & UPI Alert ⚡'
-        : (isNotif ? 'UPI App Notification 📱' : 'SMS Raw Details 📩');
+    final String dialogTitle = isManual
+        ? 'Manual Transaction Details ✍️'
+        : (isBoth
+            ? 'Verified Bank & UPI Alert ⚡'
+            : (isNotif ? 'UPI App Notification 📱' : 'SMS Raw Details 📩'));
 
     showDialog(
       context: context,
@@ -2751,12 +3163,16 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      isNotif ? 'PAYMENT APP SOURCE' : 'SMS SENDER / SOURCE',
+                      isManual
+                          ? 'MANUAL TRANSACTION'
+                          : (isNotif ? 'PAYMENT APP SOURCE' : 'SMS SENDER / SOURCE'),
                       style: TextStyle(color: badgeThemeColor, fontSize: 10, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
                     SelectableText(
-                      tx.sourceApp.isNotEmpty ? tx.sourceApp : (tx.sender.isNotEmpty ? tx.sender : tx.bankName),
+                      isManual
+                          ? '✍️ Manually Recorded by User'
+                          : (tx.sourceApp.isNotEmpty ? tx.sourceApp : (tx.sender.isNotEmpty ? tx.sender : tx.bankName)),
                       style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
                     ),
                   ],
@@ -2776,7 +3192,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'RECEIVED TIMING',
+                      isManual ? 'TRANSACTION DATE & TIME' : 'RECEIVED TIMING',
                       style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
@@ -2802,7 +3218,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(isNotif ? 'APP / BANK' : 'DETECTED BANK', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                          Text(
+                            isManual ? 'ACCOUNT / SOURCE' : (isNotif ? 'APP / BANK' : 'DETECTED BANK'),
+                            style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
                           const SizedBox(height: 2),
                           Text(tx.bankName, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor)),
                         ],
@@ -2820,7 +3239,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('EXTRACTED PAYEE', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                          Text(
+                            isManual ? 'PAYEE / NOTE' : 'EXTRACTED PAYEE',
+                            style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
                           const SizedBox(height: 2),
                           Text(tx.payee, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor), maxLines: 1, overflow: TextOverflow.ellipsis),
                         ],
@@ -2853,7 +3275,9 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
               // Raw Body Text
               Text(
-                isNotif ? 'RAW NOTIFICATION TEXT:' : 'RAW MESSAGE BODY:',
+                isManual
+                    ? 'TRANSACTION DETAILS / NOTE:'
+                    : (isNotif ? 'RAW NOTIFICATION TEXT:' : 'RAW MESSAGE BODY:'),
                 style: TextStyle(color: subtextColor, fontSize: 11, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 6),
@@ -2866,7 +3290,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade300),
                 ),
                 child: SelectableText(
-                  tx.notes.isNotEmpty ? tx.notes : (tx.rawBody.isNotEmpty ? tx.rawBody : 'No raw body recorded.'),
+                  tx.notes.isNotEmpty ? tx.notes : (tx.rawBody.isNotEmpty ? tx.rawBody : 'No details recorded.'),
                   style: TextStyle(fontSize: 13, color: textColor, height: 1.4),
                 ),
               ),
@@ -2874,6 +3298,20 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
           ),
         ),
         actions: [
+          if (isManual)
+            TextButton.icon(
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+              label: const Text('Delete Entry', style: TextStyle(color: Colors.redAccent)),
+              onPressed: () async {
+                Navigator.pop(context);
+                await _financeService.deleteSmsTransaction(tx.id);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Manual transaction deleted')),
+                  );
+                }
+              },
+            ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),

@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/job_application.dart';
+import '../models/networking_lead.dart';
+import '../models/resume_profile.dart';
 
 class JobAssistantService {
   static final JobAssistantService _instance = JobAssistantService._internal();
@@ -82,6 +84,76 @@ class JobAssistantService {
   }
 
   // ============================================================================
+  // MULTI-RESUME PROFILES MANAGEMENT
+  // ============================================================================
+
+  Stream<List<ResumeProfile>> getResumeProfilesStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    return doc
+        .collection('resume_profiles')
+        .orderBy('updatedAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => ResumeProfile.fromMap(d.data(), d.id)).toList());
+  }
+
+  Future<List<ResumeProfile>> getResumeProfiles() async {
+    final doc = _userDoc;
+    if (doc == null) return [];
+
+    final snap = await doc.collection('resume_profiles').orderBy('updatedAt', descending: true).get();
+    return snap.docs.map((d) => ResumeProfile.fromMap(d.data(), d.id)).toList();
+  }
+
+  Future<void> saveResumeProfile(ResumeProfile profile) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final collection = doc.collection('resume_profiles');
+    final ref = profile.id.isNotEmpty ? collection.doc(profile.id) : collection.doc();
+
+    final updated = profile.copyWith(id: ref.id, updatedAt: DateTime.now());
+
+    // If marked default, unset any other defaults
+    if (updated.isDefault) {
+      final existing = await collection.where('isDefault', isEqualTo: true).get();
+      for (final d in existing.docs) {
+        if (d.id != ref.id) {
+          await d.reference.update({'isDefault': false});
+        }
+      }
+      // Also update masterResume root document for backward compatibility
+      await saveMasterResume(updated.base64, updated.fileName);
+    }
+
+    await ref.set(updated.toMap(), SetOptions(merge: true));
+  }
+
+  Future<void> deleteResumeProfile(String profileId) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('resume_profiles').doc(profileId).delete();
+  }
+
+  Future<void> setDefaultResumeProfile(String profileId) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final collection = doc.collection('resume_profiles');
+    final all = await collection.get();
+    for (final d in all.docs) {
+      final isDef = (d.id == profileId);
+      await d.reference.update({'isDefault': isDef});
+      if (isDef) {
+        final data = d.data();
+        await saveMasterResume((data['base64'] ?? '').toString(), (data['fileName'] ?? 'Resume.pdf').toString());
+      }
+    }
+  }
+
+  // ============================================================================
   // AUTO-APPLY SETTINGS & ON-DEMAND TRIGGER
   // ============================================================================
 
@@ -92,6 +164,7 @@ class JobAssistantService {
         'enabled': true,
         'targetRoles': ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer', 'Flutter Developer'],
         'locations': ['Bengaluru', 'India', 'Remote'],
+        'excludedCompanies': <String>[],
         'maxPerRun': 4,
       };
     }
@@ -102,6 +175,7 @@ class JobAssistantService {
         'enabled': true,
         'targetRoles': ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer', 'Flutter Developer'],
         'locations': ['Bengaluru', 'India', 'Remote'],
+        'excludedCompanies': <String>[],
         'maxPerRun': 4,
       };
     }
@@ -123,10 +197,18 @@ class JobAssistantService {
       locations = (settings['locations'] as String).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
     }
 
+    List<String> excludedCompanies = [];
+    if (settings['excludedCompanies'] is List) {
+      excludedCompanies = List<String>.from(settings['excludedCompanies']);
+    } else if (settings['excludedCompanies'] is String) {
+      excludedCompanies = (settings['excludedCompanies'] as String).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    }
+
     return {
       'enabled': settings['enabled'] ?? true,
       'targetRoles': targetRoles,
       'locations': locations,
+      'excludedCompanies': excludedCompanies,
       'minExpYears': settings['minExpYears'] ?? 0,
       'maxExpYears': settings['maxExpYears'] ?? 3,
       'maxPerRun': settings['maxPerRun'] ?? 4,
@@ -137,6 +219,7 @@ class JobAssistantService {
     required bool enabled,
     required List<String> targetRoles,
     required List<String> locations,
+    List<String> excludedCompanies = const [],
     int minExpYears = 0,
     int maxExpYears = 3,
     bool isFresher = false,
@@ -150,6 +233,7 @@ class JobAssistantService {
         'enabled': enabled,
         'targetRoles': targetRoles,
         'locations': locations,
+        'excludedCompanies': excludedCompanies,
         'minExpYears': minExpYears,
         'maxExpYears': maxExpYears,
         'isFresher': isFresher,
@@ -162,6 +246,7 @@ class JobAssistantService {
   Future<Map<String, dynamic>> triggerAutoJobDiscoveryAndApply({
     List<String>? targetRoles,
     List<String>? locations,
+    List<String>? excludedCompanies,
     int minExpYears = 0,
     int maxExpYears = 3,
     int maxApplications = 4,
@@ -173,6 +258,7 @@ class JobAssistantService {
     final response = await callable.call({
       'targetRoles': targetRoles,
       'locations': locations,
+      'excludedCompanies': excludedCompanies,
       'minExpYears': minExpYears,
       'maxExpYears': maxExpYears,
       'maxApplications': maxApplications,
@@ -225,6 +311,15 @@ class JobAssistantService {
       location: app.location,
       experienceRequired: app.experienceRequired,
       sourcePlatform: app.sourcePlatform,
+      modelUsed: app.modelUsed,
+      responseType: app.responseType,
+      replyReceivedAt: app.replyReceivedAt,
+      replySender: app.replySender,
+      replySubject: app.replySubject,
+      replySnippet: app.replySnippet,
+      replyBodyPreview: app.replyBodyPreview,
+      actionRequired: app.actionRequired,
+      resumeProfileName: app.resumeProfileName,
     );
 
     await ref.set(newApp.toMap(), SetOptions(merge: true));
@@ -381,5 +476,73 @@ class JobAssistantService {
       appliedAt: DateTime.now(),
       posterImageUrls: app.posterImageUrls,
     ));
+  }
+
+  // ============================================================================
+  // RECRUITER REPLY TRACKER
+  // ============================================================================
+
+  Future<Map<String, dynamic>> checkJobRepliesNow() async {
+    final callable = _functions.httpsCallable(
+      'checkJobRepliesCallable',
+      options: HttpsCallableOptions(timeout: const Duration(minutes: 3)),
+    );
+    final response = await callable.call();
+    final resData = response.data;
+    if (resData == null || resData['success'] != true) {
+      throw Exception(resData?['message'] ?? 'Failed to check recruiter replies.');
+    }
+    return Map<String, dynamic>.from(resData);
+  }
+
+  // ============================================================================
+  // COLD OUTREACH & NETWORKING LEADS
+  // ============================================================================
+
+  Stream<List<NetworkingLead>> getNetworkingLeadsStream() {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+
+    return doc
+        .collection('networking_leads')
+        .orderBy('discoveredAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => NetworkingLead.fromMap(d.data(), d.id)).toList());
+  }
+
+  Future<void> updateNetworkingLeadStatus(String leadId, String newStatus) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('networking_leads').doc(leadId).update({
+      'status': newStatus,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> deleteNetworkingLead(String leadId) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('networking_leads').doc(leadId).delete();
+  }
+
+  Future<Map<String, dynamic>> triggerNetworkingDiscovery({
+    List<String>? targetRoles,
+    List<String>? targetLocations,
+  }) async {
+    final callable = _functions.httpsCallable(
+      'triggerNetworkingDiscovery',
+      options: HttpsCallableOptions(timeout: const Duration(minutes: 3)),
+    );
+    final response = await callable.call({
+      if (targetRoles != null && targetRoles.isNotEmpty) 'targetRoles': targetRoles,
+      if (targetLocations != null && targetLocations.isNotEmpty) 'targetLocations': targetLocations,
+    });
+    final resData = response.data;
+    if (resData == null || resData['success'] != true) {
+      throw Exception(resData?['message'] ?? 'Failed to discover networking leads.');
+    }
+    return Map<String, dynamic>.from(resData);
   }
 }

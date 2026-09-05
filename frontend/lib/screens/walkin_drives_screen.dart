@@ -33,7 +33,8 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
     final now = DateTime.now();
     final diff = now.difference(dt);
     if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 12) return '${diff.inHours}h ago (${DateFormat('hh:mm a').format(dt)})';
     if (dt.day == now.day && dt.month == now.month && dt.year == now.year) {
       return 'Today at ${DateFormat('hh:mm a').format(dt)}';
     }

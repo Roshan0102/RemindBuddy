@@ -877,17 +877,15 @@ class StorageService {
     
     final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     if (!doc.exists) {
-      // Default preferences: ONLY Gold is enabled by default
+      // Default preferences for new users: Calendar Reminders, Gold Rates, Notes, and Daily Reminders
       return {
-        'enabledModules': ['gold']
+        'enabledModules': ['reminders', 'gold', 'notes', 'daily_reminders']
       };
     }
     
-    final data = doc.data() ?? {};
+    final data = Map<String, dynamic>.from(doc.data() ?? {});
     if (!data.containsKey('enabledModules')) {
-      return {
-        'enabledModules': ['gold']
-      };
+      data['enabledModules'] = ['reminders', 'gold', 'notes', 'daily_reminders'];
     }
     
     return data;
@@ -900,6 +898,19 @@ class StorageService {
     await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
       'enabledModules': enabledModules,
     }, SetOptions(merge: true));
+  }
+
+  Future<void> updateUserFavoriteModules(List<String> favoriteModules) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'favoriteModules': favoriteModules,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Error updating favorite modules in Firestore: $e");
+    }
   }
 
   // Auth Methods

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,6 +49,7 @@ class AppPermissionService {
 
   /// Check and prompt for mandatory initial permissions on first launch (Notification & Location)
   Future<void> checkAndPromptInitialPermissions(BuildContext context) async {
+    if (kIsWeb) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final bool hasPrompted = prefs.getBool('has_prompted_initial_permissions_v2') ?? false;

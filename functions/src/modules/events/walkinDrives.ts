@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import * as moment from "moment-timezone";
 import { admin, db } from "../../config/firebase";
 import { logNotification } from "../../utils/logger";
+import * as nodemailer from "nodemailer";
 
 import { callGeminiAPI } from "../../utils/geminiHelper";
 import { searchTavily, TavilySearchResult } from "../../utils/tavilyHelper";
@@ -45,7 +46,7 @@ export async function fetchAndStoreWalkInsForUserInternal(uid: string, triggerNo
 
     for (const role of roles.slice(0, 4)) {
         try {
-            const query = `"${role}" ("walk-in drive" OR "walk-in interview" OR "walk in hiring") "${location}" "${currentMonthYear}" "venue"`;
+            const query = `${role} ("walk-in drive" OR "walk-in interview" OR "walk in drive") ${location} "${currentMonthYear}"`;
             console.log(`[WalkinDrives] Querying Tavily for user ${uid} (Role: "${role}")...`);
             const tavilyResp = await searchTavily({
                 apiKey: userTavilyKey,
@@ -211,7 +212,7 @@ Respond ONLY with a JSON array matching this schema:
                 const token = usernameDoc.docs[0].data().fcmToken;
                 if (token) {
                     const title = "New Walk-In Drives Found";
-                    const body = `Found ${newCount} new walk-in drive(s) for DevOps/Cloud/SRE roles in Bengaluru.`;
+                    const body = `Found ${newCount} new walk-in drive(s) in ${location || 'your area'}.`;
                     await admin.messaging().send({
                         token,
                         notification: { title, body },
@@ -224,6 +225,45 @@ Respond ONLY with a JSON array matching this schema:
                         data: { type: "walkin_reminder" }
                     });
                     await logNotification(uid, title, body, "WALKIN_DRIVES");
+                }
+            }
+
+            // Send email summary if user has configured Gmail and enabled walkin_email
+            const notifPrefs = uData?.notificationPreferences || {};
+            const isEmailEnabled = notifPrefs.walkin_email !== false && notifPrefs.walkins_email !== false;
+            const emailConfig = uData?.jobEmailConfig || {};
+            if (isEmailEnabled && emailConfig.email && emailConfig.appPassword) {
+                try {
+                    const transporter = nodemailer.createTransport({
+                        service: "gmail",
+                        auth: {
+                            user: emailConfig.email,
+                            pass: emailConfig.appPassword
+                        }
+                    });
+                    const walkinListHtml = uniqueWalkIns.slice(0, 6).map(w => 
+                        `<li style="margin-bottom: 10px;"><strong>${w.title || 'Walk-in Drive'}</strong> at <strong>${w.company || 'Hiring Company'}</strong><br>` +
+                        `<span>📅 Date: ${w.date || 'Upcoming'} | ⏰ ${w.timings || 'Timings in posting'}</span><br>` +
+                        `<span>📍 Venue: ${w.location || location} | 💼 Exp: ${w.experience || 'N/A'}</span><br>` +
+                        `${w.registrationLink ? `<a href="${w.registrationLink}">View Walk-In Posting</a>` : ''}</li>`
+                    ).join('');
+                    await transporter.sendMail({
+                        from: `"RemindBuddy Walk-Ins" <${emailConfig.email}>`,
+                        to: emailConfig.email,
+                        subject: `🚶 [RemindBuddy] ${newCount} New Walk-In Drive(s) Found in ${location || 'your area'}`,
+                        html: `
+                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                                <h2 style="color: #EA580C; margin-top: 0;">New Walk-In Drives Discovered</h2>
+                                <p>Hello,</p>
+                                <p>RemindBuddy found <strong>${newCount}</strong> new walk-in drive(s) matching your configured preferences in <strong>${location}</strong>:</p>
+                                <ul style="padding-left: 20px;">${walkinListHtml}</ul>
+                                <p style="color: #6B7280; font-size: 13px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">Discovered during your scheduled 8:00 PM IST daily run.</p>
+                            </div>
+                        `
+                    });
+                    console.log(`[WalkinDrives] Sent email alert to ${emailConfig.email}`);
+                } catch (emailErr: any) {
+                    console.warn(`[WalkinDrives] Failed to send email alert:`, emailErr.message);
                 }
             }
         }

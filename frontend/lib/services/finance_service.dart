@@ -30,6 +30,7 @@ class FinanceService {
   }
 
   void initGlobalSmsListener() {
+    if (kIsWeb) return;
     try {
       _smsEventSubscription?.cancel();
       _smsEventSubscription = _smsStreamChannel.receiveBroadcastStream().listen((dynamic event) {
@@ -510,6 +511,21 @@ class FinanceService {
 
     // Route through 5-Stage Smart Deduplication Engine
     await PaymentNotificationTrackerService().processAndReconcileTransaction(tx);
+    HomeWidgetService().syncAllWidgets();
+  }
+
+  Future<void> addManualSmsTransaction(SmsTransaction tx, {String? destinationBankAccountId}) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final newDoc = doc.collection('sms_transactions').doc();
+    final newTx = tx.copyWith(id: newDoc.id);
+    await newDoc.set(newTx.toMap());
+
+    // Reconcile transaction balance with BankAccount
+    if (destinationBankAccountId != null && destinationBankAccountId.isNotEmpty) {
+      await _reconcileSmsTransactionWithAccount(newTx, destinationBankAccountId: destinationBankAccountId);
+    }
     HomeWidgetService().syncAllWidgets();
   }
 

@@ -10,7 +10,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 import '../models/job_application.dart';
+import '../models/networking_lead.dart';
+import '../models/resume_profile.dart';
 import '../services/job_assistant_service.dart';
 import 'ai_keys_settings_screen.dart';
 
@@ -66,15 +69,22 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   String _userEmail = '';
   String _userAppPassword = '';
 
-  // Auto-Apply Agent State
+  // Multi-Resume Profiles (DevOps vs Flutter vs Cloud)
+  List<ResumeProfile> _resumeProfiles = [];
+  StreamSubscription? _profilesSub;
+
+  // Auto-Apply Agent State & Excluded Companies
   bool _autoApplyEnabled = true;
   final TextEditingController _targetRolesController = TextEditingController();
   final TextEditingController _locationsController = TextEditingController();
   final TextEditingController _minExpController = TextEditingController(text: '0');
   final TextEditingController _maxExpController = TextEditingController(text: '3');
   bool _isFresher = false;
+  List<String> _excludedCompanies = [];
+  final TextEditingController _excludeCompanyController = TextEditingController();
   bool _isSavingAutoSettings = false;
   bool _isRunningAutoApply = false;
+  bool _isCheckingReplies = false;
   String _autoApplyStatusMessage = '';
   final ScrollController _autoAppScrollController = ScrollController();
 
@@ -87,12 +97,34 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   // History Tab Filter
   String _historyFilter = 'all'; // 'all', 'auto', 'manual'
 
+  // Cold Outreach & Leadership Networking State
+  bool _isDiscoveringLeaders = false;
+  String _networkingCategoryFilter = 'all'; // 'all', 'engineering_manager', 'founder', 'talent_acquisition'
+  String _networkingStatusFilter = 'all'; // 'all', 'discovered', 'note_sent', 'connected', 'replied'
+  final ScrollController _networkingScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadUserConfig();
     _setupTimestampsListeners();
+    _setupResumeProfilesListener();
+  }
+
+  void _setupResumeProfilesListener() {
+    _profilesSub = _service.getResumeProfilesStream().listen((profiles) {
+      if (mounted) {
+        setState(() {
+          _resumeProfiles = profiles;
+          if (profiles.isNotEmpty) {
+            _hasResume = true;
+            final defProfile = profiles.firstWhere((p) => p.isDefault, orElse: () => profiles.first);
+            _resumeFileName = defProfile.fileName;
+          }
+        });
+      }
+    });
   }
 
   void _setupTimestampsListeners() {
@@ -144,35 +176,27 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     });
   }
 
-  DateTime _getFallbackLastRun() {
-    final now = DateTime.now();
-    if (now.hour >= 22) {
-      return DateTime(now.year, now.month, now.day, 22, 0);
-    } else if (now.hour >= 10) {
-      return DateTime(now.year, now.month, now.day, 10, 0);
-    } else {
-      final yest = now.subtract(const Duration(days: 1));
-      return DateTime(yest.year, yest.month, yest.day, 22, 0);
-    }
-  }
-
   String _formatRelativeTimestamp(DateTime? dt, {bool isLastRun = false}) {
-    final effectiveDt = dt ?? (isLastRun ? _getFallbackLastRun() : null);
-    if (effectiveDt == null) return 'Never';
+    if (dt == null) return 'Never';
     final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    final timeStr = DateFormat('h:mm a').format(dt);
+    if (diff.inHours < 12) return '${diff.inHours}h ago ($timeStr)';
+
     final today = DateTime(now.year, now.month, now.day);
-    final date = DateTime(effectiveDt.year, effectiveDt.month, effectiveDt.day);
+    final date = DateTime(dt.year, dt.month, dt.day);
     final diffDays = today.difference(date).inDays;
 
-    final timeStr = DateFormat('h:mm a').format(effectiveDt);
     if (diffDays == 0) {
       return 'Today, $timeStr';
     } else if (diffDays == 1) {
       return 'Yesterday, $timeStr';
     } else if (diffDays < 7) {
-      return '${DateFormat('EEE').format(effectiveDt)}, $timeStr';
+      return '${DateFormat('EEE').format(dt)}, $timeStr';
     } else {
-      return '${DateFormat('dd MMM').format(effectiveDt)}, $timeStr';
+      return '${DateFormat('dd MMM').format(dt)}, $timeStr';
     }
   }
 
@@ -182,12 +206,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     _appsSub?.cancel();
     _tabController.dispose();
     _autoAppScrollController.dispose();
+    _networkingScrollController.dispose();
     _newAppScrollController.dispose();
     _historyScrollController.dispose();
     _targetRolesController.dispose();
     _locationsController.dispose();
     _minExpController.dispose();
     _maxExpController.dispose();
+    _excludeCompanyController.dispose();
+    _profilesSub?.cancel();
     _customScreenshotPromptController.dispose();
     _manualCompanyNameController.dispose();
     _manualJobTitleController.dispose();
@@ -208,6 +235,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     final autoSettings = await _service.getAutoApplySettings();
     final targetRoles = List<String>.from(autoSettings['targetRoles'] ?? []);
     final locations = List<String>.from(autoSettings['locations'] ?? []);
+    final excluded = List<String>.from(autoSettings['excludedCompanies'] ?? []);
 
     if (mounted) {
       setState(() {
@@ -216,6 +244,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         _resumeFileName = masterResume['fileName'] ?? '';
         _hasResume = (masterResume['base64'] ?? '').isNotEmpty;
         _autoApplyEnabled = autoSettings['enabled'] ?? true;
+        _excludedCompanies = excluded;
         final minE = autoSettings['minExpYears'] ?? 0;
         final maxE = autoSettings['maxExpYears'] ?? 3;
         _isFresher = autoSettings['isFresher'] == true || (minE == 0 && maxE == 0);
@@ -234,6 +263,221 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   // ============================================================================
   // DIALOGS & ACTIONS
   // ============================================================================
+
+  void _showAddResumeProfileDialog({ResumeProfile? existingProfile, VoidCallback? onSaved}) {
+    final titleController = TextEditingController(text: existingProfile?.title ?? '');
+    final rolesController = TextEditingController(text: existingProfile?.targetRoles.join(', ') ?? '');
+    String selectedFileName = existingProfile?.fileName ?? '';
+    String selectedBase64 = existingProfile?.base64 ?? '';
+    bool isDefault = existingProfile?.isDefault ?? (_resumeProfiles.isEmpty);
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (context, setDlgState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                const Icon(Icons.picture_as_pdf_rounded, color: Colors.blueAccent),
+                const SizedBox(width: 8),
+                Text(
+                  existingProfile == null ? 'Add Targeted Resume' : 'Edit Resume Profile',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 17),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Save 2–3 targeted profiles (e.g., DevOps/Cloud Resume vs Flutter/Mobile Resume). The AI agent automatically attaches the resume matching the detected role.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: titleController,
+                    decoration: InputDecoration(
+                      labelText: 'Profile Title *',
+                      hintText: 'e.g. DevOps & Cloud Resume, Flutter Mobile',
+                      prefixIcon: const Icon(Icons.badge_outlined),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: rolesController,
+                    decoration: InputDecoration(
+                      labelText: 'Target Roles & Keywords * (comma-separated)',
+                      hintText: 'e.g. DevOps, Cloud, Kubernetes, Terraform, SRE',
+                      prefixIcon: const Icon(Icons.tag_rounded),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      isDense: true,
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: selectedFileName.isNotEmpty
+                          ? Colors.green.withValues(alpha: 0.1)
+                          : Colors.grey.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: selectedFileName.isNotEmpty
+                            ? Colors.green.withValues(alpha: 0.3)
+                            : Colors.grey.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          selectedFileName.isNotEmpty ? Icons.check_circle_rounded : Icons.upload_file_rounded,
+                          color: selectedFileName.isNotEmpty ? Colors.green : Colors.grey,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            selectedFileName.isNotEmpty ? selectedFileName : 'No PDF selected',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: selectedFileName.isNotEmpty ? FontWeight.bold : FontWeight.normal,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blueAccent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          ),
+                          onPressed: () async {
+                            try {
+                              FilePickerResult? result;
+                              try {
+                                result = await FilePicker.pickFiles(
+                                  type: FileType.custom,
+                                  allowedExtensions: ['pdf'],
+                                  withData: true,
+                                );
+                              } catch (_) {
+                                result = await FilePicker.pickFiles(
+                                  type: FileType.any,
+                                  withData: true,
+                                );
+                              }
+                              if (result != null && result.files.isNotEmpty) {
+                                final f = result.files.first;
+                                if (!f.name.toLowerCase().endsWith('.pdf')) {
+                                  if (dlgCtx.mounted) {
+                                    ScaffoldMessenger.of(dlgCtx).showSnackBar(
+                                      const SnackBar(content: Text('Please select a PDF file.')),
+                                    );
+                                  }
+                                  return;
+                                }
+                                if (f.bytes != null) {
+                                  setDlgState(() {
+                                    selectedFileName = f.name;
+                                    selectedBase64 = base64Encode(f.bytes!);
+                                  });
+                                }
+                              }
+                            } catch (err) {
+                              if (dlgCtx.mounted) {
+                                ScaffoldMessenger.of(dlgCtx).showSnackBar(
+                                  SnackBar(content: Text('Error picking file: $err')),
+                                );
+                              }
+                            }
+                          },
+                          child: Text(selectedFileName.isNotEmpty ? 'Change' : 'Pick PDF', style: const TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  CheckboxListTile(
+                    value: isDefault,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    activeColor: Colors.blueAccent,
+                    title: const Text('Set as Default Resume', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    subtitle: const Text('Used if detected job doesn\'t match other profile keywords', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    onChanged: (val) {
+                      setDlgState(() => isDefault = val ?? false);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dlgCtx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+                onPressed: isSaving ? null : () async {
+                  final title = titleController.text.trim();
+                  final roles = rolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+                  if (title.isEmpty) {
+                    ScaffoldMessenger.of(dlgCtx).showSnackBar(const SnackBar(content: Text('Please enter a profile title.')));
+                    return;
+                  }
+                  if (roles.isEmpty) {
+                    ScaffoldMessenger.of(dlgCtx).showSnackBar(const SnackBar(content: Text('Please enter at least one target role or keyword.')));
+                    return;
+                  }
+                  if (selectedBase64.isEmpty) {
+                    ScaffoldMessenger.of(dlgCtx).showSnackBar(const SnackBar(content: Text('Please select a resume PDF file.')));
+                    return;
+                  }
+
+                  setDlgState(() => isSaving = true);
+                  try {
+                    final profile = ResumeProfile(
+                      id: existingProfile?.id ?? 'profile_${DateTime.now().millisecondsSinceEpoch}',
+                      title: title,
+                      targetRoles: roles,
+                      fileName: selectedFileName,
+                      base64: selectedBase64,
+                      isDefault: isDefault,
+                      updatedAt: DateTime.now(),
+                    );
+                    await _service.saveResumeProfile(profile);
+                    onSaved?.call();
+                    if (dlgCtx.mounted) {
+                      Navigator.pop(dlgCtx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Resume profile "$title" saved successfully!'), backgroundColor: Colors.green),
+                      );
+                    }
+                  } catch (e) {
+                    if (dlgCtx.mounted) {
+                      setDlgState(() => isSaving = false);
+                      ScaffoldMessenger.of(dlgCtx).showSnackBar(SnackBar(content: Text('Error: $e')));
+                    }
+                  }
+                },
+                child: isSaving
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Save Profile', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 
   void _showJobAssistantSettingsDialog() {
     final emailController = TextEditingController(text: _userEmail);
@@ -259,71 +503,204 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Section 1: Master Resume PDF
-                    Text(
-                      '📄 Master Resume (PDF)',
-                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
+                    // Section 1: Multi-Resume Profiles (DevOps vs Flutter vs Cloud)
+                    Row(
+                      children: [
+                        Text(
+                          '📄 Targeted Resumes (${_resumeProfiles.length}/3)',
+                          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        const Spacer(),
+                        if (_resumeProfiles.length < 3)
+                          TextButton.icon(
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            icon: const Icon(Icons.add_rounded, size: 16),
+                            label: const Text('Add Profile', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            onPressed: () {
+                              _showAddResumeProfileDialog(
+                                onSaved: () => setDialogState(() {}),
+                              );
+                            },
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      'This PDF is used by both Auto-Apply (10 AM & 10 PM) and Manual scan to extract skills and attach to emails.',
+                      'Save 2–3 targeted profiles (e.g. DevOps vs Mobile). The agent automatically attaches the resume matching the detected role.',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: _hasResume
-                            ? Colors.green.withValues(alpha: 0.1)
-                            : Colors.orange.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: _hasResume
-                              ? Colors.green.withValues(alpha: 0.3)
-                              : Colors.orange.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            _hasResume ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
-                            color: _hasResume ? Colors.green : Colors.orange,
-                            size: 24,
+
+                    if (_resumeProfiles.isNotEmpty) ...[
+                      ..._resumeProfiles.map((p) => Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: p.isDefault ? Colors.blue.withValues(alpha: 0.08) : Colors.grey.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: p.isDefault ? Colors.blueAccent.withValues(alpha: 0.4) : Colors.grey.withValues(alpha: 0.2),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                               children: [
-                                Text(
-                                  _hasResume ? _resumeFileName : 'No Resume Uploaded',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                Icon(Icons.description_rounded, size: 18, color: p.isDefault ? Colors.blueAccent : Colors.grey[700]),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    p.title,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
                                 ),
-                                Text(
-                                  _hasResume ? 'PDF attached & active' : 'Please upload your resume PDF',
-                                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                if (p.isDefault)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blueAccent,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text('DEFAULT', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                                  ),
+                                const SizedBox(width: 4),
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined, size: 16),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  tooltip: 'Edit Profile',
+                                  onPressed: () {
+                                    _showAddResumeProfileDialog(
+                                      existingProfile: p,
+                                      onSaved: () => setDialogState(() {}),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.redAccent),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  tooltip: 'Delete Profile',
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (c) => AlertDialog(
+                                        title: const Text('Delete Profile?'),
+                                        content: Text('Delete "${p.title}"?'),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+                                          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm == true) {
+                                      await _service.deleteResumeProfile(p.id);
+                                      setDialogState(() {});
+                                    }
+                                  },
                                 ),
                               ],
                             ),
-                          ),
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blueAccent,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            const SizedBox(height: 4),
+                            Text('File: ${p.fileName}', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 4,
+                              runSpacing: 4,
+                              children: p.targetRoles.map((role) => Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.teal.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
+                                ),
+                                child: Text(role, style: const TextStyle(fontSize: 10, color: Colors.teal, fontWeight: FontWeight.w600)),
+                              )).toList(),
                             ),
-                            onPressed: () async {
-                              await _pickMasterResume();
-                              setDialogState(() {});
-                            },
-                            icon: const Icon(Icons.upload_file, size: 16),
-                            label: Text(_hasResume ? 'Change' : 'Upload', style: const TextStyle(fontSize: 12)),
+                            if (!p.isDefault) ...[
+                              const SizedBox(height: 6),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  icon: const Icon(Icons.star_outline_rounded, size: 14),
+                                  label: const Text('Set as Default', style: TextStyle(fontSize: 11)),
+                                  onPressed: () async {
+                                    await _service.setDefaultResumeProfile(p.id);
+                                    setDialogState(() {});
+                                  },
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      )),
+                    ] else ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _hasResume
+                              ? Colors.green.withValues(alpha: 0.1)
+                              : Colors.orange.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: _hasResume
+                                ? Colors.green.withValues(alpha: 0.3)
+                                : Colors.orange.withValues(alpha: 0.3),
                           ),
-                        ],
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _hasResume ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+                              color: _hasResume ? Colors.green : Colors.orange,
+                              size: 24,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _hasResume ? _resumeFileName : 'No Resume Uploaded',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    _hasResume ? 'Master PDF active' : 'Please upload your resume PDF',
+                                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blueAccent,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              ),
+                              onPressed: () async {
+                                await _pickMasterResume();
+                                setDialogState(() {});
+                              },
+                              icon: const Icon(Icons.upload_file, size: 16),
+                              label: Text(_hasResume ? 'Change' : 'Upload', style: const TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                    ],
 
                     const SizedBox(height: 20),
                     const Divider(),
@@ -996,6 +1373,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         enabled: _autoApplyEnabled,
         targetRoles: roles.isNotEmpty ? roles : ['DevOps Engineer', 'Cloud Engineer', 'Flutter Developer'],
         locations: locs.isNotEmpty ? locs : ['Bengaluru', 'India', 'Remote'],
+        excludedCompanies: _excludedCompanies,
         minExpYears: minExp,
         maxExpYears: maxExp,
         isFresher: _isFresher,
@@ -1049,6 +1427,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       final res = await _service.triggerAutoJobDiscoveryAndApply(
         targetRoles: roles,
         locations: locs,
+        excludedCompanies: _excludedCompanies,
         minExpYears: minExp,
         maxExpYears: maxExp,
         maxApplications: 4,
@@ -1090,6 +1469,277 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
+  Future<void> _checkRepliesNow() async {
+    if (_userEmail.isEmpty || _userAppPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please configure your Gmail & App Password in Settings first.')),
+      );
+      _showJobAssistantSettingsDialog();
+      return;
+    }
+
+    setState(() {
+      _isCheckingReplies = true;
+    });
+
+    try {
+      final res = await _service.checkJobRepliesNow();
+      final repliesFound = res['repliesFound'] ?? 0;
+      final msg = res['message'] ?? 'Reply scan completed.';
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              repliesFound > 0
+                  ? '📬 Found $repliesFound new recruiter reply(s)! Check your applications below.'
+                  : '🔍 $msg',
+            ),
+            backgroundColor: repliesFound > 0 ? const Color(0xFF10B981) : Colors.blueAccent,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMsg = e.toString();
+        if (errorMsg.contains('not-found') || errorMsg.contains('NOT_FOUND')) {
+          errorMsg = 'Recruiter reply tracker function needs deployment. Once deployed, tracking runs automatically.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMsg),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingReplies = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildResponseBadge(JobApplication app, bool isDark) {
+    final type = app.responseType ?? 'reply';
+    Color bgColor;
+    Color textColor;
+    IconData icon;
+    String label;
+
+    switch (type) {
+      case 'interview_invite':
+        bgColor = const Color(0xFF8B5CF6).withValues(alpha: 0.2);
+        textColor = isDark ? const Color(0xFFA78BFA) : const Color(0xFF6D28D9);
+        icon = Icons.event_available_rounded;
+        label = '🎉 Interview Invite';
+        break;
+      case 'assessment':
+        bgColor = const Color(0xFF3B82F6).withValues(alpha: 0.2);
+        textColor = isDark ? const Color(0xFF60A5FA) : const Color(0xFF1D4ED8);
+        icon = Icons.assignment_turned_in_rounded;
+        label = '📝 Assessment Sent';
+        break;
+      case 'hr_query':
+        bgColor = const Color(0xFF10B981).withValues(alpha: 0.2);
+        textColor = isDark ? const Color(0xFF34D399) : const Color(0xFF047857);
+        icon = Icons.chat_bubble_outline_rounded;
+        label = '💬 Recruiter Replied';
+        break;
+      case 'acknowledgment':
+        bgColor = const Color(0xFF06B6D4).withValues(alpha: 0.2);
+        textColor = isDark ? const Color(0xFF22D3EE) : const Color(0xFF0E7490);
+        icon = Icons.mark_email_read_rounded;
+        label = '📋 Application Acknowledged';
+        break;
+      case 'rejection':
+        bgColor = Colors.grey.withValues(alpha: 0.2);
+        textColor = isDark ? Colors.grey.shade400 : Colors.grey.shade700;
+        icon = Icons.cancel_outlined;
+        label = '❌ Not Selected';
+        break;
+      default:
+        bgColor = const Color(0xFF10B981).withValues(alpha: 0.2);
+        textColor = isDark ? const Color(0xFF34D399) : const Color(0xFF047857);
+        icon = Icons.mark_email_unread_rounded;
+        label = '📬 Reply Received';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: textColor.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: textColor),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecruiterReplyCard(JobApplication app, bool isDark) {
+    final timeStr = app.replyReceivedAt != null
+        ? DateFormat('dd MMM yyyy, h:mm a').format(app.replyReceivedAt!)
+        : 'Recently';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isDark
+              ? [const Color(0xFF064E3B).withValues(alpha: 0.35), const Color(0xFF042F2E).withValues(alpha: 0.45)]
+              : [const Color(0xFFECFDF5), const Color(0xFFD1FAE5)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFF10B981).withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.mark_email_unread_rounded, color: Color(0xFF10B981), size: 18),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Recruiter Response',
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: isDark ? const Color(0xFF34D399) : const Color(0xFF065F46),
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                timeStr,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: isDark ? Colors.white60 : Colors.grey.shade700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (app.replySender != null && app.replySender!.isNotEmpty) ...[
+            Text(
+              'From: ${app.replySender}',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 2),
+          ],
+          if (app.replySubject != null && app.replySubject!.isNotEmpty) ...[
+            Text(
+              'Subject: ${app.replySubject}',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+          if (app.replySnippet != null && app.replySnippet!.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.black.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+              ),
+              child: Text(
+                app.replySnippet!,
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.35,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (app.actionRequired != null && app.actionRequired!.isNotEmpty && app.actionRequired != 'none') ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.notification_important_rounded, size: 12, color: Colors.amber),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      'Action: ${app.actionRequired}',
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.amber,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: () async {
+                final query = Uri.encodeComponent(app.replySender ?? app.recipientEmail);
+                final webUrl = Uri.parse('https://mail.google.com/mail/u/0/#search/$query');
+                if (await canLaunchUrl(webUrl)) {
+                  await launchUrl(webUrl, mode: LaunchMode.externalApplication);
+                }
+              },
+              icon: const Icon(Icons.open_in_new_rounded, size: 13, color: Color(0xFF10B981)),
+              label: const Text(
+                'Open in Gmail',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ============================================================================
   // BUILD METHOD
   // ============================================================================
@@ -1109,11 +1759,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           indicatorWeight: 3.0,
           tabs: const [
             Tab(icon: Icon(Icons.bolt_rounded), text: 'Auto-Apply Agent'),
+            Tab(icon: Icon(Icons.people_alt_rounded), text: 'Cold Outreach'),
             Tab(icon: Icon(Icons.add_photo_alternate_rounded), text: 'Manual & Scan'),
             Tab(icon: Icon(Icons.history_rounded), text: 'Applied History'),
           ],
         ),
         actions: [
+          IconButton(
+            icon: _isCheckingReplies
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.mark_email_unread_rounded),
+            tooltip: 'Check Recruiter Replies',
+            onPressed: _isCheckingReplies ? null : _checkRepliesNow,
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Job Assistant Settings',
@@ -1125,6 +1783,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         controller: _tabController,
         children: [
           _buildAutoApplyTab(),
+          _buildNetworkingTab(),
           _buildNewApplicationTab(),
           _buildHistoryTab(),
         ],
@@ -1420,6 +2079,125 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                       ),
                     ),
                     const SizedBox(height: 12),
+                    // Configurable Blacklist / Excluded Companies
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: _excludedCompanies.isNotEmpty
+                              ? Colors.redAccent.withValues(alpha: 0.3)
+                              : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.block_rounded, color: Colors.redAccent, size: 18),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Excluded Companies / Agencies (Blacklist)',
+                                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              const Spacer(),
+                              if (_excludedCompanies.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.redAccent.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    '${_excludedCompanies.length} Excluded',
+                                    style: const TextStyle(fontSize: 10, color: Colors.redAccent, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Auto-discovery will automatically reject and skip openings from these employers or recruitment agencies (e.g. current company or consultancy spam).',
+                            style: TextStyle(fontSize: 11, color: isDark ? Colors.white60 : Colors.grey[600]),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _excludeCompanyController,
+                                  decoration: InputDecoration(
+                                    hintText: 'e.g. Current Employer, Consultancy Name...',
+                                    hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                                    prefixIcon: const Icon(Icons.domain_disabled_rounded, size: 18),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                  ),
+                                  onSubmitted: (val) {
+                                    final c = val.trim();
+                                    if (c.isNotEmpty && !_excludedCompanies.contains(c)) {
+                                      setState(() {
+                                        _excludedCompanies.add(c);
+                                        _excludeCompanyController.clear();
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.redAccent,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                onPressed: () {
+                                  final c = _excludeCompanyController.text.trim();
+                                  if (c.isNotEmpty && !_excludedCompanies.contains(c)) {
+                                    setState(() {
+                                      _excludedCompanies.add(c);
+                                      _excludeCompanyController.clear();
+                                    });
+                                  }
+                                },
+                                child: const Text('+ Add', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          if (_excludedCompanies.isNotEmpty)
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: _excludedCompanies.map((comp) {
+                                return Chip(
+                                  backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
+                                  side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.3)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  avatar: const Icon(Icons.block, size: 14, color: Colors.redAccent),
+                                  label: Text(comp, style: const TextStyle(fontSize: 11, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                  deleteIcon: const Icon(Icons.close_rounded, size: 14, color: Colors.redAccent),
+                                  onDeleted: () {
+                                    setState(() {
+                                      _excludedCompanies.remove(comp);
+                                    });
+                                  },
+                                );
+                              }).toList(),
+                            )
+                          else
+                            Text(
+                              'No companies excluded yet. Add your current employer or consultancy names to filter out.',
+                              style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.grey.shade500),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     // Fresher Checkbox Toggle
                     Container(
                       decoration: BoxDecoration(
@@ -1552,6 +2330,26 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                             ],
                           ),
                         ),
+                        if (_excludedCompanies.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.block_rounded, color: Colors.redAccent, size: 14),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${_excludedCompanies.length} Blacklisted',
+                                  style: const TextStyle(fontSize: 11, color: Colors.redAccent, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -1583,26 +2381,61 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
             const SizedBox(height: 16),
 
-            // On-Demand Discovery & Apply Trigger Button
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  elevation: 3,
+            // Dual Action: On-Demand Auto-Apply and Check Recruiter Replies
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: SizedBox(
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        elevation: 3,
+                      ),
+                      onPressed: _isRunningAutoApply ? null : _runAutoApplyNow,
+                      icon: _isRunningAutoApply
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.rocket_launch_rounded, size: 20),
+                      label: Text(
+                        _isRunningAutoApply ? 'Applying...' : '🚀 Auto-Apply Now',
+                        style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
                 ),
-                onPressed: _isRunningAutoApply ? null : _runAutoApplyNow,
-                icon: _isRunningAutoApply
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.rocket_launch_rounded),
-                label: Text(
-                  _isRunningAutoApply ? 'Agent Discovering & Applying...' : '🚀 Run Auto-Discovery & Apply Now',
-                  style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: SizedBox(
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
+                        side: BorderSide(
+                          color: isDark ? const Color(0xFF34D399).withValues(alpha: 0.6) : const Color(0xFF059669),
+                          width: 1.5,
+                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: _isCheckingReplies ? null : _checkRepliesNow,
+                      icon: _isCheckingReplies
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.mark_email_unread_rounded, size: 19),
+                      label: Text(
+                        _isCheckingReplies ? 'Scanning...' : '📥 Check Replies',
+                        style: GoogleFonts.outfit(fontSize: 12.5, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
 
             if (_autoApplyStatusMessage.isNotEmpty) ...[
@@ -1767,8 +2600,18 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       child: ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: CircleAvatar(
-          backgroundColor: Colors.blueAccent.withValues(alpha: 0.15),
-          child: const Icon(Icons.send_rounded, color: Colors.blueAccent, size: 18),
+          backgroundColor: app.status == 'reply_received'
+              ? const Color(0xFF10B981).withValues(alpha: 0.2)
+              : Colors.blueAccent.withValues(alpha: 0.15),
+          child: Icon(
+            app.status == 'reply_received'
+                ? Icons.mark_email_unread_rounded
+                : Icons.send_rounded,
+            color: app.status == 'reply_received'
+                ? const Color(0xFF10B981)
+                : Colors.blueAccent,
+            size: 18,
+          ),
         ),
         title: Text(
           app.jobTitle,
@@ -1787,14 +2630,29 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               spacing: 6,
               runSpacing: 4,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
+                if (app.status == 'reply_received')
+                  _buildResponseBadge(app, isDark)
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.picture_as_pdf_rounded, size: 10, color: Color(0xFF10B981)),
+                        const SizedBox(width: 3),
+                        Text(
+                          app.resumeProfileName != null && app.resumeProfileName!.isNotEmpty
+                              ? 'Profile: ${app.resumeProfileName}'
+                              : 'Sent with Resume PDF',
+                          style: const TextStyle(fontSize: 9.5, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: const Text('Sent with Resume PDF', style: TextStyle(fontSize: 9.5, color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
-                ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                   decoration: BoxDecoration(
@@ -1840,8 +2698,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (app.status == 'reply_received')
+                  _buildRecruiterReplyCard(app, isDark),
                 Text(
-                  'Subject: ${app.generatedSubject}',
+                  'Sent Application Subject: ${app.generatedSubject}',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                 ),
                 const SizedBox(height: 8),
@@ -2564,12 +3424,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         final allApps = snapshot.data ?? [];
         final autoApps = allApps.where((a) => a.isAutoApplied).toList();
         final manualApps = allApps.where((a) => !a.isAutoApplied).toList();
+        final replyApps = allApps.where((a) => a.status == 'reply_received').toList();
 
         List<JobApplication> displayApps = allApps;
         if (_historyFilter == 'auto') {
           displayApps = autoApps;
         } else if (_historyFilter == 'manual') {
           displayApps = manualApps;
+        } else if (_historyFilter == 'replies') {
+          displayApps = replyApps;
         }
 
         if (allApps.isEmpty) {
@@ -2591,80 +3454,107 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               color: isDark ? const Color(0xFF0F172A) : Colors.grey.shade100,
-              child: Row(
-                children: [
-                  ChoiceChip(
-                    label: Text(
-                      'All (${allApps.length})',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: _historyFilter == 'all' ? FontWeight.bold : FontWeight.normal,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      label: Text(
+                        'All (${allApps.length})',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _historyFilter == 'all' ? FontWeight.bold : FontWeight.normal,
+                          color: _historyFilter == 'all'
+                              ? (isDark ? Colors.blue.shade200 : Colors.blue.shade900)
+                              : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                        ),
+                      ),
+                      selected: _historyFilter == 'all',
+                      selectedColor: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade100,
+                      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
+                      side: BorderSide(
                         color: _historyFilter == 'all'
-                            ? (isDark ? Colors.blue.shade200 : Colors.blue.shade900)
-                            : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                            ? (isDark ? Colors.blueAccent : Colors.blue)
+                            : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
                       ),
+                      onSelected: (val) {
+                        if (val) setState(() => _historyFilter = 'all');
+                      },
                     ),
-                    selected: _historyFilter == 'all',
-                    selectedColor: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade100,
-                    backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
-                    side: BorderSide(
-                      color: _historyFilter == 'all'
-                          ? (isDark ? Colors.blueAccent : Colors.blue)
-                          : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
-                    ),
-                    onSelected: (val) {
-                      if (val) setState(() => _historyFilter = 'all');
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: Text(
-                      '🤖 Auto (${autoApps.length})',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: _historyFilter == 'auto' ? FontWeight.bold : FontWeight.normal,
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text(
+                        '🤖 Auto (${autoApps.length})',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _historyFilter == 'auto' ? FontWeight.bold : FontWeight.normal,
+                          color: _historyFilter == 'auto'
+                              ? (isDark ? Colors.blue.shade200 : Colors.blue.shade900)
+                              : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                        ),
+                      ),
+                      selected: _historyFilter == 'auto',
+                      selectedColor: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade100,
+                      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
+                      side: BorderSide(
                         color: _historyFilter == 'auto'
-                            ? (isDark ? Colors.blue.shade200 : Colors.blue.shade900)
-                            : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                            ? (isDark ? Colors.blueAccent : Colors.blue)
+                            : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
                       ),
+                      onSelected: (val) {
+                        if (val) setState(() => _historyFilter = 'auto');
+                      },
                     ),
-                    selected: _historyFilter == 'auto',
-                    selectedColor: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade100,
-                    backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
-                    side: BorderSide(
-                      color: _historyFilter == 'auto'
-                          ? (isDark ? Colors.blueAccent : Colors.blue)
-                          : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
-                    ),
-                    onSelected: (val) {
-                      if (val) setState(() => _historyFilter = 'auto');
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: Text(
-                      '📸 Manual (${manualApps.length})',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: _historyFilter == 'manual' ? FontWeight.bold : FontWeight.normal,
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text(
+                        '📸 Manual (${manualApps.length})',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _historyFilter == 'manual' ? FontWeight.bold : FontWeight.normal,
+                          color: _historyFilter == 'manual'
+                              ? (isDark ? Colors.purple.shade200 : Colors.purple.shade900)
+                              : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                        ),
+                      ),
+                      selected: _historyFilter == 'manual',
+                      selectedColor: isDark ? const Color(0xFF581C87) : Colors.purple.shade100,
+                      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
+                      side: BorderSide(
                         color: _historyFilter == 'manual'
-                            ? (isDark ? Colors.purple.shade200 : Colors.purple.shade900)
-                            : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                            ? (isDark ? Colors.purpleAccent : Colors.purple)
+                            : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
                       ),
+                      onSelected: (val) {
+                        if (val) setState(() => _historyFilter = 'manual');
+                      },
                     ),
-                    selected: _historyFilter == 'manual',
-                    selectedColor: isDark ? const Color(0xFF581C87) : Colors.purple.shade100,
-                    backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
-                    side: BorderSide(
-                      color: _historyFilter == 'manual'
-                          ? (isDark ? Colors.purpleAccent : Colors.purple)
-                          : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text(
+                        '💬 Replies (${replyApps.length})',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _historyFilter == 'replies' ? FontWeight.bold : FontWeight.normal,
+                          color: _historyFilter == 'replies'
+                              ? (isDark ? const Color(0xFF34D399) : const Color(0xFF065F46))
+                              : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                        ),
+                      ),
+                      selected: _historyFilter == 'replies',
+                      selectedColor: isDark ? const Color(0xFF064E3B) : const Color(0xFFD1FAE5),
+                      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
+                      side: BorderSide(
+                        color: _historyFilter == 'replies'
+                            ? (isDark ? const Color(0xFF34D399) : const Color(0xFF059669))
+                            : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                      ),
+                      onSelected: (val) {
+                        if (val) setState(() => _historyFilter = 'replies');
+                      },
                     ),
-                    onSelected: (val) {
-                      if (val) setState(() => _historyFilter = 'manual');
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const Divider(height: 1),
@@ -2688,12 +3578,18 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             child: ExpansionTile(
                               leading: CircleAvatar(
-                                backgroundColor: app.isAutoApplied
-                                    ? Colors.blueAccent.withValues(alpha: 0.15)
-                                    : Colors.purple.withValues(alpha: 0.15),
+                                backgroundColor: app.status == 'reply_received'
+                                    ? const Color(0xFF10B981).withValues(alpha: 0.2)
+                                    : (app.isAutoApplied
+                                        ? Colors.blueAccent.withValues(alpha: 0.15)
+                                        : Colors.purple.withValues(alpha: 0.15)),
                                 child: Icon(
-                                  app.isAutoApplied ? Icons.bolt_rounded : Icons.photo_library_outlined,
-                                  color: app.isAutoApplied ? Colors.blueAccent : Colors.purple,
+                                  app.status == 'reply_received'
+                                      ? Icons.mark_email_unread_rounded
+                                      : (app.isAutoApplied ? Icons.bolt_rounded : Icons.photo_library_outlined),
+                                  color: app.status == 'reply_received'
+                                      ? const Color(0xFF10B981)
+                                      : (app.isAutoApplied ? Colors.blueAccent : Colors.purple),
                                   size: 18,
                                 ),
                               ),
@@ -2711,6 +3607,27 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                     spacing: 6,
                                     runSpacing: 4,
                                     children: [
+                                      if (app.status == 'reply_received')
+                                        _buildResponseBadge(app, isDark),
+                                      if (app.resumeProfileName != null && app.resumeProfileName!.isNotEmpty)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                          decoration: BoxDecoration(
+                                            color: Colors.teal.withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(Icons.picture_as_pdf_rounded, size: 10, color: Colors.teal),
+                                              const SizedBox(width: 3),
+                                              Text(
+                                                'Resume: ${app.resumeProfileName}',
+                                                style: const TextStyle(fontSize: 9.5, color: Colors.teal, fontWeight: FontWeight.bold),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                                         decoration: BoxDecoration(
@@ -2765,6 +3682,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
+                                      if (app.status == 'reply_received')
+                                        _buildRecruiterReplyCard(app, isDark),
                                       Text(
                                         'Subject: ${app.generatedSubject}',
                                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
@@ -2796,4 +3715,805 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       },
     );
   }
+
+  // ============================================================================
+  // TAB 2: COLD OUTREACH & LEADERSHIP NETWORKING
+  // ============================================================================
+
+  Future<void> _triggerNetworkingDiscoveryNow() async {
+    final roles = _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    final locs = _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+
+    setState(() {
+      _isDiscoveringLeaders = true;
+    });
+
+    try {
+      final res = await _service.triggerNetworkingDiscovery(
+        targetRoles: roles.isNotEmpty ? roles : null,
+        targetLocations: locs.isNotEmpty ? locs : null,
+      );
+
+      final count = res['count'] ?? 0;
+      final msg = res['message'] ?? 'Discovery complete.';
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(count > 0 ? '🤝 Found $count new Tech Leaders & EMs!' : msg),
+            backgroundColor: count > 0 ? Colors.green : Colors.indigo,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Networking discovery error: ${e.toString().replaceAll("Exception: ", "")}'),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDiscoveringLeaders = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openLinkedInProfileAndCopyNote(NetworkingLead lead) async {
+    if (lead.connectionNote.isNotEmpty) {
+      await Clipboard.setData(ClipboardData(text: lead.connectionNote));
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Copied 300-char note! Opening LinkedIn profile for ${lead.name}...'),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF0077B5),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+
+    // Launch LinkedIn profile URL
+    final uri = Uri.tryParse(lead.linkedinUrl);
+    if (uri != null) {
+      try {
+        if (kIsWeb) {
+          await launchUrl(uri, webOnlyWindowName: '_blank');
+        } else {
+          final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+          if (!launched) {
+            await launchUrl(uri, mode: LaunchMode.platformDefault);
+          }
+        }
+      } catch (e) {
+        debugPrint('Failed to launch LinkedIn URL: $e');
+      }
+    }
+
+    // Mark as note_sent if it was discovered
+    if (lead.status == 'discovered') {
+      await _service.updateNetworkingLeadStatus(lead.id, 'note_sent');
+    }
+  }
+
+  void _showFullPitchDialog(NetworkingLead lead) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.mark_email_read_rounded, color: Color(0xFF0077B5)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Pitch for ${lead.name}',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${lead.currentRole} at ${lead.companyName}',
+                style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[900]
+                      : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+                ),
+                child: SelectableText(
+                  lead.fullPitch,
+                  style: const TextStyle(fontSize: 14, height: 1.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.copy_rounded, size: 18),
+            label: const Text('Copy Pitch'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: lead.fullPitch));
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Full pitch copied to clipboard!')),
+              );
+            },
+          ),
+          if (lead.email != null && lead.email!.isNotEmpty)
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0077B5), foregroundColor: Colors.white),
+              icon: const Icon(Icons.email_rounded, size: 18),
+              label: const Text('Send Email'),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final mailtoUri = Uri(
+                  scheme: 'mailto',
+                  path: lead.email,
+                  queryParameters: {
+                    'subject': 'Connecting regarding Engineering at ${lead.companyName}',
+                    'body': lead.fullPitch,
+                  },
+                );
+                await launchUrl(mailtoUri, mode: LaunchMode.externalApplication);
+              },
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNetworkingTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+
+    return Scrollbar(
+      controller: _networkingScrollController,
+      child: SingleChildScrollView(
+        controller: _networkingScrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header Banner
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: isDark
+                      ? [const Color(0xFF1E1B4B), const Color(0xFF312E81)]
+                      : [const Color(0xFFEEF2FF), const Color(0xFFE0E7FF)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.indigoAccent.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.indigoAccent.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.people_alt_rounded, color: Colors.indigoAccent, size: 22),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Cold Outreach & Leadership Networking 🤝',
+                              style: GoogleFonts.outfit(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: isDark ? Colors.white : const Color(0xFF1E1B4B),
+                              ),
+                            ),
+                            const Text(
+                              'Daily automatic discovery at 11:30 AM IST',
+                              style: TextStyle(fontSize: 11, color: Colors.indigoAccent, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Discovers Engineering Managers, Founders & Talent Acquisition leads in target cities (e.g. Bengaluru) matching Flutter & Cloud stacks. Generates personalized connection notes strictly ≤ 300 characters.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      color: isDark ? Colors.white70 : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isDiscoveringLeaders ? null : _triggerNetworkingDiscoveryNow,
+                      icon: _isDiscoveringLeaders
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.person_search_rounded, size: 18),
+                      label: Text(_isDiscoveringLeaders ? 'Scanning LinkedIn for Leaders...' : 'Find Leaders Now'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0077B5),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Category Filter Chips
+            Text(
+              'Filter by Leadership Role:',
+              style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildNetworkingCategoryChip('all', 'All Roles', Icons.grid_view_rounded),
+                  const SizedBox(width: 8),
+                  _buildNetworkingCategoryChip('engineering_manager', 'Engineering Managers', Icons.manage_accounts_rounded),
+                  const SizedBox(width: 8),
+                  _buildNetworkingCategoryChip('founder', 'Founders & CTOs', Icons.rocket_launch_rounded),
+                  const SizedBox(width: 8),
+                  _buildNetworkingCategoryChip('talent_acquisition', 'Talent Acquisition', Icons.badge_rounded),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Status Filter Chips
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildNetworkingStatusChip('all', 'All Statuses'),
+                  const SizedBox(width: 8),
+                  _buildNetworkingStatusChip('discovered', 'Discovered'),
+                  const SizedBox(width: 8),
+                  _buildNetworkingStatusChip('note_sent', 'Note Sent'),
+                  const SizedBox(width: 8),
+                  _buildNetworkingStatusChip('connected', 'Connected'),
+                  const SizedBox(width: 8),
+                  _buildNetworkingStatusChip('replied', 'Replied'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Leads Stream
+            StreamBuilder<List<NetworkingLead>>(
+              stream: _service.getNetworkingLeadsStream(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+
+                final allLeads = snapshot.data ?? [];
+
+                // Filter by category
+                var filteredLeads = allLeads;
+                if (_networkingCategoryFilter != 'all') {
+                  filteredLeads = filteredLeads.where((l) => l.category == _networkingCategoryFilter).toList();
+                }
+
+                // Filter by status
+                if (_networkingStatusFilter != 'all') {
+                  filteredLeads = filteredLeads.where((l) => l.status == _networkingStatusFilter).toList();
+                }
+
+                if (allLeads.isEmpty) {
+                  return Container(
+                    padding: const EdgeInsets.all(32),
+                    alignment: Alignment.center,
+                    child: Column(
+                      children: [
+                        Icon(Icons.person_search_rounded, size: 64, color: Colors.grey.withValues(alpha: 0.5)),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No leadership leads discovered yet',
+                          style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Tap "Find Leaders Now" above to discover Engineering Managers, Founders, and Hiring Leads in Bengaluru.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _isDiscoveringLeaders ? null : _triggerNetworkingDiscoveryNow,
+                          icon: const Icon(Icons.search_rounded, size: 18),
+                          label: const Text('Scan LinkedIn Now'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0077B5),
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Discovered Leaders (${filteredLeads.length})',
+                          style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          'Total: ${allLeads.length}',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (filteredLeads.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Center(
+                          child: Text(
+                            'No leads match the selected filters.',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        ),
+                      )
+                    else
+                      ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: filteredLeads.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final lead = filteredLeads[index];
+                          return _buildNetworkingLeadCard(lead, isDark, cardBg);
+                        },
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNetworkingCategoryChip(String key, String label, IconData icon) {
+    final isSelected = _networkingCategoryFilter == key;
+    return ChoiceChip(
+      avatar: Icon(icon, size: 16, color: isSelected ? Colors.white : Colors.indigoAccent),
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          setState(() {
+            _networkingCategoryFilter = key;
+          });
+        }
+      },
+      selectedColor: Colors.indigoAccent,
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : null,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        fontSize: 12,
+      ),
+    );
+  }
+
+  Widget _buildNetworkingStatusChip(String key, String label) {
+    final isSelected = _networkingStatusFilter == key;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          setState(() {
+            _networkingStatusFilter = key;
+          });
+        }
+      },
+      selectedColor: const Color(0xFF0077B5),
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : null,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        fontSize: 11.5,
+      ),
+    );
+  }
+
+  Widget _buildNetworkingLeadCard(NetworkingLead lead, bool isDark, Color cardBg) {
+    // Category visual config
+    Color categoryColor;
+    String categoryLabel;
+    IconData categoryIcon;
+
+    switch (lead.category) {
+      case 'founder':
+        categoryColor = Colors.amber.shade700;
+        categoryLabel = 'Founder / CTO';
+        categoryIcon = Icons.rocket_launch_rounded;
+        break;
+      case 'talent_acquisition':
+        categoryColor = Colors.teal;
+        categoryLabel = 'Talent Lead';
+        categoryIcon = Icons.badge_rounded;
+        break;
+      case 'engineering_manager':
+      default:
+        categoryColor = Colors.indigoAccent;
+        categoryLabel = 'Engineering Manager';
+        categoryIcon = Icons.manage_accounts_rounded;
+        break;
+    }
+
+    // Status visual config
+    Color statusBg;
+    Color statusFg;
+    String statusDisplay;
+
+    switch (lead.status) {
+      case 'note_sent':
+        statusBg = Colors.blue.withValues(alpha: 0.15);
+        statusFg = Colors.blue;
+        statusDisplay = 'Note Sent';
+        break;
+      case 'connected':
+        statusBg = Colors.green.withValues(alpha: 0.15);
+        statusFg = Colors.green;
+        statusDisplay = 'Connected';
+        break;
+      case 'replied':
+        statusBg = Colors.purple.withValues(alpha: 0.15);
+        statusFg = Colors.purple;
+        statusDisplay = 'Replied';
+        break;
+      case 'discovered':
+      default:
+        statusBg = Colors.orange.withValues(alpha: 0.15);
+        statusFg = Colors.orange.shade800;
+        statusDisplay = 'Discovered';
+        break;
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top Row: Avatar/Icon, Name, Role, Company, Popup Status & Delete
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: categoryColor.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(categoryIcon, color: categoryColor, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            lead.name,
+                            style: GoogleFonts.outfit(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: isDark ? Colors.white : const Color(0xFF0F172A),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: categoryColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            categoryLabel,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: categoryColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      lead.currentRole,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(Icons.business_rounded, size: 12, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            lead.companyName,
+                            style: TextStyle(fontSize: 11.5, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(Icons.location_on_rounded, size: 12, color: Colors.grey[500]),
+                        const SizedBox(width: 2),
+                        Flexible(
+                          child: Text(
+                            lead.location,
+                            style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // Status Menu & Delete
+              PopupMenuButton<String>(
+                tooltip: 'Change Status',
+                initialValue: lead.status,
+                onSelected: (newStatus) async {
+                  await _service.updateNetworkingLeadStatus(lead.id, newStatus);
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'discovered', child: Text('Discovered')),
+                  PopupMenuItem(value: 'note_sent', child: Text('Note Sent')),
+                  PopupMenuItem(value: 'connected', child: Text('Connected')),
+                  PopupMenuItem(value: 'replied', child: Text('Replied')),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusBg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        statusDisplay,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: statusFg,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(Icons.arrow_drop_down_rounded, size: 16, color: statusFg),
+                    ],
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.redAccent),
+                tooltip: 'Delete Lead',
+                onPressed: () async {
+                  await _service.deleteNetworkingLead(lead.id);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Lead removed.'), duration: Duration(seconds: 2)),
+                    );
+                  }
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Connection Note Box (≤ 300 characters)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.notes_rounded, size: 14, color: Color(0xFF0077B5)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'LinkedIn Connection Note',
+                          style: GoogleFonts.outfit(fontSize: 11.5, fontWeight: FontWeight.w700, color: const Color(0xFF0077B5)),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: lead.connectionNote.length <= 300
+                            ? Colors.green.withValues(alpha: 0.15)
+                            : Colors.red.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '${lead.connectionNote.length}/300 chars',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.bold,
+                          color: lead.connectionNote.length <= 300 ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                SelectableText(
+                  lead.connectionNote,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.4,
+                    color: isDark ? Colors.white70 : const Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Actions Row
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: ElevatedButton.icon(
+                  onPressed: () => _openLinkedInProfileAndCopyNote(lead),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                  label: const Text('Copy Note & Open LinkedIn'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0077B5),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showFullPitchDialog(lead),
+                  icon: const Icon(Icons.description_rounded, size: 16),
+                  label: const Text('Full Pitch'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+              if (lead.email != null && lead.email!.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                IconButton(
+                  icon: const Icon(Icons.email_rounded, color: Colors.blueAccent, size: 20),
+                  tooltip: 'Email ${lead.name} (${lead.email})',
+                  onPressed: () async {
+                    final mailtoUri = Uri(
+                      scheme: 'mailto',
+                      path: lead.email,
+                      queryParameters: {
+                        'subject': 'Connecting regarding Engineering at ${lead.companyName}',
+                        'body': lead.fullPitch,
+                      },
+                    );
+                    await launchUrl(mailtoUri, mode: LaunchMode.externalApplication);
+                  },
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
+

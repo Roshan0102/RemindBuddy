@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/storage_service.dart';
 import '../models/notification_history.dart';
+import '../services/notification_service.dart';
 
 class NotificationHistoryScreen extends StatelessWidget {
   const NotificationHistoryScreen({super.key});
@@ -63,45 +64,59 @@ class NotificationHistoryScreen extends StatelessWidget {
                     color: Colors.grey.withValues(alpha: 0.1),
                   ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(14.0),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildTypeIcon(notif.type, context),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              notif.title,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    Navigator.pop(context);
+                    NotificationService().handleNotificationPayload(notif.type);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(14.0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildTypeIcon(notif.type, context),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      notif.title,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                                ],
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              notif.body,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.8) ?? Colors.grey.shade800,
+                              const SizedBox(height: 4),
+                              Text(
+                                notif.body,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.8) ?? Colors.grey.shade800,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              DateFormat('hh:mm a • d MMM yyyy').format(notif.timestamp),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey.shade500,
-                                fontWeight: FontWeight.w500,
+                              const SizedBox(height: 8),
+                              Text(
+                                DateFormat('hh:mm a • d MMM yyyy').format(notif.timestamp),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade500,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -116,7 +131,7 @@ class NotificationHistoryScreen extends StatelessWidget {
     IconData iconData;
     Color iconColor;
 
-    switch (type) {
+    switch (type.toUpperCase()) {
       case 'CALENDAR_REMINDER':
         iconData = Icons.calendar_today_outlined;
         iconColor = Colors.orange;
@@ -131,6 +146,7 @@ class NotificationHistoryScreen extends StatelessWidget {
         break;
       case 'GOLD_PRICE':
       case 'GOLD_CHIT_ADVICE':
+      case 'GOLD_CHIT_UPDATE':
         iconData = Icons.monetization_on_outlined;
         iconColor = Colors.amber.shade700;
         break;
@@ -141,6 +157,28 @@ class NotificationHistoryScreen extends StatelessWidget {
       case 'WALKIN_DRIVES':
         iconData = Icons.directions_walk_outlined;
         iconColor = Colors.lightBlue;
+        break;
+      case 'JOB_ASSISTANT':
+        iconData = Icons.work_history_outlined;
+        iconColor = Colors.indigoAccent;
+        break;
+      case 'NIGHTLY_EXPENSE_TAG':
+      case 'FINANCE':
+        iconData = Icons.account_balance_wallet_outlined;
+        iconColor = Colors.teal;
+        break;
+      case 'BILL_REMINDER':
+        iconData = Icons.receipt_long_outlined;
+        iconColor = Colors.purpleAccent;
+        break;
+      case 'NOTES':
+      case 'NOTE':
+        iconData = Icons.note_alt_outlined;
+        iconColor = Colors.cyan;
+        break;
+      case 'ASTRO_CALENDAR':
+        iconData = Icons.wb_sunny_outlined;
+        iconColor = Colors.orangeAccent;
         break;
       default:
         iconData = Icons.notifications_active_outlined;

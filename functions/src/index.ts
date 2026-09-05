@@ -87,8 +87,22 @@ export {
     processAutoApplyUserTask
 } from "./modules/job_assistant/jobDiscoveryAI";
 
+export {
+    checkJobRepliesCallable
+} from "./modules/job_assistant/replyTracker";
+
+export {
+    triggerNetworkingDiscovery
+} from "./modules/job_assistant/networkingDiscoveryAI";
+
+// Finance & Expense Tracking
+export {
+    triggerNightlyExpenseNotifier
+} from "./modules/finance/nightlyExpenseNotifier";
+
 // Consolidated Master Schedulers
 export {
     masterMinuteRunner,
     masterHalfHourlyRunner
 } from "./schedulers/masterSchedulers";
+

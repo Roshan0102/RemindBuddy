@@ -162,6 +162,21 @@ class NotificationService {
   final StreamController<String> _selectNotificationStream = StreamController<String>.broadcast();
   Stream<String> get selectNotificationStream => _selectNotificationStream.stream;
 
+  // Buffered payload for cold-start launches
+  String? _pendingPayload;
+
+  String? consumePendingPayload() {
+    final payload = _pendingPayload;
+    _pendingPayload = null;
+    return payload;
+  }
+
+  void handleNotificationPayload(String payload) {
+    if (payload.isEmpty || payload == 'null') return;
+    _pendingPayload = payload;
+    _selectNotificationStream.add(payload);
+  }
+
   factory NotificationService() {
     return _instance;
   }
@@ -169,6 +184,10 @@ class NotificationService {
   NotificationService._internal();
 
   Future<void> init() async {
+    if (kIsWeb) {
+      LogService.staticLog("Notifications disabled on Web platform (Mobile-only requirement).");
+      return;
+    }
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     
     // 1. Register Background FCM message handler
@@ -303,8 +322,8 @@ class NotificationService {
             }
           }
           
-          if (payload != null && payload != 'null') {
-            _selectNotificationStream.add(payload);
+          if (payload != null && payload.isNotEmpty && payload != 'null') {
+            handleNotificationPayload(payload);
           }
         },
         onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
@@ -362,6 +381,13 @@ class NotificationService {
           playSound: true,
         ),
         AndroidNotificationChannel(
+          'job_assistant_channel',
+          'AI Job Assistant Alerts',
+          description: 'Notifications for auto-applied jobs and application status',
+          importance: Importance.max,
+          playSound: true,
+        ),
+        AndroidNotificationChannel(
           'collaboration_channel',
           'Collaboration Alerts',
           description: 'Notifications for shared tasks and team activities',
@@ -372,6 +398,13 @@ class NotificationService {
           'astro_reminder_channel',
           'Astro Calendar Alerts',
           description: 'Notifications for lunar phases and astro events',
+          importance: Importance.max,
+          playSound: true,
+        ),
+        AndroidNotificationChannel(
+          'finance_reminder_channel',
+          'Finance & Bank Tracker Alerts',
+          description: 'Notifications for daily untagged transactions and manual spend reminders',
           importance: Importance.max,
           playSound: true,
         ),
@@ -409,35 +442,67 @@ class NotificationService {
 
     // 5. Handle background notifications (When user taps notification while app is in background)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      final type = message.data['type'];
-      LogService.staticLog("Notification clicked (from background): $type");
+      final type = message.data['type'] ?? message.data['click_action'] ?? '';
+      LogService.staticLog("Notification clicked (from background FCM): $type, data: ${message.data}");
+      String? payload = type;
       if (type == 'CALENDAR_REMINDER') {
         final reminderId = message.data['reminderId'] ?? '';
         final user = FirebaseAuth.instance.currentUser;
-        final uid = user?.uid ?? '';
-        _selectNotificationStream.add("CALENDAR_REMINDER|$reminderId|$uid");
-      } else if (type != null && type != 'null') {
-        _selectNotificationStream.add(type);
+        final uid = user?.uid ?? message.data['uid'] ?? '';
+        payload = "CALENDAR_REMINDER|$reminderId|$uid";
+      } else if (type == 'daily_reminder') {
+        final reminderId = message.data['reminderId'] ?? '';
+        final user = FirebaseAuth.instance.currentUser;
+        final uid = user?.uid ?? message.data['uid'] ?? '';
+        payload = "DAILY_REMINDER|$reminderId|$uid";
+      }
+      if (payload != null && payload.isNotEmpty && payload != 'null') {
+        handleNotificationPayload(payload);
       }
     });
 
     // 6. Handle notification that launched the app from killed state
-    RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
-    if (initialMessage != null) {
-      final type = initialMessage.data['type'];
-      LogService.staticLog("Notification clicked (from killed): $type");
-      if (type == 'CALENDAR_REMINDER') {
-        final reminderId = initialMessage.data['reminderId'] ?? '';
-        final user = FirebaseAuth.instance.currentUser;
-        final uid = user?.uid ?? '';
-        Future.delayed(const Duration(seconds: 2), () {
-          _selectNotificationStream.add("CALENDAR_REMINDER|$reminderId|$uid");
-        });
-      } else if (type != null && type != 'null') {
-        Future.delayed(const Duration(seconds: 2), () {
-          _selectNotificationStream.add(type);
-        });
+    // A. Check local notification launch details
+    if (!kIsWeb) {
+      try {
+        final NotificationAppLaunchDetails? launchDetails =
+            await _localNotifications.getNotificationAppLaunchDetails();
+        if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
+          final payload = launchDetails.notificationResponse?.payload;
+          LogService.staticLog("Notification clicked (from killed local notification): $payload");
+          if (payload != null && payload.isNotEmpty && payload != 'null') {
+            _pendingPayload = payload;
+          }
+        }
+      } catch (e) {
+        LogService.staticLog("Error checking getNotificationAppLaunchDetails: $e");
       }
+    }
+
+    // B. Check FCM initial message
+    try {
+      RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+      if (initialMessage != null) {
+        final type = initialMessage.data['type'] ?? initialMessage.data['click_action'] ?? '';
+        LogService.staticLog("Notification clicked (from killed FCM): $type, data: ${initialMessage.data}");
+        String? payload = type;
+        if (type == 'CALENDAR_REMINDER') {
+          final reminderId = initialMessage.data['reminderId'] ?? '';
+          final user = FirebaseAuth.instance.currentUser;
+          final uid = user?.uid ?? initialMessage.data['uid'] ?? '';
+          payload = "CALENDAR_REMINDER|$reminderId|$uid";
+        } else if (type == 'daily_reminder') {
+          final reminderId = initialMessage.data['reminderId'] ?? '';
+          final user = FirebaseAuth.instance.currentUser;
+          final uid = user?.uid ?? initialMessage.data['uid'] ?? '';
+          payload = "DAILY_REMINDER|$reminderId|$uid";
+        }
+        if (payload != null && payload.isNotEmpty && payload != 'null') {
+          _pendingPayload = payload;
+        }
+      }
+    } catch (e) {
+      LogService.staticLog("Error checking FCM getInitialMessage: $e");
     }
 
     // 7. Listen for foreground FCM messages
@@ -466,17 +531,17 @@ class NotificationService {
       }
 
       if (notification != null && android != null) {
-        String? payload = message.data['type'];
+        String? payload = message.data['type'] ?? message.data['click_action'];
         
         if (payload == 'CALENDAR_REMINDER') {
           final reminderId = message.data['reminderId'] ?? '';
           final user = FirebaseAuth.instance.currentUser;
-          final uid = user?.uid ?? '';
+          final uid = user?.uid ?? message.data['uid'] ?? '';
           payload = "CALENDAR_REMINDER|$reminderId|$uid";
         } else if (payload == 'daily_reminder') {
           final reminderId = message.data['reminderId'] ?? '';
           final user = FirebaseAuth.instance.currentUser;
-          final uid = user?.uid ?? '';
+          final uid = user?.uid ?? message.data['uid'] ?? '';
           payload = "DAILY_REMINDER|$reminderId|$uid";
         }
 

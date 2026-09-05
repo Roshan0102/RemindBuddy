@@ -17,6 +17,14 @@ class JobApplication {
   final String? experienceRequired;
   final String? sourcePlatform;
   final String? modelUsed;
+  final String? responseType; // 'interview_invite', 'assessment', 'hr_query', 'acknowledgment', 'rejection', 'other'
+  final DateTime? replyReceivedAt;
+  final String? replySender;
+  final String? replySubject;
+  final String? replySnippet;
+  final String? replyBodyPreview;
+  final String? actionRequired;
+  final String? resumeProfileName;
 
   JobApplication({
     required this.id,
@@ -35,6 +43,14 @@ class JobApplication {
     this.experienceRequired,
     this.sourcePlatform,
     this.modelUsed,
+    this.responseType,
+    this.replyReceivedAt,
+    this.replySender,
+    this.replySubject,
+    this.replySnippet,
+    this.replyBodyPreview,
+    this.actionRequired,
+    this.resumeProfileName,
   });
 
   Map<String, dynamic> toMap() {
@@ -57,6 +73,14 @@ class JobApplication {
       'experienceRequired': experienceRequired,
       'sourcePlatform': sourcePlatform,
       'modelUsed': modelUsed,
+      'responseType': responseType,
+      'replyReceivedAt': replyReceivedAt != null ? Timestamp.fromDate(replyReceivedAt!) : null,
+      'replySender': replySender,
+      'replySubject': replySubject,
+      'replySnippet': replySnippet,
+      'replyBodyPreview': replyBodyPreview,
+      'actionRequired': actionRequired,
+      'resumeProfileName': resumeProfileName,
     };
   }
 
@@ -67,6 +91,14 @@ class JobApplication {
       parsedDate = timeVal.toDate();
     } else if (timeVal is String) {
       parsedDate = DateTime.tryParse(timeVal) ?? DateTime.now();
+    }
+
+    DateTime? parsedReplyDate;
+    final replyTimeVal = map['replyReceivedAt'];
+    if (replyTimeVal is Timestamp) {
+      parsedReplyDate = replyTimeVal.toDate();
+    } else if (replyTimeVal is String) {
+      parsedReplyDate = DateTime.tryParse(replyTimeVal);
     }
 
     final rawSkills = map['extractedSkills'];
@@ -101,6 +133,14 @@ class JobApplication {
       experienceRequired: map['experienceRequired'] as String?,
       sourcePlatform: map['sourcePlatform'] as String?,
       modelUsed: map['modelUsed'] as String?,
+      responseType: map['responseType'] as String?,
+      replyReceivedAt: parsedReplyDate,
+      replySender: map['replySender'] as String?,
+      replySubject: map['replySubject'] as String?,
+      replySnippet: map['replySnippet'] as String?,
+      replyBodyPreview: map['replyBodyPreview'] as String?,
+      actionRequired: map['actionRequired'] as String?,
+      resumeProfileName: map['resumeProfileName'] as String?,
     );
   }
 }

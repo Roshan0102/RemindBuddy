@@ -10,6 +10,8 @@ import { internalCheckInterestedWalkinsNotifications, internalDailyWalkInsFetche
 import { internalDailyShiftReminder } from "../modules/shifts/shiftNotifications";
 import { internalDailyUntaggedExpenseNotifier } from "../modules/finance/nightlyExpenseNotifier";
 import { internalAutoJobDiscoveryAndApply } from "../modules/job_assistant/jobDiscoveryAI";
+import { internalCheckAllJobReplies } from "../modules/job_assistant/replyTracker";
+import { internalNetworkingDiscoveryDispatcher } from "../modules/job_assistant/networkingDiscoveryAI";
 
 // --- CONSOLIDATED MASTER SCHEDULERS (2 Schedulers total for 100% Free GCP Tier) ---
 
@@ -84,13 +86,18 @@ export const masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, m
                 }
             }
 
-            // 10:00 AM IST (Hour 10): Automated AI Job Discovery & Email Applicant Agent (Morning Run)
+            // 10:00 AM IST (Hour 10): Automated AI Job Discovery & Email Applicant Agent + Reply Check
             if (hour === 10) {
                 console.log("[masterHalfHourlyRunner] Executing 10:00 AM tasks: Automated Job Discovery & Outreach...");
                 try {
                     await internalAutoJobDiscoveryAndApply();
                 } catch (err) {
                     console.error("Error in internalAutoJobDiscoveryAndApply inside masterHalfHourlyRunner:", err);
+                }
+                try {
+                    await internalCheckAllJobReplies();
+                } catch (err) {
+                    console.error("Error in internalCheckAllJobReplies at 10:00 inside masterHalfHourlyRunner:", err);
                 }
             }
 
@@ -106,6 +113,26 @@ export const masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, m
                     await runGoldAIPredictionInternal();
                 } catch (err) {
                     console.error("Error in scheduledMarketForecast inside masterHalfHourlyRunner:", err);
+                }
+            }
+
+            // 02:00 PM IST (Hour 14): Midday Recruiter Reply & Assessment Check
+            if (hour === 14) {
+                console.log("[masterHalfHourlyRunner] Executing 02:00 PM tasks: Recruiter Reply & Status Check...");
+                try {
+                    await internalCheckAllJobReplies();
+                } catch (err) {
+                    console.error("Error in internalCheckAllJobReplies at 14:00 inside masterHalfHourlyRunner:", err);
+                }
+            }
+
+            // 06:00 PM IST (Hour 18): End of Business Day Recruiter Reply Check
+            if (hour === 18) {
+                console.log("[masterHalfHourlyRunner] Executing 06:00 PM tasks: End-of-Day Recruiter Reply Check...");
+                try {
+                    await internalCheckAllJobReplies();
+                } catch (err) {
+                    console.error("Error in internalCheckAllJobReplies at 18:00 inside masterHalfHourlyRunner:", err);
                 }
             }
 
@@ -134,30 +161,48 @@ export const masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, m
                 }
             }
 
-            // 10:00 PM IST (Hour 22): Automated AI Job Discovery, Daily Shift Reminders & Nightly Untagged Expense Tagging
+            // 10:00 PM IST (Hour 22): Automated AI Job Discovery & Reply Check & Shift Reminders
             if (hour === 22) {
-                console.log("[masterHalfHourlyRunner] Executing 10:00 PM tasks: Job Discovery, Shift Reminders & Nightly Expense Tagging...");
+                console.log("[masterHalfHourlyRunner] Executing 10:00 PM tasks: Job Discovery & Shift Reminders...");
                 try {
                     await internalAutoJobDiscoveryAndApply();
                 } catch (err) {
                     console.error("Error in internalAutoJobDiscoveryAndApply inside masterHalfHourlyRunner:", err);
                 }
                 try {
+                    await internalCheckAllJobReplies();
+                } catch (err) {
+                    console.error("Error in internalCheckAllJobReplies at 22:00 inside masterHalfHourlyRunner:", err);
+                }
+                try {
                     await internalDailyShiftReminder();
                 } catch (err) {
                     console.error("Error in internalDailyShiftReminder inside masterHalfHourlyRunner:", err);
-                }
-                try {
-                    await internalDailyUntaggedExpenseNotifier();
-                } catch (err) {
-                    console.error("Error in internalDailyUntaggedExpenseNotifier inside masterHalfHourlyRunner:", err);
                 }
             }
         }
         
         // Check if running near the half hour (:30)
         if (minute >= 15 && minute < 45) {
-            // Future 30-minute scheduled tasks can be placed here
+            // 11:30 AM IST (Hour 11, Minute 30): Daily Cold Outreach & Leadership Networking Discovery
+            if (hour === 11) {
+                console.log("[masterHalfHourlyRunner] Executing 11:30 AM tasks: Cold Outreach & Leadership Discovery...");
+                try {
+                    await internalNetworkingDiscoveryDispatcher();
+                } catch (err) {
+                    console.error("Error in internalNetworkingDiscoveryDispatcher inside masterHalfHourlyRunner:", err);
+                }
+            }
+
+            // 09:30 PM IST (Hour 21, Minute 30): Daily Bank Tracker & Untagged Expense Tagging Notifier
+            if (hour === 21) {
+                console.log("[masterHalfHourlyRunner] Executing 09:30 PM tasks: Daily Bank Tracker & Untagged Expense Notification...");
+                try {
+                    await internalDailyUntaggedExpenseNotifier();
+                } catch (err) {
+                    console.error("Error in internalDailyUntaggedExpenseNotifier inside masterHalfHourlyRunner:", err);
+                }
+            }
             console.log(`[masterHalfHourlyRunner] Half-hour check completed for ${timeStr} IST.`);
         }
     });

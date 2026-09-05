@@ -158,7 +158,8 @@ class UpiNotificationParserService {
             lower.contains('paid you') ||
             lower.contains('sent you') ||
             lower.contains('withdrawn') ||
-            lower.contains('spent');
+            lower.contains('spent') ||
+            lower.contains('paid');
         if (!hasExplicitTxn) return true;
       }
     }
@@ -185,8 +186,11 @@ class UpiNotificationParserService {
       'debited',
       'spent',
       'payment of',
+      'payment for',
       'successful at',
       'transferred to',
+      'paid successfully',
+      'paid',
     ];
 
     for (final kw in creditKeywords) {
@@ -250,7 +254,7 @@ class UpiNotificationParserService {
       }
     }
 
-    // Patterns for Debit: "You paid ₹500 to Swiggy", "Paid ₹120 to Chai Point", "Payment of ₹450 to Uber"
+    // Patterns for Debit: "You paid ₹500 to Swiggy", "Paid ₹120 to Chai Point", "Payment of ₹450 to Uber", "Paid ₹1,200 for Electricity Bill"
     if (type == 'Debit') {
       final p1 = RegExp(r'to\s+([A-Za-z0-9\s]{2,40}?)(?:\.|\,|\s+(?:was|is|using|via|on|for|with|upi)|$)', caseSensitive: false).firstMatch(fullText);
       if (p1 != null && p1.group(1)!.trim().isNotEmpty) {
@@ -260,6 +264,11 @@ class UpiNotificationParserService {
       final p2 = RegExp(r'at\s+([A-Za-z0-9\s]{2,40}?)(?:\.|\,|\s+(?:was|is|using|via|\.|$)|$)', caseSensitive: false).firstMatch(fullText);
       if (p2 != null && p2.group(1)!.trim().isNotEmpty) {
         return _cleanName(p2.group(1)!);
+      }
+
+      final p3 = RegExp(r'for\s+([A-Za-z0-9\s]{2,40}?)(?:\.|\,|\s+(?:was|is|using|via|with|upi)|$)', caseSensitive: false).firstMatch(fullText);
+      if (p3 != null && p3.group(1)!.trim().isNotEmpty) {
+        return _cleanName(p3.group(1)!);
       }
     }
 
@@ -277,7 +286,7 @@ class UpiNotificationParserService {
   static String _cleanName(String raw) {
     var clean = raw.trim();
     // Remove unwanted leading/trailing words
-    clean = clean.replaceAll(RegExp(r'^(payment of|payment to|paid to|money sent to|sent to|received from|from|to)\s+', caseSensitive: false), '');
+    clean = clean.replaceAll(RegExp(r'^(payment of|payment to|paid to|money sent to|sent to|received from|from|to|for)\s+', caseSensitive: false), '');
     clean = clean.replaceAll(RegExp(r'\s+(was successful|successful|completed|successful\.?)$', caseSensitive: false), '');
     if (clean.length > 25) {
       clean = clean.substring(0, 25).trim();
