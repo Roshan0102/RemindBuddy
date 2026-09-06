@@ -16,6 +16,7 @@ import '../models/networking_lead.dart';
 import '../models/resume_profile.dart';
 import '../services/job_assistant_service.dart';
 import 'ai_keys_settings_screen.dart';
+import 'job_replies_screen.dart';
 
 class JobAssistantScreen extends StatefulWidget {
   const JobAssistantScreen({super.key});
@@ -84,7 +85,6 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   final TextEditingController _excludeCompanyController = TextEditingController();
   bool _isSavingAutoSettings = false;
   bool _isRunningAutoApply = false;
-  bool _isCheckingReplies = false;
   String _autoApplyStatusMessage = '';
   final ScrollController _autoAppScrollController = ScrollController();
 
@@ -97,11 +97,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   // History Tab Filter
   String _historyFilter = 'all'; // 'all', 'auto', 'manual'
 
-  // Cold Outreach & Leadership Networking State
+  // Startup Radar & Cold Outreach State
   bool _isDiscoveringLeaders = false;
-  String _networkingCategoryFilter = 'all'; // 'all', 'engineering_manager', 'founder', 'talent_acquisition'
-  String _networkingStatusFilter = 'all'; // 'all', 'discovered', 'note_sent', 'connected', 'replied'
+  final String _networkingCategoryFilter = 'all'; // 'all', 'founder', 'engineering_manager', 'talent_acquisition'
+  String _networkingStatusFilter = 'pending'; // 'pending' (default: cards vanish when sent!), 'completed', 'all'
   final ScrollController _networkingScrollController = ScrollController();
+  List<String> _radarLocations = ['Bengaluru', 'Remote', 'India'];
+  List<String> _radarTechDomains = ['DevOps', 'Cloud', 'AWS', 'SRE'];
+  final TextEditingController _newRadarLocController = TextEditingController();
+  final TextEditingController _newRadarDomainController = TextEditingController();
+  bool _isSavingRadarSettings = false;
 
   @override
   void initState() {
@@ -178,26 +183,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
   String _formatRelativeTimestamp(DateTime? dt, {bool isLastRun = false}) {
     if (dt == null) return 'Never';
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    final timeStr = DateFormat('h:mm a').format(dt);
-    if (diff.inHours < 12) return '${diff.inHours}h ago ($timeStr)';
-
-    final today = DateTime(now.year, now.month, now.day);
-    final date = DateTime(dt.year, dt.month, dt.day);
-    final diffDays = today.difference(date).inDays;
-
-    if (diffDays == 0) {
-      return 'Today, $timeStr';
-    } else if (diffDays == 1) {
-      return 'Yesterday, $timeStr';
-    } else if (diffDays < 7) {
-      return '${DateFormat('EEE').format(dt)}, $timeStr';
-    } else {
-      return '${DateFormat('dd MMM').format(dt)}, $timeStr';
-    }
+    return DateFormat('MMM d, h:mm a').format(dt);
   }
 
   @override
@@ -207,6 +193,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     _tabController.dispose();
     _autoAppScrollController.dispose();
     _networkingScrollController.dispose();
+    _newRadarLocController.dispose();
+    _newRadarDomainController.dispose();
     _newAppScrollController.dispose();
     _historyScrollController.dispose();
     _targetRolesController.dispose();
@@ -257,6 +245,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             ? locations.join(', ')
             : 'Bengaluru, India, Remote';
       });
+
+      final radarSettings = await _service.getStartupRadarSettings();
+      final radarLocs = List<String>.from(radarSettings['locations'] ?? []);
+      final radarTechs = List<String>.from(radarSettings['techDomains'] ?? []);
+      if (mounted) {
+        setState(() {
+          if (radarLocs.isNotEmpty) _radarLocations = radarLocs;
+          if (radarTechs.isNotEmpty) _radarTechDomains = radarTechs;
+        });
+      }
     }
   }
 
@@ -1469,60 +1467,6 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
-  Future<void> _checkRepliesNow() async {
-    if (_userEmail.isEmpty || _userAppPassword.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please configure your Gmail & App Password in Settings first.')),
-      );
-      _showJobAssistantSettingsDialog();
-      return;
-    }
-
-    setState(() {
-      _isCheckingReplies = true;
-    });
-
-    try {
-      final res = await _service.checkJobRepliesNow();
-      final repliesFound = res['repliesFound'] ?? 0;
-      final msg = res['message'] ?? 'Reply scan completed.';
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              repliesFound > 0
-                  ? '📬 Found $repliesFound new recruiter reply(s)! Check your applications below.'
-                  : '🔍 $msg',
-            ),
-            backgroundColor: repliesFound > 0 ? const Color(0xFF10B981) : Colors.blueAccent,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        String errorMsg = e.toString();
-        if (errorMsg.contains('not-found') || errorMsg.contains('NOT_FOUND')) {
-          errorMsg = 'Recruiter reply tracker function needs deployment. Once deployed, tracking runs automatically.';
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMsg),
-            backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isCheckingReplies = false;
-        });
-      }
-    }
-  }
-
   Widget _buildResponseBadge(JobApplication app, bool isDark) {
     final type = app.responseType ?? 'reply';
     Color bgColor;
@@ -1766,11 +1710,36 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         ),
         actions: [
           IconButton(
-            icon: _isCheckingReplies
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.mark_email_unread_rounded),
-            tooltip: 'Check Recruiter Replies',
-            onPressed: _isCheckingReplies ? null : _checkRepliesNow,
+            icon: StreamBuilder<List<JobApplication>>(
+              stream: _service.getJobApplicationsStream(),
+              builder: (context, appSnap) {
+                return StreamBuilder<List<NetworkingLead>>(
+                  stream: _service.getNetworkingLeadsStream(),
+                  builder: (context, leadSnap) {
+                    final appReplies = (appSnap.data ?? []).where((a) => a.status == 'reply_received').length;
+                    final leadReplies = (leadSnap.data ?? []).where((l) => l.status == 'replied').length;
+                    final totalReplies = appReplies + leadReplies;
+
+                    if (totalReplies > 0) {
+                      return Badge(
+                        label: Text('$totalReplies'),
+                        backgroundColor: Colors.amber,
+                        textColor: Colors.black,
+                        child: const Icon(Icons.mark_email_unread_rounded),
+                      );
+                    }
+                    return const Icon(Icons.mark_email_read_rounded);
+                  },
+                );
+              },
+            ),
+            tooltip: 'Recruiter & Founder Replies Hub',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const JobRepliesScreen()),
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.settings),
@@ -2095,26 +2064,32 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               const Icon(Icons.block_rounded, color: Colors.redAccent, size: 18),
                               const SizedBox(width: 8),
-                              Text(
-                                'Excluded Companies / Agencies (Blacklist)',
-                                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
+                              Expanded(
+                                child: Text(
+                                  'Excluded Companies / Agencies (Blacklist)',
+                                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                              const Spacer(),
-                              if (_excludedCompanies.isNotEmpty)
+                              if (_excludedCompanies.isNotEmpty) ...[
+                                const SizedBox(width: 8),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
                                   decoration: BoxDecoration(
                                     color: Colors.redAccent.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(4),
+                                    borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
                                     '${_excludedCompanies.length} Excluded',
-                                    style: const TextStyle(fontSize: 10, color: Colors.redAccent, fontWeight: FontWeight.bold),
+                                    style: const TextStyle(fontSize: 10.5, color: Colors.redAccent, fontWeight: FontWeight.bold),
                                   ),
                                 ),
+                              ],
                             ],
                           ),
                           const SizedBox(height: 4),
@@ -2381,61 +2356,26 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
             const SizedBox(height: 16),
 
-            // Dual Action: On-Demand Auto-Apply and Check Recruiter Replies
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: SizedBox(
-                    height: 52,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        elevation: 3,
-                      ),
-                      onPressed: _isRunningAutoApply ? null : _runAutoApplyNow,
-                      icon: _isRunningAutoApply
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.rocket_launch_rounded, size: 20),
-                      label: Text(
-                        _isRunningAutoApply ? 'Applying...' : '🚀 Auto-Apply Now',
-                        style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
+            // On-Demand Auto-Apply
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 3,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: SizedBox(
-                    height: 52,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
-                        side: BorderSide(
-                          color: isDark ? const Color(0xFF34D399).withValues(alpha: 0.6) : const Color(0xFF059669),
-                          width: 1.5,
-                        ),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      onPressed: _isCheckingReplies ? null : _checkRepliesNow,
-                      icon: _isCheckingReplies
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.mark_email_unread_rounded, size: 19),
-                      label: Text(
-                        _isCheckingReplies ? 'Scanning...' : '📥 Check Replies',
-                        style: GoogleFonts.outfit(fontSize: 12.5, fontWeight: FontWeight.bold),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
+                onPressed: _isRunningAutoApply ? null : _runAutoApplyNow,
+                icon: _isRunningAutoApply
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.rocket_launch_rounded, size: 20),
+                label: Text(
+                  _isRunningAutoApply ? 'Applying to Matching Openings...' : '🚀 Run Auto-Apply Now',
+                  style: GoogleFonts.outfit(fontSize: 14.5, fontWeight: FontWeight.bold),
                 ),
-              ],
+              ),
             ),
 
             if (_autoApplyStatusMessage.isNotEmpty) ...[
@@ -3422,28 +3362,36 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         }
 
         final allApps = snapshot.data ?? [];
-        final autoApps = allApps.where((a) => a.isAutoApplied).toList();
+        // Applied History tab is strictly for manual applications (e.g. screenshot scans)
         final manualApps = allApps.where((a) => !a.isAutoApplied).toList();
-        final replyApps = allApps.where((a) => a.status == 'reply_received').toList();
+        final manualReplyApps = manualApps.where((a) => a.status == 'reply_received').toList();
 
-        List<JobApplication> displayApps = allApps;
-        if (_historyFilter == 'auto') {
-          displayApps = autoApps;
-        } else if (_historyFilter == 'manual') {
-          displayApps = manualApps;
-        } else if (_historyFilter == 'replies') {
-          displayApps = replyApps;
+        List<JobApplication> displayApps = manualApps;
+        if (_historyFilter == 'replies') {
+          displayApps = manualReplyApps;
         }
 
-        if (allApps.isEmpty) {
+        if (manualApps.isEmpty) {
           return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.history_toggle_off, size: 64, color: subtextColor),
-                const SizedBox(height: 12),
-                Text('No Applied Jobs History Yet.', style: TextStyle(color: subtextColor, fontSize: 16)),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.photo_library_outlined, size: 56, color: subtextColor),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No Manual Applications Sent Yet',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16, color: textColor),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Applications sent manually via screenshot scans will appear here.\nAutomated applications are kept separate and can be viewed in the Auto-Apply tab.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: subtextColor),
+                  ),
+                ],
+              ),
             ),
           );
         }
@@ -3460,21 +3408,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   children: [
                     ChoiceChip(
                       label: Text(
-                        'All (${allApps.length})',
+                        'All Manual (${manualApps.length})',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: _historyFilter == 'all' ? FontWeight.bold : FontWeight.normal,
                           color: _historyFilter == 'all'
-                              ? (isDark ? Colors.blue.shade200 : Colors.blue.shade900)
+                              ? (isDark ? Colors.purple.shade200 : Colors.purple.shade900)
                               : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
                         ),
                       ),
                       selected: _historyFilter == 'all',
-                      selectedColor: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade100,
+                      selectedColor: isDark ? const Color(0xFF581C87) : Colors.purple.shade100,
                       backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
                       side: BorderSide(
                         color: _historyFilter == 'all'
-                            ? (isDark ? Colors.blueAccent : Colors.blue)
+                            ? (isDark ? Colors.purpleAccent : Colors.purple)
                             : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
                       ),
                       onSelected: (val) {
@@ -3484,55 +3432,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     const SizedBox(width: 8),
                     ChoiceChip(
                       label: Text(
-                        '🤖 Auto (${autoApps.length})',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: _historyFilter == 'auto' ? FontWeight.bold : FontWeight.normal,
-                          color: _historyFilter == 'auto'
-                              ? (isDark ? Colors.blue.shade200 : Colors.blue.shade900)
-                              : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
-                        ),
-                      ),
-                      selected: _historyFilter == 'auto',
-                      selectedColor: isDark ? const Color(0xFF1E3A8A) : Colors.blue.shade100,
-                      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
-                      side: BorderSide(
-                        color: _historyFilter == 'auto'
-                            ? (isDark ? Colors.blueAccent : Colors.blue)
-                            : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
-                      ),
-                      onSelected: (val) {
-                        if (val) setState(() => _historyFilter = 'auto');
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: Text(
-                        '📸 Manual (${manualApps.length})',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: _historyFilter == 'manual' ? FontWeight.bold : FontWeight.normal,
-                          color: _historyFilter == 'manual'
-                              ? (isDark ? Colors.purple.shade200 : Colors.purple.shade900)
-                              : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
-                        ),
-                      ),
-                      selected: _historyFilter == 'manual',
-                      selectedColor: isDark ? const Color(0xFF581C87) : Colors.purple.shade100,
-                      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
-                      side: BorderSide(
-                        color: _historyFilter == 'manual'
-                            ? (isDark ? Colors.purpleAccent : Colors.purple)
-                            : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
-                      ),
-                      onSelected: (val) {
-                        if (val) setState(() => _historyFilter = 'manual');
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: Text(
-                        '💬 Replies (${replyApps.length})',
+                        '💬 Replies (${manualReplyApps.length})',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: _historyFilter == 'replies' ? FontWeight.bold : FontWeight.normal,
@@ -3580,16 +3480,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               leading: CircleAvatar(
                                 backgroundColor: app.status == 'reply_received'
                                     ? const Color(0xFF10B981).withValues(alpha: 0.2)
-                                    : (app.isAutoApplied
-                                        ? Colors.blueAccent.withValues(alpha: 0.15)
-                                        : Colors.purple.withValues(alpha: 0.15)),
+                                    : Colors.purple.withValues(alpha: 0.15),
                                 child: Icon(
                                   app.status == 'reply_received'
                                       ? Icons.mark_email_unread_rounded
-                                      : (app.isAutoApplied ? Icons.bolt_rounded : Icons.photo_library_outlined),
+                                      : Icons.photo_library_outlined,
                                   color: app.status == 'reply_received'
                                       ? const Color(0xFF10B981)
-                                      : (app.isAutoApplied ? Colors.blueAccent : Colors.purple),
+                                      : Colors.purple,
                                   size: 18,
                                 ),
                               ),
@@ -3631,17 +3529,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                                         decoration: BoxDecoration(
-                                          color: app.isAutoApplied
-                                              ? Colors.blue.withValues(alpha: 0.15)
-                                              : Colors.purple.withValues(alpha: 0.15),
+                                          color: Colors.purple.withValues(alpha: 0.15),
                                           borderRadius: BorderRadius.circular(4),
                                         ),
-                                        child: Text(
-                                          app.isAutoApplied ? '🤖 Auto-Agent' : '📸 Manual / Scan',
+                                        child: const Text(
+                                          '📸 Manual / Scan',
                                           style: TextStyle(
                                             fontSize: 9.5,
                                             fontWeight: FontWeight.bold,
-                                            color: app.isAutoApplied ? Colors.blue : Colors.purple,
+                                            color: Colors.purple,
                                           ),
                                         ),
                                       ),
@@ -3717,30 +3613,27 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   // ============================================================================
-  // TAB 2: COLD OUTREACH & LEADERSHIP NETWORKING
+  // TAB 2: STARTUP RADAR (SEED / SERIES A & HIGH-GROWTH TECH STARTUPS)
   // ============================================================================
 
   Future<void> _triggerNetworkingDiscoveryNow() async {
-    final roles = _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-    final locs = _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-
     setState(() {
       _isDiscoveringLeaders = true;
     });
 
     try {
       final res = await _service.triggerNetworkingDiscovery(
-        targetRoles: roles.isNotEmpty ? roles : null,
-        targetLocations: locs.isNotEmpty ? locs : null,
+        targetRoles: _radarTechDomains.isNotEmpty ? _radarTechDomains : null,
+        targetLocations: _radarLocations.isNotEmpty ? _radarLocations : null,
       );
 
       final count = res['count'] ?? 0;
-      final msg = res['message'] ?? 'Discovery complete.';
+      final msg = res['message'] ?? 'Startup Radar scan complete.';
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(count > 0 ? '🤝 Found $count new Tech Leaders & EMs!' : msg),
+            content: Text(msg),
             backgroundColor: count > 0 ? Colors.green : Colors.indigo,
             duration: const Duration(seconds: 4),
           ),
@@ -3750,7 +3643,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Networking discovery error: ${e.toString().replaceAll("Exception: ", "")}'),
+            content: Text('Startup Radar error: ${e.toString().replaceAll("Exception: ", "")}'),
             backgroundColor: Colors.redAccent,
             duration: const Duration(seconds: 5),
           ),
@@ -3765,10 +3658,117 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
+  Future<void> _saveRadarPreferences() async {
+    setState(() {
+      _isSavingRadarSettings = true;
+    });
+    try {
+      await _service.saveStartupRadarSettings(
+        locations: _radarLocations,
+        techDomains: _radarTechDomains,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Startup Radar locations & tech focus preferences saved!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save preferences: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingRadarSettings = false;
+        });
+      }
+    }
+  }
+
+  void _showAddRadarLocationDialog() {
+    _newRadarLocController.clear();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Target Location'),
+        content: TextField(
+          controller: _newRadarLocController,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'e.g. Bengaluru, Chennai, Remote, Pune',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final text = _newRadarLocController.text.trim();
+              if (text.isNotEmpty && !_radarLocations.contains(text)) {
+                setState(() {
+                  _radarLocations.add(text);
+                });
+                _saveRadarPreferences();
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddRadarDomainDialog() {
+    _newRadarDomainController.clear();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Tech Domain / Focus'),
+        content: TextField(
+          controller: _newRadarDomainController,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'e.g. DevOps, Cloud, AWS, Kubernetes, SRE',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final text = _newRadarDomainController.text.trim();
+              if (text.isNotEmpty && !_radarTechDomains.contains(text)) {
+                setState(() {
+                  _radarTechDomains.add(text);
+                });
+                _saveRadarPreferences();
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openLinkedInProfileAndCopyNote(NetworkingLead lead) async {
     if (lead.connectionNote.isNotEmpty) {
       await Clipboard.setData(ClipboardData(text: lead.connectionNote));
     }
+
+    // Advance status to 'note_sent' so it vanishes from the pending view
+    await _service.updateNetworkingLeadStatus(lead.id, 'note_sent');
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3778,7 +3778,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Copied 300-char note! Opening LinkedIn profile for ${lead.name}...'),
+                child: Text('Copied 300-char note! Opening LinkedIn for ${lead.name}... (Moved to Completed)'),
               ),
             ],
           ),
@@ -3795,19 +3795,23 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         if (kIsWeb) {
           await launchUrl(uri, webOnlyWindowName: '_blank');
         } else {
-          final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-          if (!launched) {
-            await launchUrl(uri, mode: LaunchMode.platformDefault);
-          }
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
         }
       } catch (e) {
-        debugPrint('Failed to launch LinkedIn URL: $e');
+        debugPrint('Could not launch LinkedIn URL: $e');
       }
     }
+  }
 
-    // Mark as note_sent if it was discovered
-    if (lead.status == 'discovered') {
-      await _service.updateNetworkingLeadStatus(lead.id, 'note_sent');
+  Future<void> _markLeadHandled(NetworkingLead lead) async {
+    await _service.updateNetworkingLeadStatus(lead.id, 'note_sent');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${lead.companyName} marked as handled and moved to Completed.'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -3818,12 +3822,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.mark_email_read_rounded, color: Color(0xFF0077B5)),
+            const Icon(Icons.rocket_launch_rounded, color: Colors.indigoAccent),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Pitch for ${lead.name}',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18),
+                'Pitch to ${lead.companyName}',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -3834,9 +3840,37 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '${lead.currentRole} at ${lead.companyName}',
-                style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                'Target: ${lead.name} (${lead.currentRole})',
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
               ),
+              if (lead.email != null && lead.email!.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'Email: ${lead.email}',
+                  style: TextStyle(fontSize: 12, color: Colors.blue[600]),
+                ),
+              ],
+              if (lead.emailSent) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle_rounded, color: Colors.green, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'Email Auto-Dispatched with Resume PDF Attached',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -3849,7 +3883,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 ),
                 child: SelectableText(
                   lead.fullPitch,
-                  style: const TextStyle(fontSize: 14, height: 1.5),
+                  style: const TextStyle(fontSize: 13, height: 1.5),
                 ),
               ),
             ],
@@ -3857,13 +3891,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         ),
         actions: [
           TextButton.icon(
-            icon: const Icon(Icons.copy_rounded, size: 18),
+            icon: const Icon(Icons.copy_rounded, size: 16),
             label: const Text('Copy Pitch'),
             onPressed: () {
               Clipboard.setData(ClipboardData(text: lead.fullPitch));
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Full pitch copied to clipboard!')),
+                const SnackBar(content: Text('Pitch copied to clipboard!')),
               );
             },
           ),
@@ -3871,14 +3905,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0077B5), foregroundColor: Colors.white),
               icon: const Icon(Icons.email_rounded, size: 18),
-              label: const Text('Send Email'),
+              label: const Text('Open in Email Client'),
               onPressed: () async {
                 Navigator.pop(ctx);
                 final mailtoUri = Uri(
                   scheme: 'mailto',
                   path: lead.email,
                   queryParameters: {
-                    'subject': 'Connecting regarding Engineering at ${lead.companyName}',
+                    'subject': 'DevOps & Cloud Infrastructure for ${lead.companyName} (Roshan J)',
                     'body': lead.fullPitch,
                   },
                 );
@@ -3907,7 +3941,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header Banner
+            // Startup Radar Header Banner
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -3934,7 +3968,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           color: Colors.indigoAccent.withValues(alpha: 0.2),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.people_alt_rounded, color: Colors.indigoAccent, size: 22),
+                        child: const Icon(Icons.rocket_launch_rounded, color: Colors.indigoAccent, size: 22),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -3942,7 +3976,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Cold Outreach & Leadership Networking 🤝',
+                              'Startup Radar (Seed / Series A) 🚀',
                               style: GoogleFonts.outfit(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
@@ -3950,7 +3984,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               ),
                             ),
                             const Text(
-                              'Daily automatic discovery at 11:30 AM IST',
+                              'Daily 11:30 AM IST automated dispatch • Max 5 startups/run',
                               style: TextStyle(fontSize: 11, color: Colors.indigoAccent, fontWeight: FontWeight.w600),
                             ),
                           ],
@@ -3960,7 +3994,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Discovers Engineering Managers, Founders & Talent Acquisition leads in target cities (e.g. Bengaluru) matching Flutter & Cloud stacks. Generates personalized connection notes strictly ≤ 300 characters.',
+                    'Discovers high-growth Seed & Series A tech startups in your target locations and auto-dispatches tailored pitches with your resume PDF attached directly to CTOs & Founders. Generates ≤ 300-char LinkedIn notes for 1-tap dual outreach.',
                     style: TextStyle(
                       fontSize: 12,
                       height: 1.4,
@@ -3978,10 +4012,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
-                          : const Icon(Icons.person_search_rounded, size: 18),
-                      label: Text(_isDiscoveringLeaders ? 'Scanning LinkedIn for Leaders...' : 'Find Leaders Now'),
+                          : const Icon(Icons.rocket_launch_rounded, size: 18),
+                      label: Text(_isDiscoveringLeaders ? 'Scanning & Pitching Startups...' : '🚀 Scan & Pitch 5 Startups Now'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0077B5),
+                        backgroundColor: const Color(0xFF4F46E5),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -3991,50 +4025,140 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-            // Category Filter Chips
-            Text(
-              'Filter by Leadership Role:',
-              style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildNetworkingCategoryChip('all', 'All Roles', Icons.grid_view_rounded),
-                  const SizedBox(width: 8),
-                  _buildNetworkingCategoryChip('engineering_manager', 'Engineering Managers', Icons.manage_accounts_rounded),
-                  const SizedBox(width: 8),
-                  _buildNetworkingCategoryChip('founder', 'Founders & CTOs', Icons.rocket_launch_rounded),
-                  const SizedBox(width: 8),
-                  _buildNetworkingCategoryChip('talent_acquisition', 'Talent Acquisition', Icons.badge_rounded),
-                ],
+            // Dynamic User Preferences Box (Collapsible)
+            Container(
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
               ),
-            ),
-            const SizedBox(height: 12),
-
-            // Status Filter Chips
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildNetworkingStatusChip('all', 'All Statuses'),
-                  const SizedBox(width: 8),
-                  _buildNetworkingStatusChip('discovered', 'Discovered'),
-                  const SizedBox(width: 8),
-                  _buildNetworkingStatusChip('note_sent', 'Note Sent'),
-                  const SizedBox(width: 8),
-                  _buildNetworkingStatusChip('connected', 'Connected'),
-                  const SizedBox(width: 8),
-                  _buildNetworkingStatusChip('replied', 'Replied'),
-                ],
+              child: Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  initiallyExpanded: false,
+                  leading: const Icon(Icons.tune_rounded, color: Colors.indigoAccent),
+                  title: Text(
+                    'Customize Startup Locations & Tech Stack',
+                    style: GoogleFonts.outfit(fontSize: 13.5, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    '${_radarLocations.join(', ')} • ${_radarTechDomains.join(', ')}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Divider(),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Target Locations:', style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold)),
+                              TextButton.icon(
+                                onPressed: _showAddRadarLocationDialog,
+                                icon: const Icon(Icons.add, size: 14),
+                                label: const Text('Add Location', style: TextStyle(fontSize: 11)),
+                              ),
+                            ],
+                          ),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: _radarLocations.map((loc) {
+                              return Chip(
+                                label: Text(loc, style: const TextStyle(fontSize: 11.5)),
+                                onDeleted: _radarLocations.length > 1
+                                    ? () {
+                                        setState(() {
+                                          _radarLocations.remove(loc);
+                                        });
+                                        _saveRadarPreferences();
+                                      }
+                                    : null,
+                                deleteIconColor: Colors.grey,
+                                visualDensity: VisualDensity.compact,
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Target Tech Domains / Roles:', style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold)),
+                              TextButton.icon(
+                                onPressed: _showAddRadarDomainDialog,
+                                icon: const Icon(Icons.add, size: 14),
+                                label: const Text('Add Domain', style: TextStyle(fontSize: 11)),
+                              ),
+                            ],
+                          ),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: _radarTechDomains.map((dom) {
+                              return Chip(
+                                label: Text(dom, style: const TextStyle(fontSize: 11.5)),
+                                onDeleted: _radarTechDomains.length > 1
+                                    ? () {
+                                        setState(() {
+                                          _radarTechDomains.remove(dom);
+                                        });
+                                        _saveRadarPreferences();
+                                      }
+                                    : null,
+                                deleteIconColor: Colors.grey,
+                                visualDensity: VisualDensity.compact,
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 14),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: ElevatedButton.icon(
+                              onPressed: _isSavingRadarSettings ? null : _saveRadarPreferences,
+                              icon: _isSavingRadarSettings
+                                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                  : const Icon(Icons.save_rounded, size: 14),
+                              label: const Text('Save Preferences', style: TextStyle(fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.indigoAccent,
+                                foregroundColor: Colors.white,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 16),
 
-            // Leads Stream
+            // Action Filter: Pending Action (Vanish Rule) vs Completed vs All
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildNetworkingStatusChip('pending', 'Pending Outreach ⚡ (Action Needed)'),
+                  const SizedBox(width: 8),
+                  _buildNetworkingStatusChip('completed', 'Completed / Sent ✅'),
+                  const SizedBox(width: 8),
+                  _buildNetworkingStatusChip('all', 'All Startups'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Startup Leads Stream
             StreamBuilder<List<NetworkingLead>>(
               stream: _service.getNetworkingLeadsStream(),
               builder: (context, snapshot) {
@@ -4049,116 +4173,60 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
                 final allLeads = snapshot.data ?? [];
 
-                // Filter by category
+                // Filter based on vanish / pending action rule
                 var filteredLeads = allLeads;
+                if (_networkingStatusFilter == 'pending') {
+                  // Pending outreach: note has NOT been sent yet
+                  filteredLeads = allLeads.where((l) => l.status == 'discovered' || l.status == 'email_sent').toList();
+                } else if (_networkingStatusFilter == 'completed') {
+                  filteredLeads = allLeads.where((l) => l.status == 'note_sent' || l.status == 'connected' || l.status == 'replied').toList();
+                }
+
                 if (_networkingCategoryFilter != 'all') {
                   filteredLeads = filteredLeads.where((l) => l.category == _networkingCategoryFilter).toList();
                 }
 
-                // Filter by status
-                if (_networkingStatusFilter != 'all') {
-                  filteredLeads = filteredLeads.where((l) => l.status == _networkingStatusFilter).toList();
-                }
-
-                if (allLeads.isEmpty) {
+                if (filteredLeads.isEmpty) {
                   return Container(
                     padding: const EdgeInsets.all(32),
                     alignment: Alignment.center,
                     child: Column(
                       children: [
-                        Icon(Icons.person_search_rounded, size: 64, color: Colors.grey.withValues(alpha: 0.5)),
+                        Icon(Icons.rocket_launch_rounded, size: 64, color: Colors.grey.withValues(alpha: 0.4)),
                         const SizedBox(height: 12),
                         Text(
-                          'No leadership leads discovered yet',
+                          _networkingStatusFilter == 'pending'
+                              ? 'All Caught Up! 🎉'
+                              : 'No startup leads in this category',
                           style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Tap "Find Leaders Now" above to discover Engineering Managers, Founders, and Hiring Leads in Bengaluru.',
+                          _networkingStatusFilter == 'pending'
+                              ? 'You have addressed all pending startup outreaches. Completed cards have vanished into the "Completed / Sent" filter. Tap "Scan & Pitch 5 Startups Now" above to discover more!'
+                              : 'No startups found under this filter.',
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: _isDiscoveringLeaders ? null : _triggerNetworkingDiscoveryNow,
-                          icon: const Icon(Icons.search_rounded, size: 18),
-                          label: const Text('Scan LinkedIn Now'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0077B5),
-                            foregroundColor: Colors.white,
-                          ),
                         ),
                       ],
                     ),
                   );
                 }
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Discovered Leaders (${filteredLeads.length})',
-                          style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          'Total: ${allLeads.length}',
-                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (filteredLeads.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Center(
-                          child: Text(
-                            'No leads match the selected filters.',
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
-                        ),
-                      )
-                    else
-                      ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: filteredLeads.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final lead = filteredLeads[index];
-                          return _buildNetworkingLeadCard(lead, isDark, cardBg);
-                        },
-                      ),
-                  ],
+                return ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: filteredLeads.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 14),
+                  itemBuilder: (context, index) {
+                    final lead = filteredLeads[index];
+                    return _buildStartupLeadCard(lead, isDark, cardBg);
+                  },
                 );
               },
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildNetworkingCategoryChip(String key, String label, IconData icon) {
-    final isSelected = _networkingCategoryFilter == key;
-    return ChoiceChip(
-      avatar: Icon(icon, size: 16, color: isSelected ? Colors.white : Colors.indigoAccent),
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        if (selected) {
-          setState(() {
-            _networkingCategoryFilter = key;
-          });
-        }
-      },
-      selectedColor: Colors.indigoAccent,
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.white : null,
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-        fontSize: 12,
       ),
     );
   }
@@ -4175,39 +4243,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           });
         }
       },
-      selectedColor: const Color(0xFF0077B5),
+      selectedColor: const Color(0xFF4F46E5),
       labelStyle: TextStyle(
         color: isSelected ? Colors.white : null,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-        fontSize: 11.5,
+        fontSize: 12,
       ),
     );
   }
 
-  Widget _buildNetworkingLeadCard(NetworkingLead lead, bool isDark, Color cardBg) {
-    // Category visual config
-    Color categoryColor;
-    String categoryLabel;
-    IconData categoryIcon;
-
-    switch (lead.category) {
-      case 'founder':
-        categoryColor = Colors.amber.shade700;
-        categoryLabel = 'Founder / CTO';
-        categoryIcon = Icons.rocket_launch_rounded;
-        break;
-      case 'talent_acquisition':
-        categoryColor = Colors.teal;
-        categoryLabel = 'Talent Lead';
-        categoryIcon = Icons.badge_rounded;
-        break;
-      case 'engineering_manager':
-      default:
-        categoryColor = Colors.indigoAccent;
-        categoryLabel = 'Engineering Manager';
-        categoryIcon = Icons.manage_accounts_rounded;
-        break;
-    }
+  Widget _buildStartupLeadCard(NetworkingLead lead, bool isDark, Color cardBg) {
+    // Stage color
+    Color stageBg = Colors.amber.withValues(alpha: 0.15);
+    Color stageFg = Colors.amber.shade800;
 
     // Status visual config
     Color statusBg;
@@ -4228,7 +4276,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       case 'replied':
         statusBg = Colors.purple.withValues(alpha: 0.15);
         statusFg = Colors.purple;
-        statusDisplay = 'Replied';
+        statusDisplay = 'Replied 🎯';
+        break;
+      case 'email_sent':
+        statusBg = Colors.teal.withValues(alpha: 0.15);
+        statusFg = Colors.teal;
+        statusDisplay = 'Email Sent ✉️';
         break;
       case 'discovered':
       default:
@@ -4243,7 +4296,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         color: cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+          color: lead.emailSent
+              ? Colors.green.withValues(alpha: 0.3)
+              : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+          width: lead.emailSent ? 1.5 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
@@ -4257,7 +4313,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top Row: Avatar/Icon, Name, Role, Company, Popup Status & Delete
+          // Top Row: Startup Icon/Avatar, Name, Funding Stage Badge, Company & Actions
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -4265,10 +4321,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: categoryColor.withValues(alpha: 0.15),
+                  color: Colors.indigoAccent.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(categoryIcon, color: categoryColor, size: 22),
+                child: const Icon(Icons.rocket_launch_rounded, color: Colors.indigoAccent, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -4279,10 +4335,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                       children: [
                         Flexible(
                           child: Text(
-                            lead.name,
+                            lead.companyName,
                             style: GoogleFonts.outfit(
                               fontWeight: FontWeight.bold,
-                              fontSize: 15,
+                              fontSize: 16,
                               color: isDark ? Colors.white : const Color(0xFF0F172A),
                             ),
                             maxLines: 1,
@@ -4293,15 +4349,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: categoryColor.withValues(alpha: 0.15),
+                            color: stageBg,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            categoryLabel,
+                            lead.fundingStage ?? 'Seed / Series A',
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: categoryColor,
+                              color: stageFg,
                             ),
                           ),
                         ),
@@ -4309,7 +4365,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      lead.currentRole,
+                      '${lead.name} • ${lead.currentRole}',
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
@@ -4321,17 +4377,6 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        Icon(Icons.business_rounded, size: 12, color: Colors.grey[500]),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            lead.companyName,
-                            style: TextStyle(fontSize: 11.5, color: Colors.grey[600], fontWeight: FontWeight.w500),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
                         Icon(Icons.location_on_rounded, size: 12, color: Colors.grey[500]),
                         const SizedBox(width: 2),
                         Flexible(
@@ -4342,6 +4387,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        if (lead.email != null && lead.email!.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Icon(Icons.email_outlined, size: 12, color: Colors.blue[400]),
+                          const SizedBox(width: 2),
+                          Flexible(
+                            child: Text(
+                              lead.email!,
+                              style: TextStyle(fontSize: 11.5, color: Colors.blue[400]),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],
@@ -4357,6 +4415,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 },
                 itemBuilder: (context) => const [
                   PopupMenuItem(value: 'discovered', child: Text('Discovered')),
+                  PopupMenuItem(value: 'email_sent', child: Text('Email Sent')),
                   PopupMenuItem(value: 'note_sent', child: Text('Note Sent')),
                   PopupMenuItem(value: 'connected', child: Text('Connected')),
                   PopupMenuItem(value: 'replied', child: Text('Replied')),
@@ -4373,7 +4432,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                       Text(
                         statusDisplay,
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10.5,
                           fontWeight: FontWeight.bold,
                           color: statusFg,
                         ),
@@ -4391,14 +4450,63 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   await _service.deleteNetworkingLead(lead.id);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Lead removed.'), duration: Duration(seconds: 2)),
+                      const SnackBar(content: Text('Startup removed.'), duration: Duration(seconds: 2)),
                     );
                   }
                 },
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+
+          // Tech Stack Chips (if present)
+          if (lead.techStack != null && lead.techStack!.isNotEmpty) ...[
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: lead.techStack!.map((tech) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.blueGrey.shade800 : Colors.blueGrey.shade50),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.2)),
+                  ),
+                  child: Text(
+                    tech,
+                    style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white70 : Colors.blueGrey.shade900, fontWeight: FontWeight.w500),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          // Email Dispatch Status Banner
+          if (lead.emailSent)
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.mark_email_read_rounded, size: 15, color: Colors.green),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Pitch & Resume PDF dispatched to ${lead.email ?? 'Founder'} ✉️',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           // Connection Note Box (≤ 300 characters)
           Container(
@@ -4459,56 +4567,44 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           ),
           const SizedBox(height: 12),
 
-          // Actions Row
+          // Actions Row: Copy Note & Open LinkedIn (Vanish), Full Pitch, Mark Handled
           Row(
             children: [
               Expanded(
                 flex: 3,
                 child: ElevatedButton.icon(
                   onPressed: () => _openLinkedInProfileAndCopyNote(lead),
-                  icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 15),
                   label: const Text('Copy Note & Open LinkedIn'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0077B5),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 flex: 2,
                 child: OutlinedButton.icon(
                   onPressed: () => _showFullPitchDialog(lead),
-                  icon: const Icon(Icons.description_rounded, size: 16),
+                  icon: const Icon(Icons.description_rounded, size: 15),
                   label: const Text('Full Pitch'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    textStyle: const TextStyle(fontSize: 12),
+                    textStyle: const TextStyle(fontSize: 11.5),
                   ),
                 ),
               ),
-              if (lead.email != null && lead.email!.isNotEmpty) ...[
-                const SizedBox(width: 6),
-                IconButton(
-                  icon: const Icon(Icons.email_rounded, color: Colors.blueAccent, size: 20),
-                  tooltip: 'Email ${lead.name} (${lead.email})',
-                  onPressed: () async {
-                    final mailtoUri = Uri(
-                      scheme: 'mailto',
-                      path: lead.email,
-                      queryParameters: {
-                        'subject': 'Connecting regarding Engineering at ${lead.companyName}',
-                        'body': lead.fullPitch,
-                      },
-                    );
-                    await launchUrl(mailtoUri, mode: LaunchMode.externalApplication);
-                  },
-                ),
-              ],
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 20),
+                tooltip: 'Mark Handled (Vanish card)',
+                onPressed: () => _markLeadHandled(lead),
+              ),
             ],
           ),
         ],

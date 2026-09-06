@@ -28,34 +28,119 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
 
   StreamSubscription<DocumentSnapshot>? _userSubscription;
   Stream<QuerySnapshot>? _eventsStream;
+  StreamSubscription<QuerySnapshot>? _shiftsSubscription;
+  final Map<String, Map<String, dynamic>> _shiftsByDate = {};
 
   String _formatTimestamp(DateTime? dt) {
     if (dt == null) return 'Never';
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 12) return '${diff.inHours}h ago (${DateFormat('hh:mm a').format(dt)})';
-    if (dt.day == now.day && dt.month == now.month && dt.year == now.year) {
-      return 'Today at ${DateFormat('hh:mm a').format(dt)}';
-    }
-    final yesterday = now.subtract(const Duration(days: 1));
-    if (dt.day == yesterday.day && dt.month == yesterday.month && dt.year == yesterday.year) {
-      return 'Yesterday at ${DateFormat('hh:mm a').format(dt)}';
-    }
-    return DateFormat('dd MMM, hh:mm a').format(dt);
+    return DateFormat('MMM d, h:mm a').format(dt);
   }
 
   @override
   void initState() {
     super.initState();
     _listenToUserAndEvents();
+    _listenToShifts();
   }
 
   @override
   void dispose() {
     _userSubscription?.cancel();
+    _shiftsSubscription?.cancel();
     super.dispose();
+  }
+
+  void _listenToShifts() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final currentMonthStr = DateFormat('yyyy-MM').format(_selectedMonth);
+    _shiftsSubscription?.cancel();
+    _shiftsSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('shifts')
+        .doc(currentMonthStr)
+        .collection('daily_shifts')
+        .snapshots()
+        .listen((snap) {
+      if (!mounted) return;
+      setState(() {
+        for (final doc in snap.docs) {
+          _shiftsByDate[doc.id] = doc.data();
+        }
+      });
+    }, onError: (e) {
+      debugPrint("Error listening to shifts in TechEventsScreen: $e");
+    });
+  }
+
+  Widget? _buildShiftBadge(String dateStr, bool isDark) {
+    final shift = _shiftsByDate[dateStr];
+    if (shift == null) return null;
+    final type = (shift['shift_type'] ?? '').toString().toLowerCase().trim();
+    if (type.isEmpty) return null;
+
+    String label;
+    IconData icon;
+    Color bg;
+    Color fg;
+
+    switch (type) {
+      case 'morning':
+        label = 'Morning Shift';
+        icon = Icons.wb_sunny_rounded;
+        bg = isDark ? const Color(0xFF3B2F0B) : const Color(0xFFFEF3C7);
+        fg = isDark ? Colors.amberAccent : const Color(0xFFB45309);
+        break;
+      case 'afternoon':
+        label = 'Afternoon Shift';
+        icon = Icons.wb_twilight_rounded;
+        bg = isDark ? const Color(0xFF3F2108) : const Color(0xFFFFEDD5);
+        fg = isDark ? Colors.orangeAccent : const Color(0xFFC2410C);
+        break;
+      case 'night':
+        label = 'Night Shift';
+        icon = Icons.nights_stay_rounded;
+        bg = isDark ? const Color(0xFF1E1E38) : const Color(0xFFEDE9FE);
+        fg = isDark ? const Color(0xFFA78BFA) : const Color(0xFF6D28D9);
+        break;
+      case 'week_off':
+      case 'off':
+        label = 'Week Off';
+        icon = Icons.beach_access_rounded;
+        bg = isDark ? const Color(0xFF063327) : const Color(0xFFD1FAE5);
+        fg = isDark ? Colors.tealAccent : const Color(0xFF047857);
+        break;
+      default:
+        label = type[0].toUpperCase() + type.substring(1);
+        icon = Icons.schedule_rounded;
+        bg = isDark ? const Color(0xFF262626) : const Color(0xFFF3F4F6);
+        fg = isDark ? Colors.white70 : const Color(0xFF374151);
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: fg.withValues(alpha: 0.3), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              color: fg,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   bool _isLocationMatch(String itemLocation, String targetLocation) {
@@ -401,6 +486,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
               setState(() {
                 _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1, 1);
               });
+              _listenToShifts();
             },
           ),
           InkWell(
@@ -409,6 +495,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
               setState(() {
                 _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
               });
+              _listenToShifts();
             },
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -442,6 +529,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
               setState(() {
                 _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 1);
               });
+              _listenToShifts();
             },
           ),
         ],
@@ -706,22 +794,44 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                                         icon: Icon(
                                           isInterested ? Icons.star : Icons.star_border,
                                           color: isInterested ? Colors.amber : Colors.grey,
-                                        ),
+),
                                         onPressed: () => _toggleGroupInterested(docIds, isInterested),
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 6),
                                   Wrap(
-                                    spacing: 6,
-                                    runSpacing: 4,
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
                                     children: sortedDates.map<Widget>((d) {
                                       final dt = DateTime.tryParse(d);
                                       final formatted = dt != null ? DateFormat('MMM d, yyyy').format(dt) : d;
-                                      return Chip(
-                                        label: Text(formatted, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green.shade800)),
-                                        backgroundColor: Colors.green.shade50,
-                                        visualDensity: VisualDensity.compact,
+                                      final shiftBadge = _buildShiftBadge(d, isDark);
+                                      return Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Chip(
+                                            label: Text(
+                                              formatted,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: isDark ? Colors.greenAccent : Colors.green.shade800,
+                                              ),
+                                            ),
+                                            backgroundColor: isDark ? const Color(0xFF143022) : Colors.green.shade50,
+                                            visualDensity: VisualDensity.compact,
+                                            side: BorderSide(
+                                              color: isDark ? Colors.green.shade800 : Colors.green.shade200,
+                                              width: 0.8,
+                                            ),
+                                          ),
+                                          if (shiftBadge != null) ...[
+                                            const SizedBox(width: 5),
+                                            shiftBadge,
+                                          ],
+                                        ],
                                       );
                                     }).toList(),
                                   ),

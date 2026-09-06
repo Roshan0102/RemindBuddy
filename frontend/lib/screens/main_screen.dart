@@ -393,6 +393,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final title = data['title'] ?? 'Reminder';
       final description = data['description'] ?? '';
       final snoozeEnabled = data['snoozeEnabled'] ?? false;
+      if (snoozeEnabled != true) {
+        // If snooze option was not enabled on this reminder, open the reminders page only without any prompt/dialog
+        return;
+      }
       final currentSnoozeCount = data['currentSnoozeCount'] ?? 0;
       final maxSnoozeCount = data['maxSnoozeCount'] ?? 3;
       final snoozeIntervalMinutes = data['snoozeIntervalMinutes'] ?? 15;
@@ -1613,7 +1617,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'RemindBuddy v1.10.14',
+                  'RemindBuddy v1.10.15',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

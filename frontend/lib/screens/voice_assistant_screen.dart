@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -25,6 +26,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
   bool _isSpeaking = false;
   bool _textMode = false;
   bool _isMuted = false;
+  bool _isHoldMode = false;
+  bool _isPressed = false;
   String _currentTranscribedText = "";
   Timer? _speechTimeoutTimer;
   
@@ -141,7 +144,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
 
   bool _hasSentCurrentVoiceInput = false;
 
-  Future<void> _startListening() async {
+  Future<void> _startListening({bool isHoldMode = false}) async {
     final hasMic = await AppPermissionService().ensureMicrophonePermission(context);
     if (!hasMic) {
       _showErrorSnackBar("Microphone permission is required to use Voice Assistant.");
@@ -153,6 +156,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
       _isSpeaking = false;
       _speakingWaveController.stop();
       _hasSentCurrentVoiceInput = false;
+      _isHoldMode = isHoldMode;
     });
 
     if (!_speechEnabled) {
@@ -177,7 +181,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
           
           _speechTimeoutTimer?.cancel();
           if (result.recognizedWords.trim().isNotEmpty) {
-            _speechTimeoutTimer = Timer(const Duration(milliseconds: 2500), () {
+            // Faster 1.4s silence auto-timeout (previously 2.5s)
+            _speechTimeoutTimer = Timer(const Duration(milliseconds: 1400), () {
               debugPrint("STT: Inactivity timeout reached. Sending: $_currentTranscribedText");
               _stopListeningAndSend(_currentTranscribedText);
             });
@@ -190,7 +195,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
         },
         listenOptions: SpeechListenOptions(
           listenFor: const Duration(seconds: 30),
-          pauseFor: const Duration(milliseconds: 2500),
+          pauseFor: const Duration(milliseconds: 1500),
           cancelOnError: true,
           partialResults: true,
         ),
@@ -209,16 +214,25 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
     });
   }
 
-  void _stopListeningAndSend(String words) {
+  void _stopListeningAndSend([String? words]) {
     if (_hasSentCurrentVoiceInput) return;
     _hasSentCurrentVoiceInput = true;
 
     _speechTimeoutTimer?.cancel();
     _stopListening();
     
-    final cleanWords = words.trim();
+    final rawWords = (words != null && words.trim().isNotEmpty)
+        ? words
+        : (_currentTranscribedText.trim().isNotEmpty
+            ? _currentTranscribedText
+            : _speechToText.lastRecognizedWords);
+
+    final cleanWords = rawWords.trim();
     if (cleanWords.isNotEmpty) {
       _sendMessage(cleanWords);
+    } else {
+      // Nothing spoken, allow re-listening immediately
+      _hasSentCurrentVoiceInput = false;
     }
   }
 
@@ -376,13 +390,66 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
               if (_currentTranscribedText.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: Text(
-                    _currentTranscribedText,
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      fontStyle: FontStyle.italic,
-                      color: isDark ? Colors.cyanAccent : Colors.indigo,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.cyan.withValues(alpha: 0.12) : Colors.indigo.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: isDark ? Colors.cyanAccent.withValues(alpha: 0.3) : Colors.indigo.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            _currentTranscribedText,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.outfit(
+                              fontSize: 16,
+                              fontStyle: FontStyle.italic,
+                              color: isDark ? Colors.cyanAccent : Colors.indigo,
+                            ),
+                          ),
+                        ),
+                        if (_isListening) ...[
+                          const SizedBox(width: 10),
+                          InkWell(
+                            onTap: () {
+                              HapticFeedback.mediumImpact();
+                              _stopListeningAndSend(_currentTranscribedText);
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [Colors.cyanAccent.shade700, Colors.blue.shade700],
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.cyanAccent.withValues(alpha: 0.4),
+                                    blurRadius: 6,
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.send_rounded, size: 14, color: Colors.white),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    "Send",
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 )
@@ -489,10 +556,63 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
                           ),
                           GestureDetector(
                             onTap: () {
+                              if (_isSpeaking) {
+                                _flutterTts.stop();
+                                setState(() {
+                                  _isSpeaking = false;
+                                  _speakingWaveController.stop();
+                                });
+                                return;
+                              }
                               if (_isListening) {
+                                HapticFeedback.lightImpact();
                                 _stopListeningAndSend(_currentTranscribedText);
                               } else {
-                                _startListening();
+                                HapticFeedback.selectionClick();
+                                _startListening(isHoldMode: false);
+                              }
+                            },
+                            onLongPressStart: (_) {
+                              if (_isSpeaking) {
+                                _flutterTts.stop();
+                                setState(() {
+                                  _isSpeaking = false;
+                                  _speakingWaveController.stop();
+                                });
+                              }
+                              HapticFeedback.mediumImpact();
+                              setState(() {
+                                _isPressed = true;
+                              });
+                              if (!_isListening) {
+                                _startListening(isHoldMode: true);
+                              } else {
+                                setState(() {
+                                  _isHoldMode = true;
+                                });
+                              }
+                            },
+                            onLongPressEnd: (_) {
+                              HapticFeedback.lightImpact();
+                              setState(() {
+                                _isPressed = false;
+                              });
+                              if (_isListening && _isHoldMode) {
+                                _stopListeningAndSend(_currentTranscribedText);
+                                _isHoldMode = false;
+                              }
+                            },
+                            onLongPressCancel: () {
+                              setState(() {
+                                _isPressed = false;
+                              });
+                              if (_isListening && _isHoldMode) {
+                                if (_currentTranscribedText.trim().isNotEmpty) {
+                                  _stopListeningAndSend(_currentTranscribedText);
+                                } else {
+                                  _stopListening();
+                                }
+                                _isHoldMode = false;
                               }
                             },
                             child: Stack(
@@ -530,36 +650,43 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
                                       );
                                     },
                                   ),
-                                AnimatedContainer(
-                                  duration: const Duration(milliseconds: 300),
-                                  width: 100,
-                                  height: 100,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: LinearGradient(
-                                      colors: _isListening
-                                          ? [Colors.cyan.shade400, Colors.blue.shade900]
-                                          : (_isSpeaking
-                                              ? [Colors.pink.shade400, Colors.deepOrange]
-                                              : [const Color(0xFF8E2DE2), const Color(0xFF4A00E0)]),
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: (_isListening
-                                            ? Colors.cyanAccent
-                                            : (_isSpeaking ? Colors.pinkAccent : const Color(0xFF8E2DE2)))
-                                            .withValues(alpha: 0.4),
-                                        blurRadius: 15,
-                                        spreadRadius: 2,
+                                AnimatedScale(
+                                  scale: _isPressed ? 1.12 : 1.0,
+                                  duration: const Duration(milliseconds: 160),
+                                  curve: Curves.easeOutBack,
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 300),
+                                    width: 100,
+                                    height: 100,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: LinearGradient(
+                                        colors: _isListening
+                                            ? (_isHoldMode
+                                                ? [Colors.tealAccent.shade400, Colors.cyan.shade900]
+                                                : [Colors.cyan.shade400, Colors.blue.shade900])
+                                            : (_isSpeaking
+                                                ? [Colors.pink.shade400, Colors.deepOrange]
+                                                : [const Color(0xFF8E2DE2), const Color(0xFF4A00E0)]),
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
                                       ),
-                                    ],
-                                  ),
-                                  child: Icon(
-                                    _isListening ? Icons.mic : (_isSpeaking ? Icons.volume_up : Icons.mic_none),
-                                    size: 38,
-                                    color: Colors.white,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: (_isListening
+                                              ? (_isHoldMode ? Colors.tealAccent : Colors.cyanAccent)
+                                              : (_isSpeaking ? Colors.pinkAccent : const Color(0xFF8E2DE2)))
+                                              .withValues(alpha: _isPressed ? 0.6 : 0.4),
+                                          blurRadius: _isPressed ? 22 : 15,
+                                          spreadRadius: _isPressed ? 4 : 2,
+                                        ),
+                                      ],
+                                    ),
+                                    child: Icon(
+                                      _isListening ? Icons.mic : (_isSpeaking ? Icons.volume_up : Icons.mic_none),
+                                      size: 38,
+                                      color: Colors.white,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -596,11 +723,18 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
                   padding: const EdgeInsets.only(bottom: 24.0),
                   child: Text(
                     _isListening 
-                        ? "Tap microphone to finish speaking" 
-                        : (_isSpeaking ? "Tap microphone to stop speech" : "Tap microphone to talk to RemindBuddy"),
+                        ? (_isHoldMode 
+                            ? "Listening... Release to send 🚀" 
+                            : "Listening... Tap mic to send immediately ⚡") 
+                        : (_isSpeaking 
+                            ? "Tap microphone to stop speech" 
+                            : "Tap or hold microphone to talk"),
                     style: GoogleFonts.outfit(
-                      color: Colors.grey,
-                      fontSize: 13,
+                      color: _isListening 
+                          ? (isDark ? Colors.cyanAccent : Colors.indigo)
+                          : Colors.grey,
+                      fontSize: 14,
+                      fontWeight: _isListening ? FontWeight.w600 : FontWeight.normal,
                     ),
                   ),
                 ),

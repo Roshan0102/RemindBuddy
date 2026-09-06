@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../models/bank_account.dart';
 import '../models/debt_record.dart';
+import '../models/group_split.dart';
 import '../models/sms_transaction.dart';
 import '../services/finance_service.dart';
 import '../services/home_widget_service.dart';
@@ -41,13 +42,21 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     {'name': 'Borrowed Repaid', 'icon': Icons.check_circle_outline_rounded, 'color': Colors.orange.shade700},
     {'name': 'Lended', 'icon': Icons.north_east_rounded, 'color': Colors.teal},
     {'name': 'Loan Repaid', 'icon': Icons.task_alt_rounded, 'color': Colors.green.shade700},
+    {'name': 'Split Repayment', 'icon': Icons.handshake_rounded, 'color': Colors.teal.shade700},
     {'name': 'Entertainment', 'icon': Icons.movie, 'color': Colors.pink},
     {'name': 'Medical & Health', 'icon': Icons.medical_services_rounded, 'color': Colors.redAccent},
+    {'name': 'Personal Care', 'icon': Icons.spa, 'color': Colors.deepOrangeAccent},
     {'name': 'Ignored / Not Needed', 'icon': Icons.block_rounded, 'color': Colors.blueGrey},
     {'name': 'Others', 'icon': Icons.more_horiz, 'color': Colors.grey},
   ];
 
   StreamSubscription<List<String>>? _customTagsSub;
+
+  // Split with Friends State
+  final Map<String, bool> _isSplitEnabled = {};
+  final Map<String, TextEditingController> _personalShareControllers = {};
+  final Map<String, TextEditingController> _splitTitleControllers = {};
+  final Map<String, String> _targetRepaymentGroupIds = {};
 
   @override
   void initState() {
@@ -61,6 +70,21 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
       _noteControllers[tx.id] = TextEditingController(text: '');
       _selectedBankNames[tx.id] = tx.bankName;
       _personNameControllers[tx.id] = TextEditingController(text: tx.payee.isNotEmpty ? tx.payee : '');
+
+      _isSplitEnabled[tx.id] = tx.isSplit;
+      _personalShareControllers[tx.id] = TextEditingController(
+        text: (tx.personalShare != null && tx.personalShare! > 0)
+            ? tx.personalShare!.toStringAsFixed(0)
+            : '',
+      );
+      _splitTitleControllers[tx.id] = TextEditingController(
+        text: tx.splitTitle?.isNotEmpty == true
+            ? tx.splitTitle!
+            : '${tx.payee.isNotEmpty ? tx.payee : "Group"} Split',
+      );
+      if (tx.repaymentForGroupId != null) {
+        _targetRepaymentGroupIds[tx.id] = tx.repaymentForGroupId!;
+      }
     }
     _customTagsSub = FinanceService().getUserCustomTagsStream().listen((tags) {
       if (mounted) {
@@ -88,21 +112,54 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     for (var ctrl in _personNameControllers.values) {
       ctrl.dispose();
     }
+    for (var ctrl in _personalShareControllers.values) {
+      ctrl.dispose();
+    }
+    for (var ctrl in _splitTitleControllers.values) {
+      ctrl.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _verifyAndSyncAll() async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final count = _items.length;
+    final itemsToSync = List<SmsTransaction>.from(_items);
+    final selectedCategories = Map<String, String>.from(_selectedCategories);
+    final selectedBankNames = Map<String, String>.from(_selectedBankNames);
+    final targetBankIds = Map<String, String?>.from(_targetBankIds);
+    final targetDebtIds = Map<String, String?>.from(_targetDebtIds);
+    final noteTexts = {for (var tx in _items) tx.id: _noteControllers[tx.id]?.text.trim() ?? ''};
+    final personInputs = {for (var tx in _items) tx.id: _personNameControllers[tx.id]?.text.trim() ?? ''};
+    final splitEnabledMap = Map<String, bool>.from(_isSplitEnabled);
+    final personalShareMap = {for (var tx in _items) tx.id: double.tryParse(_personalShareControllers[tx.id]?.text.trim() ?? '')};
+    final splitTitleMap = {for (var tx in _items) tx.id: _splitTitleControllers[tx.id]?.text.trim() ?? ''};
+    final repaymentGroupMap = Map<String, String>.from(_targetRepaymentGroupIds);
+
+    // Close bottom sheet instantly for zero-latency responsive UX!
+    Navigator.of(context).pop();
+
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: Text('Synced $count expense${count > 1 ? 's' : ''} to bank balances!'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
     final finance = FinanceService();
-    for (var tx in _items) {
-      final category = _selectedCategories[tx.id] ?? 'Others';
-      final notes = _noteControllers[tx.id]?.text.trim() ?? '';
-      final chosenBankName = _selectedBankNames[tx.id] ?? tx.bankName;
-      
+    final List<Future<void>> updateTasks = [];
+
+    for (var tx in itemsToSync) {
+      final category = selectedCategories[tx.id] ?? 'Others';
+      final notes = noteTexts[tx.id] ?? '';
+      final chosenBankName = selectedBankNames[tx.id] ?? tx.bankName;
+
       if (notes.isNotEmpty) {
-        await finance.saveUserCustomTag(notes);
+        updateTasks.add(finance.saveUserCustomTag(notes));
       }
 
-      final personInput = _personNameControllers[tx.id]?.text.trim() ?? '';
+      final personInput = personInputs[tx.id] ?? '';
       final finalPersonName = personInput.isNotEmpty ? personInput : (tx.payee.isNotEmpty ? tx.payee : 'Friend');
 
       final updatedTx = tx.copyWith(
@@ -113,13 +170,35 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
         notes: notes.isNotEmpty ? notes : finalPersonName,
       );
 
-      final destBankId = _targetBankIds[tx.id];
-      await finance.updateSmsTransaction(updatedTx, destinationBankAccountId: destBankId);
+      final destBankId = targetBankIds[tx.id];
+
+      // Handle Split creation vs Split Repayment vs Normal update
+      final isSplit = splitEnabledMap[tx.id] == true;
+      final personalShareVal = personalShareMap[tx.id];
+      final splitTitleVal = splitTitleMap[tx.id] ?? '';
+      final targetRepaymentGroupId = repaymentGroupMap[tx.id];
+
+      if (tx.type == 'Debit' && isSplit && personalShareVal != null && personalShareVal > 0 && personalShareVal < tx.amount) {
+        updateTasks.add(finance.createSplitFromTransaction(
+          tx: updatedTx,
+          personalShare: personalShareVal,
+          splitTitle: splitTitleVal.isNotEmpty ? splitTitleVal : '$finalPersonName Split',
+          category: category,
+          destinationBankAccountId: destBankId,
+        ));
+      } else if (category == 'Split Repayment' && targetRepaymentGroupId != null && targetRepaymentGroupId.isNotEmpty) {
+        updateTasks.add(finance.recordSplitRepayment(
+          tx: updatedTx,
+          splitGroupId: targetRepaymentGroupId,
+          destinationBankAccountId: destBankId,
+        ));
+      } else {
+        updateTasks.add(finance.updateSmsTransaction(updatedTx, destinationBankAccountId: destBankId));
+      }
 
       // If category is Lended or Borrowed, create a single DebtRecord entry with the edited person name!
       if (category == 'Lended' || category == 'Borrowed') {
         final debtType = category == 'Lended' ? 'lent' : 'borrowed';
-
         final debt = DebtRecord(
           id: '',
           personName: finalPersonName,
@@ -130,28 +209,23 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
           isSettled: false,
           accountId: destBankId,
         );
-        await finance.addDebt(debt, updateAccountBalance: false);
+        updateTasks.add(finance.addDebt(debt, updateAccountBalance: false));
       }
 
       // If category is Loan Repaid or Borrowed Repaid, mark target debt as settled!
       if (category == 'Loan Repaid' || category == 'Borrowed Repaid') {
-        final debtId = _targetDebtIds[tx.id];
+        final debtId = targetDebtIds[tx.id];
         if (debtId != null && debtId.isNotEmpty) {
-          await finance.settleDebtById(debtId);
+          updateTasks.add(finance.settleDebtById(debtId));
         }
       }
     }
 
-    await HomeWidgetService().syncFinanceWidget();
-
-    if (mounted) {
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Synced ${_items.length} expenses to your bank balances!'),
-          backgroundColor: Colors.green,
-        ),
-      );
+    try {
+      await Future.wait(updateTasks);
+      await HomeWidgetService().syncFinanceWidget();
+    } catch (e) {
+      debugPrint('Error syncing expenses in background: $e');
     }
   }
 
@@ -705,6 +779,99 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                           },
                         ),
                       ],
+                      if (selectedCat == 'Split Repayment') ...[
+                        const SizedBox(height: 12),
+                        StreamBuilder<List<GroupEvent>>(
+                          stream: FinanceService().getGroupEventsStream(),
+                          builder: (context, groupSnap) {
+                            final allGroups = groupSnap.data ?? [];
+                            final activeGroups = allGroups.where((g) => !g.isSettled).toList();
+
+                            if (activeGroups.isEmpty) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.teal.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.teal.shade400),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(Icons.info_outline, color: Colors.teal, size: 16),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'No active group splits pending collection. Create a split from any debit transaction or in Group Splitter!',
+                                        style: TextStyle(color: Colors.teal, fontSize: 11),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+
+                            final currentGroupId = _targetRepaymentGroupIds[tx.id] ?? activeGroups.first.id;
+
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: inputBg,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.teal.shade600, width: 1.2),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.handshake_rounded, color: Colors.teal, size: 16),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Select Group Split Being Repaid:',
+                                        style: TextStyle(
+                                          color: Colors.teal.shade700,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  DropdownButton<String>(
+                                    value: activeGroups.any((g) => g.id == currentGroupId)
+                                        ? currentGroupId
+                                        : activeGroups.first.id,
+                                    isExpanded: true,
+                                    dropdownColor: bgColor,
+                                    style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.w600),
+                                    underline: const SizedBox(),
+                                    items: activeGroups.map((g) {
+                                      final pending = (g.totalAmount - g.myShare - g.collectedAmount);
+                                      final label = '${g.title} (₹${pending.toStringAsFixed(0)} pending)';
+                                      return DropdownMenuItem<String>(
+                                        value: g.id,
+                                        child: Text(label),
+                                      );
+                                    }).toList(),
+                                    onChanged: (newId) {
+                                      if (newId != null) {
+                                        setState(() {
+                                          _targetRepaymentGroupIds[tx.id] = newId;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '💡 Incoming ₹${tx.amount.toStringAsFixed(0)} will reduce the pending pool and will NOT inflate your monthly income in Analytics.',
+                                    style: TextStyle(fontSize: 10, color: subtextColor, fontStyle: FontStyle.italic),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                       if (selectedCat == 'Others') ...[
                         const SizedBox(height: 12),
                         Builder(
@@ -773,6 +940,206 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                             );
                           },
                         ),
+                      ],
+                      if (tx.type == 'Debit') ...[
+                        const SizedBox(height: 12),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () {
+                            setState(() {
+                              final current = _isSplitEnabled[tx.id] ?? false;
+                              _isSplitEnabled[tx.id] = !current;
+                              if (!current && (_personalShareControllers[tx.id]?.text.isEmpty ?? true)) {
+                                _splitTitleControllers[tx.id] ??= TextEditingController(
+                                  text: '${tx.payee.isNotEmpty ? tx.payee : selectedCat} Split',
+                                );
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: (_isSplitEnabled[tx.id] ?? false)
+                                  ? Colors.indigoAccent.withValues(alpha: 0.15)
+                                  : inputBg,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: (_isSplitEnabled[tx.id] ?? false)
+                                    ? Colors.indigoAccent
+                                    : borderColor,
+                                width: (_isSplitEnabled[tx.id] ?? false) ? 1.4 : 1.0,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.group_work_rounded,
+                                  size: 18,
+                                  color: (_isSplitEnabled[tx.id] ?? false) ? Colors.indigoAccent : subtextColor,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Split with Others? (Personal Share)',
+                                    style: TextStyle(
+                                      color: (_isSplitEnabled[tx.id] ?? false) ? Colors.indigoAccent : textColor,
+                                      fontWeight: (_isSplitEnabled[tx.id] ?? false) ? FontWeight.bold : FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                                Switch(
+                                  value: _isSplitEnabled[tx.id] ?? false,
+                                  activeThumbColor: Colors.indigoAccent,
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _isSplitEnabled[tx.id] = val;
+                                      if (val) {
+                                        _splitTitleControllers[tx.id] ??= TextEditingController(
+                                          text: '${tx.payee.isNotEmpty ? tx.payee : selectedCat} Split',
+                                        );
+                                      }
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        if (_isSplitEnabled[tx.id] == true) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF0F172A) : Colors.indigo.shade50,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.indigoAccent.withValues(alpha: 0.5), width: 1.2),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Full Bank Debit:',
+                                      style: TextStyle(fontSize: 12, color: subtextColor),
+                                    ),
+                                    Text(
+                                      '₹${tx.amount.toStringAsFixed(2)}',
+                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textColor),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'My Personal Share (₹):',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor),
+                                ),
+                                const SizedBox(height: 4),
+                                TextField(
+                                  controller: _personalShareControllers.putIfAbsent(
+                                    tx.id,
+                                    () => TextEditingController(
+                                      text: (tx.personalShare != null && tx.personalShare! > 0)
+                                          ? tx.personalShare!.toStringAsFixed(0)
+                                          : '',
+                                    ),
+                                  ),
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: textColor),
+                                  decoration: InputDecoration(
+                                    prefixText: '₹ ',
+                                    prefixStyle: const TextStyle(fontWeight: FontWeight.bold),
+                                    hintText: 'e.g. 145',
+                                    hintStyle: TextStyle(fontSize: 12, color: subtextColor),
+                                    filled: true,
+                                    fillColor: inputBg,
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(color: borderColor),
+                                    ),
+                                  ),
+                                  onChanged: (_) => setState(() {}),
+                                ),
+                                const SizedBox(height: 8),
+                                Builder(
+                                  builder: (context) {
+                                    final myShare = double.tryParse(_personalShareControllers[tx.id]?.text.trim() ?? '') ?? 0.0;
+                                    final friendsShare = (tx.amount - myShare);
+
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.teal.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            'Friends\' Share to Collect:',
+                                            style: TextStyle(fontSize: 11, color: isDark ? Colors.tealAccent : Colors.teal.shade800, fontWeight: FontWeight.w600),
+                                          ),
+                                          Text(
+                                            '₹${friendsShare >= 0 ? friendsShare.toStringAsFixed(2) : "0.00"}',
+                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isDark ? Colors.tealAccent : Colors.teal.shade900),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Split Event Name:',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor),
+                                ),
+                                const SizedBox(height: 4),
+                                TextField(
+                                  controller: _splitTitleControllers.putIfAbsent(
+                                    tx.id,
+                                    () => TextEditingController(
+                                      text: tx.splitTitle?.isNotEmpty == true
+                                          ? tx.splitTitle!
+                                          : '${tx.payee.isNotEmpty ? tx.payee : selectedCat} Split',
+                                    ),
+                                  ),
+                                  style: TextStyle(fontSize: 13, color: textColor),
+                                  decoration: InputDecoration(
+                                    hintText: 'e.g. Sep 6 Badminton, Dinner...',
+                                    hintStyle: TextStyle(fontSize: 12, color: subtextColor),
+                                    filled: true,
+                                    fillColor: inputBg,
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(color: borderColor),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.insights_rounded, size: 13, color: Colors.indigoAccent),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        '💡 In Monthly Budget & Analytics, ONLY your personal share will be counted under $selectedCat.',
+                                        style: TextStyle(fontSize: 10, color: subtextColor, fontStyle: FontStyle.italic),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                   ),
@@ -986,7 +1353,9 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                   border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade300),
                 ),
                 child: SelectableText(
-                  tx.notes.isNotEmpty ? tx.notes : (tx.rawBody.isNotEmpty ? tx.rawBody : 'No raw body recorded.'),
+                  tx.rawBody.isNotEmpty
+                      ? (isNotif && tx.rawTitle.isNotEmpty ? 'Title: ${tx.rawTitle}\n\nMessage: ${tx.rawBody}' : tx.rawBody)
+                      : (tx.rawTitle.isNotEmpty ? tx.rawTitle : (tx.notes.isNotEmpty ? tx.notes : 'No raw body recorded.')),
                   style: TextStyle(fontSize: 13, color: textColor, height: 1.4),
                 ),
               ),

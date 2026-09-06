@@ -545,4 +545,29 @@ class JobAssistantService {
     }
     return Map<String, dynamic>.from(resData);
   }
+
+  Future<void> saveStartupRadarSettings({
+    required List<String> locations,
+    required List<String> techDomains,
+  }) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.set({
+      'startupRadarSettings': {
+        'locations': locations,
+        'techDomains': techDomains,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+    }, SetOptions(merge: true));
+  }
+
+  Future<Map<String, dynamic>> getStartupRadarSettings() async {
+    final doc = _userDoc;
+    if (doc == null) return {};
+    final snap = await doc.get();
+    if (!snap.exists || snap.data() == null) return {};
+    final data = snap.data() as Map<String, dynamic>?;
+    return Map<String, dynamic>.from(data?['startupRadarSettings'] ?? {});
+  }
 }

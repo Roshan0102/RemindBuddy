@@ -533,10 +533,12 @@ class NotificationService {
       if (notification != null && android != null) {
         String? payload = message.data['type'] ?? message.data['click_action'];
         
+        bool isSnoozeEnabled = false;
         if (payload == 'CALENDAR_REMINDER') {
           final reminderId = message.data['reminderId'] ?? '';
           final user = FirebaseAuth.instance.currentUser;
           final uid = user?.uid ?? message.data['uid'] ?? '';
+          isSnoozeEnabled = message.data['snoozeEnabled'] == 'true';
           payload = "CALENDAR_REMINDER|$reminderId|$uid";
         } else if (payload == 'daily_reminder') {
           final reminderId = message.data['reminderId'] ?? '';
@@ -564,7 +566,7 @@ class NotificationService {
                         showsUserInterface: true,
                       ),
                     ]
-                  : (payload != null && payload.startsWith("CALENDAR_REMINDER|"))
+                  : (payload != null && payload.startsWith("CALENDAR_REMINDER|") && isSnoozeEnabled)
                       ? <AndroidNotificationAction>[
                           const AndroidNotificationAction(
                             'action_yes',

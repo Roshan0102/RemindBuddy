@@ -50,16 +50,39 @@ export async function checkUserJobReplies(uid: string): Promise<{ checked: numbe
         .where("status", "==", "sent")
         .get();
 
-    if (appsSnap.empty) {
-        console.log(`[ReplyTracker] User ${uid} has 0 pending 'sent' applications.`);
+    // Also retrieve active networking leads where cold email was dispatched
+    const leadsSnap = await db.collection("users").doc(uid).collection("networking_leads")
+        .where("emailSent", "==", true)
+        .where("status", "in", ["email_sent", "note_sent", "discovered"])
+        .get();
+
+    if (appsSnap.empty && leadsSnap.empty) {
+        console.log(`[ReplyTracker] User ${uid} has 0 pending 'sent' applications or startup pitches.`);
         return { checked: 0, repliesFound: 0 };
     }
 
-    const sentApps = appsSnap.docs.map(d => ({
-        id: d.id,
-        ref: d.ref,
-        ...d.data()
-    })) as any[];
+    const sentApps = [
+        ...appsSnap.docs.map(d => ({
+            id: d.id,
+            ref: d.ref,
+            isNetworkingLead: false,
+            ...d.data()
+        })),
+        ...leadsSnap.docs.map(d => {
+            const data = d.data();
+            return {
+                id: d.id,
+                ref: d.ref,
+                isNetworkingLead: true,
+                jobTitle: data.currentRole || "Technology Leader",
+                companyName: data.companyName,
+                recipientEmail: data.email,
+                appliedAt: data.emailSentAt || data.discoveredAt,
+                messageId: data.messageId,
+                ...data
+            };
+        })
+    ] as any[];
 
     // Determine search start date (earliest applied date, capped at 30 days ago)
     const thirtyDaysAgo = new Date();
@@ -361,12 +384,12 @@ Return ONLY valid JSON in this exact structure:
                 // 5. UPDATE FIRESTORE APPLICATION RECORD
                 const replyTime = envelope.date || new Date();
                 const updateData: any = {
-                    status: "reply_received",
-                    responseType: analysis.responseType || "hr_query",
+                    status: matchedApp.isNetworkingLead ? "replied" : "reply_received",
+                    responseType: analysis.responseType || (matchedApp.isNetworkingLead ? "founder_chat" : "hr_query"),
                     replyReceivedAt: admin.firestore.Timestamp.fromDate(replyTime),
                     replySender: senderName ? `${senderName} <${senderAddress}>` : senderAddress,
                     replySubject: subject,
-                    replySnippet: analysis.summary || "Recruiter replied to your application.",
+                    replySnippet: analysis.summary || "Recruiter/Founder replied to your outreach.",
                     replyBodyPreview: cleanBodySnippet.substring(0, 500),
                     actionRequired: analysis.actionRequired || "None",
                     replyMessageId: envelope.messageId || "",
@@ -391,13 +414,17 @@ Return ONLY valid JSON in this exact structure:
                     }
 
                     if (fcmToken) {
-                        let notifTitle = `📬 Reply from ${matchedApp.companyName}!`;
+                        let notifTitle = matchedApp.isNetworkingLead
+                            ? `🚀 Founder Replied: ${matchedApp.name || matchedApp.companyName}!`
+                            : `📬 Reply from ${matchedApp.companyName}!`;
                         if (analysis.responseType === "interview_invite") {
                             notifTitle = `🎉 Interview Invitation: ${matchedApp.companyName}!`;
                         } else if (analysis.responseType === "assessment") {
                             notifTitle = `📝 Coding Assessment: ${matchedApp.companyName}!`;
                         } else if (analysis.responseType === "hr_query") {
-                            notifTitle = `💬 Recruiter Message: ${matchedApp.companyName}!`;
+                            notifTitle = matchedApp.isNetworkingLead
+                                ? `💬 Founder Message: ${matchedApp.companyName}!`
+                                : `💬 Recruiter Message: ${matchedApp.companyName}!`;
                         } else if (analysis.responseType === "rejection") {
                             notifTitle = `Update on Application: ${matchedApp.companyName}`;
                         }

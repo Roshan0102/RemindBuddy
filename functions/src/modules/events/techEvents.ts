@@ -268,7 +268,7 @@ Respond ONLY with a JSON array matching this schema:
             // Send email summary if user has configured Gmail and enabled events_email
             const notifPrefs = uData?.notificationPreferences || {};
             const isEmailEnabled = notifPrefs.events_email !== false;
-            const emailConfig = uData?.jobEmailConfig || {};
+            const emailConfig = uData?.emailConfig || uData?.jobEmailConfig || {};
             if (isEmailEnabled && emailConfig.email && emailConfig.appPassword) {
                 try {
                     const transporter = nodemailer.createTransport({

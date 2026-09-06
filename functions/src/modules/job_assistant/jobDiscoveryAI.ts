@@ -650,6 +650,15 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         }
     }
 
+    // Automatically check inbox for new recruiter/founder replies after finishing application task
+    try {
+        const { checkUserJobReplies } = await import("./replyTracker");
+        console.log(`[JobDiscovery] Automatically scanning inbox for recruiter/founder replies for user ${uid}...`);
+        await checkUserJobReplies(uid);
+    } catch (inboxErr: any) {
+        console.warn(`[JobDiscovery] Post-task inbox check error for user ${uid}:`, inboxErr.message || inboxErr);
+    }
+
     return {
         success: true,
         appliedCount: successfullyAppliedJobs.length,
@@ -710,7 +719,7 @@ export async function internalAutoJobDiscoveryAndApply(): Promise<void> {
             }
 
             // 2. Must have uploaded a Master Resume or at least one Resume Profile
-            let hasResume = !!data.masterResume?.base64;
+            let hasResume = !!(data.masterResume?.base64 || data.masterResume?.base64Data);
             if (!hasResume) {
                 const profilesSnap = await db.collection("users").doc(uid).collection("resume_profiles").limit(1).get();
                 if (!profilesSnap.empty) {
@@ -727,7 +736,7 @@ export async function internalAutoJobDiscoveryAndApply(): Promise<void> {
             }
 
             // 3. Must have Gmail & App Password configured
-            const emailConfig = data.jobEmailConfig || {};
+            const emailConfig = data.emailConfig || data.jobEmailConfig || {};
             if (!emailConfig.email || !emailConfig.appPassword) {
                 console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: Gmail & App Password not configured.`);
                 continue;

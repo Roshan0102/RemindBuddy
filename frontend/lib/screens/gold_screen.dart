@@ -819,6 +819,8 @@ class _GoldScreenState extends State<GoldScreen> {
   }
 
   Widget _buildAIInsightsSection() {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -830,7 +832,9 @@ class _GoldScreenState extends State<GoldScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Colors.blue.shade900, Colors.indigo.shade800],
+                colors: isDark
+                    ? [const Color(0xFF1E3A8A), const Color(0xFF1E293B)]
+                    : [Colors.blue.shade900, Colors.indigo.shade800],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -863,7 +867,9 @@ class _GoldScreenState extends State<GoldScreen> {
                       decoration: BoxDecoration(
                         border: Border(
                           bottom: BorderSide(
-                            color: _aiActiveTab == 0 ? Colors.indigo.shade800 : Colors.transparent,
+                            color: _aiActiveTab == 0
+                                ? (isDark ? Colors.amberAccent : Colors.indigo.shade800)
+                                : Colors.transparent,
                             width: 2.5,
                           ),
                         ),
@@ -872,7 +878,9 @@ class _GoldScreenState extends State<GoldScreen> {
                         'Market Forecast',
                         style: TextStyle(
                           fontWeight: _aiActiveTab == 0 ? FontWeight.bold : FontWeight.normal,
-                          color: _aiActiveTab == 0 ? Colors.indigo.shade800 : Colors.grey,
+                          color: _aiActiveTab == 0
+                              ? (isDark ? Colors.amberAccent : Colors.indigo.shade800)
+                              : (isDark ? Colors.white70 : Colors.grey),
                           fontSize: 13,
                         ),
                       ),
@@ -888,7 +896,9 @@ class _GoldScreenState extends State<GoldScreen> {
                       decoration: BoxDecoration(
                         border: Border(
                           bottom: BorderSide(
-                            color: _aiActiveTab == 1 ? Colors.indigo.shade800 : Colors.transparent,
+                            color: _aiActiveTab == 1
+                                ? (isDark ? Colors.amberAccent : Colors.indigo.shade800)
+                                : Colors.transparent,
                             width: 2.5,
                           ),
                         ),
@@ -897,7 +907,9 @@ class _GoldScreenState extends State<GoldScreen> {
                         'Gold Chit Assistant',
                         style: TextStyle(
                           fontWeight: _aiActiveTab == 1 ? FontWeight.bold : FontWeight.normal,
-                          color: _aiActiveTab == 1 ? Colors.indigo.shade800 : Colors.grey,
+                          color: _aiActiveTab == 1
+                              ? (isDark ? Colors.amberAccent : Colors.indigo.shade800)
+                              : (isDark ? Colors.white70 : Colors.grey),
                           fontSize: 13,
                         ),
                       ),

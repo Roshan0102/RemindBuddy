@@ -131,7 +131,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                         color: isDark ? Colors.white24 : Colors.black26,
                       ),
                       todayTextStyle: TextStyle(
-                        color: isDark ? Colors.white : Colors.black87,
+                        color: isDark ? Colors.cyanAccent : Colors.black87,
                         fontWeight: FontWeight.bold,
                       ),
                       selectedTextStyle: const TextStyle(
@@ -145,11 +145,17 @@ class _RemindersScreenState extends State<RemindersScreen> {
                       markerSize: 6,
                       markersAlignment: Alignment.bottomCenter,
                       todayDecoration: BoxDecoration(
-                        color: Theme.of(context).primaryColor.withValues(alpha: 0.35),
+                        color: isDark
+                            ? Colors.cyan.withValues(alpha: 0.22)
+                            : Theme.of(context).primaryColor.withValues(alpha: 0.2),
                         shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isDark ? Colors.cyanAccent : Theme.of(context).primaryColor,
+                          width: 1.8,
+                        ),
                       ),
                       selectedDecoration: BoxDecoration(
-                        color: Theme.of(context).primaryColor,
+                        color: isDark ? const Color(0xFF2563EB) : Theme.of(context).primaryColor,
                         shape: BoxShape.circle,
                       ),
                     ),

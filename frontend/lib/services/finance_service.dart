@@ -361,6 +361,16 @@ class FinanceService {
         .map((snap) => snap.docs.map((d) => GroupEvent.fromMap(d.data(), d.id)).toList());
   }
 
+  Stream<GroupEvent?> getGroupEventStream(String eventId) {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value(null);
+
+    return doc.collection('finance_group_events').doc(eventId).snapshots().map((snap) {
+      if (!snap.exists || snap.data() == null) return null;
+      return GroupEvent.fromMap(snap.data()!, snap.id);
+    });
+  }
+
   Future<void> addGroupEvent(GroupEvent event) async {
     final doc = _userDoc;
     if (doc == null) return;
@@ -373,6 +383,15 @@ class FinanceService {
       createdAt: DateTime.now(),
     );
     await ref.set(newEvent.toMap());
+  }
+
+  Future<void> addMemberToGroup(String eventId, String newMember) async {
+    final doc = _userDoc;
+    if (doc == null || newMember.trim().isEmpty) return;
+
+    await doc.collection('finance_group_events').doc(eventId).update({
+      'members': FieldValue.arrayUnion([newMember.trim()]),
+    });
   }
 
   Future<void> deleteGroupEvent(String eventId) async {
@@ -430,6 +449,117 @@ class FinanceService {
     await doc.collection('finance_group_expenses').doc(expenseId).delete();
   }
 
+  Future<GroupEvent?> createSplitFromTransaction({
+    required SmsTransaction tx,
+    required double personalShare,
+    required String splitTitle,
+    required String category,
+    String? destinationBankAccountId,
+  }) async {
+    final doc = _userDoc;
+    if (doc == null) return null;
+
+    final eventRef = doc.collection('finance_group_events').doc();
+    final event = GroupEvent(
+      id: eventRef.id,
+      title: splitTitle.trim().isNotEmpty ? splitTitle.trim() : '${tx.payee} Split',
+      members: ['You'],
+      createdAt: DateTime.now(),
+      totalAmount: tx.amount,
+      myShare: personalShare,
+      collectedAmount: 0.0,
+      isSettled: false,
+      linkedTxId: tx.id,
+    );
+    await eventRef.set(event.toMap());
+
+    // Create primary expense record in the group
+    final expRef = doc.collection('finance_group_expenses').doc();
+    final expense = GroupExpense(
+      id: expRef.id,
+      groupId: eventRef.id,
+      description: splitTitle.trim().isNotEmpty ? splitTitle.trim() : 'Bill / Booking',
+      amount: tx.amount,
+      payerName: 'You',
+      involvedMembers: ['You'],
+      customSplit: {'You': personalShare},
+      date: tx.timestamp,
+    );
+    await expRef.set(expense.toMap());
+
+    // Update the transaction with split metadata
+    final updatedTx = tx.copyWith(
+      isVerified: true,
+      category: category,
+      isSplit: true,
+      personalShare: personalShare,
+      splitGroupId: eventRef.id,
+      splitTitle: event.title,
+    );
+    await updateSmsTransaction(updatedTx, destinationBankAccountId: destinationBankAccountId);
+
+    return event;
+  }
+
+  Future<void> recordSplitRepayment({
+    required SmsTransaction tx,
+    required String splitGroupId,
+    String? destinationBankAccountId,
+  }) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final groupDoc = await doc.collection('finance_group_events').doc(splitGroupId).get();
+    if (groupDoc.exists) {
+      final currentEvent = GroupEvent.fromMap(groupDoc.data()!, groupDoc.id);
+      final newCollected = currentEvent.collectedAmount + tx.amount;
+      final friendsShare = currentEvent.totalAmount - currentEvent.myShare;
+      final isNowSettled = newCollected >= (friendsShare - 0.5);
+
+      await groupDoc.reference.update({
+        'collectedAmount': newCollected,
+        if (isNowSettled && !currentEvent.isSettled) 'isSettled': true,
+      });
+
+      final updatedTx = tx.copyWith(
+        isVerified: true,
+        category: 'Split Repayment',
+        isSplitRepayment: true,
+        repaymentForGroupId: splitGroupId,
+        notes: tx.notes.isNotEmpty ? tx.notes : 'Repayment for ${currentEvent.title}',
+      );
+      await updateSmsTransaction(updatedTx, destinationBankAccountId: destinationBankAccountId);
+    }
+  }
+
+  Future<void> settleGroupEvent(String eventId, {String? note}) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+    await doc.collection('finance_group_events').doc(eventId).update({
+      'isSettled': true,
+      if (note != null && note.isNotEmpty) 'settledNote': note,
+    });
+  }
+
+  Future<void> reopenGroupEvent(String eventId) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+    await doc.collection('finance_group_events').doc(eventId).update({
+      'isSettled': false,
+      'settledNote': '',
+    });
+  }
+
+  Stream<List<SmsTransaction>> getRepaymentsForGroupStream(String splitGroupId) {
+    final doc = _userDoc;
+    if (doc == null) return Stream.value([]);
+    return doc
+        .collection('sms_transactions')
+        .where('repaymentForGroupId', isEqualTo: splitGroupId)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => SmsTransaction.fromMap(d.data())).toList());
+  }
+
   /// Calculates net balances for members in a group and computes optimal settlements.
   List<GroupSettlement> calculateGroupBalances(List<String> members, List<GroupExpense> expenses) {
     final Map<String, double> netMap = {};
@@ -440,11 +570,17 @@ class FinanceService {
     for (final exp in expenses) {
       if (exp.involvedMembers.isEmpty || exp.amount <= 0) continue;
 
-      final double splitAmount = exp.amount / exp.involvedMembers.length;
-      
-      // Each involved member owes splitAmount
-      for (final member in exp.involvedMembers) {
-        netMap[member] = (netMap[member] ?? 0.0) - splitAmount;
+      if (exp.customSplit.isNotEmpty) {
+        // Individual custom amount per member
+        for (final member in exp.involvedMembers) {
+          final amt = exp.customSplit[member] ?? (exp.amount / exp.involvedMembers.length);
+          netMap[member] = (netMap[member] ?? 0.0) - amt;
+        }
+      } else {
+        final double splitAmount = exp.amount / exp.involvedMembers.length;
+        for (final member in exp.involvedMembers) {
+          netMap[member] = (netMap[member] ?? 0.0) - splitAmount;
+        }
       }
 
       // Payer is credited the full amount

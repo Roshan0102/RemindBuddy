@@ -18,6 +18,14 @@ class SmsTransaction {
   final String rawTitle;
   final String rawBody;
 
+  // Split Spends & Repayment Meta
+  final bool isSplit;
+  final double? personalShare;
+  final String? splitGroupId;
+  final String? splitTitle;
+  final bool isSplitRepayment;
+  final String? repaymentForGroupId;
+
   SmsTransaction({
     required this.id,
     this.sender = '',
@@ -35,6 +43,12 @@ class SmsTransaction {
     this.upiRef = '',
     this.rawTitle = '',
     this.rawBody = '',
+    this.isSplit = false,
+    this.personalShare,
+    this.splitGroupId,
+    this.splitTitle,
+    this.isSplitRepayment = false,
+    this.repaymentForGroupId,
   });
 
   Map<String, dynamic> toMap() {
@@ -55,6 +69,12 @@ class SmsTransaction {
       'upiRef': upiRef,
       'rawTitle': rawTitle,
       'rawBody': rawBody,
+      'isSplit': isSplit,
+      if (personalShare != null) 'personalShare': personalShare,
+      if (splitGroupId != null) 'splitGroupId': splitGroupId,
+      if (splitTitle != null) 'splitTitle': splitTitle,
+      'isSplitRepayment': isSplitRepayment,
+      if (repaymentForGroupId != null) 'repaymentForGroupId': repaymentForGroupId,
     };
   }
 
@@ -78,6 +98,12 @@ class SmsTransaction {
       upiRef: map['upiRef'] ?? '',
       rawTitle: map['rawTitle'] ?? '',
       rawBody: map['rawBody'] ?? '',
+      isSplit: map['isSplit'] as bool? ?? false,
+      personalShare: (map['personalShare'] as num?)?.toDouble(),
+      splitGroupId: map['splitGroupId'] as String?,
+      splitTitle: map['splitTitle'] as String?,
+      isSplitRepayment: map['isSplitRepayment'] as bool? ?? false,
+      repaymentForGroupId: map['repaymentForGroupId'] as String?,
     );
   }
 
@@ -98,6 +124,12 @@ class SmsTransaction {
     String? upiRef,
     String? rawTitle,
     String? rawBody,
+    bool? isSplit,
+    double? personalShare,
+    String? splitGroupId,
+    String? splitTitle,
+    bool? isSplitRepayment,
+    String? repaymentForGroupId,
   }) {
     return SmsTransaction(
       id: id ?? this.id,
@@ -116,6 +148,12 @@ class SmsTransaction {
       upiRef: upiRef ?? this.upiRef,
       rawTitle: rawTitle ?? this.rawTitle,
       rawBody: rawBody ?? this.rawBody,
+      isSplit: isSplit ?? this.isSplit,
+      personalShare: personalShare ?? this.personalShare,
+      splitGroupId: splitGroupId ?? this.splitGroupId,
+      splitTitle: splitTitle ?? this.splitTitle,
+      isSplitRepayment: isSplitRepayment ?? this.isSplitRepayment,
+      repaymentForGroupId: repaymentForGroupId ?? this.repaymentForGroupId,
     );
   }
 }

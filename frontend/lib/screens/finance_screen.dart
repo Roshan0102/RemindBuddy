@@ -18,6 +18,7 @@ import '../services/sms_parser_service.dart';
 import '../services/payment_notification_tracker_service.dart';
 import '../services/app_permission_service.dart';
 import '../widgets/nightly_expense_tag_sheet.dart';
+import '../widgets/voice_expense_logger_sheet.dart';
 import '../services/home_widget_service.dart';
 
 class FinanceScreen extends StatefulWidget {
@@ -106,7 +107,12 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
       case 3:
         return const Text('Group Expense Splitter 👥', style: TextStyle(fontWeight: FontWeight.bold));
       case 4:
-        return const Text('Smart Bank Tracker 💳', style: TextStyle(fontWeight: FontWeight.bold));
+        return const Text(
+          'Smart Bank Tracker 💳',
+          style: TextStyle(fontWeight: FontWeight.bold),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
       default:
         return const Text('FinanceBuddy', style: TextStyle(fontWeight: FontWeight.bold));
     }
@@ -303,12 +309,34 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                 ),
                 title: _getFeatureTitle(_selectedFeatureIndex!),
                 actions: [
-                  if (_selectedFeatureIndex == 4)
+                  if (_selectedFeatureIndex == 4) ...[
+                    IconButton(
+                      icon: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF8B5CF6), Color(0xFF06B6D4)],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF8B5CF6).withValues(alpha: 0.45),
+                              blurRadius: 6,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.mic_rounded, color: Colors.white, size: 18),
+                      ),
+                      tooltip: 'Voice Expense Log 🎙️',
+                      onPressed: () => _openVoiceExpenseLogger(context),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.add_circle, color: Colors.green),
                       tooltip: 'Add Transaction 💳',
                       onPressed: () => _openAddTransactionForSmartBank(context),
                     ),
+                  ],
                 ],
               ),
               body: _buildFeatureWidget(_selectedFeatureIndex!),
@@ -952,16 +980,79 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   itemCount: groupEvents.length,
                   itemBuilder: (context, index) {
                     final group = groupEvents[index];
+                    final isDark = Theme.of(context).brightness == Brightness.dark;
+                    final pending = (group.totalAmount - group.myShare - group.collectedAmount).clamp(0.0, double.infinity);
 
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                          color: group.isSettled
+                              ? Colors.green.withValues(alpha: 0.4)
+                              : (group.totalAmount > 0 ? Colors.indigoAccent.withValues(alpha: 0.4) : (isDark ? Colors.white12 : Colors.grey.shade300)),
+                          width: group.isSettled || group.totalAmount > 0 ? 1.4 : 1.0,
+                        ),
+                      ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.all(16),
-                        title: Text(group.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(group.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            ),
+                            if (group.isSettled)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.green.shade400, width: 0.8),
+                                ),
+                                child: const Text(
+                                  '✓ Settled',
+                                  style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              )
+                            else if (group.totalAmount > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.amber.shade400, width: 0.8),
+                                ),
+                                child: Text(
+                                  'Pending: ₹${pending.toStringAsFixed(0)}',
+                                  style: const TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                          ],
+                        ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (group.totalAmount > 0) ...[
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Bill: ₹${group.totalAmount.toStringAsFixed(0)}',
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '• My Share: ₹${group.myShare.toStringAsFixed(0)}',
+                                    style: TextStyle(fontSize: 12, color: isDark ? Colors.blueAccent : Colors.blue.shade800),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '• Collected: ₹${group.collectedAmount.toStringAsFixed(0)}',
+                                    style: TextStyle(fontSize: 12, color: isDark ? Colors.tealAccent : Colors.teal.shade800),
+                                  ),
+                                ],
+                              ),
+                            ],
                             const SizedBox(height: 6),
                             Text('Members: ${group.members.join(", ")}'),
                             const SizedBox(height: 4),
@@ -1202,6 +1293,40 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     );
   }
 
+  Future<void> _openVoiceExpenseLogger(BuildContext context) async {
+    try {
+      final accounts = await _financeService.getAccountsStream().first;
+      final customCats = await _financeService.getUserCustomCategoriesStream().first;
+      final customTags = await _financeService.getUserCustomTagsStream().first;
+      final allCustomCategories = <String>{...customCats, ...customTags}.toList();
+
+      if (!context.mounted) return;
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => VoiceExpenseLoggerSheet(
+          accounts: accounts,
+          customCategories: allCustomCategories,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error opening voice expense logger: $e');
+      if (context.mounted) {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (ctx) => const VoiceExpenseLoggerSheet(
+            accounts: [],
+            customCategories: [],
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _openAddTransactionForSmartBank(BuildContext context) async {
     try {
       final accounts = await _financeService.getAccountsStream().first;
@@ -1249,11 +1374,13 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
       {'name': 'Groceries', 'icon': Icons.shopping_basket, 'color': Colors.green},
       {'name': 'Bills & Utilities', 'icon': Icons.receipt_long, 'color': Colors.blue},
       {'name': 'Shopping', 'icon': Icons.shopping_bag, 'color': Colors.purple},
+      {'name': 'Personal Transfer', 'icon': Icons.swap_horiz_rounded, 'color': Colors.purpleAccent},
       {'name': 'Self Transfer', 'icon': Icons.swap_horiz_rounded, 'color': Colors.indigoAccent},
       {'name': 'Borrowed', 'icon': Icons.south_west_rounded, 'color': Colors.amber.shade700},
       {'name': 'Borrowed Repaid', 'icon': Icons.check_circle_outline_rounded, 'color': Colors.orange.shade700},
       {'name': 'Lended', 'icon': Icons.north_east_rounded, 'color': Colors.teal},
       {'name': 'Loan Repaid', 'icon': Icons.task_alt_rounded, 'color': Colors.green.shade700},
+      {'name': 'Split Repayment', 'icon': Icons.handshake_rounded, 'color': Colors.teal.shade700},
       {'name': 'Entertainment', 'icon': Icons.movie, 'color': Colors.pink},
       {'name': 'Medical & Health', 'icon': Icons.medical_services_rounded, 'color': Colors.redAccent},
       {'name': 'Personal Care', 'icon': Icons.spa, 'color': Colors.deepOrangeAccent},
@@ -1265,17 +1392,6 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          final List<Map<String, dynamic>> allCategories = [
-            ...defaultCategories,
-            ...customCategories
-                .where((c) => !defaultCategories.any((dc) => dc['name'].toString().toLowerCase() == c.toLowerCase()))
-                .map((c) => {
-                      'name': c,
-                      'icon': Icons.label_rounded,
-                      'color': Colors.indigoAccent,
-                    }),
-          ];
-
           return AlertDialog(
             title: Row(
               children: [
@@ -1425,55 +1541,73 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      ...allCategories.map((cat) {
-                        final bool isSelected = selectedCategory == cat['name'];
-                        final Color catColor = cat['color'] as Color;
+                  StreamBuilder<List<String>>(
+                    stream: _financeService.getUserCustomCategoriesStream(),
+                    builder: (context, catSnap) {
+                      final liveCustom = catSnap.data ?? [];
+                      final combinedCustom = <String>{...customCategories, ...liveCustom};
+                      final List<Map<String, dynamic>> allCategories = [
+                        ...defaultCategories,
+                        ...combinedCustom
+                            .where((c) => !defaultCategories.any((dc) => dc['name'].toString().toLowerCase() == c.toLowerCase()))
+                            .map((c) => {
+                                  'name': c,
+                                  'icon': Icons.label_rounded,
+                                  'color': Colors.indigoAccent,
+                                }),
+                      ];
 
-                        return ChoiceChip(
-                          avatar: Icon(cat['icon'] as IconData, size: 14, color: isSelected ? Colors.white : catColor),
-                          label: Text(
-                            cat['name'] as String,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isSelected ? Colors.white : null,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      return Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          ...allCategories.map((cat) {
+                            final bool isSelected = selectedCategory == cat['name'];
+                            final Color catColor = cat['color'] as Color;
+
+                            return ChoiceChip(
+                              avatar: Icon(cat['icon'] as IconData, size: 14, color: isSelected ? Colors.white : catColor),
+                              label: Text(
+                                cat['name'] as String,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isSelected ? Colors.white : null,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                              selected: isSelected,
+                              selectedColor: catColor,
+                              onSelected: (selected) {
+                                if (selected) {
+                                  setDialogState(() {
+                                    selectedCategory = cat['name'] as String;
+                                  });
+                                }
+                              },
+                            );
+                          }),
+                          ActionChip(
+                            avatar: const Icon(Icons.add_rounded, size: 14, color: Colors.blueAccent),
+                            label: const Text(
+                              '+ Add Custom',
+                              style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
                             ),
+                            backgroundColor: Colors.blue.withValues(alpha: 0.12),
+                            side: BorderSide(color: Colors.blueAccent.withValues(alpha: 0.4), width: 0.8),
+                            onPressed: () async {
+                              final newCat = await _promptNewCategoryDialog(context);
+                              if (newCat != null && newCat.isNotEmpty) {
+                                await _financeService.saveUserCustomCategory(newCat);
+                                setDialogState(() {
+                                  customCategories.add(newCat);
+                                  selectedCategory = newCat;
+                                });
+                              }
+                            },
                           ),
-                          selected: isSelected,
-                          selectedColor: catColor,
-                          onSelected: (selected) {
-                            if (selected) {
-                              setDialogState(() {
-                                selectedCategory = cat['name'] as String;
-                              });
-                            }
-                          },
-                        );
-                      }),
-                      ActionChip(
-                        avatar: const Icon(Icons.add_rounded, size: 14, color: Colors.blueAccent),
-                        label: const Text(
-                          '+ Add Custom',
-                          style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                        backgroundColor: Colors.blue.withValues(alpha: 0.12),
-                        side: BorderSide(color: Colors.blueAccent.withValues(alpha: 0.4), width: 0.8),
-                        onPressed: () async {
-                          final newCat = await _promptNewCategoryDialog(context);
-                          if (newCat != null && newCat.isNotEmpty) {
-                            await _financeService.saveUserCustomCategory(newCat);
-                            setDialogState(() {
-                              customCategories.add(newCat);
-                              selectedCategory = newCat;
-                            });
-                          }
-                        },
-                      ),
-                    ],
+                        ],
+                      );
+                    },
                   ),
                   if (selectedCategory == 'Others' ||
                       selectedCategory == 'Borrowed' ||
@@ -1539,8 +1673,8 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   // 2. Also record in sms_transactions so it appears immediately in Smart Bank Tracker
                   final manualSms = SmsTransaction(
                     id: '',
-                    sender: selectedAccount?.name ?? 'Manual Entry',
-                    bankName: selectedAccount?.name ?? 'Primary Account',
+                    sender: selectedAccount?.name ?? 'Manual',
+                    bankName: selectedAccount?.name ?? 'Manual',
                     accountLast4: 'Manual',
                     type: type == 'expense' ? 'Debit' : 'Credit',
                     amount: amt,
@@ -1550,8 +1684,8 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                     category: finalCategory,
                     notes: customNote,
                     source: 'manual',
-                    sourceApp: 'Manual Entry',
-                    rawBody: 'Manually added transaction by user in Smart Bank Tracker (${type.toUpperCase()}) - $finalCategory',
+                    sourceApp: 'Manual',
+                    rawBody: 'Manually added transaction (${type.toUpperCase()}) - $finalCategory',
                   );
 
                   // destinationBankAccountId is null because addTransaction above already updated account balance
@@ -2313,11 +2447,18 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
             for (final tx in monthTransactions) {
               if (tx.type == 'Debit') {
-                totalSpent += tx.amount;
+                final double effectiveSpend = (tx.isSplit && tx.personalShare != null && tx.personalShare! > 0)
+                    ? tx.personalShare!
+                    : tx.amount;
+                totalSpent += effectiveSpend;
                 final cat = isTxUntagged(tx) ? 'Untagged' : tx.category;
-                categoryTotals[cat] = (categoryTotals[cat] ?? 0.0) + tx.amount;
+                categoryTotals[cat] = (categoryTotals[cat] ?? 0.0) + effectiveSpend;
               } else {
-                totalReceived += tx.amount;
+                if (tx.isSplitRepayment || tx.category == 'Split Repayment' || tx.category == 'Loan Repaid') {
+                  // Reimbursed money / debt recovery - does not inflate primary income
+                } else {
+                  totalReceived += tx.amount;
+                }
               }
             }
 
@@ -2439,47 +2580,38 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                    padding: const EdgeInsets.all(3),
-                                    tooltip: 'Add Transaction 💳',
-                                    icon: const Icon(Icons.add_circle, color: Colors.green, size: 19),
-                                    onPressed: () => _openAddTransactionForSmartBank(context),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  IconButton(
-                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                    padding: const EdgeInsets.all(3),
+                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                    padding: const EdgeInsets.all(4),
                                     tooltip: 'UPI Notification Tracker 🔔',
-                                    icon: const Icon(Icons.notifications_active_outlined, color: Colors.purpleAccent, size: 19),
+                                    icon: const Icon(Icons.notifications_active_outlined, color: Colors.purpleAccent, size: 20),
                                     onPressed: () => _showUpiNotificationSettingsDialog(context),
                                   ),
                                   const SizedBox(width: 4),
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                    padding: const EdgeInsets.all(3),
+                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                    padding: const EdgeInsets.all(4),
                                     tooltip: 'Bank Header Rules ⚙️',
-                                    icon: const Icon(Icons.settings_suggest_rounded, color: Colors.blueAccent, size: 19),
+                                    icon: const Icon(Icons.settings_suggest_rounded, color: Colors.blueAccent, size: 20),
                                     onPressed: () => _showCustomHeaderRulesDialog(context),
                                   ),
                                   const SizedBox(width: 4),
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                    padding: const EdgeInsets.all(3),
+                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                    padding: const EdgeInsets.all(4),
                                     tooltip: 'Sync Bank SMS',
                                     icon: _isScanningInbox
                                         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
-                                        : const Icon(Icons.sync_rounded, color: Colors.blueAccent, size: 19),
+                                        : const Icon(Icons.sync_rounded, color: Colors.blueAccent, size: 20),
                                     onPressed: _isScanningInbox ? null : _showSmsSyncDialog,
                                   ),
                                   const SizedBox(width: 4),
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                    padding: const EdgeInsets.all(3),
+                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                    padding: const EdgeInsets.all(4),
                                     tooltip: 'Delete Month Transactions',
-                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 19),
+                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
                                     onPressed: () => _confirmDeleteMonthTransactions(context),
                                   ),
-                                  const SizedBox(width: 4),
                                 ],
                               ),
                             ],
@@ -2685,6 +2817,14 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               final String cleanSender = tx.sender.trim().toUpperCase();
                               String resolvedBankName = tx.bankName;
 
+                              if (tx.source == 'manual') {
+                                if (resolvedBankName.trim().toLowerCase() == 'manual entry' ||
+                                    resolvedBankName.trim().toLowerCase() == 'primary account' ||
+                                    resolvedBankName.trim().isEmpty) {
+                                  resolvedBankName = 'Manual';
+                                }
+                              }
+
                               for (final rule in customRules) {
                                 final pattern = (rule['pattern'] ?? '').toUpperCase();
                                 final bankName = rule['bankName'] ?? '';
@@ -2737,7 +2877,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                               fontSize: 14,
                                             ),
                                           ),
-                                          if (tx.source == 'manual') ...[
+                                          if (tx.source == 'manual' && !resolvedBankName.toLowerCase().contains('manual')) ...[
                                             const SizedBox(width: 6),
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -2832,6 +2972,63 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                           }),
                                         ],
                                       ),
+                                      if (tx.isSplit && tx.personalShare != null) ...[
+                                        const SizedBox(height: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                          decoration: BoxDecoration(
+                                            color: Colors.indigo.withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(
+                                              color: Colors.indigoAccent.withValues(alpha: 0.4),
+                                              width: 0.8,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(Icons.group_work_rounded, size: 12, color: Colors.indigoAccent),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Split: My Share ₹${tx.personalShare!.toStringAsFixed(0)} • Friends ₹${(tx.amount - tx.personalShare!).toStringAsFixed(0)}',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isDark ? Colors.indigo.shade200 : Colors.indigo.shade800,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ] else if (tx.isSplitRepayment) ...[
+                                        const SizedBox(height: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                          decoration: BoxDecoration(
+                                            color: Colors.teal.withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(
+                                              color: Colors.teal.withValues(alpha: 0.4),
+                                              width: 0.8,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(Icons.handshake_rounded, size: 12, color: Colors.teal),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Split Repayment (Reimbursement)',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isDark ? Colors.tealAccent : Colors.teal.shade800,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                       const SizedBox(height: 4),
                                       InkWell(
                                         onTap: () => _showSmsDetailsDialog(context, tx),
@@ -2881,7 +3078,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                               Flexible(
                                                 child: Text(
                                                   tx.source == 'manual'
-                                                      ? '✍️ Manual Entry'
+                                                      ? '✍️ Manual'
                                                       : (tx.source == 'both'
                                                           ? '⚡ Verified (${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'SMS + UPI'})'
                                                           : (tx.source == 'notification'
@@ -3290,10 +3487,28 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade300),
                 ),
                 child: SelectableText(
-                  tx.notes.isNotEmpty ? tx.notes : (tx.rawBody.isNotEmpty ? tx.rawBody : 'No details recorded.'),
+                  isManual
+                      ? (tx.notes.isNotEmpty ? tx.notes : (tx.rawBody.isNotEmpty ? tx.rawBody : 'No details recorded.'))
+                      : (tx.rawBody.isNotEmpty
+                          ? (isNotif && tx.rawTitle.isNotEmpty ? 'Title: ${tx.rawTitle}\n\nMessage: ${tx.rawBody}' : tx.rawBody)
+                          : (tx.rawTitle.isNotEmpty ? tx.rawTitle : (tx.notes.isNotEmpty ? tx.notes : 'No raw body recorded.'))),
                   style: TextStyle(fontSize: 13, color: textColor, height: 1.4),
                 ),
               ),
+              if (!isManual && tx.notes.isNotEmpty && tx.notes != tx.rawBody && tx.notes != tx.rawTitle) ...[
+                const SizedBox(height: 12),
+                Text('USER NOTE / TAG:', style: TextStyle(color: subtextColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SelectableText(tx.notes, style: TextStyle(fontSize: 12, color: textColor)),
+                ),
+              ],
             ],
           ),
         ),
@@ -3340,7 +3555,10 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     for (var tx in monthTransactions) {
       if (tx.type == 'Debit') {
         final day = tx.timestamp.day;
-        dailySpending[day] = (dailySpending[day] ?? 0.0) + tx.amount;
+        final double effectiveSpend = (tx.isSplit && tx.personalShare != null && tx.personalShare! > 0)
+            ? tx.personalShare!
+            : tx.amount;
+        dailySpending[day] = (dailySpending[day] ?? 0.0) + effectiveSpend;
       }
     }
 
@@ -4692,132 +4910,826 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.group.title),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddExpenseDialog(context),
-        icon: const Icon(Icons.receipt),
-        label: const Text('Add Expense'),
-      ),
-      body: StreamBuilder<List<GroupExpense>>(
-        stream: _financeService.getGroupExpensesStream(widget.group.id),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-          final expenses = snapshot.data ?? [];
-          final settlements = _financeService.calculateGroupBalances(widget.group.members, expenses);
+    return StreamBuilder<GroupEvent?>(
+      stream: _financeService.getGroupEventStream(widget.group.id),
+      builder: (context, groupSnap) {
+        final currentGroup = groupSnap.data ?? widget.group;
+        final pendingToCollect = (currentGroup.totalAmount - currentGroup.myShare - currentGroup.collectedAmount).clamp(0.0, double.infinity);
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // Members list
-              Wrap(
-                spacing: 8,
-                children: widget.group.members
-                    .map((m) => Chip(
-                          avatar: CircleAvatar(child: Text(m[0].toUpperCase())),
-                          label: Text(m),
-                        ))
-                    .toList(),
-              ),
-              const SizedBox(height: 16),
-
-              // Settlement Matrix (Who Owes Whom)
-              Card(
-                color: Colors.orange.shade50,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.swap_horiz, color: Colors.orange),
-                          SizedBox(width: 8),
-                          Text('Settlement Matrix (Who Owes Whom)',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (settlements.isEmpty)
-                        const Text('All settled up! No pending balances in this group.')
-                      else
-                        Column(
-                          children: settlements
-                              .map((s) => Container(
-                                    margin: const EdgeInsets.only(bottom: 6),
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          '${s.fromPerson} owes ${s.toPerson}',
-                                          style: const TextStyle(fontWeight: FontWeight.w600),
-                                        ),
-                                        Text(
-                                          '₹${NumberFormat('#,##,##0.00').format(s.amount)}',
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold, color: Colors.orange),
-                                        ),
-                                      ],
-                                    ),
-                                  ))
-                              .toList(),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              const Text('Expenses Log', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-
-              if (expenses.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Center(child: Text('No group expenses added yet.')),
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(currentGroup.title),
+            actions: [
+              if (!currentGroup.isSettled)
+                TextButton.icon(
+                  icon: const Icon(Icons.check_circle_outline, color: Colors.greenAccent),
+                  label: const Text('Settle', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                  onPressed: () => _showSettleSplitDialog(context, currentGroup),
                 )
               else
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: expenses.length,
-                  itemBuilder: (context, index) {
-                    final exp = expenses[index];
+                TextButton.icon(
+                  icon: const Icon(Icons.replay_rounded, color: Colors.amberAccent),
+                  label: const Text('Reopen', style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold)),
+                  onPressed: () => _financeService.reopenGroupEvent(currentGroup.id),
+                ),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _showAddExpenseDialog(context, currentGroup),
+            icon: const Icon(Icons.receipt),
+            label: const Text('Add Expense'),
+          ),
+          body: StreamBuilder<List<GroupExpense>>(
+            stream: _financeService.getGroupExpensesStream(currentGroup.id),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        title: Text(exp.description, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(
-                          'Paid by ${exp.payerName} • Split among ${exp.involvedMembers.join(", ")}',
+              final expenses = snapshot.data ?? [];
+              final settlements = _financeService.calculateGroupBalances(currentGroup.members, expenses);
+
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // SPLIT OVERVIEW & SETTLEMENT CARD (If created from split transaction or has totalAmount)
+                  if (currentGroup.totalAmount > 0 || currentGroup.isSettled) ...[
+                    Card(
+                      elevation: isDark ? 2 : 1,
+                      color: isDark ? const Color(0xFF1E293B) : Colors.indigo.shade50,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(
+                          color: currentGroup.isSettled
+                              ? Colors.green.withValues(alpha: 0.5)
+                              : Colors.indigoAccent.withValues(alpha: 0.4),
+                          width: 1.5,
                         ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              '₹${NumberFormat('#,##,##0').format(exp.amount)}',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      currentGroup.isSettled ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
+                                      color: currentGroup.isSettled ? Colors.greenAccent : Colors.amberAccent,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      currentGroup.isSettled ? 'Group Split Settled' : 'Split Collection Progress',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDark ? Colors.white : Colors.indigo.shade900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: currentGroup.isSettled ? Colors.green.withValues(alpha: 0.2) : Colors.amber.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: currentGroup.isSettled ? Colors.greenAccent : Colors.amber,
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    currentGroup.isSettled ? '✓ Complete' : 'Active',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: currentGroup.isSettled ? Colors.greenAccent : Colors.amber,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.grey),
-                              onPressed: () => _financeService.deleteGroupExpense(exp.id),
+                            if (currentGroup.settledNote.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                'Note: ${currentGroup.settledNote}',
+                                style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black87, fontStyle: FontStyle.italic),
+                              ),
+                            ],
+                            const SizedBox(height: 14),
+                            // Metrics Grid
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildMetricTile(
+                                    label: 'Total Bill',
+                                    value: '₹${currentGroup.totalAmount.toStringAsFixed(0)}',
+                                    color: isDark ? Colors.white : Colors.black87,
+                                    isDark: isDark,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildMetricTile(
+                                    label: 'My Share',
+                                    value: '₹${currentGroup.myShare.toStringAsFixed(0)}',
+                                    color: Colors.blueAccent,
+                                    isDark: isDark,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildMetricTile(
+                                    label: 'To Collect',
+                                    value: '₹${(currentGroup.totalAmount - currentGroup.myShare).toStringAsFixed(0)}',
+                                    color: Colors.orangeAccent,
+                                    isDark: isDark,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildMetricTile(
+                                    label: 'Collected So Far',
+                                    value: '₹${currentGroup.collectedAmount.toStringAsFixed(0)}',
+                                    color: Colors.tealAccent,
+                                    isDark: isDark,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildMetricTile(
+                                    label: 'Pending Balance',
+                                    value: '₹${pendingToCollect.toStringAsFixed(0)}',
+                                    color: pendingToCollect <= 0 ? Colors.greenAccent : Colors.amberAccent,
+                                    isDark: isDark,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            // Progress bar
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: LinearProgressIndicator(
+                                value: (currentGroup.totalAmount - currentGroup.myShare) > 0
+                                    ? (currentGroup.collectedAmount / (currentGroup.totalAmount - currentGroup.myShare)).clamp(0.0, 1.0)
+                                    : 1.0,
+                                minHeight: 8,
+                                backgroundColor: isDark ? Colors.black38 : Colors.grey.shade300,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  currentGroup.isSettled || pendingToCollect <= 0 ? Colors.green : Colors.tealAccent,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            // Settle Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: currentGroup.isSettled ? Colors.grey.shade800 : Colors.teal.shade700,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                icon: Icon(
+                                  currentGroup.isSettled ? Icons.replay_rounded : Icons.task_alt_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  currentGroup.isSettled
+                                      ? 'Reopen Split for More Collections'
+                                      : 'Settle & Close Split (Even with Small Diff)',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                onPressed: () {
+                                  if (currentGroup.isSettled) {
+                                    _financeService.reopenGroupEvent(currentGroup.id);
+                                  } else {
+                                    _showSettleSplitDialog(context, currentGroup);
+                                  }
+                                },
+                              ),
                             ),
                           ],
                         ),
                       ),
-                    );
-                  },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // REPAYMENTS STREAM (Incoming credits linked to this split)
+                  StreamBuilder<List<SmsTransaction>>(
+                    stream: _financeService.getRepaymentsForGroupStream(currentGroup.id),
+                    builder: (context, repSnap) {
+                      final repayments = repSnap.data ?? [];
+                      if (repayments.isEmpty) return const SizedBox.shrink();
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.handshake_rounded, size: 18, color: Colors.teal),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Repayments Received (${repayments.length})',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.tealAccent : Colors.teal.shade900,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          ...repayments.map((r) => Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF0F172A) : Colors.teal.shade50,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          r.payee.isNotEmpty ? r.payee : 'Friend',
+                                          style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
+                                        ),
+                                        Text(
+                                          DateFormat('d MMM, h:mm a').format(r.timestamp),
+                                          style: TextStyle(fontSize: 11, color: isDark ? Colors.white60 : Colors.black54),
+                                        ),
+                                      ],
+                                    ),
+                                    Text(
+                                      '+₹${r.amount.toStringAsFixed(2)}',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.green),
+                                    ),
+                                  ],
+                                ),
+                              )),
+                          const SizedBox(height: 16),
+                        ],
+                      );
+                    },
+                  ),
+
+                  // Members list with Add Member button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Group Members (${currentGroup.members.length}):', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      TextButton.icon(
+                        icon: const Icon(Icons.person_add_alt_1, size: 16),
+                        label: const Text('Add Member', style: TextStyle(fontSize: 12)),
+                        onPressed: () => _showAddMemberDialog(context, currentGroup),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ...currentGroup.members.map((m) => Chip(
+                            avatar: CircleAvatar(child: Text(m[0].toUpperCase())),
+                            label: Text(m),
+                          )),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Settlement Matrix (Who Owes Whom)
+                  Card(
+                    color: isDark ? const Color(0xFF1E293B) : Colors.orange.shade50,
+                    elevation: isDark ? 2 : 1,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                        color: isDark ? Colors.orange.withValues(alpha: 0.3) : Colors.orange.shade200,
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.swap_horiz, color: Colors.orange),
+                              const SizedBox(width: 8),
+                              Text('Settlement Matrix (Who Owes Whom)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: isDark ? Colors.orange.shade200 : Colors.black87,
+                                  )),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          if (settlements.isEmpty)
+                            Text(
+                              'All settled up! No pending balances in this group.',
+                              style: TextStyle(
+                                color: isDark ? Colors.white70 : Colors.black54,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            )
+                          else
+                            Column(
+                              children: settlements
+                                  .map((s) => Container(
+                                        margin: const EdgeInsets.only(bottom: 6),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                        decoration: BoxDecoration(
+                                          color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: isDark ? Colors.white12 : Colors.grey.shade200,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              '${s.fromPerson} owes ${s.toPerson}',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                color: isDark ? Colors.white : Colors.black87,
+                                              ),
+                                            ),
+                                            Text(
+                                              '₹${NumberFormat('#,##,##0.00').format(s.amount)}',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: isDark ? Colors.amberAccent : Colors.orange.shade800,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ))
+                                  .toList(),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  const Text('Expenses Log', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+
+                  if (expenses.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Center(child: Text('No group expenses added yet.')),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: expenses.length,
+                      itemBuilder: (context, index) {
+                        final exp = expenses[index];
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: ListTile(
+                            title: Text(exp.description, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Paid by ${exp.payerName} • Split among ${exp.involvedMembers.length} members',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark ? Colors.white70 : Colors.black54,
+                                  ),
+                                ),
+                                if (exp.customSplit.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: exp.customSplit.entries.map((e) => Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50,
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: isDark ? Colors.blue.shade800 : Colors.blue.shade100,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '${e.key}: ₹${e.value.toStringAsFixed(0)}',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark ? Colors.cyanAccent : Colors.blue.shade900,
+                                        ),
+                                      ),
+                                    )).toList(),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '₹${NumberFormat('#,##,##0').format(exp.amount)}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: isDark ? Colors.greenAccent : Colors.green.shade800,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                                  onPressed: () => _financeService.deleteGroupExpense(exp.id),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAddExpenseDialog(BuildContext context, [GroupEvent? liveGroup]) {
+    final activeGroup = liveGroup ?? widget.group;
+    final descCtrl = TextEditingController();
+    final amountCtrl = TextEditingController();
+    String payer = activeGroup.members.isNotEmpty ? activeGroup.members.first : 'You';
+    final Set<String> selectedInvolved = Set.from(activeGroup.members);
+    final Map<String, TextEditingController> memberAmountCtrls = {
+      for (final m in activeGroup.members) m: TextEditingController()
+    };
+    final Map<String, bool> manuallyEdited = {
+      for (final m in activeGroup.members) m: false
+    };
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+
+          void splitEqually() {
+            final total = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+            if (total <= 0 || selectedInvolved.isEmpty) return;
+            final perMember = (total / selectedInvolved.length).toStringAsFixed(2);
+            setDialogState(() {
+              for (final m in activeGroup.members) {
+                if (selectedInvolved.contains(m)) {
+                  memberAmountCtrls[m]?.text = perMember;
+                } else {
+                  memberAmountCtrls[m]?.text = '';
+                }
+                manuallyEdited[m] = false;
+              }
+            });
+          }
+
+          void autoSplitRest() {
+            final total = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+            if (total <= 0 || selectedInvolved.isEmpty) return;
+
+            double manualSum = 0.0;
+            final uneditedMembers = <String>[];
+
+            for (final m in selectedInvolved) {
+              if (manuallyEdited[m] == true) {
+                final amt = double.tryParse(memberAmountCtrls[m]?.text.trim() ?? '') ?? 0.0;
+                manualSum += amt;
+              } else {
+                uneditedMembers.add(m);
+              }
+            }
+
+            if (uneditedMembers.isEmpty || uneditedMembers.length == selectedInvolved.length) {
+              final withVal = selectedInvolved.where((m) =>
+                  (double.tryParse(memberAmountCtrls[m]?.text.trim() ?? '') ?? 0.0) > 0).toList();
+              final withoutVal = selectedInvolved.where((m) =>
+                  (double.tryParse(memberAmountCtrls[m]?.text.trim() ?? '') ?? 0.0) <= 0).toList();
+
+              if (withoutVal.isNotEmpty && withVal.isNotEmpty) {
+                double valSum = 0.0;
+                for (final m in withVal) {
+                  valSum += double.tryParse(memberAmountCtrls[m]?.text.trim() ?? '') ?? 0.0;
+                }
+                final remaining = total - valSum;
+                if (remaining >= 0) {
+                  final perPerson = (remaining / withoutVal.length).toStringAsFixed(2);
+                  setDialogState(() {
+                    for (final m in withoutVal) {
+                      memberAmountCtrls[m]?.text = perPerson;
+                    }
+                  });
+                  return;
+                }
+              }
+            }
+
+            final remaining = total - manualSum;
+            if (remaining >= 0 && uneditedMembers.isNotEmpty) {
+              final perPerson = (remaining / uneditedMembers.length).toStringAsFixed(2);
+              setDialogState(() {
+                for (final m in uneditedMembers) {
+                  memberAmountCtrls[m]?.text = perPerson;
+                }
+              });
+            }
+          }
+
+          double currentAllocated() {
+            double sum = 0.0;
+            for (final m in selectedInvolved) {
+              sum += double.tryParse(memberAmountCtrls[m]?.text.trim() ?? '') ?? 0.0;
+            }
+            return sum;
+          }
+
+          final total = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+          final allocated = currentAllocated();
+          final diff = total - allocated;
+
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.group_add_rounded, color: Colors.blueAccent),
+                SizedBox(width: 8),
+                Text('Add Group Expense'),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: descCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Expense Description (e.g. Dinner, Badminton, Fuel)',
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: amountCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Total Amount (₹)',
+                        prefixText: '₹ ',
+                        isDense: true,
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: payer,
+                      decoration: const InputDecoration(labelText: 'Paid By', isDense: true),
+                      items: activeGroup.members
+                          .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                          .toList(),
+                      onChanged: (val) => payer = val!,
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Split Among:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        Wrap(
+                          spacing: 4,
+                          children: [
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              icon: const Icon(Icons.balance, size: 13),
+                              label: const Text('Split Equally', style: TextStyle(fontSize: 10)),
+                              onPressed: splitEqually,
+                            ),
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              icon: const Icon(Icons.auto_awesome, size: 13),
+                              label: const Text('Auto-Split Rest', style: TextStyle(fontSize: 10)),
+                              onPressed: autoSplitRest,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    if (total > 0) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: (diff.abs() < 0.05 && allocated > 0)
+                              ? Colors.green.withValues(alpha: 0.12)
+                              : (diff > 0.05)
+                                  ? Colors.orange.withValues(alpha: 0.12)
+                                  : Colors.red.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: (diff.abs() < 0.05 && allocated > 0)
+                                ? Colors.green.shade400
+                                : (diff > 0.05)
+                                    ? Colors.orange.shade400
+                                    : Colors.red.shade400,
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              (diff.abs() < 0.05 && allocated > 0)
+                                  ? Icons.check_circle_outline_rounded
+                                  : Icons.info_outline_rounded,
+                              size: 14,
+                              color: (diff.abs() < 0.05 && allocated > 0)
+                                  ? Colors.green
+                                  : (diff > 0.05)
+                                      ? Colors.orange
+                                      : Colors.red,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                (diff.abs() < 0.05 && allocated > 0)
+                                    ? 'Perfect! Total ₹${total.toStringAsFixed(2)} matches split'
+                                    : (diff > 0.05)
+                                        ? 'Remaining: ₹${diff.toStringAsFixed(2)} to allocate'
+                                        : '⚠️ Overallocated by ₹${(-diff).toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: (diff.abs() < 0.05 && allocated > 0)
+                                      ? Colors.green
+                                      : (diff > 0.05)
+                                          ? Colors.orange
+                                          : Colors.red,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    ...activeGroup.members.map(
+                      (m) {
+                        final isSelected = selectedInvolved.contains(m);
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? (isDark ? const Color(0xFF1E293B) : Colors.blue.shade50)
+                                : (isDark ? Colors.black12 : Colors.grey.shade100),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isSelected
+                                  ? (isDark ? Colors.blue.shade700 : Colors.blue.shade200)
+                                  : Colors.transparent,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Checkbox(
+                                value: isSelected,
+                                visualDensity: VisualDensity.compact,
+                                onChanged: (checked) {
+                                  setDialogState(() {
+                                    if (checked == true) {
+                                      selectedInvolved.add(m);
+                                    } else {
+                                      selectedInvolved.remove(m);
+                                      memberAmountCtrls[m]?.text = '';
+                                      manuallyEdited[m] = false;
+                                    }
+                                  });
+                                },
+                              ),
+                              Expanded(
+                                child: Text(
+                                  m,
+                                  style: TextStyle(
+                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                    color: isSelected
+                                        ? (isDark ? Colors.white : Colors.black87)
+                                        : Colors.grey,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 90,
+                                height: 36,
+                                child: TextField(
+                                  controller: memberAmountCtrls[m],
+                                  enabled: isSelected,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  decoration: InputDecoration(
+                                    prefixText: '₹',
+                                    prefixStyle: const TextStyle(fontSize: 11),
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    hintText: '0.00',
+                                    hintStyle: const TextStyle(fontSize: 11, color: Colors.grey),
+                                  ),
+                                  onChanged: (_) {
+                                    manuallyEdited[m] = true;
+                                    setDialogState(() {});
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () {
+                  if (descCtrl.text.trim().isEmpty) return;
+                  final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+                  if (amt <= 0 || selectedInvolved.isEmpty) return;
+
+                  final Map<String, double> customSplit = {};
+                  for (final m in selectedInvolved) {
+                    final val = double.tryParse(memberAmountCtrls[m]?.text.trim() ?? '') ?? 0.0;
+                    if (val > 0) {
+                      customSplit[m] = val;
+                    }
+                  }
+
+                  if (customSplit.isNotEmpty) {
+                    final sum = customSplit.values.fold(0.0, (a, b) => a + b);
+                    if ((sum - amt).abs() > 0.5) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Warning: Split sum (₹${sum.toStringAsFixed(2)}) does not match total amount (₹${amt.toStringAsFixed(2)}). Please check or tap Auto-Split Rest.',
+                          ),
+                          backgroundColor: Colors.orange.shade800,
+                        ),
+                      );
+                      return;
+                    }
+                  }
+
+                  _financeService.addGroupExpense(GroupExpense(
+                    id: '',
+                    groupId: activeGroup.id,
+                    description: descCtrl.text.trim(),
+                    amount: amt,
+                    payerName: payer,
+                    involvedMembers: selectedInvolved.toList(),
+                    customSplit: customSplit,
+                    date: DateTime.now(),
+                  ));
+                  Navigator.pop(context);
+                },
+                child: const Text('Add Expense'),
+              ),
             ],
           );
         },
@@ -4825,84 +5737,128 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
     );
   }
 
-  void _showAddExpenseDialog(BuildContext context) {
-    final descCtrl = TextEditingController();
-    final amountCtrl = TextEditingController();
-    String payer = widget.group.members.first;
-    final Set<String> selectedInvolved = Set.from(widget.group.members);
+  void _showSettleSplitDialog(BuildContext context, GroupEvent group) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pending = (group.totalAmount - group.myShare - group.collectedAmount);
+    final noteCtrl = TextEditingController();
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add Group Expense'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: descCtrl,
-                  decoration: const InputDecoration(labelText: 'Expense Description (e.g. Dinner, Fuel)'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amountCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Total Amount (₹)'),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: payer,
-                  decoration: const InputDecoration(labelText: 'Paid By'),
-                  items: widget.group.members
-                      .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-                      .toList(),
-                  onChanged: (val) => payer = val!,
-                ),
-                const SizedBox(height: 12),
-                const Text('Split Among:', style: TextStyle(fontWeight: FontWeight.bold)),
-                ...widget.group.members.map(
-                  (m) => CheckboxListTile(
-                    title: Text(m),
-                    value: selectedInvolved.contains(m),
-                    onChanged: (checked) {
-                      setDialogState(() {
-                        if (checked == true) {
-                          selectedInvolved.add(m);
-                        } else {
-                          selectedInvolved.remove(m);
-                        }
-                      });
-                    },
-                  ),
-                ),
-              ],
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        title: Row(
+          children: const [
+            Icon(Icons.check_circle_rounded, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Settle Split & Close'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Pending Balance: ₹${pending.abs().toStringAsFixed(2)} ${pending > 0 ? "deficit" : (pending < 0 ? "surplus" : "balanced")}',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                color: pending.abs() < 1 ? Colors.green : (pending > 0 ? Colors.amber : Colors.blue),
+              ),
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () {
-                if (descCtrl.text.trim().isEmpty) return;
-                final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
-                if (amt <= 0 || selectedInvolved.isEmpty) return;
-
-                _financeService.addGroupExpense(GroupExpense(
-                  id: '',
-                  groupId: widget.group.id,
-                  description: descCtrl.text.trim(),
-                  amount: amt,
-                  payerName: payer,
-                  involvedMembers: selectedInvolved.toList(),
-                  date: DateTime.now(),
-                ));
-                Navigator.pop(context);
-              },
-              child: const Text('Add Expense'),
+            const SizedBox(height: 8),
+            Text(
+              'Even if there is a small difference (e.g. ₹5 or ₹10 loss/profit), you can close this split now so there is no confusion remaining.',
+              style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black87),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteCtrl,
+              decoration: InputDecoration(
+                hintText: 'Settlement note (e.g. ₹5 discount / settled in cash)',
+                hintStyle: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.black45),
+                filled: true,
+                fillColor: isDark ? const Color(0xFF0F172A) : Colors.grey.shade100,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+              ),
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _financeService.settleGroupEvent(group.id, note: noteCtrl.text.trim());
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Split marked as fully settled!'), backgroundColor: Colors.green),
+                );
+              }
+            },
+            child: const Text('Confirm Settle', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddMemberDialog(BuildContext context, GroupEvent group) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final nameCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        title: const Text('Add Group Member'),
+        content: TextField(
+          controller: nameCtrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Enter member name (e.g. Harish)',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              if (name.isNotEmpty) {
+                Navigator.pop(ctx);
+                await _financeService.addMemberToGroup(group.id, name);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricTile({
+    required String label,
+    required String value,
+    required Color color,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0F172A) : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 10, color: isDark ? Colors.white60 : Colors.black54)),
+          const SizedBox(height: 2),
+          Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
+        ],
       ),
     );
   }

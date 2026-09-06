@@ -99,6 +99,9 @@ export {
 export {
     triggerNightlyExpenseNotifier
 } from "./modules/finance/nightlyExpenseNotifier";
+export {
+    parseVoiceExpensesWithAI
+} from "./modules/finance/voiceExpenseParser";
 
 // Consolidated Master Schedulers
 export {

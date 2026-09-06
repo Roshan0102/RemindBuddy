@@ -559,6 +559,15 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             console.log(`[JobDiscovery] Skipping summary email to ${userEmail}: job_assistant_email is disabled in preferences.`);
         }
     }
+    // Automatically check inbox for new recruiter/founder replies after finishing application task
+    try {
+        const { checkUserJobReplies } = await Promise.resolve().then(() => require("./replyTracker"));
+        console.log(`[JobDiscovery] Automatically scanning inbox for recruiter/founder replies for user ${uid}...`);
+        await checkUserJobReplies(uid);
+    }
+    catch (inboxErr) {
+        console.warn(`[JobDiscovery] Post-task inbox check error for user ${uid}:`, inboxErr.message || inboxErr);
+    }
     return {
         success: true,
         appliedCount: successfullyAppliedJobs.length,
@@ -599,7 +608,7 @@ exports.processAutoApplyUserTask = functions.runWith({ timeoutSeconds: 300, memo
  * Twice-Daily Automated Job Discovery & Auto-Apply Dispatcher (10 AM & 10 PM IST)
  */
 async function internalAutoJobDiscoveryAndApply() {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f;
     console.log("[internalAutoJobDiscoveryAndApply] Starting twice-daily automated job discovery & apply dispatcher (10 AM & 10 PM IST)...");
     try {
         const usersSnap = await firebase_1.db.collection("users").get();
@@ -615,7 +624,7 @@ async function internalAutoJobDiscoveryAndApply() {
                 continue;
             }
             // 2. Must have uploaded a Master Resume or at least one Resume Profile
-            let hasResume = !!((_c = data.masterResume) === null || _c === void 0 ? void 0 : _c.base64);
+            let hasResume = !!(((_c = data.masterResume) === null || _c === void 0 ? void 0 : _c.base64) || ((_d = data.masterResume) === null || _d === void 0 ? void 0 : _d.base64Data));
             if (!hasResume) {
                 const profilesSnap = await firebase_1.db.collection("users").doc(uid).collection("resume_profiles").limit(1).get();
                 if (!profilesSnap.empty) {
@@ -624,14 +633,14 @@ async function internalAutoJobDiscoveryAndApply() {
             }
             if (!hasResume) {
                 const resumeDoc = await firebase_1.db.collection("users").doc(uid).collection("job_profiles").doc("master_resume").get();
-                hasResume = !!(((_d = resumeDoc.data()) === null || _d === void 0 ? void 0 : _d.base64Data) || ((_e = resumeDoc.data()) === null || _e === void 0 ? void 0 : _e.base64));
+                hasResume = !!(((_e = resumeDoc.data()) === null || _e === void 0 ? void 0 : _e.base64Data) || ((_f = resumeDoc.data()) === null || _f === void 0 ? void 0 : _f.base64));
             }
             if (!hasResume) {
                 console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: Master Resume or Resume Profile PDF not uploaded.`);
                 continue;
             }
             // 3. Must have Gmail & App Password configured
-            const emailConfig = data.jobEmailConfig || {};
+            const emailConfig = data.emailConfig || data.jobEmailConfig || {};
             if (!emailConfig.email || !emailConfig.appPassword) {
                 console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: Gmail & App Password not configured.`);
                 continue;
