@@ -13,6 +13,7 @@ import '../services/storage_service.dart';
 import '../services/shift_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/log_service.dart';
+import '../services/app_file_picker/app_file_picker.dart';
 import '../widgets/web_image_viewer.dart';
 
 class MyShiftsScreen extends StatefulWidget {
@@ -448,17 +449,17 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     const SizedBox(height: 16),
                     ElevatedButton.icon(
                       onPressed: () async {
-                        final ImagePicker picker = ImagePicker();
-                        final XFile? img = await picker.pickImage(
-                          source: ImageSource.gallery,
-                          maxWidth: 1600,
-                          maxHeight: 1600,
-                          imageQuality: 82,
-                        );
-                        if (img != null) {
+                        try {
+                          final picked = await AppFilePicker.pickImage();
+                          if (picked != null) {
+                            setDialogState(() {
+                              selectedImage = picked.toXFile();
+                              errorMessage = '';
+                            });
+                          }
+                        } catch (e) {
                           setDialogState(() {
-                            selectedImage = img;
-                            errorMessage = '';
+                            errorMessage = 'Failed to select image: $e';
                           });
                         }
                       },
@@ -1087,57 +1088,66 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       for (var s in _shifts) s.date: s,
     };
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF141A26) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade200,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Days of the week row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: weekHeaders.map((day) {
-              return Expanded(
-                child: Center(
-                  child: Text(
-                    day,
-                    style: GoogleFonts.outfit(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 10),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth > 650;
+        final double columnWidth = (constraints.maxWidth - 32 - 36) / 7;
+        final double childAspectRatio = isWide
+            ? (columnWidth / 68.0).clamp(1.15, 1.85)
+            : 0.82;
 
-          // Monthly Calendar Grid
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: firstWeekday + daysInMonth,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              crossAxisSpacing: 6,
-              mainAxisSpacing: 6,
-              childAspectRatio: 0.82,
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF141A26) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade200,
             ),
-            itemBuilder: (context, index) {
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // Days of the week row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: weekHeaders.map((day) {
+                  return Expanded(
+                    child: Center(
+                      child: Text(
+                        day,
+                        style: GoogleFonts.outfit(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 10),
+
+              // Monthly Calendar Grid
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: firstWeekday + daysInMonth,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 7,
+                  crossAxisSpacing: 6,
+                  mainAxisSpacing: 6,
+                  childAspectRatio: childAspectRatio,
+                ),
+                itemBuilder: (context, index) {
+
               if (index < firstWeekday) {
                 return const SizedBox.shrink(); // Empty slot before 1st of month
               }
@@ -1240,7 +1250,11 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         ],
       ),
     );
+      },
+    );
   }
+
+
 
   Widget _buildLegendItem(String label, Color color) {
     return Row(
@@ -1617,7 +1631,12 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       ),
       body: Column(
         children: [
-          _buildMonthNavigation(isDark),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 850),
+              child: _buildMonthNavigation(isDark),
+            ),
+          ),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -1670,14 +1689,19 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         onRefresh: _loadShifts,
                         child: SingleChildScrollView(
                           physics: const BouncingScrollPhysics(),
-                          child: Column(
-                            children: [
-                              _buildNextShiftHeroCard(isDark),
-                              _buildCalendarHeatmap(isDark),
-                              _buildStatsDashboard(isDark),
-                              _buildUpcomingList(isDark),
-                              const SizedBox(height: 96),
-                            ],
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 850),
+                              child: Column(
+                                children: [
+                                  _buildNextShiftHeroCard(isDark),
+                                  _buildCalendarHeatmap(isDark),
+                                  _buildStatsDashboard(isDark),
+                                  _buildUpcomingList(isDark),
+                                  const SizedBox(height: 96),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),

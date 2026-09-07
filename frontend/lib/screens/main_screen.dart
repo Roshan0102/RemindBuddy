@@ -721,7 +721,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       'astro_calendar',
       'gcp_cost',
     ];
-    return allModules.where((id) => _moduleRegistry.containsKey(id)).toList();
+    return allModules.where((id) {
+      if (id == 'home') return true;
+      if (id == 'vault') return _isVaultEnabled;
+      if (id == 'walkins') {
+        return (_enabledModules.contains('walkin') || _enabledModules.contains('walkins')) &&
+            _moduleRegistry.containsKey(id);
+      }
+      return _enabledModules.contains(id) && _moduleRegistry.containsKey(id);
+    }).toList();
   }
 
   int get _menuIndex {
@@ -1158,13 +1166,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   'color': Colors.blueAccent,
                   'action': () => _selectTabOrPush('job_assistant'),
                 },
-              {
-                'id': 'finance',
-                'name': 'Finance',
-                'icon': Icons.account_balance_wallet_outlined,
-                'color': Colors.teal,
-                'action': () => _selectTabOrPush('finance'),
-              },
+              if (_enabledModules.contains('finance'))
+                {
+                  'id': 'finance',
+                  'name': 'Finance',
+                  'icon': Icons.account_balance_wallet_outlined,
+                  'color': Colors.teal,
+                  'action': () => _selectTabOrPush('finance'),
+                },
               if (_enabledModules.contains('voice_assistant'))
                 {
                   'id': 'voice_assistant',
@@ -1525,29 +1534,29 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 const Divider(),
                 const SizedBox(height: 8),
 
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Text(
-                    'OTHER UTILITIES',
-                    style: GoogleFonts.outfit(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey,
-                      letterSpacing: 1.2,
+                if (_enabledModules.contains('voice_assistant')) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Text(
+                      'OTHER UTILITIES',
+                      style: GoogleFonts.outfit(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                        letterSpacing: 1.2,
+                      ),
                     ),
                   ),
-                ),
-
-                _buildSidebarItem(
-                  icon: Icons.mic,
-                  color: Colors.redAccent,
-                  title: 'Voice Assistant',
-                  onTap: _openVoiceAssistant,
-                ),
-
-                const SizedBox(height: 16),
-                const Divider(),
-                const SizedBox(height: 8),
+                  _buildSidebarItem(
+                    icon: Icons.mic,
+                    color: Colors.redAccent,
+                    title: 'Voice Assistant',
+                    onTap: _openVoiceAssistant,
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                ],
 
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

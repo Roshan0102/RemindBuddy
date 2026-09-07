@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/secure_document.dart';
 import '../models/vault_member_profile.dart';
 import '../services/vault_service.dart';
+import '../services/app_file_picker/app_file_picker.dart';
 
 class AddDocumentScreen extends StatefulWidget {
   final SecureDocument? documentToEdit;
@@ -23,7 +23,6 @@ class AddDocumentScreen extends StatefulWidget {
 
 class _AddDocumentScreenState extends State<AddDocumentScreen> {
   final VaultService _vaultService = VaultService();
-  final ImagePicker _imagePicker = ImagePicker();
 
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
@@ -101,16 +100,14 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final pickedFile = await _imagePicker.pickImage(
-        source: source,
-        imageQuality: 85,
+      final picked = await AppFilePicker.pickImage(
+        fromCamera: source == ImageSource.camera,
       );
 
-      if (pickedFile != null) {
-        final bytes = await pickedFile.readAsBytes();
+      if (picked != null) {
         setState(() {
-          _newAttachmentsBytes.add(bytes);
-          _newAttachmentsNames.add(pickedFile.name);
+          _newAttachmentsBytes.add(picked.bytes);
+          _newAttachmentsNames.add(picked.name);
         });
       }
     } catch (e) {
@@ -124,23 +121,10 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
   Future<void> _pickPDF() async {
     try {
-      FilePickerResult? result;
-      try {
-        result = await FilePicker.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: ['pdf'],
-          withData: true,
-        );
-      } catch (_) {
-        result = await FilePicker.pickFiles(
-          type: FileType.any,
-          withData: true,
-        );
-      }
+      final picked = await AppFilePicker.pickPdf();
 
-      if (result != null && result.files.isNotEmpty) {
-        final file = result.files.first;
-        if (!file.name.toLowerCase().endsWith('.pdf')) {
+      if (picked != null) {
+        if (!picked.name.toLowerCase().endsWith('.pdf')) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Please select a valid PDF file.')),
@@ -149,12 +133,10 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           return;
         }
 
-        if (file.bytes != null) {
-          setState(() {
-            _newAttachmentsBytes.add(file.bytes!);
-            _newAttachmentsNames.add(file.name);
-          });
-        }
+        setState(() {
+          _newAttachmentsBytes.add(picked.bytes);
+          _newAttachmentsNames.add(picked.name);
+        });
       }
     } catch (e) {
       if (mounted) {

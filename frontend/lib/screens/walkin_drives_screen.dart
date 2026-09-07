@@ -310,8 +310,7 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
     if (user == null) return;
 
     final rolesController = TextEditingController(text: _walkinRoles.join(', '));
-    final locationController = TextEditingController(
-        text: _walkinLocation.isEmpty ? 'Bengaluru' : _walkinLocation);
+    final locationController = TextEditingController(text: _walkinLocation);
     bool isSavingRoles = false;
 
     await showDialog(
@@ -375,7 +374,7 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
                             .where((s) => s.isNotEmpty)
                             .toList();
 
-                        final loc = locationController.text.trim().isEmpty ? 'Bengaluru' : locationController.text.trim();
+                        final loc = locationController.text.trim();
 
                         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
                           'walkinRoles': list,

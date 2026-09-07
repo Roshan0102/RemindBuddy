@@ -7,12 +7,14 @@ import 'screens/main_screen.dart';
 import 'screens/auth_screen.dart';
 import 'services/notification_service.dart';
 import 'firebase_options.dart';
+import 'services/web_plugin_init/web_plugin_init.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  ensureWebPluginsInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );

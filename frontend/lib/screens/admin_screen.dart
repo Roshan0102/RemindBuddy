@@ -359,19 +359,25 @@ class _AdminScreenState extends State<AdminScreen> {
         context: context,
         barrierDismissible: false,
         builder: (context) {
-          final List<String> tempSelected = List.from(existingUsernames);
+          final List<String> tempSelected = <String>[];
           return StatefulBuilder(
             builder: (context, setPopState) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
               return AlertDialog(
+                backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 title: Row(
                   children: [
-                    const Icon(Icons.people_alt, color: Colors.purple),
+                    const Icon(Icons.people_alt, color: Colors.purpleAccent),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Allowed Partners for @$username',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
                       ),
                     ),
                   ],
@@ -382,9 +388,12 @@ class _AdminScreenState extends State<AdminScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Select which existing users this new user is authorized to collaborate with:',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -405,11 +414,11 @@ class _AdminScreenState extends State<AdminScreen> {
                                 tempSelected.clear();
                               });
                             },
-                            child: const Text('Deselect All', style: TextStyle(fontSize: 12, color: Colors.red)),
+                            child: const Text('Deselect All', style: TextStyle(fontSize: 12, color: Colors.redAccent)),
                           ),
                         ],
                       ),
-                      const Divider(height: 12),
+                      Divider(height: 12, color: isDark ? Colors.white24 : Colors.grey.shade300),
                       Flexible(
                         child: SingleChildScrollView(
                           child: Wrap(
@@ -418,10 +427,25 @@ class _AdminScreenState extends State<AdminScreen> {
                             children: existingUsernames.map((u) {
                               final isChecked = tempSelected.contains(u);
                               return FilterChip(
-                                label: Text('@$u'),
+                                label: Text(
+                                  '@$u',
+                                  style: TextStyle(
+                                    color: isChecked
+                                        ? (isDark ? Colors.white : Colors.purple.shade900)
+                                        : (isDark ? Colors.white70 : Colors.black87),
+                                    fontWeight: isChecked ? FontWeight.bold : FontWeight.normal,
+                                    fontSize: 12.5,
+                                  ),
+                                ),
                                 selected: isChecked,
-                                selectedColor: Colors.purple.shade100,
-                                checkmarkColor: Colors.purple,
+                                selectedColor: isDark ? const Color(0xFF7C3AED) : Colors.purple.shade100,
+                                backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.grey.shade100,
+                                checkmarkColor: isDark ? Colors.white : Colors.purple,
+                                side: BorderSide(
+                                  color: isChecked
+                                      ? (isDark ? const Color(0xFFA855F7) : Colors.purple)
+                                      : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                                ),
                                 onSelected: (val) {
                                   setPopState(() {
                                     if (val) {
@@ -442,11 +466,11 @@ class _AdminScreenState extends State<AdminScreen> {
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(context, null),
-                    child: const Text('Cancel'),
+                    child: Text('Cancel', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700)),
                   ),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue.shade800,
+                      backgroundColor: isDark ? const Color(0xFF2563EB) : Colors.blue.shade800,
                       foregroundColor: Colors.white,
                     ),
                     onPressed: () => Navigator.pop(context, tempSelected),
@@ -1347,10 +1371,26 @@ $firebaseApkUrl
                                       final otherData = otherDoc.data() as Map<String, dynamic>;
                                       final otherUid = (otherData['uid'] ?? '').toString();
                                       final isAllowed = allowedCollaborators.contains(otherUsername) || allowedCollaborators.contains(otherUid);
-
+                                      final isDark = Theme.of(context).brightness == Brightness.dark;
                                       return FilterChip(
-                                        label: Text('@$otherUsername'),
+                                        label: Text(
+                                          '@$otherUsername',
+                                          style: TextStyle(
+                                            color: isAllowed
+                                                ? (isDark ? Colors.white : Colors.purple.shade900)
+                                                : (isDark ? Colors.white70 : Colors.black87),
+                                            fontSize: 12,
+                                          ),
+                                        ),
                                         selected: isAllowed,
+                                        selectedColor: isDark ? const Color(0xFF7C3AED) : Colors.purple.shade100,
+                                        backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.grey.shade100,
+                                        checkmarkColor: isDark ? Colors.white : Colors.purple,
+                                        side: BorderSide(
+                                          color: isAllowed
+                                              ? (isDark ? const Color(0xFFA855F7) : Colors.purple)
+                                              : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                                        ),
                                         onSelected: (val) => _toggleAllowedCollaborator(
                                           userId,
                                           otherUsername,

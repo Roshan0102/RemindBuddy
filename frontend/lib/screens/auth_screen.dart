@@ -551,63 +551,68 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                   ),
                   const SizedBox(height: 40),
 
-                  Card(
-                    elevation: 12,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    color: Colors.white.withValues(alpha: 0.95), 
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          children: [
-                            _buildTextField(
-                              controller: _emailController,
-                              label: 'Email or Username',
-                              icon: Icons.person_pin,
-                              validator: (val) {
-                                if (val == null || val.isEmpty) return 'Please enter your login';
-                                if (val.length < 3) return 'Login too short';
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            
-                            _buildTextField(
-                              controller: _passwordController,
-                              label: 'Password',
-                              icon: Icons.lock_outline,
-                              isPassword: true,
-                              validator: (val) => val != null && val.length > 5 ? null : 'Password too short (min 6)',
-                            ),
-                            
-                            const SizedBox(height: 30),
-                            
-                            SizedBox(
-                              width: double.infinity,
-                              height: 50,
-                              child: ElevatedButton(
-                                onPressed: _isLoading ? null : _submit,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue.shade800,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  elevation: 5,
+                  Builder(
+                    builder: (context) {
+                      final isDark = Theme.of(context).brightness == Brightness.dark;
+                      return Card(
+                        elevation: 12,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        color: isDark ? const Color(0xFF1E293B) : Colors.white.withValues(alpha: 0.95),
+                        child: Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                              children: [
+                                _buildTextField(
+                                  controller: _emailController,
+                                  label: 'Email or Username',
+                                  icon: Icons.person_pin,
+                                  validator: (val) {
+                                    if (val == null || val.isEmpty) return 'Please enter your login';
+                                    if (val.length < 3) return 'Login too short';
+                                    return null;
+                                  },
                                 ),
-                                child: _isLoading 
-                                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                  : Text(
-                                      'LOGIN',
-                                      style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold),
+                                const SizedBox(height: 16),
+                                
+                                _buildTextField(
+                                  controller: _passwordController,
+                                  label: 'Password',
+                                  icon: Icons.lock_outline,
+                                  isPassword: true,
+                                  validator: (val) => val != null && val.length > 5 ? null : 'Password too short (min 6)',
+                                ),
+                                
+                                const SizedBox(height: 30),
+                                
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 50,
+                                  child: ElevatedButton(
+                                    onPressed: _isLoading ? null : _submit,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: isDark ? const Color(0xFF2563EB) : Colors.blue.shade800,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      elevation: 5,
                                     ),
-                              ),
+                                    child: _isLoading 
+                                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      : Text(
+                                          'LOGIN',
+                                          style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold),
+                                        ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 ],
               );
@@ -620,27 +625,46 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     bool isPassword = false,
     String? Function(String?)? validator,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return TextFormField(
       controller: controller,
       obscureText: isPassword,
       validator: validator,
+      style: TextStyle(
+        color: isDark ? Colors.white : Colors.grey.shade900,
+        fontSize: 15,
+      ),
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.blue.shade800),
+        labelStyle: TextStyle(
+          color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+          fontSize: 14,
+        ),
+        prefixIcon: Icon(
+          icon, 
+          color: isDark ? const Color(0xFF60A5FA) : Colors.blue.shade800,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: BorderSide(
+            color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: BorderSide(
+            color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.blue, width: 2),
+          borderSide: BorderSide(
+            color: isDark ? const Color(0xFF38BDF8) : Colors.blue, 
+            width: 2,
+          ),
         ),
         filled: true,
-        fillColor: Colors.grey.shade50,
+        fillColor: isDark ? const Color(0xFF0F172A) : Colors.grey.shade50,
       ),
     );
   }

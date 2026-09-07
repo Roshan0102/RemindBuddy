@@ -1,8 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
@@ -15,6 +13,7 @@ import '../models/job_application.dart';
 import '../models/networking_lead.dart';
 import '../models/resume_profile.dart';
 import '../services/job_assistant_service.dart';
+import '../services/app_file_picker/app_file_picker.dart';
 import 'ai_keys_settings_screen.dart';
 import 'job_replies_screen.dart';
 
@@ -102,8 +101,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   final String _networkingCategoryFilter = 'all'; // 'all', 'founder', 'engineering_manager', 'talent_acquisition'
   String _networkingStatusFilter = 'pending'; // 'pending' (default: cards vanish when sent!), 'completed', 'all'
   final ScrollController _networkingScrollController = ScrollController();
-  List<String> _radarLocations = ['Bengaluru', 'Remote', 'India'];
-  List<String> _radarTechDomains = ['DevOps', 'Cloud', 'AWS', 'SRE'];
+  List<String> _radarLocations = [];
+  List<String> _radarTechDomains = [];
   final TextEditingController _newRadarLocController = TextEditingController();
   final TextEditingController _newRadarDomainController = TextEditingController();
   bool _isSavingRadarSettings = false;
@@ -238,12 +237,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         _isFresher = autoSettings['isFresher'] == true || (minE == 0 && maxE == 0);
         _minExpController.text = minE.toString();
         _maxExpController.text = maxE.toString();
-        _targetRolesController.text = targetRoles.isNotEmpty
-            ? targetRoles.join(', ')
-            : 'DevOps Engineer, Cloud Engineer, Site Reliability Engineer, Flutter Developer';
-        _locationsController.text = locations.isNotEmpty
-            ? locations.join(', ')
-            : 'Bengaluru, India, Remote';
+        _targetRolesController.text = targetRoles.join(', ');
+        _locationsController.text = locations.join(', ');
       });
 
       final radarSettings = await _service.getStartupRadarSettings();
@@ -251,8 +246,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       final radarTechs = List<String>.from(radarSettings['techDomains'] ?? []);
       if (mounted) {
         setState(() {
-          if (radarLocs.isNotEmpty) _radarLocations = radarLocs;
-          if (radarTechs.isNotEmpty) _radarTechDomains = radarTechs;
+          _radarLocations = radarLocs;
+          _radarTechDomains = radarTechs;
         });
       }
     }
@@ -359,22 +354,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           ),
                           onPressed: () async {
                             try {
-                              FilePickerResult? result;
-                              try {
-                                result = await FilePicker.pickFiles(
-                                  type: FileType.custom,
-                                  allowedExtensions: ['pdf'],
-                                  withData: true,
-                                );
-                              } catch (_) {
-                                result = await FilePicker.pickFiles(
-                                  type: FileType.any,
-                                  withData: true,
-                                );
-                              }
-                              if (result != null && result.files.isNotEmpty) {
-                                final f = result.files.first;
-                                if (!f.name.toLowerCase().endsWith('.pdf')) {
+                              final picked = await AppFilePicker.pickPdf();
+                              if (picked != null) {
+                                if (!picked.name.toLowerCase().endsWith('.pdf')) {
                                   if (dlgCtx.mounted) {
                                     ScaffoldMessenger.of(dlgCtx).showSnackBar(
                                       const SnackBar(content: Text('Please select a PDF file.')),
@@ -382,12 +364,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                   }
                                   return;
                                 }
-                                if (f.bytes != null) {
-                                  setDlgState(() {
-                                    selectedFileName = f.name;
-                                    selectedBase64 = base64Encode(f.bytes!);
-                                  });
-                                }
+                                setDlgState(() {
+                                  selectedFileName = picked.name;
+                                  selectedBase64 = base64Encode(picked.bytes);
+                                });
                               }
                             } catch (err) {
                               if (dlgCtx.mounted) {
@@ -814,23 +794,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
   Future<void> _pickMasterResume() async {
     try {
-      FilePickerResult? result;
-      try {
-        result = await FilePicker.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: ['pdf'],
-          withData: true,
-        );
-      } catch (_) {
-        result = await FilePicker.pickFiles(
-          type: FileType.any,
-          withData: true,
-        );
-      }
+      final picked = await AppFilePicker.pickPdf();
 
-      if (result != null && result.files.isNotEmpty) {
-        final file = result.files.first;
-        if (!file.name.toLowerCase().endsWith('.pdf')) {
+      if (picked != null) {
+        if (!picked.name.toLowerCase().endsWith('.pdf')) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Please select a valid PDF file for your resume.')),
@@ -839,21 +806,17 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           return;
         }
 
-        final bytes = file.bytes;
-        final fileName = file.name;
-
-        if (bytes != null) {
-          final b64 = base64Encode(bytes);
-          await _service.saveMasterResume(b64, fileName);
-          if (mounted) {
-            setState(() {
-              _resumeFileName = fileName;
-              _hasResume = true;
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Master Resume ($fileName) saved successfully!')),
-            );
-          }
+        final b64 = base64Encode(picked.bytes);
+        final fileName = picked.name;
+        await _service.saveMasterResume(b64, fileName);
+        if (mounted) {
+          setState(() {
+            _resumeFileName = fileName;
+            _hasResume = true;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Master Resume ($fileName) saved successfully!')),
+          );
         }
       }
     } catch (e) {
@@ -865,15 +828,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
+
   Future<void> _pickFromGallery() async {
     try {
-      final picker = ImagePicker();
-      final List<XFile> images = await picker.pickMultiImage();
-      if (images.isNotEmpty) {
+      final pickedFiles = await AppFilePicker.pickMultipleImages();
+      if (pickedFiles.isNotEmpty) {
+        final List<XFile> images = [];
         final List<String> base64List = [];
-        for (final img in images) {
-          final bytes = await img.readAsBytes();
-          base64List.add(base64Encode(bytes));
+        for (final img in pickedFiles) {
+          images.add(img.toXFile());
+          base64List.add(base64Encode(img.bytes));
         }
         setState(() {
           _selectedImageFiles.addAll(images);
@@ -891,44 +855,18 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
   Future<void> _pickFromFiles() async {
     try {
-      FilePickerResult? result = await FilePicker.pickFiles(
-        type: FileType.any,
+      final pickedFiles = await AppFilePicker.pickFiles(
+        allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'],
         allowMultiple: true,
-        withData: true,
       );
 
-      if (result != null && result.files.isNotEmpty) {
+      if (pickedFiles.isNotEmpty) {
         final List<XFile> images = [];
         final List<String> base64List = [];
 
-        for (final file in result.files) {
-          final nameLower = file.name.toLowerCase();
-          final isImage = nameLower.endsWith('.png') ||
-              nameLower.endsWith('.jpg') ||
-              nameLower.endsWith('.jpeg') ||
-              nameLower.endsWith('.webp') ||
-              nameLower.endsWith('.bmp');
-
-          if (isImage) {
-            Uint8List? bytes = file.bytes;
-            if (bytes == null && file.path != null && !kIsWeb) {
-              final ioFile = File(file.path!);
-              bytes = await ioFile.readAsBytes();
-            }
-            if (bytes != null) {
-              images.add(XFile.fromData(bytes, name: file.name));
-              base64List.add(base64Encode(bytes));
-            }
-          }
-        }
-
-        if (images.isEmpty) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Please select valid image files (.png, .jpg, .jpeg, .webp).')),
-            );
-          }
-          return;
+        for (final file in pickedFiles) {
+          images.add(file.toXFile());
+          base64List.add(base64Encode(file.bytes));
         }
 
         setState(() {
@@ -987,26 +925,31 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         ),
       );
     } else {
+      // On web / desktop (Ubuntu, macOS, Windows), directly open native file dialog
       try {
-        final picker = ImagePicker();
-        final List<XFile> images = await picker.pickMultiImage();
-        if (images.isNotEmpty) {
+        final pickedFiles = await AppFilePicker.pickMultipleImages();
+        if (pickedFiles.isNotEmpty) {
+          final List<XFile> images = [];
           final List<String> base64List = [];
-          for (final img in images) {
-            final bytes = await img.readAsBytes();
-            base64List.add(base64Encode(bytes));
+          for (final f in pickedFiles) {
+            images.add(f.toXFile());
+            base64List.add(base64Encode(f.bytes));
           }
           setState(() {
             _selectedImageFiles.addAll(images);
             _selectedImagesBase64.addAll(base64List);
           });
-          return;
         }
-      } catch (_) {
-        await _pickFromFiles();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error picking screenshots: $e')),
+          );
+        }
       }
     }
   }
+
 
   Future<void> _analyzePostersWithAI() async {
     if (_selectedImagesBase64.isEmpty) {
@@ -1369,8 +1312,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     try {
       await _service.saveAutoApplySettings(
         enabled: _autoApplyEnabled,
-        targetRoles: roles.isNotEmpty ? roles : ['DevOps Engineer', 'Cloud Engineer', 'Flutter Developer'],
-        locations: locs.isNotEmpty ? locs : ['Bengaluru', 'India', 'Remote'],
+        targetRoles: roles,
+        locations: locs,
         excludedCompanies: _excludedCompanies,
         minExpYears: minExp,
         maxExpYears: maxExp,
@@ -4052,7 +3995,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     style: GoogleFonts.outfit(fontSize: 13.5, fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text(
-                    '${_radarLocations.join(', ')} • ${_radarTechDomains.join(', ')}',
+                    _radarLocations.isEmpty && _radarTechDomains.isEmpty
+                        ? 'No target locations or domains configured'
+                        : '${_radarLocations.join(', ')} • ${_radarTechDomains.join(', ')}',
                     style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -4076,25 +4021,31 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               ),
                             ],
                           ),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: _radarLocations.map((loc) {
-                              return Chip(
-                                label: Text(loc, style: const TextStyle(fontSize: 11.5)),
-                                onDeleted: _radarLocations.length > 1
-                                    ? () {
+                          _radarLocations.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 4),
+                                  child: Text(
+                                    'No target locations set. Tap "+ Add Location" to add (e.g. Bengaluru, Remote, All)',
+                                    style: TextStyle(fontSize: 11.5, color: Colors.grey, fontStyle: FontStyle.italic),
+                                  ),
+                                )
+                              : Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  children: _radarLocations.map((loc) {
+                                    return Chip(
+                                      label: Text(loc, style: const TextStyle(fontSize: 11.5)),
+                                      onDeleted: () {
                                         setState(() {
                                           _radarLocations.remove(loc);
                                         });
                                         _saveRadarPreferences();
-                                      }
-                                    : null,
-                                deleteIconColor: Colors.grey,
-                                visualDensity: VisualDensity.compact,
-                              );
-                            }).toList(),
-                          ),
+                                      },
+                                      deleteIconColor: Colors.grey,
+                                      visualDensity: VisualDensity.compact,
+                                    );
+                                  }).toList(),
+                                ),
                           const SizedBox(height: 12),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -4107,25 +4058,31 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               ),
                             ],
                           ),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: _radarTechDomains.map((dom) {
-                              return Chip(
-                                label: Text(dom, style: const TextStyle(fontSize: 11.5)),
-                                onDeleted: _radarTechDomains.length > 1
-                                    ? () {
+                          _radarTechDomains.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 4),
+                                  child: Text(
+                                    'No target domains set. Tap "+ Add Domain" to add (e.g. DevOps, Cloud, AI/ML)',
+                                    style: TextStyle(fontSize: 11.5, color: Colors.grey, fontStyle: FontStyle.italic),
+                                  ),
+                                )
+                              : Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  children: _radarTechDomains.map((dom) {
+                                    return Chip(
+                                      label: Text(dom, style: const TextStyle(fontSize: 11.5)),
+                                      onDeleted: () {
                                         setState(() {
                                           _radarTechDomains.remove(dom);
                                         });
                                         _saveRadarPreferences();
-                                      }
-                                    : null,
-                                deleteIconColor: Colors.grey,
-                                visualDensity: VisualDensity.compact,
-                              );
-                            }).toList(),
-                          ),
+                                      },
+                                      deleteIconColor: Colors.grey,
+                                      visualDensity: VisualDensity.compact,
+                                    );
+                                  }).toList(),
+                                ),
                           const SizedBox(height: 14),
                           Align(
                             alignment: Alignment.centerRight,

@@ -540,7 +540,7 @@ packages:
     source: hosted
     version: "4.2.5"
   flutter_web_plugins:
-    dependency: transitive
+    dependency: "direct main"
     description: flutter
     source: sdk
     version: "0.0.0"
@@ -617,7 +617,7 @@ packages:
     source: hosted
     version: "0.8.13+17"
   image_picker_for_web:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: image_picker_for_web
       sha256: "66257a3191ab360d23a55c8241c91a6e329d31e94efa7be9cf7a212e65850214"

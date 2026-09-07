@@ -303,8 +303,8 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    String tempLocation = _eventLocation.isEmpty ? 'Bengaluru' : _eventLocation;
-    String tempMode = _eventMode;
+    String tempLocation = _eventLocation;
+    String tempMode = _eventMode.isEmpty ? 'Both' : _eventMode;
     final locationController = TextEditingController(text: tempLocation);
     final interestsController = TextEditingController(text: _eventInterests.join(', '));
     bool isSavingInterests = false;
@@ -392,7 +392,7 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                             .where((s) => s.isNotEmpty)
                             .toList();
 
-                        final loc = locationController.text.trim().isEmpty ? 'Bengaluru' : locationController.text.trim();
+                        final loc = locationController.text.trim();
                         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
                           'eventInterests': list,
                           'eventLocation': loc,
