@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/shift.dart';
 import 'log_service.dart';
 
@@ -16,6 +20,8 @@ class HomeWidgetService {
   StreamSubscription? _accountsSub;
   StreamSubscription? _smsTxSub;
   StreamSubscription? _manualTxSub;
+  StreamSubscription? _shiftMonthSub;
+  StreamSubscription? _dailyShiftsSub;
 
   /// Starts real-time Firestore listeners on accounts & transactions so the
   /// Home Widget updates immediately whenever bank balance or transactions change.
@@ -65,6 +71,48 @@ class HomeWidgetService {
     _accountsSub?.cancel();
     _smsTxSub?.cancel();
     _manualTxSub?.cancel();
+  }
+
+  /// Starts real-time Firestore listeners on shifts so the
+  /// Shift widgets update immediately whenever a roster is uploaded or modified.
+  void startShiftWidgetLiveSync() {
+    if (kIsWeb) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final now = DateTime.now();
+    final currentRosterMonth = DateFormat('yyyy-MM').format(now);
+
+    _shiftMonthSub?.cancel();
+    _shiftMonthSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('shifts')
+        .snapshots()
+        .listen((_) {
+      syncShiftWidgets();
+    }, onError: (e) {
+      LogService().error('Error in shifts collection stream for widget', e);
+    });
+
+    _dailyShiftsSub?.cancel();
+    _dailyShiftsSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('shifts')
+        .doc(currentRosterMonth)
+        .collection('daily_shifts')
+        .snapshots()
+        .listen((_) {
+      syncShiftWidgets();
+    }, onError: (e) {
+      LogService().error('Error in daily_shifts collection stream for widget', e);
+    });
+  }
+
+  void stopShiftWidgetLiveSync() {
+    _shiftMonthSub?.cancel();
+    _dailyShiftsSub?.cancel();
   }
 
   /// Updates the Gold Rates Home Screen Widget (22K Per Gram & 22K 8g Sovereign)
@@ -303,6 +351,121 @@ class HomeWidgetService {
     }
   }
 
+  /// Syncs current shifts immediately to both ShiftWidget and ShiftCalendarWidget
+  Future<void> syncShiftWidgets() async {
+    if (kIsWeb) return;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final now = DateTime.now();
+      final todayStr = DateFormat('yyyy-MM-dd').format(now);
+      final currentRosterMonth = DateFormat('yyyy-MM').format(now);
+
+      // 1. Fetch Today's Shift
+      final todayShiftDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('shifts')
+          .doc(currentRosterMonth)
+          .collection('daily_shifts')
+          .doc(todayStr)
+          .get(const GetOptions(source: Source.serverAndCache));
+
+      String todayName = 'Week Off 🏖️';
+      String todayTime = 'Off Duty';
+
+      if (todayShiftDoc.exists) {
+        final data = todayShiftDoc.data() ?? {};
+        final rawType = (data['shift_type'] ?? data['shiftType'] ?? '').toString().toLowerCase();
+        if (!rawType.contains('off') && rawType.isNotEmpty) {
+          todayName = '${rawType.toUpperCase().replaceAll('_', ' ')} SHIFT';
+          final start = (data['start_time'] ?? data['startTime'] ?? '').toString();
+          final end = (data['end_time'] ?? data['endTime'] ?? '').toString();
+          if (start.isNotEmpty && end.isNotEmpty) {
+            todayTime = '$start - $end';
+          } else {
+            todayTime = 'Scheduled Shift';
+          }
+        }
+      }
+
+      // 2. Fetch Tomorrow's Shift
+      final tomorrow = now.add(const Duration(days: 1));
+      final tomorrowMonth = DateFormat('yyyy-MM').format(tomorrow);
+      final tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
+
+      final tomorrowShiftDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('shifts')
+          .doc(tomorrowMonth)
+          .collection('daily_shifts')
+          .doc(tomorrowStr)
+          .get(const GetOptions(source: Source.serverAndCache));
+
+      String tomorrowName = 'Tomorrow: Week Off';
+      if (tomorrowShiftDoc.exists) {
+        final data = tomorrowShiftDoc.data() ?? {};
+        final rawType = (data['shift_type'] ?? data['shiftType'] ?? '').toString().toLowerCase();
+        if (!rawType.contains('off') && rawType.isNotEmpty) {
+          final title = rawType.toUpperCase().replaceAll('_', ' ');
+          final start = (data['start_time'] ?? data['startTime'] ?? '').toString();
+          tomorrowName = start.isNotEmpty ? 'Tomorrow: $title ($start)' : 'Tomorrow: $title';
+        }
+      }
+
+      // Update Single Shift Widget
+      await updateShiftWidget(
+        todayShiftName: todayName,
+        todayShiftTime: todayTime,
+        tomorrowShiftName: tomorrowName,
+      );
+
+      // 3. Fetch Full Month's Shifts for Shift Calendar Widget
+      final monthShiftsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('shifts')
+          .doc(currentRosterMonth)
+          .collection('daily_shifts')
+          .get(const GetOptions(source: Source.serverAndCache));
+
+      List<Shift> monthShifts = [];
+      if (monthShiftsSnapshot.docs.isNotEmpty) {
+        monthShifts = monthShiftsSnapshot.docs.map((d) {
+          return Shift.fromJson(d.data());
+        }).toList();
+      } else {
+        // Fallback: check if the month document itself has raw_json
+        final monthDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('shifts')
+            .doc(currentRosterMonth)
+            .get(const GetOptions(source: Source.serverAndCache));
+        if (monthDoc.exists && monthDoc.data()?['raw_json'] != null) {
+          try {
+            final raw = jsonDecode(monthDoc.data()!['raw_json'].toString());
+            if (raw is Map && raw['shifts'] is List) {
+              monthShifts = (raw['shifts'] as List)
+                  .map((s) => Shift.fromJson(s as Map))
+                  .toList();
+            }
+          } catch (_) {}
+        }
+      }
+
+      // Always update calendar widget, even if monthShifts is empty (clean monthly view)
+      await updateShiftCalendarWidget(
+        shifts: monthShifts,
+        monthDate: now,
+      );
+    } catch (e) {
+      LogService().error('Error in syncShiftWidgets', e);
+    }
+  }
+
   /// Pulls the latest live state from Firestore & caches, pushing updates to all widgets
   Future<void> syncAllWidgets() async {
     if (kIsWeb) return;
@@ -354,97 +517,11 @@ class HomeWidgetService {
       LogService().error('Error syncing Finance Widget in syncAllWidgets', e);
     }
 
-    // 3. Sync Shift Widget
+    // 3. Sync Shift Widgets
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final now = DateTime.now();
-        final todayStr = DateFormat('yyyy-MM-dd').format(now);
-        final currentRosterMonth = DateFormat('yyyy-MM').format(now);
-        final todayShiftDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('shifts')
-            .doc(currentRosterMonth)
-            .collection('daily_shifts')
-            .doc(todayStr)
-            .get();
-
-        String todayName = 'Week Off 🏖️';
-        String todayTime = 'Off Duty';
-
-        if (todayShiftDoc.exists) {
-          final data = todayShiftDoc.data() ?? {};
-          final rawType = (data['shift_type'] ?? data['shiftType'] ?? '').toString().toLowerCase();
-          if (!rawType.contains('off') && rawType.isNotEmpty) {
-            todayName = '${rawType.toUpperCase().replaceAll('_', ' ')} SHIFT';
-            final start = (data['start_time'] ?? data['startTime'] ?? '').toString();
-            final end = (data['end_time'] ?? data['endTime'] ?? '').toString();
-            if (start.isNotEmpty && end.isNotEmpty) {
-              todayTime = '$start - $end';
-            } else {
-              todayTime = 'Scheduled Shift';
-            }
-          }
-        }
-
-        final tomorrow = now.add(const Duration(days: 1));
-        final tomorrowMonth = DateFormat('yyyy-MM').format(tomorrow);
-        final tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
-
-        final tomorrowShiftDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('shifts')
-            .doc(tomorrowMonth)
-            .collection('daily_shifts')
-            .doc(tomorrowStr)
-            .get();
-
-        String tomorrowName = 'Tomorrow: Week Off';
-        if (tomorrowShiftDoc.exists) {
-          final data = tomorrowShiftDoc.data() ?? {};
-          final rawType = (data['shift_type'] ?? data['shiftType'] ?? '').toString().toLowerCase();
-          if (!rawType.contains('off') && rawType.isNotEmpty) {
-            final title = rawType.toUpperCase().replaceAll('_', ' ');
-            final start = (data['start_time'] ?? data['startTime'] ?? '').toString();
-            tomorrowName = start.isNotEmpty ? 'Tomorrow: $title ($start)' : 'Tomorrow: $title';
-          }
-        }
-
-        await updateShiftWidget(
-          todayShiftName: todayName,
-          todayShiftTime: todayTime,
-          tomorrowShiftName: tomorrowName,
-        );
-
-        // Also dynamically sync the full Shift Calendar Widget
-        try {
-          final monthShiftsSnapshot = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .collection('shifts')
-              .doc(currentRosterMonth)
-              .collection('daily_shifts')
-              .get();
-
-          if (monthShiftsSnapshot.docs.isNotEmpty) {
-            final List<Shift> monthShifts = monthShiftsSnapshot.docs.map((d) {
-              final sData = d.data();
-              return Shift.fromJson(sData);
-            }).toList();
-
-            await updateShiftCalendarWidget(
-              shifts: monthShifts,
-              monthDate: now,
-            );
-          }
-        } catch (calErr) {
-          LogService().error('Error syncing Shift Calendar Widget in syncAllWidgets', calErr);
-        }
-      }
+      await syncShiftWidgets();
     } catch (e) {
-      LogService().error('Error syncing Shift Widget in syncAllWidgets', e);
+      LogService().error('Error syncing Shift Widgets in syncAllWidgets', e);
     }
   }
 
@@ -456,19 +533,20 @@ class HomeWidgetService {
     if (kIsWeb) return;
     try {
       final monthTitle = DateFormat('MMMM yyyy').format(monthDate);
-      final widget = _buildShiftCalendarWidgetView(shifts: shifts, monthDate: monthDate);
-
-      final imageUri = await HomeWidget.renderFlutterWidget(
-        widget,
-        key: 'shift_calendar_image',
-        logicalSize: const Size(360, 360),
-        pixelRatio: 2.5,
-      );
-
-      if (imageUri != null) {
-        await HomeWidget.saveWidgetData<String>('shift_calendar_image_path', imageUri.path);
-      }
       await HomeWidget.saveWidgetData<String>('shift_calendar_month', monthTitle);
+
+      // Save a compact JSON map of date -> shiftType for native Android Kotlin fallback
+      final Map<String, String> shiftsJsonMap = {};
+      for (final s in shifts) {
+        shiftsJsonMap[s.date] = s.shiftType;
+      }
+      await HomeWidget.saveWidgetData<String>('shift_calendar_shifts_json', jsonEncode(shiftsJsonMap));
+
+      // Render the calendar directly to a 420x420 PNG file via Skia/Impeller Canvas
+      final imagePath = await _renderShiftCalendarToPng(shifts: shifts, monthDate: monthDate);
+      if (imagePath != null) {
+        await HomeWidget.saveWidgetData<String>('shift_calendar_image_path', imagePath);
+      }
 
       await HomeWidget.updateWidget(
         name: 'ShiftCalendarWidgetProvider',
@@ -480,213 +558,230 @@ class HomeWidgetService {
     }
   }
 
-  Widget _buildShiftCalendarWidgetView({
+  Future<String?> _renderShiftCalendarToPng({
     required List<Shift> shifts,
     required DateTime monthDate,
-  }) {
-    final year = monthDate.year;
-    final month = monthDate.month;
-    final daysInMonth = DateTime(year, month + 1, 0).day;
-    final firstWeekday = DateTime(year, month, 1).weekday % 7;
-    final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+  }) async {
+    try {
+      const double size = 420.0;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, size, size));
 
-    final Map<String, Shift> shiftByDate = {
-      for (var s in shifts) s.date: s,
-    };
+      final year = monthDate.year;
+      final month = monthDate.month;
+      final daysInMonth = DateTime(year, month + 1, 0).day;
+      final firstWeekday = DateTime(year, month, 1).weekday % 7; // 0 for Sunday
+      final today = DateTime.now();
+      final todayStr = DateFormat('yyyy-MM-dd').format(today);
 
-    final weekHeaders = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+      final Map<String, Shift> shiftByDate = {
+        for (var s in shifts) s.date: s,
+      };
 
-    return Container(
-      width: 360,
-      height: 360,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F141C),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        children: [
-          // Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                DateFormat('MMMM yyyy').format(monthDate).toUpperCase(),
-                style: const TextStyle(
-                  color: Color(0xFF38BDF8),
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const Text(
-                'RemindBuddy Shifts',
-                style: TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 10,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ],
+      // 1. Background Card
+      final bgPaint = Paint()..color = const Color(0xFF0F141C);
+      final bgRect = RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, size, size), const Radius.circular(20));
+      canvas.drawRRect(bgRect, bgPaint);
+
+      // Card Border
+      final borderPaint = Paint()
+        ..color = const Color(0xFF1E293B)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      canvas.drawRRect(bgRect, borderPaint);
+
+      // 2. Weekday Headers
+      const weekdays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+      const double marginX = 14.0;
+      const double gridWidth = size - (2 * marginX);
+      const double colWidth = gridWidth / 7.0;
+
+      for (int i = 0; i < 7; i++) {
+        final cx = marginX + (i * colWidth) + (colWidth / 2.0);
+        _drawCanvasText(
+          canvas: canvas,
+          text: weekdays[i],
+          x: cx,
+          y: 10,
+          align: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFF64748B),
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
           ),
-          const SizedBox(height: 10),
+        );
+      }
 
-          // Weekday headers
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: weekHeaders.map((day) {
-              return Expanded(
-                child: Center(
-                  child: Text(
-                    day,
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
+      // 3. Days Grid
+      const double gridTop = 36.0;
+      const double gridBottom = 384.0;
+      const double gridHeight = gridBottom - gridTop;
+      const double spacing = 4.0;
+      const double cellW = (gridWidth - (6 * spacing)) / 7.0;
+      final int numRows = ((firstWeekday + daysInMonth + 6) ~/ 7).clamp(5, 6);
+      final double cellH = (gridHeight - ((numRows - 1) * spacing)) / numRows;
+
+      final cellBgPaint = Paint()..color = const Color(0xFF1E2638);
+      final cellBorderPaint = Paint()
+        ..color = const Color(0xFF263248)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+      final todayBorderPaint = Paint()
+        ..color = const Color(0xFF38BDF8)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5;
+
+      for (int day = 1; day <= daysInMonth; day++) {
+        final slotIndex = (day - 1) + firstWeekday;
+        final col = slotIndex % 7;
+        final row = slotIndex ~/ 7;
+
+        final cellLeft = marginX + (col * (cellW + spacing));
+        final cellTop = gridTop + (row * (cellH + spacing));
+        final cellRect = RRect.fromRectAndRadius(
+          Rect.fromLTWH(cellLeft, cellTop, cellW, cellH),
+          const Radius.circular(6),
+        );
+
+        final dateStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+        final isToday = dateStr == todayStr;
+        final shift = shiftByDate[dateStr];
+
+        canvas.drawRRect(cellRect, cellBgPaint);
+        canvas.drawRRect(cellRect, isToday ? todayBorderPaint : cellBorderPaint);
+
+        // Day Number
+        _drawCanvasText(
+          canvas: canvas,
+          text: '$day',
+          x: cellLeft + (cellW / 2.0),
+          y: cellTop + 4,
+          align: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: isToday ? FontWeight.w900 : FontWeight.bold,
+            color: isToday ? const Color(0xFF38BDF8) : const Color(0xFFE2E8F0),
           ),
-          const SizedBox(height: 6),
+        );
 
-          // Grid
-          Expanded(
-            child: GridView.builder(
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: firstWeekday + daysInMonth,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 7,
-                crossAxisSpacing: 4,
-                mainAxisSpacing: 4,
-                childAspectRatio: 0.88,
-              ),
-              itemBuilder: (context, index) {
-                if (index < firstWeekday) {
-                  return const SizedBox.shrink();
-                }
+        // Shift Badge
+        if (shift != null) {
+          Color badgeColor = const Color(0xFF6366F1);
+          String badgeText = shift.shiftType.isNotEmpty ? shift.shiftType[0].toUpperCase() : '';
+          final lower = shift.shiftType.toLowerCase();
+          if (lower.contains('morning') || lower == 'm') {
+            badgeColor = const Color(0xFFF59E0B);
+            badgeText = 'M';
+          } else if (lower.contains('afternoon') || lower.contains('evening') || lower == 'a') {
+            badgeColor = const Color(0xFF06B6D4);
+            badgeText = 'A';
+          } else if (lower.contains('night') || lower == 'n') {
+            badgeColor = const Color(0xFF8B5CF6);
+            badgeText = 'N';
+          } else if (lower.contains('off') || lower.contains('leave') || lower == 'wo') {
+            badgeColor = const Color(0xFF10B981);
+            badgeText = 'OFF';
+          } else if (lower.contains('general') || lower == 'g') {
+            badgeColor = const Color(0xFF3B82F6);
+            badgeText = 'G';
+          }
 
-                final day = index - firstWeekday + 1;
-                final dateStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
-                final isToday = dateStr == todayStr;
-                final shift = shiftByDate[dateStr];
+          const double badgeH = 15.0;
+          const double badgeW = cellW - 6.0;
+          final double badgeLeft = cellLeft + 3.0;
+          final double badgeTop = cellTop + cellH - badgeH - 3.0;
 
-                Color badgeColor = Colors.transparent;
-                String badgeText = '';
+          final badgeRect = RRect.fromRectAndRadius(
+            Rect.fromLTWH(badgeLeft, badgeTop, badgeW, badgeH),
+            const Radius.circular(4),
+          );
+          final badgePaint = Paint()..color = badgeColor;
+          canvas.drawRRect(badgeRect, badgePaint);
 
-                if (shift != null) {
-                  switch (shift.shiftType.toLowerCase()) {
-                    case 'morning':
-                      badgeColor = const Color(0xFFF59E0B);
-                      badgeText = 'M';
-                      break;
-                    case 'afternoon':
-                      badgeColor = const Color(0xFF06B6D4);
-                      badgeText = 'A';
-                      break;
-                    case 'night':
-                      badgeColor = const Color(0xFF8B5CF6);
-                      badgeText = 'N';
-                      break;
-                    case 'week_off':
-                      badgeColor = const Color(0xFF10B981);
-                      badgeText = 'OFF';
-                      break;
-                  }
-                }
-
-                return Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E2638),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: isToday ? const Color(0xFF38BDF8) : const Color(0xFF263248),
-                      width: isToday ? 1.5 : 0.8,
-                    ),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '$day',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: isToday ? FontWeight.w900 : FontWeight.w600,
-                          color: isToday ? const Color(0xFF38BDF8) : const Color(0xFFE2E8F0),
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                      if (shift != null)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 1),
-                          decoration: BoxDecoration(
-                            color: badgeColor,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Text(
-                            badgeText,
-                            style: const TextStyle(
-                              fontSize: 7.5,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              decoration: TextDecoration.none,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        )
-                      else
-                        const SizedBox(height: 8),
-                    ],
-                  ),
-                );
-              },
+          _drawCanvasText(
+            canvas: canvas,
+            text: badgeText,
+            x: badgeLeft + (badgeW / 2.0),
+            y: badgeTop + 1,
+            align: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
             ),
-          ),
-          const SizedBox(height: 6),
+          );
+        }
+      }
 
-          // Mini Legend Row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildWidgetLegendDot('Morning (M)', const Color(0xFFF59E0B)),
-              const SizedBox(width: 8),
-              _buildWidgetLegendDot('Afternoon (A)', const Color(0xFF06B6D4)),
-              const SizedBox(width: 8),
-              _buildWidgetLegendDot('Night (N)', const Color(0xFF8B5CF6)),
-              const SizedBox(width: 8),
-              _buildWidgetLegendDot('Off Day', const Color(0xFF10B981)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+      // 4. Legend
+      const double legendY = 396.0;
+      const legendItems = [
+        {'color': Color(0xFFF59E0B), 'label': 'M: Morn'},
+        {'color': Color(0xFF06B6D4), 'label': 'A: Aft'},
+        {'color': Color(0xFF8B5CF6), 'label': 'N: Night'},
+        {'color': Color(0xFF10B981), 'label': 'OFF'},
+      ];
 
-  Widget _buildWidgetLegendDot(String label, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 3),
-        Text(
-          label,
+      final double itemSpacing = gridWidth / legendItems.length;
+      for (int i = 0; i < legendItems.length; i++) {
+        final item = legendItems[i];
+        final startX = marginX + (i * itemSpacing) + 6.0;
+
+        final dotPaint = Paint()..color = item['color'] as Color;
+        canvas.drawCircle(Offset(startX, legendY + 6), 4, dotPaint);
+
+        _drawCanvasText(
+          canvas: canvas,
+          text: item['label'] as String,
+          x: startX + 8,
+          y: legendY,
           style: const TextStyle(
             color: Color(0xFF94A3B8),
-            fontSize: 8,
-            fontWeight: FontWeight.w600,
-            decoration: TextDecoration.none,
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
           ),
-        ),
-      ],
+        );
+      }
+
+      final picture = recorder.endRecording();
+      final img = await picture.toImage(size.toInt(), size.toInt());
+      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData != null) {
+        final buffer = byteData.buffer.asUint8List();
+        final dir = await getApplicationDocumentsDirectory();
+        final file = File('${dir.path}/shift_calendar_widget.png');
+        await file.writeAsBytes(buffer, flush: true);
+        return file.path;
+      }
+    } catch (e) {
+      LogService().error('Error rendering shift calendar to PNG', e);
+    }
+    return null;
+  }
+
+  void _drawCanvasText({
+    required Canvas canvas,
+    required String text,
+    required double x,
+    required double y,
+    required TextStyle style,
+    TextAlign align = TextAlign.left,
+  }) {
+    final textSpan = TextSpan(text: text, style: style);
+    final textPainter = TextPainter(
+      text: textSpan,
+      textDirection: ui.TextDirection.ltr,
+      textAlign: align,
     );
+    textPainter.layout();
+
+    double dx = x;
+    if (align == TextAlign.right) {
+      dx = x - textPainter.width;
+    } else if (align == TextAlign.center) {
+      dx = x - (textPainter.width / 2.0);
+    }
+
+    textPainter.paint(canvas, Offset(dx, y));
   }
 }

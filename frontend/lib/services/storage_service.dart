@@ -8,6 +8,7 @@ import '../models/note.dart';
 import '../models/daily_reminder.dart';
 import '../models/calendar_reminder.dart';
 import '../models/notification_history.dart';
+import 'home_widget_service.dart';
 
 
 class StorageService {
@@ -831,6 +832,7 @@ class StorageService {
       batch.set(dailyShiftsRef.doc(s['date']), s);
     }
     await batch.commit();
+    HomeWidgetService().syncShiftWidgets();
   }
 
   Future<void> clearAllShifts({required String rosterMonth}) async {
@@ -846,6 +848,7 @@ class StorageService {
     }
     batch.delete(monthRef);
     await batch.commit();
+    HomeWidgetService().syncShiftWidgets();
   }
 
   Future<Map<String, dynamic>?> getShiftForDate(String date) async {
@@ -868,6 +871,7 @@ class StorageService {
         .collection('daily_shifts')
         .doc(date)
         .set(shiftMap, SetOptions(merge: true));
+    HomeWidgetService().syncShiftWidgets();
   }
 
   // User Preference Methods

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,6 +24,7 @@ import 'admin_screen.dart';
 import 'notification_history_screen.dart';
 import '../services/update_service.dart';
 import '../services/home_widget_service.dart';
+import 'package:home_widget/home_widget.dart';
 import 'voice_assistant_screen.dart';
 import 'astro_calendar_screen.dart';
 import 'gcp_cost_screen.dart';
@@ -75,6 +77,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   StreamSubscription? _notificationSubscription;
   StreamSubscription? _authSubscription;
   StreamSubscription? _userPrefsSubscription;
+  StreamSubscription? _widgetLaunchSub;
 
   @override
   void initState() {
@@ -82,6 +85,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _loadInitialData();
     _setupNotificationListener();
+    _setupHomeWidgetLaunchListener();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkPendingNotification();
     });
@@ -91,8 +95,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       HomeWidgetService().syncAllWidgets();
       if (user != null) {
         HomeWidgetService().startFinanceWidgetLiveSync();
+        HomeWidgetService().startShiftWidgetLiveSync();
       } else {
         HomeWidgetService().stopFinanceWidgetLiveSync();
+        HomeWidgetService().stopShiftWidgetLiveSync();
       }
     });
   }
@@ -100,6 +106,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     HomeWidgetService().syncFinanceWidget();
+    HomeWidgetService().syncShiftWidgets();
     if (state == AppLifecycleState.resumed ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
@@ -514,10 +521,35 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     HomeWidgetService().stopFinanceWidgetLiveSync();
+    HomeWidgetService().stopShiftWidgetLiveSync();
+    _widgetLaunchSub?.cancel();
     _notificationSubscription?.cancel();
     _authSubscription?.cancel();
     _userPrefsSubscription?.cancel();
     super.dispose();
+  }
+
+  void _setupHomeWidgetLaunchListener() {
+    if (kIsWeb) return;
+    HomeWidget.initiallyLaunchedFromHomeWidget().then((uri) {
+      if (uri != null) _handleHomeWidgetUri(uri);
+    });
+    _widgetLaunchSub = HomeWidget.widgetClicked.listen((uri) {
+      if (uri != null) _handleHomeWidgetUri(uri);
+    });
+  }
+
+  void _handleHomeWidgetUri(Uri uri) {
+    final uriStr = uri.toString().toLowerCase();
+    if (uriStr.contains('shifts') || uri.path.contains('shifts')) {
+      _selectTabOrPush('shifts');
+      HomeWidgetService().syncShiftWidgets();
+    } else if (uriStr.contains('finance') || uri.path.contains('finance')) {
+      _selectTabOrPush('smart_bank');
+      HomeWidgetService().syncFinanceWidget();
+    } else if (uriStr.contains('gold') || uri.path.contains('gold')) {
+      _selectTabOrPush('gold');
+    }
   }
 
   Future<void> _toggleTheme() async {
@@ -1617,7 +1649,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'RemindBuddy v1.10.17',
+                  'RemindBuddy v1.10.18',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

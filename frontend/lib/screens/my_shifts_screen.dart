@@ -53,6 +53,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       _rosterImageUrl = _cachedRosterImages[month];
       _hasData = true;
       _isLoading = false;
+      _homeWidgetService.updateShiftCalendarWidget(shifts: _shifts, monthDate: _currentDate);
     }
     _loadShifts(showLoader: !_hasData);
   }
@@ -68,6 +69,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
         _rosterImageUrl = _cachedRosterImages[month];
         _hasData = true;
         _isLoading = false;
+        _homeWidgetService.updateShiftCalendarWidget(shifts: _shifts, monthDate: _currentDate);
       }
     });
     _loadShifts(showLoader: !_hasData);
@@ -99,7 +101,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
       final stats = results[2] as Map<String, int>?;
 
       if (metadata != null && shiftsData.isNotEmpty) {
-        final shifts = shiftsData.map((s) => Shift.fromMap(s)).toList();
+        final shifts = shiftsData.map((s) => Shift.fromJson(s)).toList();
         final imageUrl = metadata['roster_image_url'] as String?;
 
         _cachedShifts[month] = shifts;
@@ -128,6 +130,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
             _hasData = false;
             _isLoading = false;
           });
+          _homeWidgetService.updateShiftCalendarWidget(shifts: [], monthDate: _currentDate);
         }
       }
     } catch (e) {

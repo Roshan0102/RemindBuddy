@@ -1824,23 +1824,26 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   ),
                 ),
                 const SizedBox(height: 12),
-                RadioListTile<String>(
-                  title: const Text('Day before'),
-                  value: 'Day before',
+                RadioGroup<String>(
                   groupValue: unit,
-                  dense: true,
                   onChanged: (val) {
                     if (val != null) setCustomState(() => unit = val);
                   },
-                ),
-                RadioListTile<String>(
-                  title: const Text('Week'),
-                  value: 'Week',
-                  groupValue: unit,
-                  dense: true,
-                  onChanged: (val) {
-                    if (val != null) setCustomState(() => unit = val);
-                  },
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RadioListTile<String>(
+                        title: Text('Day before'),
+                        value: 'Day before',
+                        dense: true,
+                      ),
+                      RadioListTile<String>(
+                        title: Text('Week'),
+                        value: 'Week',
+                        dense: true,
+                      ),
+                    ],
+                  ),
                 ),
                 const Divider(height: 16),
                 ListTile(
@@ -1858,12 +1861,14 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                   },
                 ),
                 const Divider(height: 16),
-                RadioListTile<String>(
-                  title: const Text('As notification'),
-                  value: 'notification',
+                RadioGroup<String>(
                   groupValue: 'notification',
-                  dense: true,
                   onChanged: (_) {},
+                  child: const RadioListTile<String>(
+                    title: Text('As notification'),
+                    value: 'notification',
+                    dense: true,
+                  ),
                 ),
               ],
             ),
@@ -2510,7 +2515,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                       : () async {
                                           setState(() => _isSyncingStudySms = true);
                                           final count = await _financeService.uploadSmsStudySamples(days: 15);
-                                          if (!mounted) return;
+                                          if (!mounted || !context.mounted) return;
                                           setState(() => _isSyncingStudySms = false);
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             SnackBar(
@@ -3264,7 +3269,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               onPressed: () async {
                 Navigator.pop(ctx);
                 final deletedCount = await _financeService.deleteSmsTransactionsForMonth(_smsMonthFilter);
-                if (!mounted) return;
+                if (!mounted || !context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Deleted $deletedCount transactions for $monthYearText.'),
@@ -4441,7 +4446,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                 selectedPopularBank = null;
                               });
 
-                              if (!mounted) return;
+                              if (!mounted || !context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text('Rule saved for "$p" → "$b"'), backgroundColor: Colors.green),
                               );
@@ -4525,7 +4530,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                     icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
                                     onPressed: () async {
                                       await _financeService.deleteCustomHeaderBankRule(p);
-                                      if (!mounted) return;
+                                      if (!mounted || !context.mounted) return;
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(content: Text('Deleted rule for "$p"')),
                                       );
@@ -4581,7 +4586,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
       }
     }
 
-    if (!mounted) return;
+    if (!mounted || !context.mounted) return;
 
     await showModalBottomSheet(
       context: context,
@@ -4725,7 +4730,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                       style: TextStyle(color: subtextColor, fontSize: 12),
                     ),
                     value: isTrackingEnabled,
-                    activeColor: Colors.purpleAccent,
+                    activeTrackColor: Colors.purpleAccent,
                     onChanged: (val) async {
                       await tracker.setTrackingEnabled(val);
                       setSheetState(() {
@@ -5958,11 +5963,10 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
             onPressed: () async {
               Navigator.pop(ctx);
               await _financeService.settleGroupEvent(group.id, note: noteCtrl.text.trim());
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Split marked as fully settled!'), backgroundColor: Colors.green),
-                );
-              }
+              if (!mounted || !context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Split marked as fully settled!'), backgroundColor: Colors.green),
+              );
             },
             child: const Text('Confirm Settle', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
