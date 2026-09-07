@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class SmsTransaction {
   final String id;
   final String sender;
@@ -78,6 +80,23 @@ class SmsTransaction {
     };
   }
 
+  Map<String, dynamic> toMapForUpdate() {
+    final map = toMap();
+    if (repaymentForGroupId == null) {
+      map['repaymentForGroupId'] = FieldValue.delete();
+    }
+    if (splitGroupId == null) {
+      map['splitGroupId'] = FieldValue.delete();
+    }
+    if (personalShare == null) {
+      map['personalShare'] = FieldValue.delete();
+    }
+    if (splitTitle == null) {
+      map['splitTitle'] = FieldValue.delete();
+    }
+    return map;
+  }
+
   factory SmsTransaction.fromMap(Map<String, dynamic> map) {
     return SmsTransaction(
       id: map['id'] ?? '',
@@ -130,6 +149,8 @@ class SmsTransaction {
     String? splitTitle,
     bool? isSplitRepayment,
     String? repaymentForGroupId,
+    bool clearRepayment = false,
+    bool clearSplit = false,
   }) {
     return SmsTransaction(
       id: id ?? this.id,
@@ -148,12 +169,12 @@ class SmsTransaction {
       upiRef: upiRef ?? this.upiRef,
       rawTitle: rawTitle ?? this.rawTitle,
       rawBody: rawBody ?? this.rawBody,
-      isSplit: isSplit ?? this.isSplit,
-      personalShare: personalShare ?? this.personalShare,
-      splitGroupId: splitGroupId ?? this.splitGroupId,
-      splitTitle: splitTitle ?? this.splitTitle,
-      isSplitRepayment: isSplitRepayment ?? this.isSplitRepayment,
-      repaymentForGroupId: repaymentForGroupId ?? this.repaymentForGroupId,
+      isSplit: clearSplit ? false : (isSplit ?? this.isSplit),
+      personalShare: clearSplit ? null : (personalShare ?? this.personalShare),
+      splitGroupId: clearSplit ? null : (splitGroupId ?? this.splitGroupId),
+      splitTitle: clearSplit ? null : (splitTitle ?? this.splitTitle),
+      isSplitRepayment: clearRepayment ? false : (isSplitRepayment ?? this.isSplitRepayment),
+      repaymentForGroupId: clearRepayment ? null : (repaymentForGroupId ?? this.repaymentForGroupId),
     );
   }
 }

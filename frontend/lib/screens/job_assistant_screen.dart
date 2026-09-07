@@ -2007,24 +2007,29 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               color: cardBg,
               elevation: isDark ? 2 : 1,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              child: Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  initiallyExpanded: false,
+                  leading: const Icon(Icons.tune_rounded, color: Colors.blueAccent),
+                  title: Text(
+                    '🎯 Target Roles, Locations & Exp',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14.5),
+                  ),
+                  subtitle: Text(
+                    '${_targetRolesController.text.trim().isNotEmpty ? _targetRolesController.text.trim() : "Target Roles"} • ${_locationsController.text.trim().isNotEmpty ? _locationsController.text.trim() : "Locations"} • ${_isFresher ? "Fresher (0 Yrs)" : "${_minExpController.text.trim()}-${_maxExpController.text.trim()} Yrs"}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.tune_rounded, color: Colors.blueAccent, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '🎯 Target Roles, Locations & Exp',
-                            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Divider(),
+                          const SizedBox(height: 8),
                     TextField(
                       controller: _targetRolesController,
                       decoration: InputDecoration(
@@ -2347,6 +2352,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           _isSavingAutoSettings ? 'Saving Settings...' : '💾 Save Target Preferences',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                         ),
+                      ),
+                    ),
+                        ],
                       ),
                     ),
                   ],

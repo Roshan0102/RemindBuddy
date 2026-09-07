@@ -177,23 +177,41 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
       final personalShareVal = personalShareMap[tx.id];
       final splitTitleVal = splitTitleMap[tx.id] ?? '';
       final targetRepaymentGroupId = repaymentGroupMap[tx.id];
+      final wasSplitRepayment = tx.isSplitRepayment || tx.category == 'Split Repayment';
+      final oldRepaymentGroupId = tx.repaymentForGroupId;
 
       if (tx.type == 'Debit' && isSplit && personalShareVal != null && personalShareVal > 0 && personalShareVal < tx.amount) {
+        if (wasSplitRepayment && oldRepaymentGroupId != null && oldRepaymentGroupId.isNotEmpty) {
+          await finance.removeSplitRepayment(tx: tx, splitGroupId: oldRepaymentGroupId);
+        }
         updateTasks.add(finance.createSplitFromTransaction(
-          tx: updatedTx,
+          tx: updatedTx.copyWith(clearRepayment: true),
           personalShare: personalShareVal,
           splitTitle: splitTitleVal.isNotEmpty ? splitTitleVal : '$finalPersonName Split',
           category: category,
           destinationBankAccountId: destBankId,
         ));
       } else if (category == 'Split Repayment' && targetRepaymentGroupId != null && targetRepaymentGroupId.isNotEmpty) {
+        if (oldRepaymentGroupId != null && oldRepaymentGroupId.isNotEmpty && oldRepaymentGroupId != targetRepaymentGroupId) {
+          await finance.removeSplitRepayment(tx: tx, splitGroupId: oldRepaymentGroupId);
+        }
         updateTasks.add(finance.recordSplitRepayment(
-          tx: updatedTx,
+          tx: updatedTx.copyWith(
+            isSplitRepayment: true,
+            repaymentForGroupId: targetRepaymentGroupId,
+          ),
           splitGroupId: targetRepaymentGroupId,
           destinationBankAccountId: destBankId,
         ));
       } else {
-        updateTasks.add(finance.updateSmsTransaction(updatedTx, destinationBankAccountId: destBankId));
+        if (wasSplitRepayment && oldRepaymentGroupId != null && oldRepaymentGroupId.isNotEmpty) {
+          await finance.removeSplitRepayment(tx: tx, splitGroupId: oldRepaymentGroupId);
+        }
+        final cleanedTx = updatedTx.copyWith(
+          clearRepayment: true,
+          clearSplit: !isSplit,
+        );
+        updateTasks.add(finance.updateSmsTransaction(cleanedTx, destinationBankAccountId: destBankId));
       }
 
       // If category is Lended or Borrowed, create a single DebtRecord entry with the edited person name!

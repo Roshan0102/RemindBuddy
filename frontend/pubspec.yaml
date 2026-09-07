@@ -1,8 +1,8 @@
 name: remindbuddy
-description: "A new Flutter project."
+description: "A personal AI life assistant and reminder application."
 publish_to: 'none'
 
-version: 1.10.15+394
+version: 1.10.17+396
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

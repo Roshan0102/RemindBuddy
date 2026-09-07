@@ -2537,7 +2537,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         color: cardBg,
                         child: Padding(
-                          padding: const EdgeInsets.only(left: 6, right: 10, top: 4, bottom: 4),
+                          padding: const EdgeInsets.only(left: 10, right: 16, top: 4, bottom: 4),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -2612,6 +2612,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                     icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
                                     onPressed: () => _confirmDeleteMonthTransactions(context),
                                   ),
+                                  const SizedBox(width: 2),
                                 ],
                               ),
                             ],
@@ -5255,7 +5256,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                               children: settlements
                                   .map((s) => Container(
                                         margin: const EdgeInsets.only(bottom: 6),
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                         decoration: BoxDecoration(
                                           color: isDark ? const Color(0xFF0F172A) : Colors.white,
                                           borderRadius: BorderRadius.circular(8),
@@ -5266,19 +5267,39 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                                         child: Row(
                                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                           children: [
-                                            Text(
-                                              '${s.fromPerson} owes ${s.toPerson}',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                color: isDark ? Colors.white : Colors.black87,
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '${s.fromPerson} owes ${s.toPerson}',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.w600,
+                                                      color: isDark ? Colors.white : Colors.black87,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    '₹${NumberFormat('#,##,##0.00').format(s.amount)}',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 13,
+                                                      color: isDark ? Colors.amberAccent : Colors.orange.shade800,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                            Text(
-                                              '₹${NumberFormat('#,##,##0.00').format(s.amount)}',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color: isDark ? Colors.amberAccent : Colors.orange.shade800,
+                                            ElevatedButton.icon(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF10B981),
+                                                foregroundColor: Colors.white,
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                                visualDensity: VisualDensity.compact,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                               ),
+                                              icon: const Icon(Icons.check_circle_outline_rounded, size: 14),
+                                              label: const Text('Mark Paid', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                              onPressed: () => _showRecordSettlementDialog(context, currentGroup, s),
                                             ),
                                           ],
                                         ),
@@ -5356,12 +5377,18 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                                   '₹${NumberFormat('#,##,##0').format(exp.amount)}',
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    fontSize: 16,
+                                    fontSize: 15,
                                     color: isDark ? Colors.greenAccent : Colors.green.shade800,
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                                  icon: const Icon(Icons.edit_outlined, color: Colors.blueAccent, size: 20),
+                                  tooltip: 'Edit Expense',
+                                  onPressed: () => _showAddExpenseDialog(context, currentGroup, exp),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.grey, size: 20),
+                                  tooltip: 'Delete Expense',
                                   onPressed: () => _financeService.deleteGroupExpense(exp.id),
                                 ),
                               ],
@@ -5379,17 +5406,142 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
     );
   }
 
-  void _showAddExpenseDialog(BuildContext context, [GroupEvent? liveGroup]) {
+  void _showRecordSettlementDialog(BuildContext context, GroupEvent activeGroup, GroupSettlement s) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final amtCtrl = TextEditingController(text: s.amount.toStringAsFixed(2));
+    final noteCtrl = TextEditingController(text: 'Paid via Cash / UPI');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 20),
+            ),
+            const SizedBox(width: 10),
+            const Text('Record Settlement', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : Colors.green.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: isDark ? Colors.white12 : Colors.green.shade200),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${s.fromPerson}  ➔  ${s.toPerson}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: amtCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Settlement Amount (₹)',
+                prefixText: '₹ ',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Payment Note / Method',
+                hintText: 'e.g. Paid in cash, GPay, settled offline',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            icon: const Icon(Icons.check, size: 16),
+            label: const Text('Confirm Settle', style: TextStyle(fontWeight: FontWeight.bold)),
+            onPressed: () async {
+              final amt = double.tryParse(amtCtrl.text.trim()) ?? 0.0;
+              if (amt <= 0) return;
+
+              Navigator.pop(ctx);
+              await _financeService.recordManualSettlement(
+                groupId: activeGroup.id,
+                fromPerson: s.fromPerson,
+                toPerson: s.toPerson,
+                amount: amt,
+                note: noteCtrl.text.trim(),
+              );
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('✅ Recorded ₹${amt.toStringAsFixed(2)} settlement from ${s.fromPerson} to ${s.toPerson}!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddExpenseDialog(BuildContext context, [GroupEvent? liveGroup, GroupExpense? existingExpense]) {
     final activeGroup = liveGroup ?? widget.group;
-    final descCtrl = TextEditingController();
-    final amountCtrl = TextEditingController();
-    String payer = activeGroup.members.isNotEmpty ? activeGroup.members.first : 'You';
-    final Set<String> selectedInvolved = Set.from(activeGroup.members);
+    final isEditing = existingExpense != null;
+    final descCtrl = TextEditingController(text: existingExpense?.description ?? '');
+    final amountCtrl = TextEditingController(
+      text: existingExpense != null
+          ? existingExpense.amount.toStringAsFixed(existingExpense.amount.truncateToDouble() == existingExpense.amount ? 0 : 2)
+          : '',
+    );
+    String payer = existingExpense?.payerName ?? (activeGroup.members.isNotEmpty ? activeGroup.members.first : 'You');
+    final Set<String> selectedInvolved = existingExpense != null
+        ? Set.from(existingExpense.involvedMembers)
+        : Set.from(activeGroup.members);
     final Map<String, TextEditingController> memberAmountCtrls = {
-      for (final m in activeGroup.members) m: TextEditingController()
+      for (final m in activeGroup.members)
+        m: TextEditingController(
+          text: existingExpense != null
+              ? (existingExpense.customSplit[m]?.toStringAsFixed(2) ??
+                  (existingExpense.involvedMembers.contains(m) && existingExpense.involvedMembers.isNotEmpty
+                      ? (existingExpense.amount / existingExpense.involvedMembers.length).toStringAsFixed(2)
+                      : ''))
+              : '',
+        )
     };
     final Map<String, bool> manuallyEdited = {
-      for (final m in activeGroup.members) m: false
+      for (final m in activeGroup.members)
+        m: existingExpense != null && existingExpense.customSplit.containsKey(m)
     };
 
     showDialog(
@@ -5478,11 +5630,11 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
           final diff = total - allocated;
 
           return AlertDialog(
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.group_add_rounded, color: Colors.blueAccent),
-                SizedBox(width: 8),
-                Text('Add Group Expense'),
+                Icon(isEditing ? Icons.edit_note_rounded : Icons.group_add_rounded, color: Colors.blueAccent),
+                const SizedBox(width: 8),
+                Text(isEditing ? 'Edit Group Expense' : 'Add Group Expense'),
               ],
             ),
             content: SizedBox(
@@ -5716,19 +5868,32 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                     }
                   }
 
-                  _financeService.addGroupExpense(GroupExpense(
-                    id: '',
-                    groupId: activeGroup.id,
-                    description: descCtrl.text.trim(),
-                    amount: amt,
-                    payerName: payer,
-                    involvedMembers: selectedInvolved.toList(),
-                    customSplit: customSplit,
-                    date: DateTime.now(),
-                  ));
+                  if (isEditing) {
+                    _financeService.updateGroupExpense(GroupExpense(
+                      id: existingExpense.id,
+                      groupId: activeGroup.id,
+                      description: descCtrl.text.trim(),
+                      amount: amt,
+                      payerName: payer,
+                      involvedMembers: selectedInvolved.toList(),
+                      customSplit: customSplit,
+                      date: existingExpense.date,
+                    ));
+                  } else {
+                    _financeService.addGroupExpense(GroupExpense(
+                      id: '',
+                      groupId: activeGroup.id,
+                      description: descCtrl.text.trim(),
+                      amount: amt,
+                      payerName: payer,
+                      involvedMembers: selectedInvolved.toList(),
+                      customSplit: customSplit,
+                      date: DateTime.now(),
+                    ));
+                  }
                   Navigator.pop(context);
                 },
-                child: const Text('Add Expense'),
+                child: Text(isEditing ? 'Save Changes' : 'Add Expense'),
               ),
             ],
           );
@@ -5746,8 +5911,8 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-        title: Row(
-          children: const [
+        title: const Row(
+          children: [
             Icon(Icons.check_circle_rounded, color: Colors.green),
             SizedBox(width: 8),
             Text('Settle Split & Close'),

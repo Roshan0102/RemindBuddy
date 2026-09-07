@@ -437,9 +437,17 @@ class FinanceService {
       amount: expense.amount,
       payerName: expense.payerName,
       involvedMembers: expense.involvedMembers,
+      customSplit: expense.customSplit,
       date: expense.date,
     );
     await ref.set(newExp.toMap());
+  }
+
+  Future<void> updateGroupExpense(GroupExpense expense) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.collection('finance_group_expenses').doc(expense.id).update(expense.toMap());
   }
 
   Future<void> deleteGroupExpense(String expenseId) async {
@@ -530,6 +538,74 @@ class FinanceService {
       );
       await updateSmsTransaction(updatedTx, destinationBankAccountId: destinationBankAccountId);
     }
+  }
+
+  Future<void> recordManualSettlement({
+    required String groupId,
+    required String fromPerson,
+    required String toPerson,
+    required double amount,
+    String? note,
+  }) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final ref = doc.collection('finance_group_expenses').doc();
+    final expense = GroupExpense(
+      id: ref.id,
+      groupId: groupId,
+      description: (note != null && note.trim().isNotEmpty)
+          ? note.trim()
+          : 'Settlement: $fromPerson paid $toPerson',
+      amount: amount,
+      payerName: fromPerson,
+      involvedMembers: [toPerson],
+      customSplit: {toPerson: amount},
+      date: DateTime.now(),
+    );
+    await ref.set(expense.toMap());
+
+    // If payment was made to 'You', update group collectedAmount!
+    if (toPerson == 'You') {
+      final groupDoc = await doc.collection('finance_group_events').doc(groupId).get();
+      if (groupDoc.exists) {
+        final event = GroupEvent.fromMap(groupDoc.data()!, groupDoc.id);
+        final newCollected = event.collectedAmount + amount;
+        final friendsShare = event.totalAmount - event.myShare;
+        final isNowSettled = newCollected >= (friendsShare - 0.5);
+
+        await groupDoc.reference.update({
+          'collectedAmount': newCollected,
+          if (isNowSettled && !event.isSettled) 'isSettled': true,
+        });
+      }
+    }
+  }
+
+  Future<void> removeSplitRepayment({
+    required SmsTransaction tx,
+    required String splitGroupId,
+  }) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final groupDoc = await doc.collection('finance_group_events').doc(splitGroupId).get();
+    if (groupDoc.exists) {
+      final currentEvent = GroupEvent.fromMap(groupDoc.data()!, groupDoc.id);
+      final newCollected = (currentEvent.collectedAmount - tx.amount).clamp(0.0, double.infinity);
+      final friendsShare = currentEvent.totalAmount - currentEvent.myShare;
+      final isStillSettled = newCollected >= (friendsShare - 0.5);
+
+      await groupDoc.reference.update({
+        'collectedAmount': newCollected,
+        'isSettled': isStillSettled,
+      });
+    }
+
+    await doc.collection('sms_transactions').doc(tx.id).update({
+      'isSplitRepayment': false,
+      'repaymentForGroupId': FieldValue.delete(),
+    });
   }
 
   Future<void> settleGroupEvent(String eventId, {String? note}) async {
@@ -669,7 +745,7 @@ class FinanceService {
     final doc = _userDoc;
     if (doc == null) return;
 
-    await doc.collection('sms_transactions').doc(tx.id).update(tx.toMap());
+    await doc.collection('sms_transactions').doc(tx.id).update(tx.toMapForUpdate());
 
     // If verified, reconcile transaction balance to corresponding BankAccount if matching
     if (tx.isVerified) {

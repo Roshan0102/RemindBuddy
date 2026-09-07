@@ -11,6 +11,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../models/shift.dart';
 import '../services/storage_service.dart';
 import '../services/shift_service.dart';
+import '../services/home_widget_service.dart';
 import '../services/log_service.dart';
 import '../widgets/web_image_viewer.dart';
 
@@ -26,6 +27,7 @@ class MyShiftsScreen extends StatefulWidget {
 class _MyShiftsScreenState extends State<MyShiftsScreen> {
   final StorageService _storage = StorageService();
   final ShiftService _shiftService = ShiftService();
+  final HomeWidgetService _homeWidgetService = HomeWidgetService();
 
   static final Map<String, List<Shift>> _cachedShifts = {};
   static final Map<String, Map<String, int>?> _cachedStats = {};
@@ -112,6 +114,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
             _hasData = true;
             _isLoading = false;
           });
+          _homeWidgetService.updateShiftCalendarWidget(shifts: shifts, monthDate: _currentDate);
         }
       } else {
         _cachedShifts[month] = [];
@@ -360,16 +363,13 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
   }
 
   Future<void> _uploadJSON() async {
-    final TextEditingController jsonController = TextEditingController();
-    final TextEditingController nameController = TextEditingController(
-      text: FirebaseAuth.instance.currentUser?.displayName ?? 'Roshan J',
-    );
+    final TextEditingController nameController = TextEditingController();
 
     XFile? selectedImage;
     bool isScanning = false;
     bool isSaving = false;
     bool isPreviewMode = false;
-    int currentTab = 0; // 0 for Image, 1 for JSON
+    bool nameHasError = false;
     String errorMessage = '';
 
     String employeeName = '';
@@ -388,107 +388,96 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
           if (!isPreviewMode) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              title: Text(
-                'Upload Shift Roster',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.document_scanner_rounded, color: Color(0xFF38BDF8), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Scan Shift Roster',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18),
+                    ),
+                  ),
+                ],
               ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ChoiceChip(
-                            label: Text(
-                              'Scan Image',
-                              style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
-                            ),
-                            selected: currentTab == 0,
-                            onSelected: (selected) {
-                              if (selected) setDialogState(() => currentTab = 0);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ChoiceChip(
-                            label: Text(
-                              'Paste JSON',
-                              style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
-                            ),
-                            selected: currentTab == 1,
-                            onSelected: (selected) {
-                              if (selected) setDialogState(() => currentTab = 1);
-                            },
-                          ),
-                        ),
-                      ],
+                    Text(
+                      'Upload your roster sheet to automatically extract and schedule your monthly shifts.',
+                      style: GoogleFonts.outfit(fontSize: 13, color: Colors.grey.shade600),
                     ),
                     const SizedBox(height: 16),
-                    if (currentTab == 0) ...[
-                      TextField(
-                        controller: nameController,
-                        style: GoogleFonts.outfit(),
-                        decoration: InputDecoration(
-                          labelText: 'Employee Name in Roster',
-                          hintText: 'e.g. Roshan J',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    TextField(
+                      controller: nameController,
+                      style: GoogleFonts.outfit(),
+                      onChanged: (val) {
+                        if (nameHasError && val.trim().isNotEmpty) {
+                          setDialogState(() => nameHasError = false);
+                        }
+                      },
+                      decoration: InputDecoration(
+                        labelText: 'Employee Name in Roster *',
+                        hintText: 'e.g. Enter name as on roster',
+                        errorText: nameHasError ? 'Employee name is compulsory' : null,
+                        errorStyle: GoogleFonts.outfit(color: Colors.redAccent, fontWeight: FontWeight.w600),
+                        prefixIcon: const Icon(Icons.person_outline_rounded),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        focusedErrorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+                        ),
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          final ImagePicker picker = ImagePicker();
-                          final XFile? img = await picker.pickImage(
-                            source: ImageSource.gallery,
-                            maxWidth: 1600,
-                            maxHeight: 1600,
-                            imageQuality: 82,
-                          );
-                          if (img != null) {
-                            setDialogState(() {
-                              selectedImage = img;
-                              errorMessage = '';
-                            });
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        icon: const Icon(Icons.photo_library_rounded),
-                        label: Text(
-                          selectedImage == null ? 'Select Roster Image' : 'Change Image',
-                          style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
-                        ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        final ImagePicker picker = ImagePicker();
+                        final XFile? img = await picker.pickImage(
+                          source: ImageSource.gallery,
+                          maxWidth: 1600,
+                          maxHeight: 1600,
+                          imageQuality: 82,
+                        );
+                        if (img != null) {
+                          setDialogState(() {
+                            selectedImage = img;
+                            errorMessage = '';
+                          });
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      if (selectedImage != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'Selected: ${selectedImage!.name}',
-                          style: GoogleFonts.outfit(
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF10B981),
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ] else ...[
-                      Text(
-                        'Paste your JSON roster data below:',
+                      icon: const Icon(Icons.photo_library_rounded),
+                      label: Text(
+                        selectedImage == null ? 'Select Roster Image' : 'Change Image',
                         style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: jsonController,
-                        maxLines: 8,
-                        style: GoogleFonts.jetBrainsMono(fontSize: 12),
-                        decoration: InputDecoration(
-                          hintText: '{\n  "employee_name": "...",\n  "month": "...",\n  "shifts": [...]\n}',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    if (selectedImage != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Selected: ${selectedImage!.name}',
+                        style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF10B981),
                         ),
+                        textAlign: TextAlign.center,
                       ),
                     ],
                     if (errorMessage.isNotEmpty) ...[
@@ -496,8 +485,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                       Text(
                         errorMessage,
                         style: GoogleFonts.outfit(
-                          color: Colors.red,
+                          color: Colors.redAccent,
                           fontWeight: FontWeight.bold,
+                          fontSize: 13,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -526,76 +516,57 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         errorMessage = '';
                       });
 
-                      if (currentTab == 0) {
-                        if (nameController.text.trim().isEmpty) {
-                          setDialogState(() => errorMessage = 'Please enter employee name.');
-                          return;
-                        }
-                        if (selectedImage == null) {
-                          setDialogState(() => errorMessage = 'Please select a roster image.');
-                          return;
-                        }
+                      if (nameController.text.trim().isEmpty) {
+                        setDialogState(() {
+                          nameHasError = true;
+                          errorMessage = 'Please enter your name as written on the roster.';
+                        });
+                        return;
+                      }
+                      if (selectedImage == null) {
+                        setDialogState(() => errorMessage = 'Please select a roster image to scan.');
+                        return;
+                      }
 
-                        setDialogState(() => isScanning = true);
-                        try {
-                          final bytes = await selectedImage!.readAsBytes();
-                          final base64Image = base64Encode(bytes);
+                      setDialogState(() => isScanning = true);
+                      try {
+                        final bytes = await selectedImage!.readAsBytes();
+                        final base64Image = base64Encode(bytes);
 
-                          final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable(
-                            'analyzeRosterImage',
-                            options: HttpsCallableOptions(timeout: const Duration(seconds: 180)),
-                          );
-                          final result = await callable.call(<String, dynamic>{
-                            'image': base64Image,
-                            'employeeName': nameController.text.trim(),
-                          });
+                        final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable(
+                          'analyzeRosterImage',
+                          options: HttpsCallableOptions(timeout: const Duration(seconds: 180)),
+                        );
+                        final result = await callable.call(<String, dynamic>{
+                          'image': base64Image,
+                          'employeeName': nameController.text.trim(),
+                        });
 
-                          final data = result.data;
-                          if (data != null) {
-                            final roster = ShiftRoster.fromJson(data as Map);
-                            setDialogState(() {
-                              parsedShifts = roster.shifts;
-                              employeeName = roster.employeeName;
-                              monthLabel = roster.month;
-                              isPreviewMode = true;
-                              isScanning = false;
-                            });
-                          } else {
-                            throw Exception('Received empty result from server.');
-                          }
-                        } catch (e) {
-                          setDialogState(() {
-                            errorMessage = 'Scanning failed: $e';
-                            isScanning = false;
-                          });
-                        }
-                      } else {
-                        if (jsonController.text.trim().isEmpty) {
-                          setDialogState(() => errorMessage = 'Please paste JSON roster data.');
-                          return;
-                        }
-
-                        try {
-                          final jsonData = json.decode(jsonController.text.trim());
-                          final roster = ShiftRoster.fromJson(jsonData);
+                        final data = result.data;
+                        if (data != null) {
+                          final roster = ShiftRoster.fromJson(data as Map);
                           setDialogState(() {
                             parsedShifts = roster.shifts;
                             employeeName = roster.employeeName;
                             monthLabel = roster.month;
                             isPreviewMode = true;
+                            isScanning = false;
                           });
-                        } catch (e) {
-                          setDialogState(() {
-                            errorMessage = 'Invalid JSON: $e';
-                          });
+                        } else {
+                          throw Exception('Received empty result from server.');
                         }
+                      } catch (e) {
+                        setDialogState(() {
+                          errorMessage = 'Scanning failed: $e';
+                          isScanning = false;
+                        });
                       }
                     },
                     style: ElevatedButton.styleFrom(
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     child: Text(
-                      currentTab == 0 ? 'Extract Shifts' : 'Parse JSON',
+                      'Extract Shifts',
                       style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
                     ),
                   ),

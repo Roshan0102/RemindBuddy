@@ -66,9 +66,6 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
   late AnimationController _pulseController;
   final List<_ParsedItem> _parsedItems = [];
 
-  Timer? _autoConfirmTimer;
-  int _autoConfirmCountdown = 3;
-  bool _isAutoConfirmActive = false;
 
   final List<String> _baseCategories = [
     'Food & Dining',
@@ -106,7 +103,6 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
 
   @override
   void dispose() {
-    _autoConfirmTimer?.cancel();
     _speechToText.stop();
     _pulseController.dispose();
     for (final item in _parsedItems) {
@@ -131,11 +127,7 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
         });
       },
       onStatus: (status) {
-        if (status == 'done' || status == 'notListening') {
-          if (_state == _VoiceSheetState.listening && _liveTranscript.trim().isNotEmpty) {
-            _processVoiceInput(_liveTranscript);
-          }
-        }
+        // Do not auto-submit on silence! User explicitly controls when done by tapping 'Done Speaking'.
       },
     );
 
@@ -146,14 +138,11 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
           setState(() {
             _liveTranscript = result.recognizedWords;
           });
-          if (result.finalResult && _liveTranscript.trim().isNotEmpty) {
-            _speechToText.stop();
-            _processVoiceInput(_liveTranscript);
-          }
+          // Do not auto-submit on finalResult. User explicitly taps 'Done Speaking ⚡'.
         },
         listenOptions: SpeechListenOptions(
-          listenFor: const Duration(seconds: 45),
-          pauseFor: const Duration(seconds: 3),
+          listenFor: const Duration(minutes: 2),
+          pauseFor: const Duration(seconds: 30),
           cancelOnError: false,
           partialResults: true,
         ),
@@ -256,9 +245,6 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
       setState(() {
         _state = _VoiceSheetState.review;
       });
-
-      // Start 3-second auto-confirm countdown
-      _startAutoConfirmTimer();
     } catch (e) {
       if (!mounted) return;
       final errStr = e.toString();
@@ -273,36 +259,11 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
     }
   }
 
-  void _startAutoConfirmTimer() {
-    _autoConfirmTimer?.cancel();
-    _autoConfirmCountdown = 3;
-    _isAutoConfirmActive = true;
-
-    _autoConfirmTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      if (_autoConfirmCountdown > 1) {
-        setState(() => _autoConfirmCountdown--);
-      } else {
-        timer.cancel();
-        _saveAllTransactions();
-      }
-    });
-  }
-
   void _pauseAutoConfirm() {
-    if (_isAutoConfirmActive) {
-      _autoConfirmTimer?.cancel();
-      setState(() {
-        _isAutoConfirmActive = false;
-      });
-    }
+    // No-op: Auto-confirm is disabled so user has unlimited time to review
   }
 
   Future<void> _saveAllTransactions() async {
-    _autoConfirmTimer?.cancel();
     if (_parsedItems.isEmpty) {
       Navigator.pop(context);
       return;
@@ -720,29 +681,18 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
                     'Extracted ${_parsedItems.length} Transaction(s)',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
                   ),
-                  if (_isAutoConfirmActive)
-                    InkWell(
-                      onTap: _pauseAutoConfirm,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.shade700,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.pause, size: 12, color: Colors.white),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Auto-saving in $_autoConfirmCountdown s',
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  else
-                    const Text('Auto-save paused', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                    ),
+                    child: const Text(
+                      'Review & Confirm',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -965,7 +915,6 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: () {
-                  _autoConfirmTimer?.cancel();
                   _startListening();
                 },
                 icon: const Icon(Icons.mic_rounded, size: 16),
@@ -985,9 +934,7 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
                 ),
                 icon: const Icon(Icons.check_circle_rounded, size: 18),
                 label: Text(
-                  _isAutoConfirmActive
-                      ? 'Confirm All ($_autoConfirmCountdown s)'
-                      : 'Confirm & Save (${_parsedItems.length})',
+                  'Confirm & Save (${_parsedItems.length})',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),

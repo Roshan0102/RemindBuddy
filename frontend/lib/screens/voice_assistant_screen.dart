@@ -173,30 +173,17 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
       _speechTimeoutTimer?.cancel();
       await _speechToText.listen(
         onResult: (result) {
-          if (_hasSentCurrentVoiceInput) return;
+          if (_hasSentCurrentVoiceInput || !mounted) return;
 
           setState(() {
             _currentTranscribedText = result.recognizedWords;
           });
-          
-          _speechTimeoutTimer?.cancel();
-          if (result.recognizedWords.trim().isNotEmpty) {
-            // Faster 1.4s silence auto-timeout (previously 2.5s)
-            _speechTimeoutTimer = Timer(const Duration(milliseconds: 1400), () {
-              debugPrint("STT: Inactivity timeout reached. Sending: $_currentTranscribedText");
-              _stopListeningAndSend(_currentTranscribedText);
-            });
-          }
-
-          if (result.finalResult) {
-            _speechTimeoutTimer?.cancel();
-            _stopListeningAndSend(result.recognizedWords);
-          }
+          // Do NOT auto-send on silence or finalResult. User explicitly taps mic to stop or taps Send.
         },
         listenOptions: SpeechListenOptions(
-          listenFor: const Duration(seconds: 30),
-          pauseFor: const Duration(milliseconds: 1500),
-          cancelOnError: true,
+          listenFor: const Duration(minutes: 2),
+          pauseFor: const Duration(seconds: 30),
+          cancelOnError: false,
           partialResults: true,
         ),
       );
@@ -208,6 +195,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
   Future<void> _stopListening() async {
     _speechTimeoutTimer?.cancel();
     await _speechToText.stop();
+    if (!mounted) return;
     setState(() {
       _isListening = false;
       _pulseController.stop();
@@ -216,11 +204,10 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
 
   void _stopListeningAndSend([String? words]) {
     if (_hasSentCurrentVoiceInput) return;
-    _hasSentCurrentVoiceInput = true;
 
     _speechTimeoutTimer?.cancel();
     _stopListening();
-    
+
     final rawWords = (words != null && words.trim().isNotEmpty)
         ? words
         : (_currentTranscribedText.trim().isNotEmpty
@@ -229,10 +216,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
 
     final cleanWords = rawWords.trim();
     if (cleanWords.isNotEmpty) {
+      _hasSentCurrentVoiceInput = true;
       _sendMessage(cleanWords);
-    } else {
-      // Nothing spoken, allow re-listening immediately
-      _hasSentCurrentVoiceInput = false;
     }
   }
 
@@ -389,66 +374,116 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
               // Live transcribing banner / status
               if (_currentTranscribedText.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                    padding: const EdgeInsets.all(14.0),
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.cyan.withValues(alpha: 0.12) : Colors.indigo.withValues(alpha: 0.08),
+                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: isDark ? Colors.cyanAccent.withValues(alpha: 0.3) : Colors.indigo.withValues(alpha: 0.2),
+                        color: _isListening
+                            ? (isDark ? Colors.cyanAccent.withValues(alpha: 0.5) : Colors.indigo.withValues(alpha: 0.4))
+                            : (isDark ? Colors.white24 : Colors.black12),
+                        width: 1.5,
                       ),
+                      boxShadow: [
+                        if (_isListening)
+                          BoxShadow(
+                            color: Colors.cyanAccent.withValues(alpha: 0.15),
+                            blurRadius: 10,
+                            spreadRadius: 1,
+                          ),
+                      ],
                     ),
-                    child: Row(
+                    child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Flexible(
-                          child: Text(
-                            _currentTranscribedText,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.outfit(
-                              fontSize: 16,
-                              fontStyle: FontStyle.italic,
-                              color: isDark ? Colors.cyanAccent : Colors.indigo,
+                        Row(
+                          children: [
+                            Icon(
+                              _isListening ? Icons.mic : Icons.check_circle_outline_rounded,
+                              size: 16,
+                              color: _isListening
+                                  ? (isDark ? Colors.cyanAccent : Colors.indigo)
+                                  : (isDark ? const Color(0xFF10B981) : const Color(0xFF059669)),
                             ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _isListening ? "Listening... (tap mic to stop & review)" : "Speech Recorded:",
+                              style: GoogleFonts.outfit(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: _isListening
+                                    ? (isDark ? Colors.cyanAccent : Colors.indigo)
+                                    : (isDark ? const Color(0xFF10B981) : const Color(0xFF059669)),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '"$_currentTranscribedText"',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
                           ),
                         ),
-                        if (_isListening) ...[
-                          const SizedBox(width: 10),
-                          InkWell(
-                            onTap: () {
-                              HapticFeedback.mediumImpact();
-                              _stopListeningAndSend(_currentTranscribedText);
-                            },
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [Colors.cyanAccent.shade700, Colors.blue.shade700],
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Cancel / Discard button
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.6)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              icon: const Icon(Icons.close_rounded, size: 16, color: Colors.redAccent),
+                              label: Text(
+                                "Cancel",
+                                style: GoogleFonts.outfit(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.redAccent,
                                 ),
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.cyanAccent.withValues(alpha: 0.4),
-                                    blurRadius: 6,
-                                  ),
-                                ],
                               ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.send_rounded, size: 14, color: Colors.white),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    "Send",
-                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-                                  ),
-                                ],
-                              ),
+                              onPressed: () {
+                                HapticFeedback.lightImpact();
+                                _stopListening();
+                                setState(() {
+                                  _currentTranscribedText = "";
+                                });
+                              },
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 14),
+                            // Send button
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isDark ? Colors.cyan.shade800 : Colors.indigo,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 3,
+                              ),
+                              icon: const Icon(Icons.send_rounded, size: 16),
+                              label: Text(
+                                "Send 🚀",
+                                style: GoogleFonts.outfit(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              onPressed: () {
+                                HapticFeedback.mediumImpact();
+                                _stopListeningAndSend(_currentTranscribedText);
+                              },
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -565,8 +600,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
                                 return;
                               }
                               if (_isListening) {
-                                HapticFeedback.lightImpact();
-                                _stopListeningAndSend(_currentTranscribedText);
+                                HapticFeedback.mediumImpact();
+                                _stopListening();
                               } else {
                                 HapticFeedback.selectionClick();
                                 _startListening(isHoldMode: false);
@@ -724,17 +759,21 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
                   child: Text(
                     _isListening 
                         ? (_isHoldMode 
-                            ? "Listening... Release to send 🚀" 
-                            : "Listening... Tap mic to send immediately ⚡") 
-                        : (_isSpeaking 
-                            ? "Tap microphone to stop speech" 
-                            : "Tap or hold microphone to talk"),
+                            ? "Listening... Release to stop & review" 
+                            : "Listening... Tap mic to stop & review, or tap Send 🚀") 
+                        : (_currentTranscribedText.isNotEmpty
+                            ? "Tap 'Send 🚀' to query AI, or 'Cancel' to discard"
+                            : (_isSpeaking 
+                                ? "Tap microphone to stop speech" 
+                                : "Tap microphone to speak")),
                     style: GoogleFonts.outfit(
                       color: _isListening 
                           ? (isDark ? Colors.cyanAccent : Colors.indigo)
-                          : Colors.grey,
+                          : (_currentTranscribedText.isNotEmpty
+                              ? (isDark ? Colors.cyanAccent : Colors.indigo)
+                              : Colors.grey),
                       fontSize: 14,
-                      fontWeight: _isListening ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight: (_isListening || _currentTranscribedText.isNotEmpty) ? FontWeight.w600 : FontWeight.normal,
                     ),
                   ),
                 ),

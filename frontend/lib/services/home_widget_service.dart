@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
+import '../models/shift.dart';
 import 'log_service.dart';
 
 class HomeWidgetService {
@@ -415,9 +417,276 @@ class HomeWidgetService {
           todayShiftTime: todayTime,
           tomorrowShiftName: tomorrowName,
         );
+
+        // Also dynamically sync the full Shift Calendar Widget
+        try {
+          final monthShiftsSnapshot = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('shifts')
+              .doc(currentRosterMonth)
+              .collection('daily_shifts')
+              .get();
+
+          if (monthShiftsSnapshot.docs.isNotEmpty) {
+            final List<Shift> monthShifts = monthShiftsSnapshot.docs.map((d) {
+              final sData = d.data();
+              return Shift.fromJson(sData);
+            }).toList();
+
+            await updateShiftCalendarWidget(
+              shifts: monthShifts,
+              monthDate: now,
+            );
+          }
+        } catch (calErr) {
+          LogService().error('Error syncing Shift Calendar Widget in syncAllWidgets', calErr);
+        }
       }
     } catch (e) {
       LogService().error('Error syncing Shift Widget in syncAllWidgets', e);
     }
+  }
+
+  /// Updates the full Monthly Shift Calendar Home Screen Widget
+  Future<void> updateShiftCalendarWidget({
+    required List<Shift> shifts,
+    required DateTime monthDate,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      final monthTitle = DateFormat('MMMM yyyy').format(monthDate);
+      final widget = _buildShiftCalendarWidgetView(shifts: shifts, monthDate: monthDate);
+
+      final imageUri = await HomeWidget.renderFlutterWidget(
+        widget,
+        key: 'shift_calendar_image',
+        logicalSize: const Size(360, 360),
+        pixelRatio: 2.5,
+      );
+
+      if (imageUri != null) {
+        await HomeWidget.saveWidgetData<String>('shift_calendar_image_path', imageUri.path);
+      }
+      await HomeWidget.saveWidgetData<String>('shift_calendar_month', monthTitle);
+
+      await HomeWidget.updateWidget(
+        name: 'ShiftCalendarWidgetProvider',
+        androidName: 'ShiftCalendarWidgetProvider',
+        qualifiedAndroidName: 'com.remindbuddy.remindbuddy.ShiftCalendarWidgetProvider',
+      );
+    } catch (e) {
+      LogService().error('Failed to update ShiftCalendarWidget', e);
+    }
+  }
+
+  Widget _buildShiftCalendarWidgetView({
+    required List<Shift> shifts,
+    required DateTime monthDate,
+  }) {
+    final year = monthDate.year;
+    final month = monthDate.month;
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    final firstWeekday = DateTime(year, month, 1).weekday % 7;
+    final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    final Map<String, Shift> shiftByDate = {
+      for (var s in shifts) s.date: s,
+    };
+
+    final weekHeaders = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+    return Container(
+      width: 360,
+      height: 360,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F141C),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                DateFormat('MMMM yyyy').format(monthDate).toUpperCase(),
+                style: const TextStyle(
+                  color: Color(0xFF38BDF8),
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+              const Text(
+                'RemindBuddy Shifts',
+                style: TextStyle(
+                  color: Color(0xFF94A3B8),
+                  fontSize: 10,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Weekday headers
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: weekHeaders.map((day) {
+              return Expanded(
+                child: Center(
+                  child: Text(
+                    day,
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 6),
+
+          // Grid
+          Expanded(
+            child: GridView.builder(
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: firstWeekday + daysInMonth,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 7,
+                crossAxisSpacing: 4,
+                mainAxisSpacing: 4,
+                childAspectRatio: 0.88,
+              ),
+              itemBuilder: (context, index) {
+                if (index < firstWeekday) {
+                  return const SizedBox.shrink();
+                }
+
+                final day = index - firstWeekday + 1;
+                final dateStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+                final isToday = dateStr == todayStr;
+                final shift = shiftByDate[dateStr];
+
+                Color badgeColor = Colors.transparent;
+                String badgeText = '';
+
+                if (shift != null) {
+                  switch (shift.shiftType.toLowerCase()) {
+                    case 'morning':
+                      badgeColor = const Color(0xFFF59E0B);
+                      badgeText = 'M';
+                      break;
+                    case 'afternoon':
+                      badgeColor = const Color(0xFF06B6D4);
+                      badgeText = 'A';
+                      break;
+                    case 'night':
+                      badgeColor = const Color(0xFF8B5CF6);
+                      badgeText = 'N';
+                      break;
+                    case 'week_off':
+                      badgeColor = const Color(0xFF10B981);
+                      badgeText = 'OFF';
+                      break;
+                  }
+                }
+
+                return Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E2638),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: isToday ? const Color(0xFF38BDF8) : const Color(0xFF263248),
+                      width: isToday ? 1.5 : 0.8,
+                    ),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '$day',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: isToday ? FontWeight.w900 : FontWeight.w600,
+                          color: isToday ? const Color(0xFF38BDF8) : const Color(0xFFE2E8F0),
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      if (shift != null)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 1),
+                          decoration: BoxDecoration(
+                            color: badgeColor,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: Text(
+                            badgeText,
+                            style: const TextStyle(
+                              fontSize: 7.5,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              decoration: TextDecoration.none,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      else
+                        const SizedBox(height: 8),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 6),
+
+          // Mini Legend Row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildWidgetLegendDot('Morning (M)', const Color(0xFFF59E0B)),
+              const SizedBox(width: 8),
+              _buildWidgetLegendDot('Afternoon (A)', const Color(0xFF06B6D4)),
+              const SizedBox(width: 8),
+              _buildWidgetLegendDot('Night (N)', const Color(0xFF8B5CF6)),
+              const SizedBox(width: 8),
+              _buildWidgetLegendDot('Off Day', const Color(0xFF10B981)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWidgetLegendDot(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 3),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF94A3B8),
+            fontSize: 8,
+            fontWeight: FontWeight.w600,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ],
+    );
   }
 }

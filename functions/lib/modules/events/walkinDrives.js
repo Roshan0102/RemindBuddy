@@ -39,13 +39,12 @@ async function fetchAndStoreWalkInsForUserInternal(uid, triggerNotification) {
     const today = moment().tz('Asia/Kolkata');
     const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
     const endDateStr = today.clone().add(60, 'days').format('YYYY-MM-DD');
-    const currentMonthYear = today.format("MMMM YYYY");
     // Run targeted Tavily search query per role
     const allTavilyResults = [];
     const seenUrls = new Set();
     for (const role of roles.slice(0, 4)) {
         try {
-            const query = `${role} ("walk-in drive" OR "walk-in interview" OR "walk in drive") ${location} "${currentMonthYear}"`;
+            const query = `${role} (walk-in drive OR walk-in interview OR "walk in drive" OR "hiring drive") ${location} ${today.format("YYYY")}`;
             console.log(`[WalkinDrives] Querying Tavily for user ${uid} (Role: "${role}")...`);
             const tavilyResp = await (0, tavilyHelper_1.searchTavily)({
                 apiKey: userTavilyKey,

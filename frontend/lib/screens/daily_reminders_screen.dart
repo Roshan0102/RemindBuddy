@@ -145,10 +145,6 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
           )
         : const TimeOfDay(hour: 8, minute: 0);
 
-    bool isAnnoying = existingReminder?.isAnnoying ?? false;
-    bool snoozeEnabled = existingReminder?.snoozeEnabled ?? true;
-    int snoozeIntervalMinutes = existingReminder?.snoozeIntervalMinutes ?? 15;
-    int maxSnoozeCount = existingReminder?.maxSnoozeCount ?? 3;
     bool isSaving = false;
 
     final presetSuggestions = [
@@ -479,172 +475,7 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Smart Snooze Section
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF262F3E) : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade200,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(Icons.snooze_rounded, color: Colors.amber, size: 18),
-                                ),
-                                const SizedBox(width: 10),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Smart Snooze',
-                                      style: GoogleFonts.outfit(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Nudge again if not checked off',
-                                      style: GoogleFonts.outfit(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            Switch(
-                              value: snoozeEnabled,
-                              onChanged: (val) {
-                                HapticFeedback.selectionClick();
-                                setSheetState(() => snoozeEnabled = val);
-                              },
-                            ),
-                          ],
-                        ),
-                        if (snoozeEnabled) ...[
-                          const SizedBox(height: 14),
-                          const Divider(height: 1),
-                          const SizedBox(height: 14),
-                          Text(
-                            'Interval',
-                            style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            children: [5, 10, 15, 30, 45, 60].map((mins) {
-                              final isSelected = snoozeIntervalMinutes == mins;
-                              return ChoiceChip(
-                                label: Text('${mins}m'),
-                                selected: isSelected,
-                                onSelected: (sel) {
-                                  if (sel) {
-                                    HapticFeedback.selectionClick();
-                                    setSheetState(() => snoozeIntervalMinutes = mins);
-                                  }
-                                },
-                              );
-                            }).toList(),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Max Repeats',
-                            style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            children: [1, 2, 3, 5].map((count) {
-                              final isSelected = maxSnoozeCount == count;
-                              return ChoiceChip(
-                                label: Text('${count}x'),
-                                selected: isSelected,
-                                onSelected: (sel) {
-                                  if (sel) {
-                                    HapticFeedback.selectionClick();
-                                    setSheetState(() => maxSnoozeCount = count);
-                                  }
-                                },
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Annoying Alarm Option
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF262F3E) : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.grey.shade200,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(Icons.flash_on_rounded, color: Colors.orange, size: 18),
-                            ),
-                            const SizedBox(width: 10),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Persistent Alarm Tone',
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  'Play sound until explicitly dismissed',
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        Switch(
-                          value: isAnnoying,
-                          onChanged: (val) {
-                            HapticFeedback.selectionClick();
-                            setSheetState(() => isAnnoying = val);
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
                   // Save Action Button
                   SizedBox(
@@ -677,20 +508,16 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                                         title: titleController.text.trim(),
                                         description: descriptionController.text.trim(),
                                         time: timeStr,
-                                        isAnnoying: isAnnoying,
-                                        snoozeEnabled: snoozeEnabled,
-                                        snoozeIntervalMinutes: snoozeIntervalMinutes,
-                                        maxSnoozeCount: maxSnoozeCount,
+                                        isAnnoying: false,
+                                        snoozeEnabled: false,
                                       )
                                     : DailyReminder(
                                         title: titleController.text.trim(),
                                         description: descriptionController.text.trim(),
                                         time: timeStr,
                                         isActive: true,
-                                        isAnnoying: isAnnoying,
-                                        snoozeEnabled: snoozeEnabled,
-                                        snoozeIntervalMinutes: snoozeIntervalMinutes,
-                                        maxSnoozeCount: maxSnoozeCount,
+                                        isAnnoying: false,
+                                        snoozeEnabled: false,
                                       );
 
                                 if (isEditing) {
@@ -1295,56 +1122,6 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
                               ],
                             ),
                           ),
-
-                          // Snooze tag
-                          if (reminder.snoozeEnabled)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.amber.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.snooze_rounded, size: 12, color: Colors.amber),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${reminder.snoozeIntervalMinutes}m (${reminder.maxSnoozeCount}x)',
-                                    style: GoogleFonts.outfit(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: isDark ? Colors.amber.shade200 : Colors.amber.shade900,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                          // Persistent Alarm tag
-                          if (reminder.isAnnoying)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.flash_on_rounded, size: 12, color: Colors.orange),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Persistent',
-                                    style: GoogleFonts.outfit(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: isDark ? Colors.orange.shade200 : Colors.orange.shade900,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                         ],
                       ),
                     ],

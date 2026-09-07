@@ -4,4 +4,5 @@
     <string name="widget_gold_description">Displays live 24K and 22K gold market rates and daily price changes.</string>
     <string name="widget_finance_description">Displays active net bank balance and today\'s cashflow.</string>
     <string name="widget_shift_description">Displays today\'s active work shift duty and tomorrow\'s schedule.</string>
+    <string name="widget_shift_calendar_description">Displays the full monthly shift roster calendar heatmap on your home screen.</string>
 </resources>
