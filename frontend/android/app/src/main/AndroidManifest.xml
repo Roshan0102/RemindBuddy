@@ -126,17 +126,7 @@
                 android:resource="@xml/finance_widget_info" />
         </receiver>
 
-        <receiver
-            android:name=".ShiftWidgetProvider"
-            android:label="Work Shift"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/shift_widget_info" />
-        </receiver>
+
 
         <receiver
             android:name=".ShiftCalendarWidgetProvider"

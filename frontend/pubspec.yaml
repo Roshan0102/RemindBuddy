@@ -1,8 +1,8 @@
 name: remindbuddy
-description: "A personal AI life assistant and reminder application."
+description: "A comprehensive family management, reminder and finance tracking app."
 publish_to: 'none'
 
-version: 1.10.18+397
+version: 1.10.19+398
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

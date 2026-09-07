@@ -58,10 +58,19 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
   final FinanceService _financeService = FinanceService();
 
   _VoiceSheetState _state = _VoiceSheetState.listening;
-  String _liveTranscript = '';
+  String _accumulatedTranscript = '';
+  String _currentUtterance = '';
   String _errorMessage = '';
   bool _needsGeminiKey = false;
   String? _modelUsed;
+
+  String get _fullTranscript {
+    final acc = _accumulatedTranscript.trim();
+    final curr = _currentUtterance.trim();
+    if (acc.isEmpty) return curr;
+    if (curr.isEmpty) return acc;
+    return '$acc $curr';
+  }
 
   late AnimationController _pulseController;
   final List<_ParsedItem> _parsedItems = [];
@@ -112,9 +121,12 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
   }
 
   Future<void> _startListening() async {
+    await _speechToText.stop();
+    if (!mounted) return;
     setState(() {
       _state = _VoiceSheetState.listening;
-      _liveTranscript = '';
+      _accumulatedTranscript = '';
+      _currentUtterance = '';
       _errorMessage = '';
       _needsGeminiKey = false;
     });
@@ -122,12 +134,22 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
     final available = await _speechToText.initialize(
       onError: (err) {
         if (!mounted) return;
+        // Do not crash on silence pause timeout; gracefully resume
+        if (err.errorMsg.contains('error_no_match') || err.errorMsg.contains('error_speech_timeout')) {
+          _resumeListening();
+          return;
+        }
         setState(() {
           _errorMessage = "Speech recognition error: ${err.errorMsg}";
         });
       },
       onStatus: (status) {
-        // Do not auto-submit on silence! User explicitly controls when done by tapping 'Done Speaking'.
+        debugPrint("Voice Expense Logger STT Status: $status");
+        if (!mounted) return;
+        if ((status == "notListening" || status == "done") && _state == _VoiceSheetState.listening) {
+          _commitCurrentUtterance();
+          _resumeListening();
+        }
       },
     );
 
@@ -136,12 +158,14 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
         onResult: (result) {
           if (!mounted) return;
           setState(() {
-            _liveTranscript = result.recognizedWords;
+            _currentUtterance = result.recognizedWords;
+            if (result.finalResult) {
+              _commitCurrentUtterance();
+            }
           });
-          // Do not auto-submit on finalResult. User explicitly taps 'Done Speaking ⚡'.
         },
         listenOptions: SpeechListenOptions(
-          listenFor: const Duration(minutes: 2),
+          listenFor: const Duration(minutes: 5),
           pauseFor: const Duration(seconds: 30),
           cancelOnError: false,
           partialResults: true,
@@ -155,13 +179,56 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
     }
   }
 
+  void _commitCurrentUtterance() {
+    final phrase = _currentUtterance.trim();
+    if (phrase.isNotEmpty) {
+      if (_accumulatedTranscript.trim().isEmpty) {
+        _accumulatedTranscript = phrase;
+      } else {
+        if (!_accumulatedTranscript.trim().endsWith(phrase)) {
+          _accumulatedTranscript = '${_accumulatedTranscript.trim()} $phrase';
+        }
+      }
+      _currentUtterance = '';
+    }
+  }
+
+  Future<void> _resumeListening() async {
+    if (!mounted || _state != _VoiceSheetState.listening) return;
+    try {
+      if (!_speechToText.isListening) {
+        await _speechToText.listen(
+          onResult: (result) {
+            if (!mounted || _state != _VoiceSheetState.listening) return;
+            setState(() {
+              _currentUtterance = result.recognizedWords;
+              if (result.finalResult) {
+                _commitCurrentUtterance();
+              }
+            });
+          },
+          listenOptions: SpeechListenOptions(
+            listenFor: const Duration(minutes: 5),
+            pauseFor: const Duration(seconds: 30),
+            cancelOnError: false,
+            partialResults: true,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("Error resuming listening in VoiceExpenseLoggerSheet: $e");
+    }
+  }
+
   Future<void> _stopAndProcessManually() async {
     await _speechToText.stop();
-    if (_liveTranscript.trim().isNotEmpty) {
-      _processVoiceInput(_liveTranscript);
+    _commitCurrentUtterance();
+    final transcript = _fullTranscript.trim();
+    if (transcript.isNotEmpty) {
+      _processVoiceInput(transcript);
     } else {
       setState(() {
-        _errorMessage = "No speech detected. Please tap mic to try again.";
+        _errorMessage = "No speech detected. Please speak and tap Send 🚀.";
       });
     }
   }
@@ -525,11 +592,11 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
             border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
           ),
           child: Text(
-            _liveTranscript.isEmpty ? 'Your speech will appear here in real time...' : _liveTranscript,
+            _fullTranscript.isEmpty ? 'Your speech will appear here in real time...' : _fullTranscript,
             style: TextStyle(
               fontSize: 14,
-              color: _liveTranscript.isEmpty ? subtext : text,
-              fontWeight: _liveTranscript.isEmpty ? FontWeight.normal : FontWeight.w500,
+              color: _fullTranscript.isEmpty ? subtext : text,
+              fontWeight: _fullTranscript.isEmpty ? FontWeight.normal : FontWeight.w500,
             ),
           ),
         ),
@@ -578,24 +645,54 @@ class _VoiceExpenseLoggerSheetState extends State<VoiceExpenseLoggerSheet> with 
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             OutlinedButton.icon(
-              onPressed: _startListening,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Restart'),
+              onPressed: () {
+                _speechToText.stop();
+                Navigator.pop(context);
+              },
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.6)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.close_rounded, size: 18, color: Colors.redAccent),
+              label: Text(
+                'Cancel',
+                style: GoogleFonts.outfit(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.redAccent,
+                ),
+              ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 14),
             ElevatedButton.icon(
               onPressed: _stopAndProcessManually,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF8B5CF6),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 3,
               ),
-              icon: const Icon(Icons.done_all_rounded, size: 18),
-              label: const Text('Done Speaking ⚡'),
+              icon: const Icon(Icons.send_rounded, size: 18),
+              label: Text(
+                'Send 🚀',
+                style: GoogleFonts.outfit(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ),
+        if (_fullTranscript.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: _startListening,
+            icon: const Icon(Icons.refresh_rounded, size: 15, color: Colors.grey),
+            label: const Text('Clear & Restart', style: TextStyle(color: Colors.grey, fontSize: 12.5)),
+          ),
+        ],
       ],
     );
   }

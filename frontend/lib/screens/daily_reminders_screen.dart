@@ -808,17 +808,6 @@ class _DailyRemindersScreenState extends State<DailyRemindersScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddOrEditSheet(),
-        elevation: 3,
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: Text(
-          'New Routine',
-          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
-        ),
-      ),
     );
   }
 

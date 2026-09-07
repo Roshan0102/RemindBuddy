@@ -359,69 +359,7 @@ class HomeWidgetService {
       if (user == null) return;
 
       final now = DateTime.now();
-      final todayStr = DateFormat('yyyy-MM-dd').format(now);
       final currentRosterMonth = DateFormat('yyyy-MM').format(now);
-
-      // 1. Fetch Today's Shift
-      final todayShiftDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('shifts')
-          .doc(currentRosterMonth)
-          .collection('daily_shifts')
-          .doc(todayStr)
-          .get(const GetOptions(source: Source.serverAndCache));
-
-      String todayName = 'Week Off 🏖️';
-      String todayTime = 'Off Duty';
-
-      if (todayShiftDoc.exists) {
-        final data = todayShiftDoc.data() ?? {};
-        final rawType = (data['shift_type'] ?? data['shiftType'] ?? '').toString().toLowerCase();
-        if (!rawType.contains('off') && rawType.isNotEmpty) {
-          todayName = '${rawType.toUpperCase().replaceAll('_', ' ')} SHIFT';
-          final start = (data['start_time'] ?? data['startTime'] ?? '').toString();
-          final end = (data['end_time'] ?? data['endTime'] ?? '').toString();
-          if (start.isNotEmpty && end.isNotEmpty) {
-            todayTime = '$start - $end';
-          } else {
-            todayTime = 'Scheduled Shift';
-          }
-        }
-      }
-
-      // 2. Fetch Tomorrow's Shift
-      final tomorrow = now.add(const Duration(days: 1));
-      final tomorrowMonth = DateFormat('yyyy-MM').format(tomorrow);
-      final tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
-
-      final tomorrowShiftDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('shifts')
-          .doc(tomorrowMonth)
-          .collection('daily_shifts')
-          .doc(tomorrowStr)
-          .get(const GetOptions(source: Source.serverAndCache));
-
-      String tomorrowName = 'Tomorrow: Week Off';
-      if (tomorrowShiftDoc.exists) {
-        final data = tomorrowShiftDoc.data() ?? {};
-        final rawType = (data['shift_type'] ?? data['shiftType'] ?? '').toString().toLowerCase();
-        if (!rawType.contains('off') && rawType.isNotEmpty) {
-          final title = rawType.toUpperCase().replaceAll('_', ' ');
-          final start = (data['start_time'] ?? data['startTime'] ?? '').toString();
-          tomorrowName = start.isNotEmpty ? 'Tomorrow: $title ($start)' : 'Tomorrow: $title';
-        }
-      }
-
-      // Update Single Shift Widget
-      await updateShiftWidget(
-        todayShiftName: todayName,
-        todayShiftTime: todayTime,
-        tomorrowShiftName: tomorrowName,
-      );
-
       // 3. Fetch Full Month's Shifts for Shift Calendar Widget
       final monthShiftsSnapshot = await FirebaseFirestore.instance
           .collection('users')
@@ -563,9 +501,10 @@ class HomeWidgetService {
     required DateTime monthDate,
   }) async {
     try {
-      const double size = 420.0;
+      const double width = 580.0;
+      const double height = 330.0;
       final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, size, size));
+      final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, width, height));
 
       final year = monthDate.year;
       final month = monthDate.month;
@@ -579,8 +518,8 @@ class HomeWidgetService {
       };
 
       // 1. Background Card
-      final bgPaint = Paint()..color = const Color(0xFF0F141C);
-      final bgRect = RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, size, size), const Radius.circular(20));
+      final bgPaint = Paint()..color = const Color(0xFF0F172A);
+      final bgRect = RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, width, height), const Radius.circular(16));
       canvas.drawRRect(bgRect, bgPaint);
 
       // Card Border
@@ -592,8 +531,8 @@ class HomeWidgetService {
 
       // 2. Weekday Headers
       const weekdays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-      const double marginX = 14.0;
-      const double gridWidth = size - (2 * marginX);
+      const double marginX = 8.0;
+      const double gridWidth = width - (2 * marginX);
       const double colWidth = gridWidth / 7.0;
 
       for (int i = 0; i < 7; i++) {
@@ -602,24 +541,25 @@ class HomeWidgetService {
           canvas: canvas,
           text: weekdays[i],
           x: cx,
-          y: 10,
+          y: 6,
           align: TextAlign.center,
           style: const TextStyle(
-            color: Color(0xFF64748B),
-            fontSize: 15,
+            color: Color(0xFF94A3B8),
+            fontSize: 13,
             fontWeight: FontWeight.bold,
           ),
         );
       }
 
       // 3. Days Grid
-      const double gridTop = 36.0;
-      const double gridBottom = 384.0;
+      const double gridTop = 27.0;
+      const double gridBottom = 295.0;
       const double gridHeight = gridBottom - gridTop;
-      const double spacing = 4.0;
-      const double cellW = (gridWidth - (6 * spacing)) / 7.0;
+      const double spacingX = 4.0;
+      const double spacingY = 3.0;
+      const double cellW = (gridWidth - (6 * spacingX)) / 7.0;
       final int numRows = ((firstWeekday + daysInMonth + 6) ~/ 7).clamp(5, 6);
-      final double cellH = (gridHeight - ((numRows - 1) * spacing)) / numRows;
+      final double cellH = (gridHeight - ((numRows - 1) * spacingY)) / numRows;
 
       final cellBgPaint = Paint()..color = const Color(0xFF1E2638);
       final cellBorderPaint = Paint()
@@ -636,8 +576,8 @@ class HomeWidgetService {
         final col = slotIndex % 7;
         final row = slotIndex ~/ 7;
 
-        final cellLeft = marginX + (col * (cellW + spacing));
-        final cellTop = gridTop + (row * (cellH + spacing));
+        final cellLeft = marginX + (col * (cellW + spacingX));
+        final cellTop = gridTop + (row * (cellH + spacingY));
         final cellRect = RRect.fromRectAndRadius(
           Rect.fromLTWH(cellLeft, cellTop, cellW, cellH),
           const Radius.circular(6),
@@ -655,10 +595,10 @@ class HomeWidgetService {
           canvas: canvas,
           text: '$day',
           x: cellLeft + (cellW / 2.0),
-          y: cellTop + 4,
+          y: cellTop + 2,
           align: TextAlign.center,
           style: TextStyle(
-            fontSize: 14,
+            fontSize: 13.5,
             fontWeight: isToday ? FontWeight.w900 : FontWeight.bold,
             color: isToday ? const Color(0xFF38BDF8) : const Color(0xFFE2E8F0),
           ),
@@ -667,7 +607,7 @@ class HomeWidgetService {
         // Shift Badge
         if (shift != null) {
           Color badgeColor = const Color(0xFF6366F1);
-          String badgeText = shift.shiftType.isNotEmpty ? shift.shiftType[0].toUpperCase() : '';
+          String badgeText = shift.shiftType.isNotEmpty ? shift.shiftType.substring(0, shift.shiftType.length.clamp(1, 3)).toUpperCase() : '';
           final lower = shift.shiftType.toLowerCase();
           if (lower.contains('morning') || lower == 'm') {
             badgeColor = const Color(0xFFF59E0B);
@@ -714,7 +654,7 @@ class HomeWidgetService {
       }
 
       // 4. Legend
-      const double legendY = 396.0;
+      const double legendY = 306.0;
       const legendItems = [
         {'color': Color(0xFFF59E0B), 'label': 'M: Morn'},
         {'color': Color(0xFF06B6D4), 'label': 'A: Aft'},
@@ -728,7 +668,7 @@ class HomeWidgetService {
         final startX = marginX + (i * itemSpacing) + 6.0;
 
         final dotPaint = Paint()..color = item['color'] as Color;
-        canvas.drawCircle(Offset(startX, legendY + 6), 4, dotPaint);
+        canvas.drawCircle(Offset(startX, legendY + 7), 4, dotPaint);
 
         _drawCanvasText(
           canvas: canvas,
@@ -737,14 +677,14 @@ class HomeWidgetService {
           y: legendY,
           style: const TextStyle(
             color: Color(0xFF94A3B8),
-            fontSize: 11,
+            fontSize: 10.5,
             fontWeight: FontWeight.bold,
           ),
         );
       }
 
       final picture = recorder.endRecording();
-      final img = await picture.toImage(size.toInt(), size.toInt());
+      final img = await picture.toImage(width.toInt(), height.toInt());
       final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
       if (byteData != null) {
         final buffer = byteData.buffer.asUint8List();

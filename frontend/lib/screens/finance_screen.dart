@@ -2219,12 +2219,24 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
     final noteCtrl = TextEditingController();
     String type = 'lent'; // 'lent' (they owe me) or 'borrowed' (I owe them)
     String? selectedAccountId = accounts.isNotEmpty ? accounts.first.id : null;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add Debt / Loan Record'),
+          backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.transparent),
+          ),
+          title: Text(
+            'Add Debt / Loan Record',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -2232,47 +2244,203 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                 Row(
                   children: [
                     Expanded(
-                      child: ChoiceChip(
-                        label: const Text('I Lent Money\n(They owe me)', textAlign: TextAlign.center),
-                        selected: type == 'lent',
-                        selectedColor: Colors.green.shade100,
-                        onSelected: (val) => setDialogState(() => type = 'lent'),
+                      child: InkWell(
+                        onTap: () => setDialogState(() => type = 'lent'),
+                        borderRadius: BorderRadius.circular(12),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: type == 'lent'
+                                ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFD1FAE5))
+                                : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: type == 'lent'
+                                  ? const Color(0xFF10B981)
+                                  : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+                              width: type == 'lent' ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.arrow_upward_rounded,
+                                    size: 16,
+                                    color: type == 'lent'
+                                        ? (isDark ? const Color(0xFF6EE7B7) : const Color(0xFF047857))
+                                        : (isDark ? const Color(0xFF94A3B8) : Colors.grey.shade600),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'I Lent Money',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12.5,
+                                      color: type == 'lent'
+                                          ? (isDark ? Colors.white : const Color(0xFF065F46))
+                                          : (isDark ? const Color(0xFF94A3B8) : Colors.grey.shade700),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '(They owe me)',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: type == 'lent'
+                                      ? (isDark ? const Color(0xFF6EE7B7) : const Color(0xFF047857))
+                                      : (isDark ? const Color(0xFF64748B) : Colors.grey.shade500),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: ChoiceChip(
-                        label: const Text('I Borrowed\n(I owe them)', textAlign: TextAlign.center),
-                        selected: type == 'borrowed',
-                        selectedColor: Colors.red.shade100,
-                        onSelected: (val) => setDialogState(() => type = 'borrowed'),
+                      child: InkWell(
+                        onTap: () => setDialogState(() => type = 'borrowed'),
+                        borderRadius: BorderRadius.circular(12),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: type == 'borrowed'
+                                ? (isDark ? const Color(0xFF881337) : const Color(0xFFFFE4E6))
+                                : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: type == 'borrowed'
+                                  ? const Color(0xFFF43F5E)
+                                  : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+                              width: type == 'borrowed' ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.arrow_downward_rounded,
+                                    size: 16,
+                                    color: type == 'borrowed'
+                                        ? (isDark ? const Color(0xFFFDA4AF) : const Color(0xFFBE123C))
+                                        : (isDark ? const Color(0xFF94A3B8) : Colors.grey.shade600),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'I Borrowed',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12.5,
+                                      color: type == 'borrowed'
+                                          ? (isDark ? Colors.white : const Color(0xFF9F1239))
+                                          : (isDark ? const Color(0xFF94A3B8) : Colors.grey.shade700),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '(I owe them)',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: type == 'borrowed'
+                                      ? (isDark ? const Color(0xFFFDA4AF) : const Color(0xFFBE123C))
+                                      : (isDark ? const Color(0xFF64748B) : Colors.grey.shade500),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 TextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Person Name (e.g. Rahul, Dad, Friend)'),
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                  decoration: InputDecoration(
+                    labelText: 'Person Name (e.g. Rahul, Dad, Friend)',
+                    labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: amountCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Amount (₹)'),
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                  decoration: InputDecoration(
+                    labelText: 'Amount (₹)',
+                    labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: noteCtrl,
-                  decoration: const InputDecoration(labelText: 'Note (e.g., Dinner split, Emergency loan)'),
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                  decoration: InputDecoration(
+                    labelText: 'Note (e.g., Dinner split, Emergency loan)',
+                    labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 if (accounts.isNotEmpty)
                   DropdownButtonFormField<String>(
                     initialValue: selectedAccountId,
-                    decoration: const InputDecoration(labelText: 'Deduct/Add to Account (Optional)'),
+                    dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                    decoration: InputDecoration(
+                      labelText: 'Deduct/Add to Account (Optional)',
+                      labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                      ),
+                    ),
                     items: accounts
-                        .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name)))
+                        .map((a) => DropdownMenuItem(
+                              value: a.id,
+                              child: Text(a.name, style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                            ))
                         .toList(),
                     onChanged: (val) => selectedAccountId = val,
                   ),
@@ -2280,8 +2448,16 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700)),
+            ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
               onPressed: () {
                 if (nameCtrl.text.trim().isEmpty) return;
                 final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
@@ -2308,11 +2484,20 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
 
   void _showSettleDebtDialog(BuildContext context, DebtRecord debt, List<BankAccount> accounts) {
     String? selectedAccountId = accounts.isNotEmpty ? accounts.first.id : null;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Settle Up with ${debt.personName}'),
+        backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.transparent),
+        ),
+        title: Text(
+          'Settle Up with ${debt.personName}',
+          style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2321,23 +2506,47 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
               debt.type == 'lent'
                   ? 'Mark ₹${debt.amount} as paid back by ${debt.personName}?'
                   : 'Mark ₹${debt.amount} as paid to ${debt.personName}?',
-              style: const TextStyle(fontSize: 15),
+              style: TextStyle(fontSize: 15, color: isDark ? Colors.grey.shade200 : Colors.black87),
             ),
             const SizedBox(height: 16),
             if (accounts.isNotEmpty)
               DropdownButtonFormField<String>(
                 initialValue: selectedAccountId,
-                decoration: const InputDecoration(labelText: 'Deposit/Deduct Account'),
+                dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                decoration: InputDecoration(
+                  labelText: 'Deposit/Deduct Account',
+                  labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                  ),
+                ),
                 items: accounts
-                    .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name)))
+                    .map((a) => DropdownMenuItem(
+                          value: a.id,
+                          child: Text(a.name, style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                        ))
                     .toList(),
                 onChanged: (val) => selectedAccountId = val,
               ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700)),
+          ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
             onPressed: () {
               _financeService.settleDebt(debt, selectedAccountId ?? '');
               Navigator.pop(context);
@@ -2542,7 +2751,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         color: cardBg,
                         child: Padding(
-                          padding: const EdgeInsets.only(left: 10, right: 16, top: 4, bottom: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -2585,39 +2794,39 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                    padding: const EdgeInsets.all(4),
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: const EdgeInsets.all(3),
                                     tooltip: 'UPI Notification Tracker 🔔',
-                                    icon: const Icon(Icons.notifications_active_outlined, color: Colors.purpleAccent, size: 20),
+                                    icon: const Icon(Icons.notifications_active_outlined, color: Colors.purpleAccent, size: 19),
                                     onPressed: () => _showUpiNotificationSettingsDialog(context),
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 3),
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                    padding: const EdgeInsets.all(4),
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: const EdgeInsets.all(3),
                                     tooltip: 'Bank Header Rules ⚙️',
-                                    icon: const Icon(Icons.settings_suggest_rounded, color: Colors.blueAccent, size: 20),
+                                    icon: const Icon(Icons.settings_suggest_rounded, color: Colors.blueAccent, size: 19),
                                     onPressed: () => _showCustomHeaderRulesDialog(context),
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 3),
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                    padding: const EdgeInsets.all(4),
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: const EdgeInsets.all(3),
                                     tooltip: 'Sync Bank SMS',
                                     icon: _isScanningInbox
-                                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
-                                        : const Icon(Icons.sync_rounded, color: Colors.blueAccent, size: 20),
+                                        ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
+                                        : const Icon(Icons.sync_rounded, color: Colors.blueAccent, size: 19),
                                     onPressed: _isScanningInbox ? null : _showSmsSyncDialog,
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 3),
                                   IconButton(
-                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                    padding: const EdgeInsets.all(4),
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    padding: const EdgeInsets.all(3),
                                     tooltip: 'Delete Month Transactions',
-                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+                                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 19),
                                     onPressed: () => _confirmDeleteMonthTransactions(context),
                                   ),
-                                  const SizedBox(width: 2),
+                                  const SizedBox(width: 6),
                                 ],
                               ),
                             ],
@@ -3035,80 +3244,70 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                           ),
                                         ),
                                       ],
-                                      const SizedBox(height: 4),
-                                      InkWell(
-                                        onTap: () => _showSmsDetailsDialog(context, tx),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                                          decoration: BoxDecoration(
-                                            color: tx.source == 'manual'
-                                                ? Colors.amber.withValues(alpha: 0.15)
-                                                : (tx.source == 'both'
-                                                    ? Colors.green.withValues(alpha: 0.15)
+                                      if (tx.source != 'manual') ...[
+                                        const SizedBox(height: 4),
+                                        InkWell(
+                                          onTap: () => _showSmsDetailsDialog(context, tx),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                            decoration: BoxDecoration(
+                                              color: tx.source == 'both'
+                                                  ? Colors.green.withValues(alpha: 0.15)
+                                                  : (tx.source == 'notification'
+                                                      ? Colors.purple.withValues(alpha: 0.15)
+                                                      : Colors.blue.withValues(alpha: 0.15)),
+                                              borderRadius: BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: tx.source == 'both'
+                                                    ? Colors.green.withValues(alpha: 0.5)
                                                     : (tx.source == 'notification'
-                                                        ? Colors.purple.withValues(alpha: 0.15)
-                                                        : Colors.blue.withValues(alpha: 0.15))),
-                                            borderRadius: BorderRadius.circular(6),
-                                            border: Border.all(
-                                              color: tx.source == 'manual'
-                                                  ? Colors.amber.withValues(alpha: 0.6)
-                                                  : (tx.source == 'both'
-                                                      ? Colors.green.withValues(alpha: 0.5)
-                                                      : (tx.source == 'notification'
-                                                          ? Colors.purple.withValues(alpha: 0.5)
-                                                          : Colors.blue.withValues(alpha: 0.4))),
-                                              width: 0.8,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                tx.source == 'manual'
-                                                    ? Icons.edit_note_rounded
-                                                    : (tx.source == 'both'
-                                                        ? Icons.verified_rounded
-                                                        : (tx.source == 'notification'
-                                                            ? Icons.notifications_active_rounded
-                                                            : Icons.sms_rounded)),
-                                                size: 11,
-                                                color: tx.source == 'manual'
-                                                    ? Colors.amber.shade700
-                                                    : (tx.source == 'both'
-                                                        ? Colors.green
-                                                        : (tx.source == 'notification'
-                                                            ? Colors.purpleAccent
-                                                            : Colors.blueAccent)),
+                                                        ? Colors.purple.withValues(alpha: 0.5)
+                                                        : Colors.blue.withValues(alpha: 0.4)),
+                                                width: 0.8,
                                               ),
-                                              const SizedBox(width: 4),
-                                              Flexible(
-                                                child: Text(
-                                                  tx.source == 'manual'
-                                                      ? '✍️ Manual'
-                                                      : (tx.source == 'both'
-                                                          ? '⚡ Verified (${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'SMS + UPI'})'
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  tx.source == 'both'
+                                                      ? Icons.verified_rounded
+                                                      : (tx.source == 'notification'
+                                                          ? Icons.notifications_active_rounded
+                                                          : Icons.sms_rounded),
+                                                  size: 11,
+                                                  color: tx.source == 'both'
+                                                      ? Colors.green
+                                                      : (tx.source == 'notification'
+                                                          ? Colors.purpleAccent
+                                                          : Colors.blueAccent),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Flexible(
+                                                  child: Text(
+                                                    tx.source == 'both'
+                                                        ? '⚡ Verified (${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'SMS + UPI'})'
+                                                        : (tx.source == 'notification'
+                                                            ? '🔔 ${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'UPI App'}'
+                                                            : 'SMS 📩'),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      color: tx.source == 'both'
+                                                          ? (isDark ? Colors.greenAccent : Colors.green.shade800)
                                                           : (tx.source == 'notification'
-                                                              ? '🔔 ${tx.sourceApp.isNotEmpty ? tx.sourceApp : 'UPI App'}'
-                                                              : 'SMS 📩')),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    color: tx.source == 'manual'
-                                                        ? (isDark ? Colors.amberAccent : Colors.amber.shade900)
-                                                        : (tx.source == 'both'
-                                                            ? (isDark ? Colors.greenAccent : Colors.green.shade800)
-                                                            : (tx.source == 'notification'
-                                                                ? (isDark ? Colors.purpleAccent : Colors.purple.shade800)
-                                                                : Colors.blueAccent)),
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
+                                                              ? (isDark ? Colors.purpleAccent : Colors.purple.shade800)
+                                                              : Colors.blueAccent),
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                            ],
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      ],
                                     ],
                                   ),
                                 ),

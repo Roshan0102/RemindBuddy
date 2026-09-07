@@ -82,8 +82,13 @@ class _BuddySelectionDialogState extends State<BuddySelectionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.transparent),
+      ),
       child: Container(
         padding: const EdgeInsets.all(16),
         constraints: const BoxConstraints(maxHeight: 450),
@@ -96,26 +101,40 @@ class _BuddySelectionDialogState extends State<BuddySelectionDialog> {
               children: [
                 Text(
                   'Link Buddy',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close),
+                  icon: Icon(Icons.close, color: isDark ? Colors.grey.shade400 : Colors.black54),
                   onPressed: () => Navigator.pop(context),
                 )
               ],
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Request permission to schedule notifications for another user',
-              style: TextStyle(color: Colors.grey, fontSize: 13),
+              style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13),
             ),
             const SizedBox(height: 12),
             TextField(
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
               decoration: InputDecoration(
                 hintText: 'Search by username or email...',
-                prefixIcon: const Icon(Icons.search),
+                hintStyle: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey.shade600),
+                prefixIcon: Icon(Icons.search, color: isDark ? Colors.grey.shade400 : Colors.grey),
                 isDense: true,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: isDark,
+                fillColor: isDark ? const Color(0xFF0F172A) : Colors.transparent,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                ),
               ),
               onChanged: _filterUsers,
             ),
@@ -143,25 +162,38 @@ class _BuddySelectionDialogState extends State<BuddySelectionDialog> {
                             final user = _filteredUsers[index];
                             final isSending = _sendingToUid == user['uid'];
                             return Card(
+                              color: isDark ? const Color(0xFF0F172A) : Colors.white,
                               margin: const EdgeInsets.symmetric(vertical: 4),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
+                              ),
                               elevation: 0.5,
                               child: ListTile(
                                 leading: CircleAvatar(
-                                  backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                                  backgroundColor: Theme.of(context).primaryColor.withValues(alpha: isDark ? 0.25 : 0.1),
                                   child: Text(
                                     user['username']!.substring(0, 1).toUpperCase(),
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      color: Theme.of(context).primaryColor,
+                                      color: isDark ? Colors.blue.shade300 : Theme.of(context).primaryColor,
                                     ),
                                   ),
                                 ),
                                 title: Text(
                                   user['username']!,
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : Colors.black87,
+                                  ),
                                 ),
-                                subtitle: Text(user['email']!, style: const TextStyle(fontSize: 12)),
+                                subtitle: Text(
+                                  user['email']!,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark ? Colors.grey.shade400 : Colors.black54,
+                                  ),
+                                ),
                                 trailing: isSending
                                     ? const SizedBox(
                                         width: 24,
@@ -224,11 +256,12 @@ class BuddyRequestsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.only(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
         ),
@@ -243,7 +276,7 @@ class BuddyRequestsSheet extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey.shade300,
+                color: isDark ? const Color(0xFF475569) : Colors.grey.shade300,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -251,15 +284,23 @@ class BuddyRequestsSheet extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             'Manage Buddy Connections',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
 
           // Active Buddies Section
-          const Text(
+          Text(
             'ACTIVE LINKED BUDDIES',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey, letterSpacing: 0.5),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              color: isDark ? Colors.grey.shade400 : Colors.grey,
+              letterSpacing: 0.5,
+            ),
           ),
           const SizedBox(height: 8),
           StreamBuilder<List<Map<String, dynamic>>>(
@@ -267,9 +308,9 @@ class BuddyRequestsSheet extends StatelessWidget {
             builder: (context, snapshot) {
               final approved = snapshot.data ?? [];
               if (approved.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8.0),
-                  child: Text('No active linked buddies.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text('No active linked buddies.', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13)),
                 );
               }
 
@@ -282,19 +323,38 @@ class BuddyRequestsSheet extends StatelessWidget {
                   final username = b['username'] as String? ?? 'User';
 
                   return Card(
+                    color: isDark ? const Color(0xFF0F172A) : Colors.white,
                     margin: const EdgeInsets.symmetric(vertical: 4),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
+                    ),
                     elevation: 1,
                     child: ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: Colors.blue.shade100,
+                        backgroundColor: isDark ? Colors.blue.shade900.withValues(alpha: 0.4) : Colors.blue.shade100,
                         child: Text(
                           username.isNotEmpty ? username[0].toUpperCase() : 'B',
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.blue.shade300 : Colors.blue,
+                          ),
                         ),
                       ),
-                      title: Text('@$username', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: const Text('Linked for reminder scheduling', style: TextStyle(fontSize: 12)),
+                      title: Text(
+                        '@$username',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Linked for reminder scheduling',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade700,
+                        ),
+                      ),
                       trailing: IconButton(
                         icon: const Icon(Icons.person_remove_outlined, color: Colors.redAccent),
                         onPressed: () => _confirmRemoveBuddy(context, b),
@@ -309,9 +369,14 @@ class BuddyRequestsSheet extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Pending Requests Section
-          const Text(
+          Text(
             'PENDING INCOMING REQUESTS',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey, letterSpacing: 0.5),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              color: isDark ? Colors.grey.shade400 : Colors.grey,
+              letterSpacing: 0.5,
+            ),
           ),
           const SizedBox(height: 8),
           StreamBuilder<List<Map<String, dynamic>>>(
@@ -335,9 +400,9 @@ class BuddyRequestsSheet extends StatelessWidget {
                       children: [
                         Icon(Icons.link_off_outlined, size: 64, color: Colors.grey.withValues(alpha: 0.5)),
                         const SizedBox(height: 12),
-                        const Text(
+                        Text(
                           'No pending buddy link requests',
-                          style: TextStyle(color: Colors.grey),
+                          style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey),
                         ),
                       ],
                     ),
@@ -355,11 +420,12 @@ class BuddyRequestsSheet extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final req = requests[index];
                     return Card(
+                      color: isDark ? const Color(0xFF0F172A) : Colors.white,
                       margin: const EdgeInsets.symmetric(vertical: 6),
                       elevation: 1.5,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.grey.shade200),
+                        side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(12.0),
@@ -368,12 +434,16 @@ class BuddyRequestsSheet extends StatelessWidget {
                           children: [
                             Text(
                               '@${req['senderUsername']} wants to link with you',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
                             ),
                             const SizedBox(height: 6),
-                            const Text(
+                            Text(
                               'This will allow them to schedule reminders and notifications directly on your device.',
-                              style: TextStyle(color: Colors.grey, fontSize: 12),
+                              style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 12),
                             ),
                             const SizedBox(height: 12),
                             Row(

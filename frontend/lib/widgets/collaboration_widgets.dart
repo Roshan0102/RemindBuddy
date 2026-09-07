@@ -167,8 +167,13 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.transparent),
+      ),
       child: Container(
         padding: const EdgeInsets.all(16),
         constraints: const BoxConstraints(maxHeight: 550),
@@ -181,10 +186,13 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
               children: [
                 Text(
                   'Collaborate',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close),
+                  icon: Icon(Icons.close, color: isDark ? Colors.grey.shade400 : Colors.black54),
                   onPressed: () => Navigator.pop(context),
                 )
               ],
@@ -192,19 +200,24 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
             const SizedBox(height: 8),
             Text(
               'Manage collaborators for "${widget.itemTitle}"',
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
+              style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13),
             ),
             const SizedBox(height: 12),
             if (_sharedWith.isNotEmpty) ...[
-              const Text(
+              Text(
                 'Active Collaborators',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
               ),
               const SizedBox(height: 6),
               Container(
                 constraints: const BoxConstraints(maxHeight: 120),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade300),
+                  color: isDark ? const Color(0xFF0F172A) : Colors.transparent,
+                  border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: ListView.builder(
@@ -216,7 +229,13 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
                     return ListTile(
                       dense: true,
                       leading: const Icon(Icons.person, color: Colors.blue),
-                      title: Text(username, style: const TextStyle(fontWeight: FontWeight.w500)),
+                      title: Text(
+                        username,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
                       trailing: (_isOwner || uid == FirebaseAuth.instance.currentUser?.uid)
                           ? IconButton(
                               icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
@@ -230,17 +249,32 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
               ),
               const SizedBox(height: 16),
             ],
-            const Text(
+            Text(
               'Invite New Collaborator',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
             ),
             const SizedBox(height: 6),
             TextField(
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
               decoration: InputDecoration(
                 hintText: 'Search by username or email...',
-                prefixIcon: const Icon(Icons.search),
+                hintStyle: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey.shade600),
+                prefixIcon: Icon(Icons.search, color: isDark ? Colors.grey.shade400 : Colors.grey),
                 isDense: true,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: isDark,
+                fillColor: isDark ? const Color(0xFF0F172A) : Colors.transparent,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
+                ),
               ),
               onChanged: _filterUsers,
             ),
@@ -269,25 +303,38 @@ class _CollaboratorSelectionDialogState extends State<CollaboratorSelectionDialo
                             final isSending = _sendingToUid == user['uid'];
                             final isAlreadyCollaborating = _sharedWith.contains(user['uid']);
                             return Card(
+                              color: isDark ? const Color(0xFF0F172A) : Colors.white,
                               margin: const EdgeInsets.symmetric(vertical: 4),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
+                              ),
                               elevation: 0.5,
                               child: ListTile(
                                 leading: CircleAvatar(
-                                  backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                                  backgroundColor: Theme.of(context).primaryColor.withValues(alpha: isDark ? 0.25 : 0.1),
                                   child: Text(
                                     user['username']!.substring(0, 1).toUpperCase(),
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      color: Theme.of(context).primaryColor,
+                                      color: isDark ? Colors.blue.shade300 : Theme.of(context).primaryColor,
                                     ),
                                   ),
                                 ),
                                 title: Text(
                                   user['username']!,
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : Colors.black87,
+                                  ),
                                 ),
-                                subtitle: Text(user['email']!, style: const TextStyle(fontSize: 12)),
+                                subtitle: Text(
+                                  user['email']!,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark ? Colors.grey.shade400 : Colors.black54,
+                                  ),
+                                ),
                                 trailing: isAlreadyCollaborating
                                     ? const Text('Collaborating', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))
                                     : isSending
@@ -320,11 +367,12 @@ class CollaborationRequestsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.only(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
         ),
@@ -338,7 +386,7 @@ class CollaborationRequestsSheet extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey.shade300,
+                color: isDark ? const Color(0xFF475569) : Colors.grey.shade300,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -346,7 +394,10 @@ class CollaborationRequestsSheet extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             'Collaboration Requests',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
@@ -371,9 +422,9 @@ class CollaborationRequestsSheet extends StatelessWidget {
                       children: [
                         Icon(Icons.handshake_outlined, size: 64, color: Colors.grey.withValues(alpha: 0.5)),
                         const SizedBox(height: 12),
-                        const Text(
+                        Text(
                           'No pending requests',
-                          style: TextStyle(color: Colors.grey),
+                          style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey),
                         ),
                       ],
                     ),
@@ -391,11 +442,12 @@ class CollaborationRequestsSheet extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final req = requests[index];
                     return Card(
+                      color: isDark ? const Color(0xFF0F172A) : Colors.white,
                       margin: const EdgeInsets.symmetric(vertical: 6),
                       elevation: 1.5,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.grey.shade200),
+                        side: BorderSide(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(12.0),
@@ -404,7 +456,11 @@ class CollaborationRequestsSheet extends StatelessWidget {
                           children: [
                             Text(
                               '@${req['senderUsername']} invited you to collaborate',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
                             ),
                             const SizedBox(height: 6),
                             Row(
@@ -412,13 +468,16 @@ class CollaborationRequestsSheet extends StatelessWidget {
                                 Icon(
                                   type == 'note' ? Icons.note_alt_outlined : Icons.checklist_outlined,
                                   size: 16,
-                                  color: Colors.grey,
+                                  color: isDark ? Colors.blue.shade300 : Colors.grey,
                                 ),
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
                                     req['title'] ?? 'Untitled',
-                                    style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.black87),
+                                    style: TextStyle(
+                                      fontStyle: FontStyle.italic,
+                                      color: isDark ? Colors.grey.shade300 : Colors.black87,
+                                    ),
                                   ),
                                 ),
                               ],

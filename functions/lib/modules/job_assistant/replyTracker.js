@@ -431,6 +431,12 @@ Return ONLY valid JSON in this exact structure:
             await client.logout();
         }
         catch (_) { }
+        try {
+            await firebase_1.db.collection("users").doc(uid).set({
+                lastJobRepliesCheckedAt: firebase_1.admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        }
+        catch (_) { }
     }
     return { checked: checkedCount, repliesFound };
 }

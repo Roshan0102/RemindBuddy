@@ -21,6 +21,7 @@ class CalendarReminder {
   final int maxSnoozeCount;
   final int currentSnoozeCount;
   final String? taskId;
+  final Timestamp? notifiedAt;
 
   CalendarReminder({
     this.id,
@@ -43,6 +44,7 @@ class CalendarReminder {
     this.maxSnoozeCount = 3,
     this.currentSnoozeCount = 0,
     this.taskId,
+    this.notifiedAt,
   });
 
   factory CalendarReminder.fromMap(Map<String, dynamic> json, String docId) {
@@ -67,6 +69,7 @@ class CalendarReminder {
       maxSnoozeCount: json['maxSnoozeCount'] ?? 3,
       currentSnoozeCount: json['currentSnoozeCount'] ?? 0,
       taskId: json['taskId'] as String?,
+      notifiedAt: json['notifiedAt'] as Timestamp?,
     );
   }
 
@@ -94,6 +97,7 @@ class CalendarReminder {
       if (scheduledForUid != null) 'scheduledForUid': scheduledForUid,
       if (scheduledForUsername != null) 'scheduledForUsername': scheduledForUsername,
       if (taskId != null) 'taskId': taskId,
+      if (notifiedAt != null) 'notifiedAt': notifiedAt,
     };
   }
 
@@ -118,6 +122,7 @@ class CalendarReminder {
     int? maxSnoozeCount,
     int? currentSnoozeCount,
     String? taskId,
+    Timestamp? notifiedAt,
   }) {
     return CalendarReminder(
       id: id ?? this.id,
@@ -140,6 +145,7 @@ class CalendarReminder {
       maxSnoozeCount: maxSnoozeCount ?? this.maxSnoozeCount,
       currentSnoozeCount: currentSnoozeCount ?? this.currentSnoozeCount,
       taskId: taskId ?? this.taskId,
+      notifiedAt: notifiedAt ?? this.notifiedAt,
     );
   }
 }
@@ -153,6 +159,7 @@ class GroupedCalendarReminder {
   final String time;
   final String status;
   final List<String> recipientUsernames;
+  final Timestamp? notifiedAt;
 
   GroupedCalendarReminder({
     required this.primaryReminder,
@@ -163,6 +170,7 @@ class GroupedCalendarReminder {
     required this.time,
     required this.status,
     required this.recipientUsernames,
+    this.notifiedAt,
   });
 
   static List<GroupedCalendarReminder> groupList(List<CalendarReminder> reminders) {
@@ -187,6 +195,7 @@ class GroupedCalendarReminder {
       final Set<String> recipientsSet = {};
       bool anyCompleted = false;
       bool allCompleted = true;
+      Timestamp? groupNotifiedAt;
 
       for (final item in list) {
         if (item.scheduledForUsername != null && item.scheduledForUsername!.isNotEmpty) {
@@ -201,6 +210,10 @@ class GroupedCalendarReminder {
           anyCompleted = true;
         } else {
           allCompleted = false;
+        }
+
+        if (item.notifiedAt != null && groupNotifiedAt == null) {
+          groupNotifiedAt = item.notifiedAt;
         }
       }
 
@@ -218,6 +231,7 @@ class GroupedCalendarReminder {
         time: first.time,
         status: aggregateStatus,
         recipientUsernames: recipientsSet.toList(),
+        notifiedAt: groupNotifiedAt,
       ));
     }
 

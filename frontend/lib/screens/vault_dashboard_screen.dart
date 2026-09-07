@@ -155,7 +155,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
             color: isSelected
-                ? (isDark ? Colors.indigo.shade700 : Colors.indigo.shade600)
+                ? (isDark ? Colors.indigo.shade600 : Colors.indigo.shade600)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(9),
           ),
@@ -165,7 +165,9 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
               Icon(
                 icon,
                 size: 15,
-                color: isSelected ? Colors.white : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                color: isSelected
+                    ? Colors.white
+                    : (isDark ? const Color(0xFF94A3B8) : Colors.grey.shade700),
               ),
               const SizedBox(width: 4),
               Text(
@@ -173,7 +175,9 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                  color: isSelected ? Colors.white : (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
+                  color: isSelected
+                      ? Colors.white
+                      : (isDark ? const Color(0xFFCBD5E1) : Colors.grey.shade800),
                 ),
               ),
             ],
@@ -1099,6 +1103,8 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                     // Sort documents alphabetically by title (A-Z)
                     filteredDocs.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
 
+                    final isDark = Theme.of(context).brightness == Brightness.dark;
+
                     return Column(
                       children: [
                         // Modern Non-Scrolling Filter Bar (Fits fully on single screen without scrolling!)
@@ -1110,8 +1116,9 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                               // 1. Segmented View Mode Toggle: [👥 Family] | [🔒 Private] | [🌐 All Docs]
                               Container(
                                 decoration: BoxDecoration(
-                                  color: Colors.grey.shade200,
+                                  color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
                                   borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade300),
                                 ),
                                 padding: const EdgeInsets.all(3),
                                 child: Row(
@@ -1133,26 +1140,50 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                       height: 38,
                                       padding: const EdgeInsets.symmetric(horizontal: 10),
                                       decoration: BoxDecoration(
-                                        color: Colors.indigo.shade50,
+                                        color: isDark ? const Color(0xFF1E293B) : Colors.indigo.shade50,
                                         borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(color: Colors.indigo.shade100),
+                                        border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.indigo.shade100),
                                       ),
                                       child: DropdownButtonHideUnderline(
                                         child: DropdownButton<String>(
                                           isExpanded: true,
+                                          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
                                           value: _profilesMap.containsKey(_selectedMemberId) ? _selectedMemberId : null,
-                                          hint: const Text('All Profiles', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo)),
-                                          icon: const Icon(Icons.arrow_drop_down, color: Colors.indigo, size: 20),
-                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                                          hint: Text(
+                                            'All Profiles',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: isDark ? Colors.indigo.shade200 : Colors.indigo,
+                                            ),
+                                          ),
+                                          icon: Icon(
+                                            Icons.arrow_drop_down,
+                                            color: isDark ? Colors.indigo.shade200 : Colors.indigo,
+                                            size: 20,
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: isDark ? Colors.white : Colors.black87,
+                                          ),
                                           items: [
-                                            const DropdownMenuItem<String>(
+                                            DropdownMenuItem<String>(
                                               value: null,
-                                              child: Text('All Profiles', overflow: TextOverflow.ellipsis),
+                                              child: Text(
+                                                'All Profiles',
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                              ),
                                             ),
                                             ..._profilesMap.values.map((p) {
                                               return DropdownMenuItem<String>(
                                                 value: p.id,
-                                                child: Text(p.name, overflow: TextOverflow.ellipsis),
+                                                child: Text(
+                                                  p.name,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                                ),
                                               );
                                             }),
                                           ],
@@ -1169,20 +1200,33 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                       height: 38,
                                       padding: const EdgeInsets.symmetric(horizontal: 10),
                                       decoration: BoxDecoration(
-                                        color: Colors.indigo.shade50,
+                                        color: isDark ? const Color(0xFF1E293B) : Colors.indigo.shade50,
                                         borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(color: Colors.indigo.shade100),
+                                        border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.indigo.shade100),
                                       ),
                                       child: DropdownButtonHideUnderline(
                                         child: DropdownButton<String>(
                                           isExpanded: true,
+                                          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
                                           value: _selectedCategory,
-                                          icon: const Icon(Icons.arrow_drop_down, color: Colors.indigo, size: 20),
-                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                                          icon: Icon(
+                                            Icons.arrow_drop_down,
+                                            color: isDark ? Colors.indigo.shade200 : Colors.indigo,
+                                            size: 20,
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: isDark ? Colors.white : Colors.black87,
+                                          ),
                                           items: dynamicCategories.map((c) {
                                             return DropdownMenuItem<String>(
                                               value: c,
-                                              child: Text(c == 'All' ? 'All Categories' : c, overflow: TextOverflow.ellipsis),
+                                              child: Text(
+                                                c == 'All' ? 'All Categories' : c,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                              ),
                                             );
                                           }).toList(),
                                           onChanged: (val) => setState(() => _selectedCategory = val ?? 'All'),

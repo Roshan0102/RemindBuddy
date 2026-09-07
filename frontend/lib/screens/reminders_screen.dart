@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,6 +18,7 @@ class RemindersScreen extends StatefulWidget {
 class _RemindersScreenState extends State<RemindersScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
+  bool _showPastReminders = false;
   final StorageService _storage = StorageService();
 
   @override
@@ -112,6 +114,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                       setState(() {
                         _selectedDay = selectedDay;
                         _focusedDay = focusedDay;
+                        _showPastReminders = false;
                       });
                     },
                     calendarStyle: CalendarStyle(
@@ -266,153 +269,333 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
         final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-        return ListView.builder(
-          padding: const EdgeInsets.only(bottom: 90, top: 4),
-          itemCount: groupedReminders.length,
-          itemBuilder: (context, index) {
-            final grouped = groupedReminders[index];
-            final isCompleted = (grouped.status == 'completed');
-            final primaryId = grouped.primaryReminder.id ?? index.toString();
+        // Separate reminders into upcoming/recent vs past sent (> 5 mins)
+        final upcomingReminders = <GroupedCalendarReminder>[];
+        final pastReminders = <GroupedCalendarReminder>[];
 
-            return Dismissible(
-              key: Key(primaryId),
-              direction: DismissDirection.horizontal,
-              background: Container(
-                alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.only(left: 20.0),
-                color: Colors.red,
-                child: const Icon(Icons.delete, color: Colors.white),
-              ),
-              secondaryBackground: Container(
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.only(right: 20.0),
-                color: Colors.red,
-                child: const Icon(Icons.delete, color: Colors.white),
-              ),
-              confirmDismiss: (direction) async {
-                return await _confirmDeleteGroup(grouped, silent: true);
-              },
-              child: Card(
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: 1,
-                color: isCompleted
-                    ? (isDarkMode ? Colors.green.withValues(alpha: 0.15) : Colors.green.shade50)
-                    : (isDarkMode ? const Color(0xFF1E293B) : Colors.white),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                  leading: InkWell(
-                    onTap: () => _toggleGroupStatus(grouped),
-                    child: _buildStatusIcon(grouped.status),
+        for (final g in groupedReminders) {
+          if (_isPastSentReminder(g)) {
+            pastReminders.add(g);
+          } else {
+            upcomingReminders.add(g);
+          }
+        }
+
+        if (upcomingReminders.isEmpty && pastReminders.isNotEmpty) {
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 90, top: 12),
+            children: [
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.task_alt_rounded,
+                        size: 52,
+                        color: isDarkMode ? Colors.cyanAccent : Colors.green,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'All reminders for this day completed! 🎉',
+                        style: GoogleFonts.outfit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: isDarkMode ? Colors.white : Colors.black87,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${pastReminders.length} past reminder${pastReminders.length > 1 ? 's are' : ' is'} hidden',
+                        style: const TextStyle(fontSize: 13, color: Colors.grey),
+                      ),
+                    ],
                   ),
-                  title: Text(
-                    grouped.title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      decoration: isCompleted ? TextDecoration.lineThrough : null,
-                      color: isCompleted ? Colors.grey : (isDarkMode ? Colors.white : Colors.black87),
+                ),
+              ),
+              _buildPastRemindersToggle(pastReminders.length, isDarkMode),
+              if (_showPastReminders) ...[
+                for (int i = 0; i < pastReminders.length; i++)
+                  _buildReminderCard(pastReminders[i], i, isDarkMode),
+              ],
+            ],
+          );
+        }
+
+        return ListView(
+          padding: const EdgeInsets.only(bottom: 90, top: 4),
+          children: [
+            for (int i = 0; i < upcomingReminders.length; i++)
+              _buildReminderCard(upcomingReminders[i], i, isDarkMode),
+            if (pastReminders.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              _buildPastRemindersToggle(pastReminders.length, isDarkMode),
+              if (_showPastReminders) ...[
+                for (int i = 0; i < pastReminders.length; i++)
+                  _buildReminderCard(pastReminders[i], upcomingReminders.length + i, isDarkMode),
+              ],
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPastRemindersToggle(int count, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _showPastReminders = !_showPastReminders;
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    _showPastReminders ? Icons.visibility_off_outlined : Icons.history_rounded,
+                    size: 18,
+                    color: isDark ? Colors.cyanAccent : Theme.of(context).primaryColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _showPastReminders
+                        ? 'Hide past reminders'
+                        : 'Show past reminders of the day ($count)',
+                    style: GoogleFonts.outfit(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white70 : Colors.black87,
                     ),
                   ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (grouped.description.isNotEmpty) ...[
-                        const SizedBox(height: 2),
+                ],
+              ),
+              Icon(
+                _showPastReminders ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                size: 20,
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  DateTime? _parseReminderDateTime(String dateStr, String timeStr) {
+    try {
+      final dateParts = dateStr.trim().split('-');
+      if (dateParts.length < 3) return null;
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final day = int.parse(dateParts[2]);
+
+      final cleanTime = timeStr.trim();
+      final hasAmPm = cleanTime.toLowerCase().contains('am') || cleanTime.toLowerCase().contains('pm');
+
+      if (hasAmPm) {
+        final isPm = cleanTime.toLowerCase().contains('pm');
+        final timeWithoutAmPm = cleanTime.replaceAll(RegExp(r'[a-zA-Z]'), '').trim();
+        final parts = timeWithoutAmPm.split(':');
+        var hour = int.parse(parts[0]);
+        final minute = int.parse(parts[1]);
+        if (isPm && hour < 12) hour += 12;
+        if (!isPm && hour == 12) hour = 0;
+        return DateTime(year, month, day, hour, minute);
+      } else {
+        final parts = cleanTime.split(':');
+        final hour = int.parse(parts[0]);
+        final minute = int.parse(parts[1]);
+        return DateTime(year, month, day, hour, minute);
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isPastSentReminder(GroupedCalendarReminder grouped) {
+    final isDone = grouped.status == 'completed' || grouped.status == 'expired';
+    if (!isDone) return false;
+
+    final now = DateTime.now();
+
+    // 1. Check notifiedAt if present
+    if (grouped.notifiedAt != null) {
+      final diff = now.difference(grouped.notifiedAt!.toDate());
+      return diff.inMinutes >= 5;
+    }
+    for (final r in grouped.originalReminders) {
+      if (r.notifiedAt != null) {
+        final diff = now.difference(r.notifiedAt!.toDate());
+        return diff.inMinutes >= 5;
+      }
+    }
+
+    // 2. Check scheduled date and time
+    final scheduled = _parseReminderDateTime(grouped.date, grouped.time);
+    if (scheduled != null) {
+      final diff = now.difference(scheduled);
+      return diff.inMinutes >= 5;
+    }
+
+    // Fallback: if completed/expired without timestamp, treat as past
+    return true;
+  }
+
+  Widget _buildReminderCard(GroupedCalendarReminder grouped, int index, bool isDarkMode) {
+    final isCompleted = (grouped.status == 'completed');
+    final primaryId = grouped.primaryReminder.id ?? index.toString();
+
+    return Dismissible(
+      key: Key(primaryId),
+      direction: DismissDirection.horizontal,
+      background: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 20.0),
+        color: Colors.red,
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      secondaryBackground: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20.0),
+        color: Colors.red,
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      confirmDismiss: (direction) async {
+        return await _confirmDeleteGroup(grouped, silent: true);
+      },
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        elevation: 1,
+        color: isCompleted
+            ? (isDarkMode ? Colors.green.withValues(alpha: 0.15) : Colors.green.shade50)
+            : (isDarkMode ? const Color(0xFF1E293B) : Colors.white),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          leading: InkWell(
+            onTap: () => _toggleGroupStatus(grouped),
+            child: _buildStatusIcon(grouped.status),
+          ),
+          title: Text(
+            grouped.title,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+              decoration: isCompleted ? TextDecoration.lineThrough : null,
+              color: isCompleted ? Colors.grey : (isDarkMode ? Colors.white : Colors.black87),
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (grouped.description.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  grouped.description,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDarkMode ? Colors.white70 : Colors.black54,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.blueAccent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.access_time_rounded, size: 12, color: Colors.blueAccent),
+                        const SizedBox(width: 4),
                         Text(
-                          grouped.description,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDarkMode ? Colors.white70 : Colors.black54,
+                          grouped.time,
+                          style: const TextStyle(
+                            color: Colors.blueAccent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.blueAccent.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.access_time_rounded, size: 12, color: Colors.blueAccent),
-                                const SizedBox(width: 4),
-                                Text(
-                                  grouped.time,
-                                  style: const TextStyle(
-                                    color: Colors.blueAccent,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
+                    ),
+                  ),
+                  ...grouped.recipientUsernames.map((userLabel) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: userLabel.startsWith('from')
+                              ? Colors.purple.shade50
+                              : (userLabel == 'Myself' ? Colors.blue.shade50 : Colors.orange.shade50),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          userLabel,
+                          style: TextStyle(
+                            color: userLabel.startsWith('from')
+                                ? Colors.purple.shade800
+                                : (userLabel == 'Myself' ? Colors.blue.shade800 : Colors.orange.shade800),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
                           ),
-                          ...grouped.recipientUsernames.map((userLabel) => Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: userLabel.startsWith('from')
-                                      ? Colors.purple.shade50
-                                      : (userLabel == 'Myself' ? Colors.blue.shade50 : Colors.orange.shade50),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  userLabel,
-                                  style: TextStyle(
-                                    color: userLabel.startsWith('from')
-                                        ? Colors.purple.shade800
-                                        : (userLabel == 'Myself' ? Colors.blue.shade800 : Colors.orange.shade800),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              )),
-                        ],
-                      ),
-                    ],
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, color: Colors.blueAccent, size: 20),
-                        tooltip: 'Edit Reminder',
-                        onPressed: () async {
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => AddTaskScreen(
-                                selectedDate: _selectedDay,
-                                existingReminder: grouped.primaryReminder,
-                              ),
-                            ),
-                          );
-                          if (result == true) {
-                            setState(() {});
-                          }
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-                        tooltip: 'Delete Reminder',
-                        onPressed: () => _confirmDeleteGroup(grouped, silent: false),
-                      ),
-                    ],
-                  ),
-                  isThreeLine: true,
-                ),
+                        ),
+                      )),
+                ],
               ),
-            );
-          },
-        );
-      },
+            ],
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.edit_outlined, color: Colors.blueAccent, size: 20),
+                tooltip: 'Edit Reminder',
+                onPressed: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AddTaskScreen(
+                        selectedDate: _selectedDay,
+                        existingReminder: grouped.primaryReminder,
+                      ),
+                    ),
+                  );
+                  if (result == true) {
+                    setState(() {});
+                  }
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                tooltip: 'Delete Reminder',
+                onPressed: () => _confirmDeleteGroup(grouped, silent: false),
+              ),
+            ],
+          ),
+          isThreeLine: true,
+        ),
+      ),
     );
   }
 
@@ -437,7 +620,10 @@ class _RemindersScreenState extends State<RemindersScreen> {
   Future<void> _toggleGroupStatus(GroupedCalendarReminder grouped) async {
     final newStatus = (grouped.status == 'completed') ? 'scheduled' : 'completed';
     for (final r in grouped.originalReminders) {
-      final updated = r.copyWith(status: newStatus);
+      final updated = r.copyWith(
+        status: newStatus,
+        notifiedAt: newStatus == 'completed' ? (r.notifiedAt ?? Timestamp.now()) : null,
+      );
       await _storage.updateCalendarReminder(updated);
     }
     if (mounted) setState(() {});

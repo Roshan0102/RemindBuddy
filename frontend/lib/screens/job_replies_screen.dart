@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/job_application.dart';
 import '../models/networking_lead.dart';
@@ -17,6 +20,46 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
   final JobAssistantService _service = JobAssistantService();
   bool _isCheckingReplies = false;
   String _activeFilter = 'all'; // 'all', 'interview_invite', 'founder_chat', 'assessment', 'hr_query'
+  DateTime? _lastChecked;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastChecked();
+  }
+
+  Future<void> _loadLastChecked() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final str = prefs.getString('job_replies_last_checked');
+      if (str != null && mounted) {
+        setState(() {
+          _lastChecked = DateTime.tryParse(str);
+        });
+      }
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final ts = doc.data()?['lastJobRepliesCheckedAt'];
+        if (ts is Timestamp && mounted) {
+          final dt = ts.toDate();
+          if (_lastChecked == null || dt.isAfter(_lastChecked!)) {
+            setState(() {
+              _lastChecked = dt;
+            });
+            await prefs.setString('job_replies_last_checked', dt.toIso8601String());
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  String _formatLastChecked(DateTime dt) {
+    final month = DateFormat('MMM').format(dt).toUpperCase();
+    final rest = DateFormat('dd, hh:mm a').format(dt);
+    return '$month $rest';
+  }
 
   Future<void> _checkRepliesNow() async {
     setState(() {
@@ -27,6 +70,23 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
       final res = await _service.checkJobRepliesNow();
       final repliesFound = res['repliesFound'] ?? 0;
       final checked = res['checked'] ?? 0;
+
+      final now = DateTime.now();
+      if (mounted) {
+        setState(() {
+          _lastChecked = now;
+        });
+      }
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('job_replies_last_checked', now.toIso8601String());
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+            'lastJobRepliesCheckedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
+      } catch (_) {}
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -67,9 +127,23 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Recruiter & Founder Replies 📬',
-          style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Recruiter & Founder Replies 📬',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            if (_lastChecked != null)
+              Text(
+                'Last Checked: ${_formatLastChecked(_lastChecked!)}',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? const Color(0xFF6EE7B7) : Colors.white70,
+                ),
+              ),
+          ],
         ),
         actions: [
           TextButton.icon(
@@ -192,6 +266,24 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                         ),
+                        if (_lastChecked != null) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.schedule_rounded, size: 14, color: Colors.grey.shade500),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Last Checked: ${_formatLastChecked(_lastChecked!)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -253,6 +345,27 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
+                                if (_lastChecked != null) ...[
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.schedule_rounded,
+                                        size: 13,
+                                        color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF15803D),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Last Checked: ${_formatLastChecked(_lastChecked!)}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF15803D),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ],
                             ),
                           ),
