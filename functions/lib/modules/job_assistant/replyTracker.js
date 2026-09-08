@@ -33,7 +33,7 @@ const GENERIC_DOMAINS = new Set([
  */
 async function checkUserJobReplies(uid) {
     var _a, e_1, _b, _c;
-    var _d;
+    var _d, _e;
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     if (!userDoc.exists) {
         return { checked: 0, repliesFound: 0 };
@@ -158,9 +158,9 @@ async function checkUserJobReplies(uid) {
                 source: true
             });
             try {
-                for (var _e = true, fetchIterator_1 = __asyncValues(fetchIterator), fetchIterator_1_1; fetchIterator_1_1 = await fetchIterator_1.next(), _a = fetchIterator_1_1.done, !_a; _e = true) {
+                for (var _f = true, fetchIterator_1 = __asyncValues(fetchIterator), fetchIterator_1_1; fetchIterator_1_1 = await fetchIterator_1.next(), _a = fetchIterator_1_1.done, !_a; _f = true) {
                     _c = fetchIterator_1_1.value;
-                    _e = false;
+                    _f = false;
                     const msg = _c;
                     const envelope = msg.envelope;
                     if (!envelope)
@@ -177,42 +177,53 @@ async function checkUserJobReplies(uid) {
                     if (senderAddress === userEmail.toLowerCase().trim()) {
                         continue;
                     }
+                    // Check if this is a Mail Delivery Subsystem / Bounce / Failure notice
+                    const isPotentialBounce = senderAddress.includes("mailer-daemon") ||
+                        senderAddress.includes("postmaster") ||
+                        senderName.toLowerCase().includes("mail delivery") ||
+                        subjectLower.includes("delivery status notification") ||
+                        subjectLower.includes("address not found") ||
+                        subjectLower.includes("undelivered mail") ||
+                        subjectLower.includes("failure notice") ||
+                        subjectLower.includes("could not be delivered");
                     // 1. HARD FILTER: Automated Newsletters & Subscriptions
-                    // If the user subscribed to company job postings (e.g. TCS alerts), headers will have List-Unsubscribe or Precedence: bulk
-                    let hasUnsubscribeHeader = false;
-                    let hasBulkPrecedence = false;
-                    let hasAutoSubmitted = false;
-                    if (msg.headers) {
-                        const headersStr = msg.headers.toString("utf8").toLowerCase();
-                        if (headersStr.includes("list-unsubscribe:"))
-                            hasUnsubscribeHeader = true;
-                        if (headersStr.includes("precedence: bulk") || headersStr.includes("precedence: list"))
-                            hasBulkPrecedence = true;
-                        if (headersStr.includes("auto-submitted: auto-generated"))
-                            hasAutoSubmitted = true;
-                    }
-                    if (hasUnsubscribeHeader || hasBulkPrecedence) {
-                        // Definite automated newsletter or subscription digest
-                        continue;
-                    }
-                    // Automated sender address patterns
-                    if (senderAddress.includes("noreply") ||
-                        senderAddress.includes("no-reply") ||
-                        senderAddress.includes("newsletter") ||
-                        senderAddress.includes("marketing") ||
-                        senderAddress.includes("alerts@") ||
-                        senderAddress.includes("digest") ||
-                        senderAddress.includes("donotreply")) {
-                        continue;
-                    }
-                    // Automated subject patterns for job alerts & digests
-                    if (subjectLower.includes("new job alert") ||
-                        subjectLower.includes("weekly jobs digest") ||
-                        subjectLower.includes("jobs matching your profile") ||
-                        subjectLower.includes("newsletter") ||
-                        subjectLower.includes("daily digest") ||
-                        (hasAutoSubmitted && subjectLower.includes("job"))) {
-                        continue;
+                    // (Skip automated newsletters, but NEVER filter out delivery failure notices from mailer-daemon)
+                    if (!isPotentialBounce) {
+                        let hasUnsubscribeHeader = false;
+                        let hasBulkPrecedence = false;
+                        let hasAutoSubmitted = false;
+                        if (msg.headers) {
+                            const headersStr = msg.headers.toString("utf8").toLowerCase();
+                            if (headersStr.includes("list-unsubscribe:"))
+                                hasUnsubscribeHeader = true;
+                            if (headersStr.includes("precedence: bulk") || headersStr.includes("precedence: list"))
+                                hasBulkPrecedence = true;
+                            if (headersStr.includes("auto-submitted: auto-generated"))
+                                hasAutoSubmitted = true;
+                        }
+                        if (hasUnsubscribeHeader || hasBulkPrecedence) {
+                            // Definite automated newsletter or subscription digest
+                            continue;
+                        }
+                        // Automated sender address patterns
+                        if (senderAddress.includes("noreply") ||
+                            senderAddress.includes("no-reply") ||
+                            senderAddress.includes("newsletter") ||
+                            senderAddress.includes("marketing") ||
+                            senderAddress.includes("alerts@") ||
+                            senderAddress.includes("digest") ||
+                            senderAddress.includes("donotreply")) {
+                            continue;
+                        }
+                        // Automated subject patterns for job alerts & digests
+                        if (subjectLower.includes("new job alert") ||
+                            subjectLower.includes("weekly jobs digest") ||
+                            subjectLower.includes("jobs matching your profile") ||
+                            subjectLower.includes("newsletter") ||
+                            subjectLower.includes("daily digest") ||
+                            (hasAutoSubmitted && subjectLower.includes("job"))) {
+                            continue;
+                        }
                     }
                     // 2. CANDIDATE MATCHING
                     let matchedApp = null;
@@ -222,11 +233,11 @@ async function checkUserJobReplies(uid) {
                         matchedApp = appsByMessageId.get(inReplyTo);
                     }
                     // Match Method B: Exact Recruiter Email Address
-                    if (!matchedApp && appsByRecipient.has(senderAddress)) {
+                    if (!matchedApp && !isPotentialBounce && appsByRecipient.has(senderAddress)) {
                         matchedApp = appsByRecipient.get(senderAddress);
                     }
                     // Match Method C: Same Company Domain (e.g. hr.john@tcs.com when we applied to careers@tcs.com)
-                    if (!matchedApp) {
+                    if (!matchedApp && !isPotentialBounce) {
                         const senderAt = senderAddress.indexOf("@");
                         if (senderAt !== -1) {
                             const senderDomain = senderAddress.substring(senderAt + 1);
@@ -254,10 +265,7 @@ async function checkUserJobReplies(uid) {
                             }
                         }
                     }
-                    if (!matchedApp) {
-                        continue;
-                    }
-                    // 3. PARSE MESSAGE BODY & SNIPPET
+                    // 3. PARSE MESSAGE BODY & SNIPPET (needed for bounce body inspection & classification)
                     let bodyText = "";
                     try {
                         if (msg.source) {
@@ -273,6 +281,94 @@ async function checkUserJobReplies(uid) {
                         .replace(/https?:\/\/\S+/g, "[link]")
                         .trim()
                         .substring(0, 1500);
+                    // Match Method E: For Bounce emails, inspect body text to match the bounced recipient email
+                    if (!matchedApp && isPotentialBounce) {
+                        const bodyLower = bodyText.toLowerCase();
+                        for (const [recipientEmail, app] of appsByRecipient.entries()) {
+                            if (recipientEmail && (bodyLower.includes(recipientEmail) || subjectLower.includes(recipientEmail))) {
+                                matchedApp = app;
+                                break;
+                            }
+                        }
+                        if (!matchedApp) {
+                            for (const [comp, compApps] of appsByCompany.entries()) {
+                                if (comp.length > 2 && (bodyLower.includes(comp) || subjectLower.includes(comp))) {
+                                    matchedApp = compApps[0];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (!matchedApp) {
+                        continue;
+                    }
+                    // Check if this is a Mail Delivery Subsystem / Bounce / Failure notice
+                    const isBounce = isPotentialBounce ||
+                        cleanBodySnippet.toLowerCase().includes("address couldn't be found") ||
+                        cleanBodySnippet.toLowerCase().includes("address could not be found") ||
+                        cleanBodySnippet.toLowerCase().includes("recipient address rejected") ||
+                        cleanBodySnippet.toLowerCase().includes("user unknown");
+                    if (isBounce) {
+                        console.log(`[ReplyTracker] ⚠️ Detected mail delivery bounce for '${matchedApp.companyName}' (${matchedApp.recipientEmail || ''})`);
+                        const replyTime = envelope.date || new Date();
+                        const updateData = {
+                            status: "bounced",
+                            isBounced: true,
+                            emailBounced: true,
+                            responseType: "bounced",
+                            replyReceivedAt: firebase_1.admin.firestore.Timestamp.fromDate(replyTime),
+                            replySender: senderName ? `${senderName} <${senderAddress}>` : senderAddress,
+                            replySubject: subject,
+                            replySnippet: "Delivery failure: Recipient email address was not found or cannot receive mail.",
+                            replyBodyPreview: cleanBodySnippet.substring(0, 500),
+                            actionRequired: matchedApp.isNetworkingLead
+                                ? "Connect directly on LinkedIn using your connection note"
+                                : "Check recipient email or find company careers contact",
+                            replyMessageId: envelope.messageId || "",
+                            replyDismissed: false,
+                            isReplyDismissed: false,
+                            updatedAt: firebase_1.admin.firestore.FieldValue.serverTimestamp()
+                        };
+                        await matchedApp.ref.update(updateData);
+                        repliesFound++;
+                        if (matchedApp.messageId)
+                            appsByMessageId.delete(matchedApp.messageId.toLowerCase().trim().replace(/[<>]/g, ""));
+                        appsByRecipient.delete((matchedApp.recipientEmail || "").toLowerCase().trim());
+                        try {
+                            let fcmToken = userData.fcmToken;
+                            if (!fcmToken) {
+                                const tokenDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
+                                if (!tokenDoc.empty) {
+                                    fcmToken = (_d = tokenDoc.docs[0].data()) === null || _d === void 0 ? void 0 : _d.fcmToken;
+                                }
+                            }
+                            if (fcmToken) {
+                                await firebase_1.admin.messaging().send({
+                                    token: fcmToken,
+                                    notification: {
+                                        title: `⚠️ Email Delivery Failed: ${matchedApp.companyName}`,
+                                        body: `Address not found for ${matchedApp.companyName}. You can connect on LinkedIn instead.`
+                                    },
+                                    android: {
+                                        notification: {
+                                            channelId: "job_assistant_channel",
+                                            tag: `job_bounce_${matchedApp.id}`
+                                        }
+                                    },
+                                    data: {
+                                        type: "JOB_APPLICATION_BOUNCE",
+                                        applicationId: matchedApp.id,
+                                        companyName: matchedApp.companyName || "",
+                                        jobTitle: matchedApp.jobTitle || ""
+                                    }
+                                });
+                            }
+                        }
+                        catch (notifErr) {
+                            console.warn("[ReplyTracker] Error sending bounce alert push:", notifErr.message);
+                        }
+                        continue;
+                    }
                     // 4. GEMINI AI VERIFICATION & CLASSIFICATION (The Ultimate Arbiter)
                     // Ensures that even if TCS sent an email, if it's a promotional/job alert digest, it will NOT be marked as reply.
                     let analysis = null;
@@ -362,7 +458,7 @@ Return ONLY valid JSON in this exact structure:
                         if (!fcmToken) {
                             const tokenDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
                             if (!tokenDoc.empty) {
-                                fcmToken = (_d = tokenDoc.docs[0].data()) === null || _d === void 0 ? void 0 : _d.fcmToken;
+                                fcmToken = (_e = tokenDoc.docs[0].data()) === null || _e === void 0 ? void 0 : _e.fcmToken;
                             }
                         }
                         if (fcmToken) {
@@ -414,7 +510,7 @@ Return ONLY valid JSON in this exact structure:
             catch (e_1_1) { e_1 = { error: e_1_1 }; }
             finally {
                 try {
-                    if (!_e && !_a && (_b = fetchIterator_1.return)) await _b.call(fetchIterator_1);
+                    if (!_f && !_a && (_b = fetchIterator_1.return)) await _b.call(fetchIterator_1);
                 }
                 finally { if (e_1) throw e_1.error; }
             }

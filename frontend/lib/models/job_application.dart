@@ -25,6 +25,8 @@ class JobApplication {
   final String? replyBodyPreview;
   final String? actionRequired;
   final String? resumeProfileName;
+  final bool isReplyDismissed;
+  final bool isBounced;
 
   JobApplication({
     required this.id,
@@ -51,6 +53,8 @@ class JobApplication {
     this.replyBodyPreview,
     this.actionRequired,
     this.resumeProfileName,
+    this.isReplyDismissed = false,
+    this.isBounced = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -81,6 +85,9 @@ class JobApplication {
       'replyBodyPreview': replyBodyPreview,
       'actionRequired': actionRequired,
       'resumeProfileName': resumeProfileName,
+      'isReplyDismissed': isReplyDismissed,
+      'replyDismissed': isReplyDismissed,
+      'isBounced': isBounced,
     };
   }
 
@@ -141,6 +148,8 @@ class JobApplication {
       replyBodyPreview: map['replyBodyPreview'] as String?,
       actionRequired: map['actionRequired'] as String?,
       resumeProfileName: map['resumeProfileName'] as String?,
+      isReplyDismissed: map['replyDismissed'] == true || map['isReplyDismissed'] == true,
+      isBounced: map['isBounced'] == true || map['emailBounced'] == true || map['responseType'] == 'bounced' || map['status'] == 'bounced',
     );
   }
 }

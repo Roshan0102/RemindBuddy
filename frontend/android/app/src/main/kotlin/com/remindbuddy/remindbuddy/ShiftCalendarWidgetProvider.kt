@@ -99,8 +99,8 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
     }
 
     private fun drawCalendarBitmap(context: Context, widgetData: SharedPreferences?): Bitmap {
-        val width = 580
-        val height = 320
+        val width = 440
+        val height = 420
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
@@ -121,7 +121,7 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
 
         // 2. Weekday headers
         val weekdays = arrayOf("Su", "Mo", "Tu", "We", "Th", "Fr", "Sa")
-        val marginX = 8f
+        val marginX = 16f
         val gridWidth = width - (2 * marginX)
         val colWidth = gridWidth / 7f
 
@@ -132,7 +132,7 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
-        val weekdayY = 19f
+        val weekdayY = 22f
         for (i in 0 until 7) {
             val cx = marginX + (i * colWidth) + (colWidth / 2f)
             canvas.drawText(weekdays[i], cx, weekdayY, weekdayPaint)
@@ -161,11 +161,11 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
             } catch (_: Exception) {}
         }
 
-        val gridTop = 27f
-        val gridBottom = 295f
+        val gridTop = 32f
+        val gridBottom = 380f
         val gridHeight = gridBottom - gridTop
         val spacingX = 4f
-        val spacingY = 3f
+        val spacingY = 4f
         val cellW = (gridWidth - (6 * spacingX)) / 7f
         val numRows = Math.ceil((firstDayOfWeek + maxDays) / 7.0).toInt().coerceAtLeast(5)
         val cellH = (gridHeight - ((numRows - 1) * spacingY)) / numRows.toFloat()
@@ -185,12 +185,12 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
         }
         val dayNumPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
             textAlign = Paint.Align.CENTER
-            textSize = 13.5f
+            textSize = 14f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
             textAlign = Paint.Align.CENTER
-            textSize = 10f
+            textSize = 10.5f
             color = Color.WHITE
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
@@ -217,7 +217,7 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
 
             // Day Number
             dayNumPaint.color = if (isToday) Color.parseColor("#38BDF8") else Color.parseColor("#E2E8F0")
-            val numY = cellTop + 14f
+            val numY = cellTop + 16f
             canvas.drawText(day.toString(), cellRect.centerX(), numY, dayNumPaint)
 
             // Shift Badge
@@ -238,14 +238,14 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
                 val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = badgeColor
                 }
-                val badgeH = 15f
+                val badgeH = 16f
                 val badgeW = cellW - 6f
                 val badgeLeft = cellLeft + 3f
-                val badgeTop = cellTop + cellH - badgeH - 3f
+                val badgeTop = cellTop + cellH - badgeH - 4f
                 val badgeRect = RectF(badgeLeft, badgeTop, badgeLeft + badgeW, badgeTop + badgeH)
 
                 canvas.drawRoundRect(badgeRect, 4f, 4f, badgePaint)
-                canvas.drawText(badgeLabel, badgeRect.centerX(), badgeTop + 11.5f, badgeTextPaint)
+                canvas.drawText(badgeLabel, badgeRect.centerX(), badgeTop + 12f, badgeTextPaint)
             }
         }
 
@@ -255,7 +255,7 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
             color = Color.parseColor("#94A3B8")
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        val legendY = 312f
+        val legendY = 398f
         val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
         val items = listOf(

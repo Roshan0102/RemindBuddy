@@ -184,8 +184,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     final cachedModules = prefs.getStringList('cached_enabled_modules');
-    final savedWidgets = prefs.getStringList('dashboard_active_widgets');
-    final savedHero = prefs.getString('dashboard_hero_widget');
+    List<String>? savedWidgets = prefs.getStringList('dashboard_active_widgets');
+    String? savedHero = prefs.getString('dashboard_hero_widget');
 
     // Restore cached weather to eliminate initial --°C flicker
     final cachedCity = prefs.getString('cached_weather_city');
@@ -207,6 +207,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (cachedModules != null && cachedModules.isNotEmpty) {
       _enabledModules = cachedModules;
+    }
+
+    // Load persistent dashboard preferences from Firestore across sessions
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          if (data['dashboardPreferences'] != null) {
+            final dashPrefs = Map<String, dynamic>.from(data['dashboardPreferences']);
+            if (dashPrefs['activeWidgets'] is List && (dashPrefs['activeWidgets'] as List).isNotEmpty) {
+              savedWidgets = List<String>.from(dashPrefs['activeWidgets']);
+              await prefs.setStringList('dashboard_active_widgets', savedWidgets);
+            }
+            if (dashPrefs['heroWidget'] is String && (dashPrefs['heroWidget'] as String).isNotEmpty) {
+              savedHero = dashPrefs['heroWidget'] as String;
+              await prefs.setString('dashboard_hero_widget', savedHero);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error loading dashboard preferences from Firestore: $e');
+      }
     }
 
     if (savedWidgets != null && savedWidgets.isNotEmpty) {
@@ -267,6 +291,22 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('dashboard_active_widgets', _activeWidgets);
     await prefs.setString('dashboard_hero_widget', _heroWidget);
+
+    // Persist to Firestore so configuration survives logout/login
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'dashboardPreferences': {
+            'activeWidgets': _activeWidgets,
+            'heroWidget': _heroWidget,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Error saving dashboard config to Firestore: $e');
+      }
+    }
   }
 
   void _swapCards(String sourceKey, String targetKey) {
@@ -401,6 +441,20 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) {
           setState(() {
             _enabledModules = mods;
+
+            if (data['dashboardPreferences'] != null) {
+              final dashPrefs = Map<String, dynamic>.from(data['dashboardPreferences']);
+              if (dashPrefs['activeWidgets'] is List && (dashPrefs['activeWidgets'] as List).isNotEmpty) {
+                final fromDb = List<String>.from(dashPrefs['activeWidgets']).where(_isWidgetAllowed).toList();
+                if (fromDb.isNotEmpty) {
+                  _activeWidgets = fromDb;
+                }
+              }
+              if (dashPrefs['heroWidget'] is String && _isWidgetAllowed(dashPrefs['heroWidget'])) {
+                _heroWidget = dashPrefs['heroWidget'];
+              }
+            }
+
             _activeWidgets.removeWhere((w) => !_isWidgetAllowed(w));
             if (!_isWidgetAllowed(_heroWidget)) {
               _heroWidget = _activeWidgets.isNotEmpty ? _activeWidgets.first : 'gold_price';

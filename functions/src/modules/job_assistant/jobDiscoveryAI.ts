@@ -147,6 +147,7 @@ export function getBestMatchingResumeProfile(
 export async function discoverAndApplyForUser(
     uid: string,
     options?: {
+        applicantName?: string;
         targetRoles?: string[];
         locations?: string[];
         excludedCompanies?: string[];
@@ -165,11 +166,41 @@ export async function discoverAndApplyForUser(
     const emailConfig = userData.emailConfig || {};
     const userEmail = emailConfig.email;
     const appPassword = emailConfig.appPassword;
-    const applicantName = userData.displayName || "Roshan J";
+
+    // Dynamically resolve candidate name without any hardcoded fallback
+    let applicantName = (options?.applicantName || userData.applicantName || userData.displayName || "").trim();
+    if (!applicantName) {
+        try {
+            const authUser = await admin.auth().getUser(uid);
+            applicantName = (authUser.displayName || "").trim();
+            if (!applicantName && authUser.email) {
+                applicantName = authUser.email.split("@")[0];
+            }
+        } catch (_) {}
+    }
+    if (!applicantName) {
+        applicantName = "Candidate";
+    }
 
     if (!userEmail || !appPassword) {
         console.log(`[JobDiscovery] User ${uid} has not configured Gmail/App Password. Skipping.`);
         return { success: false, appliedCount: 0, jobs: [], message: "Gmail & App Password not configured in Job Assistant Settings." };
+    }
+
+    // Resolve roles & locations from options or user profile
+    const autoApplySettings = userData.autoApplySettings || {};
+    let targetRoles: string[] = options?.targetRoles || autoApplySettings.targetRoles || [];
+    if (typeof targetRoles === 'string') {
+        targetRoles = (targetRoles as string).split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    }
+    if (targetRoles.length === 0) {
+        console.log(`[JobDiscovery] User ${uid} has no target roles configured. Skipping.`);
+        return {
+            success: false,
+            appliedCount: 0,
+            jobs: [],
+            message: "Please enter your Target Job Roles (e.g. .NET Developer) in Auto-Apply preferences before running."
+        };
     }
 
     // Load Multi-Resume Profiles (with fallback to masterResume)
@@ -203,7 +234,7 @@ export async function discoverAndApplyForUser(
         resumeProfiles.push({
             id: "master_resume",
             title: "Master Resume",
-            targetRoles: ["Flutter Developer", "DevOps Engineer", "Cloud Engineer"],
+            targetRoles: targetRoles,
             fileName: resumeFileName,
             base64: resumeBase64,
             isDefault: true
@@ -219,22 +250,6 @@ export async function discoverAndApplyForUser(
     await db.collection("users").doc(uid).set({
         jobsLastRan: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
-
-    // Resolve roles & locations from options or user profile
-    const autoApplySettings = userData.autoApplySettings || {};
-    let targetRoles: string[] = options?.targetRoles || autoApplySettings.targetRoles || [
-        "Flutter Developer",
-        "Mobile Application Developer",
-        "DevOps Engineer",
-        "Cloud Engineer",
-        "Site Reliability Engineer"
-    ];
-    if (typeof targetRoles === 'string') {
-        targetRoles = (targetRoles as string).split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-    }
-    if (targetRoles.length === 0) {
-        targetRoles = ["Flutter Developer", "DevOps Engineer", "Cloud Engineer"];
-    }
 
     let targetLocations: string[] = options?.locations || autoApplySettings.locations || [
         "Bengaluru",
@@ -364,13 +379,13 @@ CRITICAL VERIFICATION & EXTRACTION MANDATES:
 
 3. HUMAN-WRITTEN, HIGH-CONVERTING APPLICATION EMAIL:
    - For each matching job, write a highly authentic, natural, and engaging cover letter tailored specifically to that job title and company.
-   - Read the candidate's attached Resume PDF to extract concrete accomplishments, technical skills (e.g., Flutter, Dart, State Management, REST APIs, Firebase, Cloud/DevOps, Docker, CI/CD), and align them specifically with the company's domain and job requirements.
+   - Read the candidate's attached Resume PDF to extract concrete accomplishments, technical skills, programming languages, frameworks, and domain expertise directly from the resume, and align them specifically with the company's requirements.
    - Structure:
      a) Enthusiastic opening identifying the specific role and company.
      b) Value Proposition: Clear explanation of what direct value and expertise the candidate brings based on real resume highlights.
      c) Key Relevant Skills: 3-4 bullet points matching the exact requirements of the job.
      d) Professional closing & Call to Action proposing a brief discussion, mentioning the attached resume.
-     e) Sign-off: "Sincerely,\\n${applicantName}" (Never use placeholders like [Your Name]).
+     e) Sign-off: "Sincerely,\n${applicantName}" (Never use placeholders like [Your Name]).
    - Subject line format: "Application for [Job Title] - ${applicantName}"
 
 4. LOCATION & WORK MODE MATCHING:
@@ -788,6 +803,7 @@ export const triggerAutoJobDiscoveryAndApply = functions.runWith({ timeoutSecond
     const uid = context.auth.uid;
     try {
         const result = await discoverAndApplyForUser(uid, {
+            applicantName: data.applicantName,
             targetRoles: data.targetRoles,
             locations: data.locations,
             excludedCompanies: data.excludedCompanies,

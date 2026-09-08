@@ -24,6 +24,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _emailController = TextEditingController(); 
+  bool _obscurePassword = true; 
 
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
@@ -440,13 +441,23 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   }) {
     return TextFormField(
       controller: controller,
-      obscureText: isPassword,
+      obscureText: isPassword ? _obscurePassword : false,
       validator: validator,
       style: const TextStyle(color: Colors.white, fontSize: 14),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
         prefixIcon: Icon(icon, color: Colors.blueAccent, size: 20),
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                  color: Colors.grey,
+                  size: 20,
+                ),
+                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              )
+            : null,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.white24),
@@ -628,7 +639,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return TextFormField(
       controller: controller,
-      obscureText: isPassword,
+      obscureText: isPassword ? _obscurePassword : false,
       validator: validator,
       style: TextStyle(
         color: isDark ? Colors.white : Colors.grey.shade900,
@@ -644,6 +655,16 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           icon, 
           color: isDark ? const Color(0xFF60A5FA) : Colors.blue.shade800,
         ),
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  size: 20,
+                ),
+                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              )
+            : null,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class AIKeysSettingsScreen extends StatefulWidget {
   const AIKeysSettingsScreen({super.key});
@@ -128,9 +129,16 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
   }
 
   Future<void> _openUrl(String urlString) async {
-    final uri = Uri.parse(urlString);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final uri = Uri.tryParse(urlString);
+    if (uri == null) return;
+    try {
+      if (kIsWeb) {
+        await launchUrl(uri, webOnlyWindowName: '_blank');
+      } else {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      debugPrint('Could not launch URL: $e');
     }
   }
 

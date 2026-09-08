@@ -203,11 +203,22 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         await StorageService().updateUserFavoriteModules(_userFavoriteModules);
       }
 
+      List<String>? firestoreBottom;
+      if (prefs.containsKey('customBottomBar') && prefs['customBottomBar'] is List) {
+        firestoreBottom = List<String>.from(prefs['customBottomBar']);
+        await localPrefs.setStringList('user_bottom_modules', firestoreBottom);
+      } else if (FirebaseAuth.instance.currentUser != null && _userSelectedBottomModules.isNotEmpty) {
+        await StorageService().updateBottomBarPreferences(_userSelectedBottomModules);
+      }
+
       if (mounted) {
         setState(() {
           _enabledModules = firestoreModules;
           if (firestoreFavorites != null) {
             _userFavoriteModules = firestoreFavorites;
+          }
+          if (firestoreBottom != null && firestoreBottom.isNotEmpty) {
+            _userSelectedBottomModules = firestoreBottom;
           }
         });
       }
@@ -1010,6 +1021,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       : () async {
                           final prefs = await SharedPreferences.getInstance();
                           await prefs.setStringList('user_bottom_modules', tempSelected);
+                          await StorageService().updateBottomBarPreferences(tempSelected);
                           setState(() {
                             _userSelectedBottomModules = tempSelected;
                             _selectedIndex = 0;
@@ -1658,7 +1670,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'RemindBuddy v1.10.19',
+                  'RemindBuddy v1.10.23',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

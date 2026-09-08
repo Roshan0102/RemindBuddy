@@ -221,7 +221,11 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
     try {
       final HttpsCallable callable =
           FirebaseFunctions.instance.httpsCallable('fetchUserTechEvents');
-      final result = await callable.call();
+      final result = await callable.call({
+        'interests': _eventInterests,
+        'location': _eventLocation,
+        'eventMode': _eventMode,
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

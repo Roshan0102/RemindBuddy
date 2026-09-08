@@ -8,10 +8,20 @@ import { callGeminiAPI } from "../../utils/geminiHelper";
 import { searchTavily, TavilySearchResult } from "../../utils/tavilyHelper";
 import { enqueueUserCloudTask } from "../../utils/cloudTasksHelper";
 
-export async function fetchAndStoreEventsForUserInternal(uid: string, triggerNotification: boolean): Promise<any> {
+export interface UserTechEventPreferences {
+    interests?: string[];
+    location?: string;
+    eventMode?: string;
+}
+
+export async function fetchAndStoreEventsForUserInternal(
+    uid: string, 
+    triggerNotification: boolean,
+    customPrefs?: UserTechEventPreferences
+): Promise<any> {
     const userDoc = await db.collection("users").doc(uid).get();
-    let interests = ["Cloud", "Devops", "AI", "Agentic AI"];
-    let location = "Bengaluru, India";
+    let interests: string[] = [];
+    let location = "";
     let eventMode = "In-Person";
     let userTavilyKey = "";
     let userGeminiKey = "";
@@ -20,7 +30,7 @@ export async function fetchAndStoreEventsForUserInternal(uid: string, triggerNot
         const data = userDoc.data();
         if (data) {
             if (data.eventInterests && Array.isArray(data.eventInterests) && data.eventInterests.length > 0) {
-                interests = data.eventInterests;
+                interests = [...data.eventInterests];
             }
             if (data.eventLocation && typeof data.eventLocation === "string" && data.eventLocation.trim().length > 0) {
                 location = data.eventLocation.trim();
@@ -33,6 +43,29 @@ export async function fetchAndStoreEventsForUserInternal(uid: string, triggerNot
             userGeminiKey = (userApiKeys.geminiApiKey || data.geminiApiKey || "").trim();
         }
     }
+
+    // Isolate and apply explicit user preferences if provided in task/callable payload
+    if (customPrefs) {
+        if (customPrefs.interests && Array.isArray(customPrefs.interests) && customPrefs.interests.length > 0) {
+            interests = [...customPrefs.interests];
+        }
+        if (customPrefs.location && typeof customPrefs.location === "string" && customPrefs.location.trim().length > 0) {
+            location = customPrefs.location.trim();
+        }
+        if (customPrefs.eventMode && typeof customPrefs.eventMode === "string" && customPrefs.eventMode.trim().length > 0) {
+            eventMode = customPrefs.eventMode.trim();
+        }
+    }
+
+    // Safe fallback per user if not yet configured
+    if (interests.length === 0) {
+        interests = ["Cloud", "Devops", "AI", "Agentic AI"];
+    }
+    if (!location) {
+        location = "Bengaluru, India";
+    }
+
+    console.log(`[TechEvents] Isolated execution for user ${uid}: Interests=[${interests.join(', ')}], Location="${location}", Mode="${eventMode}"`);
 
     if (!userTavilyKey || !userGeminiKey) {
         console.log(`[TechEvents] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
@@ -315,7 +348,12 @@ export const fetchUserTechEvents = functions.runWith({ timeoutSeconds: 120, memo
     }
     const uid = context.auth.uid;
     try {
-        return await fetchAndStoreEventsForUserInternal(uid, false);
+        const customPrefs: UserTechEventPreferences = {
+            interests: data?.interests && Array.isArray(data.interests) ? data.interests : undefined,
+            location: data?.location && typeof data.location === 'string' ? data.location : undefined,
+            eventMode: data?.eventMode && typeof data.eventMode === 'string' ? data.eventMode : undefined,
+        };
+        return await fetchAndStoreEventsForUserInternal(uid, false, customPrefs);
     } catch (error: any) {
         console.error("Error in fetchUserTechEvents:", error);
         throw new functions.https.HttpsError('internal', error.message || 'Failed to fetch tech events.');
@@ -339,9 +377,15 @@ export const processTechEventsUserTask = functions.runWith({ timeoutSeconds: 300
             return;
         }
 
-        console.log(`[processTechEventsUserTask] Processing Tech Events for user ${uid}`);
+        const customPrefs: UserTechEventPreferences = {
+            interests: payload?.interests && Array.isArray(payload.interests) ? payload.interests : undefined,
+            location: payload?.location && typeof payload.location === 'string' ? payload.location : undefined,
+            eventMode: payload?.eventMode && typeof payload.eventMode === 'string' ? payload.eventMode : undefined,
+        };
+
+        console.log(`[processTechEventsUserTask] Processing isolated Tech Events task for user ${uid}`);
         try {
-            const res = await fetchAndStoreEventsForUserInternal(uid, true);
+            const res = await fetchAndStoreEventsForUserInternal(uid, true, customPrefs);
             console.log(`[processTechEventsUserTask] Completed Tech Events fetch for user ${uid}:`, res);
         } catch (err: any) {
             console.error(`[processTechEventsUserTask] Error fetching tech events for user ${uid}:`, err.message || err);
@@ -386,11 +430,22 @@ export async function internalDailyTechEventsFetcher(): Promise<void> {
         const nowUnix = moment().tz('Asia/Kolkata').unix();
         for (let i = 0; i < eligibleUids.length; i++) {
             const uid = eligibleUids[i];
+            const userSnap = await db.collection("users").doc(uid).get();
+            const uData = userSnap.data() || {};
+            const userInterests = uData.eventInterests || [];
+            const userLoc = uData.eventLocation || "";
+            const userMode = uData.eventMode || "In-Person";
+
             const etaUnix = nowUnix + (i * 25); // Stagger by 25s for safe RPM rate limits
             const taskId = await enqueueUserCloudTask(
                 "processTechEventsUserTask",
                 "processTechEventsUserTask",
-                { uid },
+                { 
+                    uid,
+                    interests: userInterests,
+                    location: userLoc,
+                    eventMode: userMode
+                },
                 etaUnix
             );
 
@@ -398,7 +453,11 @@ export async function internalDailyTechEventsFetcher(): Promise<void> {
             if (!taskId) {
                 console.warn(`[internalDailyTechEventsFetcher] Cloud Tasks queue unavailable for ${uid}. Running directly as fallback...`);
                 try {
-                    await fetchAndStoreEventsForUserInternal(uid, true);
+                    await fetchAndStoreEventsForUserInternal(uid, true, {
+                        interests: userInterests,
+                        location: userLoc,
+                        eventMode: userMode
+                    });
                 } catch (e: any) {
                     console.error(`[internalDailyTechEventsFetcher] Error in fallback execution for ${uid}:`, e.message || e);
                 }

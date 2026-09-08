@@ -1,5 +1,5 @@
 import * as functions from "firebase-functions";
-import { db } from "../../config/firebase";
+import { admin, db } from "../../config/firebase";
 import { callGeminiAPI } from "../../utils/geminiHelper";
 
 export const generateManualJobApplicationWithAI = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
@@ -9,22 +9,34 @@ export const generateManualJobApplicationWithAI = functions.runWith({ timeoutSec
 
     try {
         const uid = context.auth.uid;
-        let userGeminiKey = "";
-        try {
-            const userDoc = await db.collection("users").doc(uid).get();
-            if (userDoc.exists) {
-                const uData = userDoc.data() || {};
-                userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();
-            }
-        } catch (e: any) {
-            console.warn("[CoverLetterAI] Could not fetch userGeminiKey:", e.message);
-        }
         const { companyName, jobTitle, companyUrl, recipientEmails, companyNotes, customPrompt, resumeBase64, applicantName } = data;
+        let userGeminiKey = "";
+        let promptName = (applicantName || "").trim();
+        if (!promptName) {
+            try {
+                const userDoc = await db.collection("users").doc(uid).get();
+                if (userDoc.exists) {
+                    const uData = userDoc.data() || {};
+                    userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();
+                    promptName = (uData.applicantName || uData.displayName || "").trim();
+                }
+                if (!promptName) {
+                    const authUser = await admin.auth().getUser(uid);
+                    promptName = (authUser.displayName || "").trim();
+                    if (!promptName && authUser.email) {
+                        promptName = authUser.email.split("@")[0];
+                    }
+                }
+            } catch (e: any) {
+                console.warn("[CoverLetterAI] User profile lookup:", e.message);
+            }
+        }
+        if (!promptName) promptName = "Candidate";
+
         if (!companyName || !jobTitle) {
             throw new functions.https.HttpsError('invalid-argument', 'Company name and Job title are required.');
         }
 
-        const promptName = applicantName || "Roshan J";
         const prompt = `You are an elite, top-tier executive career coach and professional copywriter.
 Write an exceptionally well-crafted, natural, and compelling job application cover letter email for the candidate "${promptName}" applying for the role of "${jobTitle}" at "${companyName}".
 ${companyUrl ? `Company URL: ${companyUrl}` : ''}
@@ -33,7 +45,7 @@ ${companyNotes ? `Job Details / Company Context: "${companyNotes}"` : ''}
 ${customPrompt ? `Candidate's Custom Directive / Specific Request: "${customPrompt}"` : ''}
 
 CRITICAL INSTRUCTIONS:
-1. Examine the candidate's attached Resume PDF thoroughly. Extract concrete accomplishments, technical skills (e.g. Flutter, Dart, Android/iOS, State Management, Cloud, REST APIs, CI/CD, Git, DevOps), and relate them directly to the target role.
+1. Examine the candidate's attached Resume PDF thoroughly. Extract concrete accomplishments, technical skills, programming languages, frameworks, APIs, databases, and domain expertise directly from the resume, and relate them directly to the target role.
 2. Structure:
    a) Engaging Opening: Express enthusiasm for "${jobTitle}" at "${companyName}".
    b) Concrete Value: Highlighting 2-3 specific achievements or competencies from the candidate's resume that make them an outstanding fit.
@@ -136,17 +148,28 @@ export const refineCoverLetterWithAI = functions.runWith({ timeoutSeconds: 60, m
     try {
         const uid = context.auth.uid;
         let userGeminiKey = "";
+        let promptName = (applicantName || "").trim();
         try {
             const userDoc = await db.collection("users").doc(uid).get();
             if (userDoc.exists) {
                 const uData = userDoc.data() || {};
                 userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();
+                if (!promptName) {
+                    promptName = (uData.applicantName || uData.displayName || "").trim();
+                }
+            }
+            if (!promptName) {
+                const authUser = await admin.auth().getUser(uid);
+                promptName = (authUser.displayName || "").trim();
+                if (!promptName && authUser.email) {
+                    promptName = authUser.email.split("@")[0];
+                }
             }
         } catch (e: any) {
-            console.warn("[CoverLetterAI] Could not fetch userGeminiKey:", e.message);
+            console.warn("[CoverLetterAI] User profile lookup:", e.message);
         }
+        if (!promptName) promptName = "Candidate";
 
-        const promptName = applicantName || "Roshan J";
         const prompt = `You are an expert executive career advisor and professional writer.
 Candidate's Full Name: "${promptName}".
 Target Position: ${jobTitle || 'Position'}

@@ -501,8 +501,8 @@ class HomeWidgetService {
     required DateTime monthDate,
   }) async {
     try {
-      const double width = 580.0;
-      const double height = 330.0;
+      const double width = 440.0;
+      const double height = 420.0;
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, width, height));
 
@@ -531,7 +531,7 @@ class HomeWidgetService {
 
       // 2. Weekday Headers
       const weekdays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-      const double marginX = 8.0;
+      const double marginX = 16.0;
       const double gridWidth = width - (2 * marginX);
       const double colWidth = gridWidth / 7.0;
 
@@ -541,7 +541,7 @@ class HomeWidgetService {
           canvas: canvas,
           text: weekdays[i],
           x: cx,
-          y: 6,
+          y: 8,
           align: TextAlign.center,
           style: const TextStyle(
             color: Color(0xFF94A3B8),
@@ -552,11 +552,11 @@ class HomeWidgetService {
       }
 
       // 3. Days Grid
-      const double gridTop = 27.0;
-      const double gridBottom = 295.0;
+      const double gridTop = 32.0;
+      const double gridBottom = 380.0;
       const double gridHeight = gridBottom - gridTop;
       const double spacingX = 4.0;
-      const double spacingY = 3.0;
+      const double spacingY = 4.0;
       const double cellW = (gridWidth - (6 * spacingX)) / 7.0;
       final int numRows = ((firstWeekday + daysInMonth + 6) ~/ 7).clamp(5, 6);
       final double cellH = (gridHeight - ((numRows - 1) * spacingY)) / numRows;
@@ -595,10 +595,10 @@ class HomeWidgetService {
           canvas: canvas,
           text: '$day',
           x: cellLeft + (cellW / 2.0),
-          y: cellTop + 2,
+          y: cellTop + 4,
           align: TextAlign.center,
           style: TextStyle(
-            fontSize: 13.5,
+            fontSize: 14.0,
             fontWeight: isToday ? FontWeight.w900 : FontWeight.bold,
             color: isToday ? const Color(0xFF38BDF8) : const Color(0xFFE2E8F0),
           ),
@@ -626,10 +626,10 @@ class HomeWidgetService {
             badgeText = 'G';
           }
 
-          const double badgeH = 15.0;
+          const double badgeH = 16.0;
           const double badgeW = cellW - 6.0;
           final double badgeLeft = cellLeft + 3.0;
-          final double badgeTop = cellTop + cellH - badgeH - 3.0;
+          final double badgeTop = cellTop + cellH - badgeH - 4.0;
 
           final badgeRect = RRect.fromRectAndRadius(
             Rect.fromLTWH(badgeLeft, badgeTop, badgeW, badgeH),
@@ -645,7 +645,7 @@ class HomeWidgetService {
             y: badgeTop + 1,
             align: TextAlign.center,
             style: const TextStyle(
-              fontSize: 10,
+              fontSize: 10.5,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
@@ -654,7 +654,7 @@ class HomeWidgetService {
       }
 
       // 4. Legend
-      const double legendY = 306.0;
+      const double legendY = 394.0;
       const legendItems = [
         {'color': Color(0xFFF59E0B), 'label': 'M: Morn'},
         {'color': Color(0xFF06B6D4), 'label': 'A: Aft'},

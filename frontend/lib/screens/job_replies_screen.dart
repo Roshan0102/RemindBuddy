@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/job_application.dart';
 import '../models/networking_lead.dart';
@@ -19,8 +20,118 @@ class JobRepliesScreen extends StatefulWidget {
 class _JobRepliesScreenState extends State<JobRepliesScreen> {
   final JobAssistantService _service = JobAssistantService();
   bool _isCheckingReplies = false;
-  String _activeFilter = 'all'; // 'all', 'interview_invite', 'founder_chat', 'assessment', 'hr_query'
+  String _activeFilter = 'all'; // 'all', 'bounced', 'interview_invite', 'founder_chat', 'assessment', 'hr_query'
+  bool _showDismissed = false;
   DateTime? _lastChecked;
+
+  bool _isDeliveryBounce(String sender, String subject, String bodySnippet, String? responseType) {
+    if (responseType == 'bounced') return true;
+    final s = sender.toLowerCase();
+    final sub = subject.toLowerCase();
+    final b = bodySnippet.toLowerCase();
+    return s.contains('mailer-daemon') ||
+        s.contains('postmaster') ||
+        s.contains('delivery subsystem') ||
+        sub.contains('delivery status notification') ||
+        sub.contains('address not found') ||
+        sub.contains('failure notice') ||
+        sub.contains('could not be delivered') ||
+        b.contains("address couldn't be found") ||
+        b.contains('address could not be found') ||
+        b.contains('recipient address rejected') ||
+        b.contains('delivery failure');
+  }
+
+  Future<void> _handleDismissReply(UnifiedReplyItem item) async {
+    try {
+      await _service.dismissReply(item.id, item.isStartupLead);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Reply marked as handled and cleared from inbox badge.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to dismiss reply: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleDeleteReply(UnifiedReplyItem item) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(item.isBounced ? 'Delete Delivery Alert?' : 'Delete Reply?'),
+        content: Text(
+          item.isBounced
+              ? 'This will permanently remove this bounce notification from your replies hub.'
+              : 'This will remove the recruiter reply from your replies hub and clear the inbox notification.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await _service.deleteReply(item.id, item.isStartupLead);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🗑️ Reply deleted successfully.'),
+            backgroundColor: Colors.blueGrey,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete reply: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleConnectLinkedIn(UnifiedReplyItem item) async {
+    if (item.connectionNote != null && item.connectionNote!.isNotEmpty) {
+      await Clipboard.setData(ClipboardData(text: item.connectionNote!));
+    }
+    if (item.linkedinUrl != null && item.linkedinUrl!.isNotEmpty) {
+      final uri = Uri.tryParse(item.linkedinUrl!);
+      if (uri != null) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    }
+    if (item.isStartupLead) {
+      await _service.updateNetworkingLeadStatus(item.id, 'note_sent');
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('📋 Note copied to clipboard & LinkedIn profile opened!'),
+          backgroundColor: Color(0xFF0077B5),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -177,14 +288,15 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
               final allApps = appSnap.data ?? [];
               final allLeads = leadSnap.data ?? [];
 
-              // Filter to items that have received replies
-              final appReplies = allApps.where((a) => a.status == 'reply_received').toList();
-              final leadReplies = allLeads.where((l) => l.status == 'replied').toList();
+              // Filter to items that have received replies or bounced
+              final appReplies = allApps.where((a) => a.status == 'reply_received' || a.isBounced).toList();
+              final leadReplies = allLeads.where((l) => l.status == 'replied' || l.isBounced).toList();
 
               // Unified reply list
               final List<UnifiedReplyItem> unifiedReplies = [];
 
               for (final a in appReplies) {
+                final isBounced = a.isBounced || _isDeliveryBounce(a.replySender ?? '', a.replySubject ?? '', a.replySnippet ?? '', a.responseType);
                 unifiedReplies.add(UnifiedReplyItem(
                   id: a.id,
                   isStartupLead: false,
@@ -193,15 +305,18 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                   recipientEmail: a.recipientEmail,
                   senderNameOrEmail: a.replySender ?? a.recipientEmail,
                   subject: a.replySubject ?? a.generatedSubject,
-                  responseType: a.responseType ?? 'hr_query',
-                  summary: a.replySnippet ?? 'Recruiter replied to your application.',
+                  responseType: isBounced ? 'bounced' : (a.responseType ?? 'hr_query'),
+                  summary: a.replySnippet ?? (isBounced ? 'Mail delivery failure: Address not found.' : 'Recruiter replied to your application.'),
                   bodyPreview: a.replyBodyPreview ?? '',
-                  actionRequired: a.actionRequired ?? 'Check your email',
+                  actionRequired: isBounced ? 'Check recipient email or find company careers contact' : (a.actionRequired ?? 'Check your email'),
                   receivedAt: a.replyReceivedAt ?? a.appliedAt,
+                  isDismissed: a.isReplyDismissed,
+                  isBounced: isBounced,
                 ));
               }
 
               for (final l in leadReplies) {
+                final isBounced = l.isBounced || _isDeliveryBounce(l.replySender ?? '', l.replySubject ?? '', l.replySnippet ?? '', l.responseType);
                 unifiedReplies.add(UnifiedReplyItem(
                   id: l.id,
                   isStartupLead: true,
@@ -210,22 +325,30 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                   recipientEmail: l.email ?? '',
                   senderNameOrEmail: l.replySender ?? l.name,
                   subject: l.replySubject ?? l.emailSubject ?? 'Re: Pitch',
-                  responseType: l.responseType ?? 'founder_chat',
-                  summary: l.replySnippet ?? 'Founder replied to your pitch.',
+                  responseType: isBounced ? 'bounced' : (l.responseType ?? 'founder_chat'),
+                  summary: l.replySnippet ?? (isBounced ? 'Delivery failed: Recipient email address was not found by mail server.' : 'Founder replied to your pitch.'),
                   bodyPreview: l.replyBodyPreview ?? '',
-                  actionRequired: l.actionRequired ?? 'Reply via email',
+                  actionRequired: isBounced ? 'Connect directly on LinkedIn using pre-written note' : (l.actionRequired ?? 'Reply via email'),
                   receivedAt: l.replyReceivedAt ?? l.discoveredAt,
                   linkedinUrl: l.linkedinUrl,
+                  connectionNote: l.connectionNote,
+                  isDismissed: l.isReplyDismissed,
+                  isBounced: isBounced,
                 ));
               }
 
               // Sort by received time descending
               unifiedReplies.sort((x, y) => y.receivedAt.compareTo(x.receivedAt));
 
+              // Active vs All filtering based on _showDismissed
+              var displayReplies = _showDismissed
+                  ? unifiedReplies
+                  : unifiedReplies.where((r) => !r.isDismissed).toList();
+
               // Filter by responseType
-              var filteredReplies = unifiedReplies;
+              var filteredReplies = displayReplies;
               if (_activeFilter != 'all') {
-                filteredReplies = unifiedReplies.where((r) => r.responseType == _activeFilter).toList();
+                filteredReplies = displayReplies.where((r) => r.responseType == _activeFilter).toList();
               }
 
               if (unifiedReplies.isEmpty) {
@@ -291,8 +414,11 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
               }
 
               final interviewCount = unifiedReplies.where((r) => r.responseType == 'interview_invite').length;
-              final founderCount = unifiedReplies.where((r) => r.responseType == 'founder_chat' || r.isStartupLead).length;
+              final founderCount = unifiedReplies.where((r) => r.responseType == 'founder_chat').length;
               final assessmentCount = unifiedReplies.where((r) => r.responseType == 'assessment').length;
+              final bouncedCount = unifiedReplies.where((r) => r.isBounced).length;
+              final dismissedCount = unifiedReplies.where((r) => r.isDismissed).length;
+              final activeCount = unifiedReplies.where((r) => !r.isDismissed).length;
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(16.0),
@@ -329,7 +455,7 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '${unifiedReplies.length} Total Verified Replies Received!',
+                                  '$activeCount Active Inquiries & Replies',
                                   style: GoogleFonts.outfit(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -338,7 +464,7 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '$interviewCount Interview Invites • $founderCount Founder Responses • $assessmentCount Assessments',
+                                  '$interviewCount Invites • $founderCount Founders • $assessmentCount Assessments${bouncedCount > 0 ? ' • $bouncedCount Bounces' : ''}',
                                   style: TextStyle(
                                     fontSize: 11.5,
                                     color: isDark ? Colors.white70 : Colors.green.shade900,
@@ -395,12 +521,16 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Filter Chips
+                    // Filter Chips & Handled Toggle Row
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          _buildFilterChip('all', 'All Replies (${unifiedReplies.length})'),
+                          _buildFilterChip('all', 'All (${_showDismissed ? unifiedReplies.length : activeCount})'),
+                          if (bouncedCount > 0) ...[
+                            const SizedBox(width: 8),
+                            _buildFilterChip('bounced', 'Delivery Alerts ⚠️ ($bouncedCount)'),
+                          ],
                           const SizedBox(width: 8),
                           _buildFilterChip('interview_invite', 'Interview Invites 🎯 ($interviewCount)'),
                           const SizedBox(width: 8),
@@ -409,6 +539,31 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                           _buildFilterChip('assessment', 'Assessments 📝 ($assessmentCount)'),
                           const SizedBox(width: 8),
                           _buildFilterChip('hr_query', 'HR Messages 💬'),
+                          if (dismissedCount > 0) ...[
+                            const SizedBox(width: 12),
+                            FilterChip(
+                              avatar: Icon(
+                                _showDismissed ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                                size: 15,
+                                color: _showDismissed ? Colors.white : Colors.grey,
+                              ),
+                              label: Text(
+                                _showDismissed ? 'Hide Handled' : 'Show Handled ($dismissedCount)',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _showDismissed ? Colors.white : null,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              selected: _showDismissed,
+                              selectedColor: Colors.blueGrey,
+                              onSelected: (val) {
+                                setState(() {
+                                  _showDismissed = val;
+                                });
+                              },
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -473,33 +628,39 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
     String badgeLabel;
     IconData badgeIcon;
 
-    switch (item.responseType) {
-      case 'interview_invite':
-        badgeColor = Colors.green;
-        badgeLabel = 'Interview Invite 🎯';
-        badgeIcon = Icons.event_available_rounded;
-        break;
-      case 'founder_chat':
-        badgeColor = Colors.indigoAccent;
-        badgeLabel = 'Founder Response 🚀';
-        badgeIcon = Icons.rocket_launch_rounded;
-        break;
-      case 'assessment':
-        badgeColor = Colors.orange;
-        badgeLabel = 'Coding Assessment 📝';
-        badgeIcon = Icons.quiz_rounded;
-        break;
-      case 'rejection':
-        badgeColor = Colors.grey;
-        badgeLabel = 'Status Update';
-        badgeIcon = Icons.info_outline_rounded;
-        break;
-      case 'hr_query':
-      default:
-        badgeColor = Colors.blue;
-        badgeLabel = 'Recruiter Message 💬';
-        badgeIcon = Icons.chat_rounded;
-        break;
+    if (item.isBounced) {
+      badgeColor = Colors.deepOrange;
+      badgeLabel = 'Delivery Failed ⚠️';
+      badgeIcon = Icons.error_outline_rounded;
+    } else {
+      switch (item.responseType) {
+        case 'interview_invite':
+          badgeColor = Colors.green;
+          badgeLabel = 'Interview Invite 🎯';
+          badgeIcon = Icons.event_available_rounded;
+          break;
+        case 'founder_chat':
+          badgeColor = Colors.indigoAccent;
+          badgeLabel = 'Founder Response 🚀';
+          badgeIcon = Icons.rocket_launch_rounded;
+          break;
+        case 'assessment':
+          badgeColor = Colors.orange;
+          badgeLabel = 'Coding Assessment 📝';
+          badgeIcon = Icons.quiz_rounded;
+          break;
+        case 'rejection':
+          badgeColor = Colors.grey;
+          badgeLabel = 'Status Update';
+          badgeIcon = Icons.info_outline_rounded;
+          break;
+        case 'hr_query':
+        default:
+          badgeColor = Colors.blue;
+          badgeLabel = 'Recruiter Message 💬';
+          badgeIcon = Icons.chat_rounded;
+          break;
+      }
     }
 
     final timeStr = DateFormat('dd MMM yyyy, h:mm a').format(item.receivedAt);
@@ -509,7 +670,7 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
         color: cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: badgeColor.withValues(alpha: 0.3),
+          color: badgeColor.withValues(alpha: 0.35),
           width: 1.5,
         ),
         boxShadow: [
@@ -524,9 +685,8 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top Row: Source Pill, Badge, Time
+          // Top Row: Source Pill, Badge, and Quick Action Icons (Dismiss & Delete)
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -554,6 +714,7 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -575,6 +736,37 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                     ),
                   ],
                 ),
+              ),
+              const Spacer(),
+              if (item.isDismissed)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'Handled ✓',
+                    style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold),
+                  ),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.done_all_rounded, size: 19),
+                  tooltip: 'Mark Handled (Clear Badge)',
+                  color: Colors.green,
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(4),
+                  onPressed: () => _handleDismissReply(item),
+                ),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, size: 19),
+                tooltip: 'Delete Reply',
+                color: Colors.redAccent,
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(4),
+                onPressed: () => _handleDeleteReply(item),
               ),
             ],
           ),
@@ -615,63 +807,105 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
           ),
           const SizedBox(height: 12),
 
-          // AI Summary Box
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.auto_awesome, color: Colors.amber, size: 15),
-                    const SizedBox(width: 6),
-                    Text(
-                      'AI Summary',
-                      style: GoogleFonts.outfit(fontSize: 11.5, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                SelectableText(
-                  item.summary,
-                  style: const TextStyle(fontSize: 13, height: 1.4),
-                ),
-                if (item.actionRequired.isNotEmpty && item.actionRequired != 'None') ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.touch_app_rounded, size: 13, color: Colors.amber),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            'Action Required: ${item.actionRequired}',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.amber.shade200 : Colors.amber.shade900,
-                            ),
-                          ),
+          // Bounced Delivery Alert Box
+          if (item.isBounced) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.deepOrange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.deepOrange.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Colors.deepOrange, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Address Not Found / Delivery Failure',
+                        style: GoogleFonts.outfit(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.deepOrange,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'The mail server reported that recipient address "${item.recipientEmail.isNotEmpty ? item.recipientEmail : 'target mailbox'}" does not exist or is unable to receive email.',
+                    style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black87, height: 1.3),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '💡 Recommendation: Connect directly with the founder/hiring lead on LinkedIn using your tailored connection note below.',
+                    style: TextStyle(fontSize: 11.5, color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF047857), fontWeight: FontWeight.w600),
                   ),
                 ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
+          ] else ...[
+            // Regular AI Summary Box
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.auto_awesome, color: Colors.amber, size: 15),
+                      const SizedBox(width: 6),
+                      Text(
+                        'AI Summary',
+                        style: GoogleFonts.outfit(fontSize: 11.5, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    item.summary,
+                    style: const TextStyle(fontSize: 13, height: 1.4),
+                  ),
+                  if (item.actionRequired.isNotEmpty && item.actionRequired != 'None') ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.touch_app_rounded, size: 13, color: Colors.amber),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              'Action Required: ${item.actionRequired}',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.amber.shade200 : Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
 
           // Email Body Preview (if available)
           if (item.bodyPreview.isNotEmpty) ...[
@@ -705,49 +939,67 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
           // Action Buttons
           Row(
             children: [
-              if (item.recipientEmail.isNotEmpty)
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      final mailtoUri = Uri(
-                        scheme: 'mailto',
-                        path: item.recipientEmail,
-                        queryParameters: {
-                          'subject': item.subject.startsWith('Re:') ? item.subject : 'Re: ${item.subject}',
-                        },
-                      );
-                      await launchUrl(mailtoUri, mode: LaunchMode.externalApplication);
-                    },
-                    icon: const Icon(Icons.reply_rounded, size: 16),
-                    label: const Text('Reply in Email'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0077B5),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              if (item.isBounced) ...[
+                if (item.linkedinUrl != null && item.linkedinUrl!.isNotEmpty)
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _handleConnectLinkedIn(item),
+                      icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+                      label: const Text('Connect on LinkedIn Instead 🔗'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0077B5),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
-                ),
-              if (item.linkedinUrl != null && item.linkedinUrl!.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final uri = Uri.tryParse(item.linkedinUrl!);
-                      if (uri != null) {
-                        await launchUrl(uri, mode: LaunchMode.externalApplication);
-                      }
-                    },
-                    icon: const Icon(Icons.person_rounded, size: 16),
-                    label: const Text('Open LinkedIn'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      textStyle: const TextStyle(fontSize: 12),
+              ] else ...[
+                if (item.recipientEmail.isNotEmpty)
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final mailtoUri = Uri(
+                          scheme: 'mailto',
+                          path: item.recipientEmail,
+                          queryParameters: {
+                            'subject': item.subject.startsWith('Re:') ? item.subject : 'Re: ${item.subject}',
+                          },
+                        );
+                        await launchUrl(mailtoUri, mode: LaunchMode.externalApplication);
+                      },
+                      icon: const Icon(Icons.reply_rounded, size: 16),
+                      label: const Text('Reply in Email'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0077B5),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
-                ),
+                if (item.linkedinUrl != null && item.linkedinUrl!.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final uri = Uri.tryParse(item.linkedinUrl!);
+                        if (uri != null) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }
+                      },
+                      icon: const Icon(Icons.person_rounded, size: 16),
+                      label: const Text('Open LinkedIn'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        textStyle: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ],
           ),
@@ -771,6 +1023,9 @@ class UnifiedReplyItem {
   final String actionRequired;
   final DateTime receivedAt;
   final String? linkedinUrl;
+  final String? connectionNote;
+  final bool isDismissed;
+  final bool isBounced;
 
   UnifiedReplyItem({
     required this.id,
@@ -786,5 +1041,8 @@ class UnifiedReplyItem {
     required this.actionRequired,
     required this.receivedAt,
     this.linkedinUrl,
+    this.connectionNote,
+    this.isDismissed = false,
+    this.isBounced = false,
   });
 }

@@ -917,6 +917,37 @@ class StorageService {
     }
   }
 
+  Future<void> updateDashboardPreferences({
+    required List<String> activeWidgets,
+    required String heroWidget,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'dashboardPreferences': {
+          'activeWidgets': activeWidgets,
+          'heroWidget': heroWidget,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Error updating dashboard preferences in Firestore: $e");
+    }
+  }
+
+  Future<void> updateBottomBarPreferences(List<String> bottomModules) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'customBottomBar': bottomModules,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Error updating bottom bar preferences in Firestore: $e");
+    }
+  }
+
   // Auth Methods
   Future<void> logoutAndClearData() async {
     final prefs = await SharedPreferences.getInstance();

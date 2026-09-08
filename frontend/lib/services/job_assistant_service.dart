@@ -22,6 +22,44 @@ class JobAssistantService {
   }
 
   // ============================================================================
+  // USER APPLICANT NAME & PROFILE
+  // ============================================================================
+
+  Future<String> getApplicantName() async {
+    final doc = _userDoc;
+    if (doc == null) {
+      return FirebaseAuth.instance.currentUser?.displayName ?? '';
+    }
+    try {
+      final snap = await doc.get();
+      if (snap.exists && snap.data() != null) {
+        final data = snap.data() as Map<String, dynamic>;
+        final name = (data['applicantName'] ?? data['displayName'] ?? '').toString().trim();
+        if (name.isNotEmpty) return name;
+      }
+    } catch (_) {}
+    return FirebaseAuth.instance.currentUser?.displayName ?? '';
+  }
+
+  Future<void> saveApplicantName(String name) async {
+    final doc = _userDoc;
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+
+    if (doc != null) {
+      await doc.set({
+        'applicantName': trimmed,
+        'displayName': trimmed,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+
+    try {
+      await FirebaseAuth.instance.currentUser?.updateDisplayName(trimmed);
+    } catch (_) {}
+  }
+
+  // ============================================================================
   // USER EMAIL CONFIG & MASTER RESUME
   // ============================================================================
 
@@ -162,7 +200,7 @@ class JobAssistantService {
     if (doc == null) {
       return {
         'enabled': true,
-        'targetRoles': ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer', 'Flutter Developer'],
+        'targetRoles': <String>[],
         'locations': ['Bengaluru', 'India', 'Remote'],
         'excludedCompanies': <String>[],
         'maxPerRun': 4,
@@ -173,7 +211,7 @@ class JobAssistantService {
     if (!snap.exists || snap.data() == null) {
       return {
         'enabled': true,
-        'targetRoles': ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer', 'Flutter Developer'],
+        'targetRoles': <String>[],
         'locations': ['Bengaluru', 'India', 'Remote'],
         'excludedCompanies': <String>[],
         'maxPerRun': 4,
@@ -183,7 +221,7 @@ class JobAssistantService {
     final data = snap.data() as Map<String, dynamic>;
     final settings = Map<String, dynamic>.from(data['autoApplySettings'] ?? {});
 
-    List<String> targetRoles = ['DevOps Engineer', 'Cloud Engineer', 'Site Reliability Engineer', 'Flutter Developer'];
+    List<String> targetRoles = [];
     if (settings['targetRoles'] is List) {
       targetRoles = List<String>.from(settings['targetRoles']);
     } else if (settings['targetRoles'] is String) {
@@ -244,6 +282,7 @@ class JobAssistantService {
   }
 
   Future<Map<String, dynamic>> triggerAutoJobDiscoveryAndApply({
+    String? applicantName,
     List<String>? targetRoles,
     List<String>? locations,
     List<String>? excludedCompanies,
@@ -251,11 +290,16 @@ class JobAssistantService {
     int maxExpYears = 3,
     int maxApplications = 4,
   }) async {
+    final resolvedName = (applicantName != null && applicantName.trim().isNotEmpty)
+        ? applicantName.trim()
+        : await getApplicantName();
+
     final callable = _functions.httpsCallable(
       'triggerAutoJobDiscoveryAndApply',
       options: HttpsCallableOptions(timeout: const Duration(minutes: 5)),
     );
     final response = await callable.call({
+      'applicantName': resolvedName,
       'targetRoles': targetRoles,
       'locations': locations,
       'excludedCompanies': excludedCompanies,
@@ -336,15 +380,18 @@ class JobAssistantService {
   // AI PARSING & EMAIL DISPATCH
   // ============================================================================
 
-  Future<List<JobApplication>> parseJobPostersWithAI(List<String> imagesBase64, String mode, {String? customPrompt}) async {
+  Future<List<JobApplication>> parseJobPostersWithAI(List<String> imagesBase64, String mode, {String? customPrompt, String? applicantName}) async {
     final masterResume = await getMasterResume();
+    final resolvedName = (applicantName != null && applicantName.trim().isNotEmpty)
+        ? applicantName.trim()
+        : await getApplicantName();
 
     final callable = _functions.httpsCallable('parseJobPostersWithAI');
     final response = await callable.call({
       'imagesBase64': imagesBase64,
       'mode': mode, // 'single_job' or 'multiple_jobs'
       'resumeBase64': masterResume['base64'],
-      'applicantName': 'Roshan J',
+      'applicantName': resolvedName.isNotEmpty ? resolvedName : 'Candidate',
       'customPrompt': customPrompt ?? '',
     });
 
@@ -364,7 +411,7 @@ class JobAssistantService {
         companyName: map['companyName'] ?? 'Company',
         recipientEmail: map['recipientEmail'] ?? '',
         extractedSkills: List<String>.from(map['extractedSkills'] ?? []),
-        generatedSubject: map['generatedSubject'] ?? 'Roshan J - Job Application',
+        generatedSubject: map['generatedSubject'] ?? '${resolvedName.isNotEmpty ? resolvedName : "Candidate"} - Job Application',
         generatedCoverLetter: map['generatedCoverLetter'] ?? '',
         status: 'extracted',
         appliedAt: DateTime.now(),
@@ -381,8 +428,12 @@ class JobAssistantService {
     String? recipientEmails,
     String? companyNotes,
     String? customPrompt,
+    String? applicantName,
   }) async {
     final masterResume = await getMasterResume();
+    final resolvedName = (applicantName != null && applicantName.trim().isNotEmpty)
+        ? applicantName.trim()
+        : await getApplicantName();
 
     final callable = _functions.httpsCallable('generateManualJobApplicationWithAI');
     final response = await callable.call({
@@ -393,7 +444,7 @@ class JobAssistantService {
       'companyNotes': companyNotes ?? '',
       'customPrompt': customPrompt ?? '',
       'resumeBase64': masterResume['base64'],
-      'applicantName': 'Roshan J',
+      'applicantName': resolvedName.isNotEmpty ? resolvedName : 'Candidate',
     });
 
     final resData = response.data;
@@ -408,7 +459,7 @@ class JobAssistantService {
       companyName: rawJob['companyName'] ?? companyName,
       recipientEmail: rawJob['recipientEmail'] ?? recipientEmails ?? '',
       extractedSkills: List<String>.from(rawJob['extractedSkills'] ?? []),
-      generatedSubject: rawJob['generatedSubject'] ?? 'Roshan J - $jobTitle',
+      generatedSubject: rawJob['generatedSubject'] ?? '${resolvedName.isNotEmpty ? resolvedName : "Candidate"} - $jobTitle',
       generatedCoverLetter: rawJob['generatedCoverLetter'] ?? '',
       status: 'extracted',
       appliedAt: DateTime.now(),
@@ -421,8 +472,12 @@ class JobAssistantService {
     required String userPrompt,
     required String jobTitle,
     required String companyName,
+    String? applicantName,
   }) async {
     final masterResume = await getMasterResume();
+    final resolvedName = (applicantName != null && applicantName.trim().isNotEmpty)
+        ? applicantName.trim()
+        : await getApplicantName();
 
     final callable = _functions.httpsCallable('refineCoverLetterWithAI');
     final response = await callable.call({
@@ -432,7 +487,7 @@ class JobAssistantService {
       'jobTitle': jobTitle,
       'companyName': companyName,
       'resumeBase64': masterResume['base64'],
-      'applicantName': 'Roshan J',
+      'applicantName': resolvedName.isNotEmpty ? resolvedName : 'Candidate',
     });
 
     final resData = response.data;
@@ -527,15 +582,69 @@ class JobAssistantService {
     await doc.collection('networking_leads').doc(leadId).delete();
   }
 
+  Future<void> dismissReply(String id, bool isStartupLead) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final col = isStartupLead ? 'networking_leads' : 'job_applications';
+    await doc.collection(col).doc(id).update({
+      'replyDismissed': true,
+      'isReplyDismissed': true,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> deleteReply(String id, bool isStartupLead) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    final col = isStartupLead ? 'networking_leads' : 'job_applications';
+    if (isStartupLead) {
+      await doc.collection(col).doc(id).update({
+        'status': 'email_sent',
+        'replyDismissed': true,
+        'isReplyDismissed': true,
+        'responseType': FieldValue.delete(),
+        'replyReceivedAt': FieldValue.delete(),
+        'replySender': FieldValue.delete(),
+        'replySubject': FieldValue.delete(),
+        'replySnippet': FieldValue.delete(),
+        'replyBodyPreview': FieldValue.delete(),
+        'actionRequired': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      await doc.collection(col).doc(id).update({
+        'status': 'sent',
+        'replyDismissed': true,
+        'isReplyDismissed': true,
+        'responseType': FieldValue.delete(),
+        'replyReceivedAt': FieldValue.delete(),
+        'replySender': FieldValue.delete(),
+        'replySubject': FieldValue.delete(),
+        'replySnippet': FieldValue.delete(),
+        'replyBodyPreview': FieldValue.delete(),
+        'actionRequired': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
   Future<Map<String, dynamic>> triggerNetworkingDiscovery({
+    String? applicantName,
     List<String>? targetRoles,
     List<String>? targetLocations,
   }) async {
+    final resolvedName = (applicantName != null && applicantName.trim().isNotEmpty)
+        ? applicantName.trim()
+        : await getApplicantName();
+
     final callable = _functions.httpsCallable(
       'triggerNetworkingDiscovery',
       options: HttpsCallableOptions(timeout: const Duration(minutes: 3)),
     );
     final response = await callable.call({
+      'applicantName': resolvedName,
       if (targetRoles != null && targetRoles.isNotEmpty) 'targetRoles': targetRoles,
       if (targetLocations != null && targetLocations.isNotEmpty) 'targetLocations': targetLocations,
     });

@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'auth_screen.dart';
 import 'notification_control_screen.dart';
+import 'email_notification_control_screen.dart';
 import 'ai_keys_settings_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/update_service.dart';
@@ -352,7 +353,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.notifications_active_rounded,
                   iconGradient: const [Color(0xFFF59E0B), Color(0xFFD97706)],
                   title: 'Notification Control',
-                  subtitle: 'Fine-tune push and email alerts for every feature',
+                  subtitle: 'Fine-tune push and in-app alerts for every feature',
+                  isFirst: false,
+                  isLast: false,
+                  textColor: textColor,
+                  subtextColor: subtextColor,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const NotificationControlScreen()),
+                    );
+                  },
+                ),
+                Divider(height: 1, indent: 64, color: cardBorder),
+                _buildModernTile(
+                  icon: Icons.alternate_email_rounded,
+                  iconGradient: const [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+                  title: 'Email Notifications',
+                  subtitle: 'Gmail credentials & email digest toggles for Web & Mobile',
                   isFirst: false,
                   isLast: true,
                   textColor: textColor,
@@ -361,7 +380,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     HapticFeedback.selectionClick();
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const NotificationControlScreen()),
+                      MaterialPageRoute(builder: (context) => const EmailNotificationControlScreen()),
                     );
                   },
                 ),
@@ -406,7 +425,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   iconGradient: const [Color(0xFF10B981), Color(0xFF059669)],
                   title: 'RemindBuddy Engine',
                   subtitle: 'All-in-One AI Daily Life & Assistant Platform',
-                  badgeText: 'v1.10.19',
+                  badgeText: 'v1.10.23',
                   badgeColor: const Color(0xFF10B981),
                   isFirst: kIsWeb,
                   isLast: true,

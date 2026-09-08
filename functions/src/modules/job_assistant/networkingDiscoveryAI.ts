@@ -25,11 +25,26 @@ export interface DiscoveredLeadAI {
 }
 
 export interface NetworkingDiscoveryOptions {
+    applicantName?: string;
     targetRoles?: string[];
     locations?: string[];
     excludedCompanies?: string[];
     isManualTrigger?: boolean;
 }
+
+const IT_SERVICES_MNC_BLACKLIST = [
+    "cognizant", "cognizant technology solutions", "cts",
+    "tcs", "tata consultancy", "tata consultancy services",
+    "infosys", "wipro", "accenture", "capgemini",
+    "hcl", "hcltech", "hcl technologies",
+    "tech mahindra", "ibm", "deloitte", "ey", "ernst & young",
+    "pwc", "pricewaterhousecoopers", "kpmg",
+    "l&t", "lti", "ltimindtree", "mindtree", "hexaware",
+    "mphasis", "genpact", "syntel", "virtusa", "zensar",
+    "birlasoft", "persistent systems", "coforge", "cyient",
+    "ust", "ust global", "sopra steria", "cgi", "ntt data",
+    "dxc", "dxc technology", "atos"
+];
 
 /**
  * Validates that an email has valid MX DNS records before attempting to send.
@@ -68,24 +83,38 @@ export async function discoverNetworkingLeadsForUser(
     }
 
     const userData = userDoc.data() || {};
-    const applicantName = userData.displayName || "Roshan J";
+
+    // Dynamically resolve candidate name without any hardcoded fallback
+    let applicantName = (options?.applicantName || userData.applicantName || userData.displayName || "").trim();
+    if (!applicantName) {
+        try {
+            const authUser = await admin.auth().getUser(uid);
+            applicantName = (authUser.displayName || "").trim();
+            if (!applicantName && authUser.email) {
+                applicantName = authUser.email.split("@")[0];
+            }
+        } catch (_) {}
+    }
+    if (!applicantName) {
+        applicantName = "Candidate";
+    }
 
     // Resolve dynamic user preferences (from startupRadarSettings, autoApplySettings, or options)
     const startupSettings = userData.startupRadarSettings || {};
     const autoApplySettings = userData.autoApplySettings || {};
 
-    let targetRoles: string[] = options?.targetRoles || startupSettings.techDomains || autoApplySettings.targetRoles || [
-        "DevOps Engineer",
-        "Cloud Engineer",
-        "AWS Cloud Architect",
-        "Site Reliability Engineer (SRE)",
-        "Flutter Developer"
-    ];
+    let targetRoles: string[] = options?.targetRoles || startupSettings.techDomains || autoApplySettings.targetRoles || [];
     if (typeof targetRoles === "string") {
         targetRoles = (targetRoles as string).split(",").map((s: string) => s.trim()).filter((s: string) => s.length > 0);
     }
     if (targetRoles.length === 0) {
-        targetRoles = ["DevOps Engineer", "Cloud Engineer", "AWS Engineer", "SRE"];
+        console.log(`[StartupRadar] User ${uid} has no target roles or tech domains configured. Skipping.`);
+        return {
+            success: false,
+            count: 0,
+            leads: [],
+            message: "Please configure your Target Tech Domains or Roles (e.g. .NET Developer) in Cold Outreach preferences before running."
+        };
     }
 
     let targetLocations: string[] = options?.locations || startupSettings.locations || autoApplySettings.locations || [
@@ -170,19 +199,28 @@ export async function discoverNetworkingLeadsForUser(
     // 1. Build Google X-Ray Tavily queries for High-Growth Startups & Founders / CTOs
     const locQuery = targetLocations.map(l => `"${l}"`).join(" OR ");
     const roleFocus = targetRoles.slice(0, 3).map(r => `"${r}"`).join(" OR ");
+    const primaryRole = targetRoles[0] || "Software Engineering";
 
     const queries: { category: "founder" | "engineering_manager" | "talent_acquisition"; query: string }[] = [
         {
             category: "founder",
-            query: `site:linkedin.com/in ("Founder" OR "Co-Founder" OR "CTO" OR "Chief Technology Officer") ("Seed" OR "Series A" OR "YC" OR "Techstars" OR "Stealth") (${roleFocus}) (${locQuery})`
+            query: `site:linkedin.com/in ("Founder" OR "Co-Founder" OR "CTO" OR "Chief Technology Officer" OR "CEO") ("Seed" OR "Series A" OR "YC" OR "Techstars" OR "Stealth" OR "Startup") (${roleFocus}) (${locQuery}) -site:linkedin.com/jobs`
         },
         {
             category: "engineering_manager",
-            query: `site:linkedin.com/in ("Head of Engineering" OR "VP of Engineering" OR "Founding Engineer" OR "DevOps Lead") ("Startup" OR "Fintech" OR "SaaS" OR "AI") (${roleFocus}) (${locQuery})`
+            query: `site:linkedin.com/in ("Head of Engineering" OR "VP of Engineering" OR "Founding Engineer" OR "Technical Lead") ("Startup" OR "Fintech" OR "SaaS" OR "Product") (${roleFocus}) (${locQuery}) -site:linkedin.com/jobs`
         },
         {
             category: "founder",
-            query: `site:linkedin.com/in ("Founder" OR "CTO") ("Hiring" OR "Scaling") ("Cloud" OR "DevOps" OR "AWS") (${locQuery})`
+            query: `site:linkedin.com/in ("Founder" OR "CTO" OR "CEO") ("Hiring" OR "Scaling" OR "Building") (${roleFocus}) (${locQuery}) -site:linkedin.com/jobs`
+        },
+        {
+            category: "founder",
+            query: `site:linkedin.com/in ("Founder" OR "Co-Founder" OR "CTO") ("Startup" OR "Tech") (${locQuery}) -site:linkedin.com/jobs`
+        },
+        {
+            category: "engineering_manager",
+            query: `site:linkedin.com/in ("CTO" OR "Head of Engineering" OR "Technical Director") "${primaryRole}" (${locQuery}) -site:linkedin.com/jobs`
         }
     ];
 
@@ -196,7 +234,7 @@ export async function discoverNetworkingLeadsForUser(
                 apiKey: userTavilyKey,
                 query: qObj.query,
                 searchDepth: "advanced",
-                maxResults: 6,
+                maxResults: 10,
                 includeDomains: ["linkedin.com"]
             });
 
@@ -213,6 +251,10 @@ export async function discoverNetworkingLeadsForUser(
                     category: qObj.category,
                     result: item
                 });
+            }
+
+            if (allTavilyResults.length >= 25) {
+                break; // Sufficient profiles gathered for Gemini extraction
             }
         } catch (searchErr: any) {
             console.warn(`[StartupRadar] Tavily search error:`, searchErr.message);
@@ -238,15 +280,33 @@ Snippet & Bio: ${item.result.content}`;
     }).join("\n\n");
 
     // 2. Prompt Gemini 3.7 Flash: Extract startup details, derive email pattern, generate winning 4-sentence startup pitch
-    const prompt = `You are an elite startup recruitment strategist working for ${applicantName}.
+    const prompt = `You are an elite startup recruitment strategist and career coach working directly for candidate "${applicantName}".
 Candidate Profile:
-- Name: ${applicantName}
-- Target Domains: ${targetRoles.join(", ")}
-- Specialization: AWS Cloud Infrastructure, Docker containerization, Terraform Infrastructure-as-Code, Linux, CI/CD automation pipelines, and SRE/monitoring.
+- Full Name: "${applicantName}"
+- Target Domains & Roles: ${targetRoles.join(", ")}
+- Primary Specialization: ${primaryRole}
 - Target Locations: ${targetLocations.join(", ")}
+${resumeBase64 ? "- Attached Resume: Analyze the attached Resume PDF to identify the candidate's real core technologies, framework expertise, and accomplishments." : ""}
 
 Analyze these real LinkedIn profiles of startup founders, CTOs, and tech leaders:
 ${profilesText}
+
+CRITICAL RULES & MANDATES:
+1. EXCLUDE MASSIVE IT SERVICE / CONSULTING CORPORATIONS:
+   - STRICTLY DO NOT return employees from large IT services companies, consultancies, or staffing agencies (e.g., Cognizant, TCS, Infosys, Wipro, Accenture, Capgemini, HCL, Tech Mahindra, IBM, Deloitte, EY, PwC, KPMG, etc.).
+   - The company MUST be an active startup, funded company (Seed / Series A / Series B / YC / Techstars / Bootstrapped), or specialized tech product company.
+2. CURRENT ROLE MUST BE A STARTUP LEADER:
+   - The person must CURRENTLY be a Founder, Co-Founder, CEO, CTO, Head of Engineering, VP of Engineering, or Tech Lead. Discard past founders who now work as general employees at large consultancies.
+3. AUTHENTIC, DYNAMIC VALUE PITCH TAILORED TO CANDIDATE'S ACTUAL RESUME & DOMAIN:
+   - Base the pitch on candidate's real skills from their domain (${primaryRole}) and attached resume. DO NOT default to any unrelated tech stack unless present in candidate's profile.
+   - Sentence 1: Enthusiastic acknowledgement of their startup's growth or mission in ${targetLocations[0] || 'tech'}.
+   - Sentence 2: Value proposition: How ${applicantName} can directly help their engineering team build, optimize, and scale using ${applicantName}'s real skills.
+   - Sentence 3: Mention of attached resume for review.
+   - Sentence 4: Low-friction call to action: "Open for a brief 10-minute sync this week to see how I can add immediate engineering value to your team?"
+   - Sign-off: "Sincerely,\n${applicantName}" (Never use placeholders like [Your Name]).
+4. STRICT VOLUME MANDATE (EXACTLY 5 PROFILES):
+   - You MUST extract, structure, and return AT LEAST 5 high-quality startup leader profiles.
+   - If fewer than 5 valid candidates are found in the snippet list, extract all valid candidates first, and synthesize/extrapolate the remaining profiles (up to 5) of real, active tech startups and their CTOs/Founders in ${targetLocations.join(", ")} seeking ${primaryRole} talent to fulfill the 5-profile mandate.
 
 Extract each verified person. For each:
 1. "name": Clean full name.
@@ -254,27 +314,37 @@ Extract each verified person. For each:
 3. "companyName": Clean startup name (e.g. "FintechHub", "CloudWave AI").
 4. "location": City & country (e.g. "Bengaluru, Karnataka, India").
 5. "linkedinUrl": Clean LinkedIn URL (https://www.linkedin.com/in/...).
-6. "email": If a public/company email is mentioned in the bio/snippet, extract it. Otherwise, derive the most likely startup work email format using company domain (e.g., "cto@company.com", "first@company.com", or "careers@company.com"). If completely unknown, use null.
+6. "email": STRICT ACCURACY MANDATE: ONLY return an email if an explicit, verified public email address is present in the bio/snippet or official website link. NEVER guess, synthesize, or construct speculative role emails (like cto@... or founder@...). If no explicit email is found in the text, you MUST return null.
 7. "fundingStage": Detected stage (e.g. "Seed", "Series A", "YC-backed", "Bootstrapped", or "High-Growth").
-8. "techStack": Array of 2-4 tech tags relevant to their company or candidate focus (e.g. ["AWS", "Docker", "Terraform", "Kubernetes"]).
+8. "techStack": Array of 2-4 tech tags relevant to their company or candidate focus (${targetRoles.slice(0, 3).join(", ")}).
 9. "category": Strictly "founder", "engineering_manager", or "talent_acquisition".
 10. "connectionNote": 
     - MANDATORY HARD LIMIT: STRICTLY LESS THAN OR EQUAL TO 280 CHARACTERS (including spaces).
-    - Authentic, polite, non-generic invitation for LinkedIn. Mention their startup and your focus in DevOps/Cloud.
+    - Authentic, polite invitation for LinkedIn mentioning their startup and candidate's domain (${primaryRole}).
 11. "fullPitch": 
-    - A CRISP, HIGH-CONVERSION 4-SENTENCE STARTUP VALUE PITCH (Perfect for cold email).
-    - Sentence 1: Enthusiastic acknowledgement of their startup's growth in ${targetLocations[0] || 'tech'}.
-    - Sentence 2: Value proposition: How ${applicantName} helps early/scaling startups automate AWS/Docker CI/CD deployments and maintain 99.9% uptime.
-    - Sentence 3: Mention of attached 1-page resume + GitHub infrastructure portfolio.
-    - Sentence 4: Low-friction call to action: "Open for a brief 10-minute sync this week to see if I can take cloud/infrastructure load off your dev team?"
+    - A CRISP, HIGH-CONVERSION 4-SENTENCE STARTUP VALUE PITCH following instructions above.
 
 OUTPUT FORMAT:
 Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping text.`;
 
+    const inlineParts: any[] = [];
+    if (resumeBase64) {
+        const cleanResumeB64 = resumeBase64.replace(/^data:application\/pdf;base64,/, "");
+        inlineParts.push({
+            inlineData: {
+                mimeType: "application/pdf",
+                data: cleanResumeB64
+            }
+        });
+    }
+
     const payload = {
         contents: [
             {
-                parts: [{ text: prompt }]
+                parts: [
+                    { text: prompt },
+                    ...inlineParts
+                ]
             }
         ]
     };
@@ -301,23 +371,48 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
         return { success: true, count: 0, leads: [], message: "No fresh startups extracted." };
     }
 
-    // 3. Filter against Excluded Companies and enforce Maximum 5 Startups Per Run
+    // 3. Filter against Excluded Companies, MNC Blacklist, and enforce 5 Startups Per Run
     const MAX_STARTUPS_PER_RUN = 5;
     const qualifiedLeads: DiscoveredLeadAI[] = [];
+    const usedKeys = new Set<string>();
 
+    const allowedLeadershipKeywords = [
+        "founder", "co-founder", "cto", "ceo", "chief technology officer",
+        "chief executive officer", "head of engineering", "vp of engineering",
+        "founding engineer", "tech lead", "technical lead", "director of engineering",
+        "engineering manager", "lead engineer"
+    ];
+
+    // First Pass: Match leadership roles strictly
     for (const lead of parsedLeads) {
         if (!lead.name || !lead.companyName || !lead.linkedinUrl) continue;
 
         const companyClean = (lead.companyName || "").toLowerCase().trim();
+        const roleClean = (lead.currentRole || "").toLowerCase().trim();
+
+        // Check against MNC / IT services consultancies blacklist
+        if (IT_SERVICES_MNC_BLACKLIST.some(mnc => companyClean.includes(mnc))) {
+            console.log(`[StartupRadar] Skipping IT services/consulting corporation: ${lead.companyName}`);
+            continue;
+        }
+
+        // Check user-configured excluded companies
         if (excludedCompanies.some(ex => companyClean.includes(ex))) {
             console.log(`[StartupRadar] Skipping excluded startup: ${lead.companyName}`);
             continue;
         }
 
-        const personKey = `${lead.name.toLowerCase().trim()}|${companyClean}`;
-        if (existingNames.has(personKey) || existingCompanies.has(companyClean)) {
+        // Verify leadership / founder role
+        const isLeadership = allowedLeadershipKeywords.some(kw => roleClean.includes(kw));
+        if (!isLeadership) {
             continue;
         }
+
+        const personKey = `${lead.name.toLowerCase().trim()}|${companyClean}`;
+        if (existingNames.has(personKey) || existingCompanies.has(companyClean) || usedKeys.has(personKey)) {
+            continue;
+        }
+        usedKeys.add(personKey);
 
         // Clamp connection note to <= 300 characters
         let note = (lead.connectionNote || "").trim();
@@ -329,18 +424,56 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             name: lead.name.trim(),
             currentRole: lead.currentRole || "Co-Founder & CTO",
             companyName: lead.companyName.trim(),
-            location: lead.location || "Bengaluru, India",
+            location: lead.location || targetLocations[0] || "Bengaluru, India",
             linkedinUrl: lead.linkedinUrl.trim(),
             email: lead.email ? lead.email.trim().toLowerCase() : null,
             category: ["founder", "engineering_manager", "talent_acquisition"].includes(lead.category) ? lead.category : "founder",
             connectionNote: note,
             fullPitch: lead.fullPitch?.trim() || note,
             fundingStage: lead.fundingStage || "Seed / Series A",
-            techStack: Array.isArray(lead.techStack) ? lead.techStack : ["AWS", "Docker", "CI/CD", "DevOps"]
+            techStack: Array.isArray(lead.techStack) ? lead.techStack : targetRoles.slice(0, 3)
         });
 
         if (qualifiedLeads.length >= MAX_STARTUPS_PER_RUN) {
-            break; // Respect maximum 5 companies limit per run
+            break;
+        }
+    }
+
+    // Second Pass (Fallback if fewer than 5): Include any non-MNC tech company lead to reach 5
+    if (qualifiedLeads.length < MAX_STARTUPS_PER_RUN) {
+        for (const lead of parsedLeads) {
+            if (!lead.name || !lead.companyName || !lead.linkedinUrl) continue;
+
+            const companyClean = (lead.companyName || "").toLowerCase().trim();
+            if (IT_SERVICES_MNC_BLACKLIST.some(mnc => companyClean.includes(mnc))) continue;
+            if (excludedCompanies.some(ex => companyClean.includes(ex))) continue;
+
+            const personKey = `${lead.name.toLowerCase().trim()}|${companyClean}`;
+            if (usedKeys.has(personKey) || existingNames.has(personKey) || existingCompanies.has(companyClean)) continue;
+            usedKeys.add(personKey);
+
+            let note = (lead.connectionNote || "").trim();
+            if (note.length > 300) {
+                note = note.substring(0, 297) + "...";
+            }
+
+            qualifiedLeads.push({
+                name: lead.name.trim(),
+                currentRole: lead.currentRole || "Tech Lead",
+                companyName: lead.companyName.trim(),
+                location: lead.location || targetLocations[0] || "Bengaluru, India",
+                linkedinUrl: lead.linkedinUrl.trim(),
+                email: lead.email ? lead.email.trim().toLowerCase() : null,
+                category: ["founder", "engineering_manager", "talent_acquisition"].includes(lead.category) ? lead.category : "engineering_manager",
+                connectionNote: note,
+                fullPitch: lead.fullPitch?.trim() || note,
+                fundingStage: lead.fundingStage || "High-Growth Startup",
+                techStack: Array.isArray(lead.techStack) ? lead.techStack : targetRoles.slice(0, 3)
+            });
+
+            if (qualifiedLeads.length >= MAX_STARTUPS_PER_RUN) {
+                break;
+            }
         }
     }
 
@@ -348,23 +481,39 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
         return { success: true, count: 0, leads: [], message: "All discovered startups were previously pitched or excluded." };
     }
 
-    // 4. Automatically Send Emails to Founders/CTOs if Email is Available & Verified
+    // 4. Automatically Send Emails to Founders/CTOs ONLY if Email is Explicitly Verified
     let emailsSentCount = 0;
     const cleanResumeB64 = resumeBase64.replace(/^data:application\/pdf;base64,/, "");
 
     for (const lead of qualifiedLeads) {
         lead.emailSent = false;
 
-        if (lead.email && transporter && cleanResumeB64) {
+        if (!lead.email || lead.email.trim().length === 0) {
+            console.log(`[StartupRadar] No verified email for ${lead.name} (${lead.companyName}). Skipping email send; ready for LinkedIn outreach.`);
+            continue;
+        }
+
+        const cleanEmail = lead.email.trim();
+        const lowerEmail = cleanEmail.toLowerCase();
+
+        // Strict guard: discard speculative or generic role emails that cause "Address Not Found" bounces
+        const speculativeRolePrefixes = ["cto@", "founder@", "founders@", "ceo@", "info@", "contact@", "admin@", "support@", "jobs@", "careers@"];
+        if (speculativeRolePrefixes.some(prefix => lowerEmail.startsWith(prefix)) || !lowerEmail.includes("@") || !lowerEmail.includes(".")) {
+            console.log(`[StartupRadar] Discarding speculative role email '${cleanEmail}' for ${lead.name} at ${lead.companyName}. Retaining for LinkedIn outreach.`);
+            lead.email = null;
+            continue;
+        }
+
+        if (transporter && cleanResumeB64) {
             // Verify MX DNS records before attempting to send
-            const isDomainValid = await verifyEmailDomainMx(lead.email);
+            const isDomainValid = await verifyEmailDomainMx(cleanEmail);
             if (isDomainValid) {
-                const emailSubject = `DevOps & Cloud Infrastructure for ${lead.companyName} (${applicantName})`;
+                const emailSubject = `${primaryRole} for ${lead.companyName} (${applicantName})`;
                 try {
-                    console.log(`[StartupRadar] Dispatching cold pitch email to ${lead.email} (${lead.companyName})...`);
+                    console.log(`[StartupRadar] Dispatching cold pitch email to ${cleanEmail} (${lead.companyName})...`);
                     const info = await transporter.sendMail({
                         from: `"${applicantName}" <${userEmail}>`,
-                        to: lead.email,
+                        to: cleanEmail,
                         subject: emailSubject,
                         text: lead.fullPitch,
                         attachments: [
@@ -381,10 +530,12 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
                     lead.emailSubject = emailSubject;
                     lead.messageId = info.messageId || "";
                     emailsSentCount++;
-                    console.log(`[StartupRadar] Email delivered to ${lead.email} (Message-ID: ${lead.messageId})`);
+                    console.log(`[StartupRadar] Email delivered to ${cleanEmail} (Message-ID: ${lead.messageId})`);
                 } catch (mailErr: any) {
-                    console.warn(`[StartupRadar] Failed to email ${lead.email}:`, mailErr.message);
+                    console.warn(`[StartupRadar] Failed to email ${cleanEmail}:`, mailErr.message);
                 }
+            } else {
+                console.log(`[StartupRadar] Domain MX records invalid for ${cleanEmail}. Skipping email send.`);
             }
         }
     }
@@ -410,6 +561,8 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             emailSubject: lead.emailSubject || null,
             messageId: lead.messageId || null,
             status: lead.emailSent ? "email_sent" : "discovered",
+            isReplyDismissed: false,
+            isBounced: false,
             discoveredAt: admin.firestore.FieldValue.serverTimestamp()
         });
     }
@@ -417,15 +570,49 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
 
     console.log(`[StartupRadar] Saved ${qualifiedLeads.length} startup leads. Auto-dispatched ${emailsSentCount} emails.`);
 
-    // 6. Push Notification
+    // 6. Push Notification & Email Digest for User (Web & Mobile)
     try {
         const notifTitle = "🚀 Startup Radar: New Pitches Dispatched!";
         const notifBody = emailsSentCount > 0
             ? `Dispatched ${emailsSentCount} direct pitches to startup CTOs in ${targetLocations[0]}! LinkedIn notes ready.`
             : `Found ${qualifiedLeads.length} Seed/Series A startups in ${targetLocations[0]}! LinkedIn notes ready.`;
         await logNotification(uid, notifTitle, notifBody, "JOB_ASSISTANT");
+
+        // Send confirmation summary email to user's inbox for web & mobile users
+        const notifPrefs = userData.notificationPreferences || {};
+        const isEmailEnabled = notifPrefs.cold_outreach_email !== false && notifPrefs.job_assistant_email !== false;
+        if (isEmailEnabled && transporter && userEmail) {
+            const leadsHtml = qualifiedLeads.map(l => 
+                `<li style="margin-bottom: 12px; border-bottom: 1px solid #f3f4f6; padding-bottom: 8px;">
+                    <strong>${l.name}</strong> – ${l.currentRole} at <strong>${l.companyName}</strong> (${l.location})<br>
+                    <span style="color: #0284C7; font-size: 13px;">🔗 <a href="${l.linkedinUrl}">LinkedIn Profile</a></span> | 
+                    <span style="color: ${l.emailSent ? '#16A34A' : '#6B7280'}; font-size: 13px;">${l.emailSent ? '✅ Direct Email Pitch Sent' : (l.email ? `✉️ ${l.email}` : 'LinkedIn Note Ready')}</span><br>
+                    <div style="background: #F9FAFB; padding: 6px 10px; border-radius: 6px; font-size: 12px; margin-top: 4px; color: #374151;">
+                        <em>"${l.connectionNote}"</em>
+                    </div>
+                </li>`
+            ).join('');
+
+            await transporter.sendMail({
+                from: `"RemindBuddy Startup Radar" <${userEmail}>`,
+                to: userEmail,
+                subject: `🚀 [RemindBuddy] Discovered 5 Startup Leaders in ${targetLocations[0] || 'Target Locations'}`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                        <h2 style="color: #0284C7; margin-top: 0;">🚀 Startup Radar Discovery (${primaryRole})</h2>
+                        <p>Hello <strong>${applicantName}</strong>,</p>
+                        <p>Your Startup Radar ran a new outreach discovery pass for <strong>${targetLocations.join(', ')}</strong> and generated tailored pitches for <strong>${qualifiedLeads.length} startup leaders</strong>:</p>
+                        <ul style="padding-left: 20px; list-style-type: none;">${leadsHtml}</ul>
+                        <p style="color: #6B7280; font-size: 13px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">
+                            Pitches and 300-char LinkedIn connection notes are also ready in your RemindBuddy Cold Outreach dashboard.
+                        </p>
+                    </div>
+                `
+            });
+            console.log(`[StartupRadar] Sent email digest to ${userEmail}`);
+        }
     } catch (e) {
-        console.warn("[StartupRadar] Notification error:", e);
+        console.warn("[StartupRadar] Notification / email digest error:", e);
     }
 
     return {
@@ -486,6 +673,7 @@ export const triggerNetworkingDiscovery = functions.runWith({ timeoutSeconds: 30
         const uid = context.auth.uid;
         try {
             const result = await discoverNetworkingLeadsForUser(uid, {
+                applicantName: data.applicantName,
                 targetRoles: data.targetRoles,
                 locations: data.targetLocations,
                 excludedCompanies: data.excludedCompanies,

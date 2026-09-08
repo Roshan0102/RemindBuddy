@@ -12,9 +12,10 @@ const nodemailer = require("nodemailer");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
-async function fetchAndStoreWalkInsForUserInternal(uid, triggerNotification) {
+async function fetchAndStoreWalkInsForUserInternal(uid, triggerNotification, customPrefs) {
+    var _a;
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
-    let roles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"];
+    let roles = ["Software Engineer", "Developer"];
     let location = "Bengaluru";
     let userTavilyKey = "";
     let userGeminiKey = "";
@@ -22,7 +23,10 @@ async function fetchAndStoreWalkInsForUserInternal(uid, triggerNotification) {
         const data = userDoc.data();
         if (data) {
             if (data.walkinRoles && Array.isArray(data.walkinRoles) && data.walkinRoles.length > 0) {
-                roles = data.walkinRoles;
+                roles = [...data.walkinRoles];
+            }
+            else if (((_a = data.autoApplySettings) === null || _a === void 0 ? void 0 : _a.targetRoles) && Array.isArray(data.autoApplySettings.targetRoles) && data.autoApplySettings.targetRoles.length > 0) {
+                roles = [...data.autoApplySettings.targetRoles];
             }
             if (data.walkinLocation && typeof data.walkinLocation === "string" && data.walkinLocation.trim().length > 0) {
                 location = data.walkinLocation.trim();
@@ -32,6 +36,16 @@ async function fetchAndStoreWalkInsForUserInternal(uid, triggerNotification) {
             userGeminiKey = (userApiKeys.geminiApiKey || data.geminiApiKey || "").trim();
         }
     }
+    // Isolate and apply explicit user preferences if provided in task/callable payload
+    if (customPrefs) {
+        if (customPrefs.roles && Array.isArray(customPrefs.roles) && customPrefs.roles.length > 0) {
+            roles = [...customPrefs.roles];
+        }
+        if (customPrefs.location && typeof customPrefs.location === "string" && customPrefs.location.trim().length > 0) {
+            location = customPrefs.location.trim();
+        }
+    }
+    console.log(`[WalkinDrives] Isolated execution for user ${uid}: Roles=[${roles.join(', ')}], Location="${location}"`);
     if (!userTavilyKey || !userGeminiKey) {
         console.log(`[WalkinDrives] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
         return { success: false, walkins: [], message: "Tavily and Gemini API keys not configured in Settings." };
@@ -254,7 +268,11 @@ exports.fetchUserWalkIns = functions.runWith({ timeoutSeconds: 120, memory: "256
     }
     const uid = context.auth.uid;
     try {
-        return await fetchAndStoreWalkInsForUserInternal(uid, false);
+        const customPrefs = {
+            roles: (data === null || data === void 0 ? void 0 : data.roles) && Array.isArray(data.roles) ? data.roles : undefined,
+            location: (data === null || data === void 0 ? void 0 : data.location) && typeof data.location === 'string' ? data.location : undefined,
+        };
+        return await fetchAndStoreWalkInsForUserInternal(uid, false, customPrefs);
     }
     catch (error) {
         console.error("Error in fetchUserWalkIns:", error);
@@ -278,9 +296,13 @@ exports.processWalkInUserTask = functions.runWith({ timeoutSeconds: 300, memory:
         console.error("[processWalkInUserTask] Missing uid in payload:", rawPayload);
         return;
     }
-    console.log(`[processWalkInUserTask] Processing Walk-In Drives for user ${uid}`);
+    const customPrefs = {
+        roles: (payload === null || payload === void 0 ? void 0 : payload.roles) && Array.isArray(payload.roles) ? payload.roles : undefined,
+        location: (payload === null || payload === void 0 ? void 0 : payload.location) && typeof payload.location === 'string' ? payload.location : undefined,
+    };
+    console.log(`[processWalkInUserTask] Processing isolated Walk-In Drives task for user ${uid}`);
     try {
-        const res = await fetchAndStoreWalkInsForUserInternal(uid, true);
+        const res = await fetchAndStoreWalkInsForUserInternal(uid, true, customPrefs);
         console.log(`[processWalkInUserTask] Completed Walk-In Drives fetch for user ${uid}:`, res);
     }
     catch (err) {
@@ -289,6 +311,7 @@ exports.processWalkInUserTask = functions.runWith({ timeoutSeconds: 300, memory:
     }
 });
 async function internalDailyWalkInsFetcher() {
+    var _a;
     console.log("[internalDailyWalkInsFetcher] Starting daily Walk-In Drives dispatcher at 8 PM IST");
     try {
         const usersSnap = await firebase_1.db.collection("users").get();
@@ -318,13 +341,19 @@ async function internalDailyWalkInsFetcher() {
         const nowUnix = moment().tz('Asia/Kolkata').unix();
         for (let i = 0; i < eligibleUids.length; i++) {
             const uid = eligibleUids[i];
+            const userSnap = await firebase_1.db.collection("users").doc(uid).get();
+            const uData = userSnap.data() || {};
+            const userRoles = (Array.isArray(uData.walkinRoles) && uData.walkinRoles.length > 0)
+                ? uData.walkinRoles
+                : (((_a = uData.autoApplySettings) === null || _a === void 0 ? void 0 : _a.targetRoles) || []);
+            const userLocation = (typeof uData.walkinLocation === 'string') ? uData.walkinLocation.trim() : "";
             const etaUnix = nowUnix + (i * 25); // Stagger by 25s for safe RPM rate limits
-            const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processWalkInUserTask", "processWalkInUserTask", { uid }, etaUnix);
+            const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processWalkInUserTask", "processWalkInUserTask", { uid, roles: userRoles, location: userLocation }, etaUnix);
             // Fallback: If Cloud Tasks queue enqueue fails, process directly with safe delay
             if (!taskId) {
                 console.warn(`[internalDailyWalkInsFetcher] Cloud Tasks queue unavailable for ${uid}. Running directly as fallback...`);
                 try {
-                    await fetchAndStoreWalkInsForUserInternal(uid, true);
+                    await fetchAndStoreWalkInsForUserInternal(uid, true, { roles: userRoles, location: userLocation });
                 }
                 catch (e) {
                     console.error(`[internalDailyWalkInsFetcher] Error in fallback execution for ${uid}:`, e.message || e);

@@ -198,9 +198,34 @@ class _RemindersScreenState extends State<RemindersScreen> {
                         color: isDark ? Colors.white70 : Colors.black87,
                       ),
                     ),
-                    Text(
-                      '${allReminders.where((r) => r.date == DateFormat('yyyy-MM-dd').format(_selectedDay ?? DateTime.now())).length} Tasks',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        InkWell(
+                          onTap: () {
+                            setState(() {
+                              _showPastReminders = !_showPastReminders;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            child: Text(
+                              _showPastReminders ? 'Hide' : 'Show',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Theme.of(context).primaryColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${allReminders.where((r) => r.date == DateFormat('yyyy-MM-dd').format(_selectedDay ?? DateTime.now())).length} Tasks',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -282,44 +307,52 @@ class _RemindersScreenState extends State<RemindersScreen> {
         }
 
         if (upcomingReminders.isEmpty && pastReminders.isNotEmpty) {
-          return ListView(
-            padding: const EdgeInsets.only(bottom: 90, top: 12),
-            children: [
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.task_alt_rounded,
-                        size: 52,
-                        color: isDarkMode ? Colors.cyanAccent : Colors.green,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'All reminders for this day completed! 🎉',
-                        style: GoogleFonts.outfit(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: isDarkMode ? Colors.white : Colors.black87,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${pastReminders.length} past reminder${pastReminders.length > 1 ? 's are' : ' is'} hidden',
-                        style: const TextStyle(fontSize: 13, color: Colors.grey),
-                      ),
-                    ],
+          if (_showPastReminders) {
+            return ListView(
+              padding: const EdgeInsets.only(bottom: 90, top: 4),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  child: Text(
+                    'Past Reminders (${pastReminders.length})',
+                    style: GoogleFonts.outfit(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                    ),
                   ),
                 ),
-              ),
-              _buildPastRemindersToggle(pastReminders.length, isDarkMode),
-              if (_showPastReminders) ...[
                 for (int i = 0; i < pastReminders.length; i++)
                   _buildReminderCard(pastReminders[i], i, isDarkMode),
               ],
-            ],
+            );
+          }
+
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.done_all_rounded, size: 36, color: Colors.green.withValues(alpha: 0.7)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'All upcoming reminders completed for this day',
+                    style: GoogleFonts.outfit(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isDarkMode ? Colors.white70 : Colors.black87,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${pastReminders.length} past reminder${pastReminders.length > 1 ? 's' : ''} hidden • Tap "Show" above to view',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
           );
         }
 
@@ -328,72 +361,25 @@ class _RemindersScreenState extends State<RemindersScreen> {
           children: [
             for (int i = 0; i < upcomingReminders.length; i++)
               _buildReminderCard(upcomingReminders[i], i, isDarkMode),
-            if (pastReminders.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              _buildPastRemindersToggle(pastReminders.length, isDarkMode),
-              if (_showPastReminders) ...[
-                for (int i = 0; i < pastReminders.length; i++)
-                  _buildReminderCard(pastReminders[i], upcomingReminders.length + i, isDarkMode),
-              ],
+            if (pastReminders.isNotEmpty && _showPastReminders) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Text(
+                  'Past Reminders (${pastReminders.length})',
+                  style: GoogleFonts.outfit(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                ),
+              ),
+              for (int i = 0; i < pastReminders.length; i++)
+                _buildReminderCard(pastReminders[i], upcomingReminders.length + i, isDarkMode),
             ],
           ],
         );
       },
-    );
-  }
-
-  Widget _buildPastRemindersToggle(int count, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            _showPastReminders = !_showPastReminders;
-          });
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
-              width: 1,
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    _showPastReminders ? Icons.visibility_off_outlined : Icons.history_rounded,
-                    size: 18,
-                    color: isDark ? Colors.cyanAccent : Theme.of(context).primaryColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _showPastReminders
-                        ? 'Hide past reminders'
-                        : 'Show past reminders of the day ($count)',
-                    style: GoogleFonts.outfit(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white70 : Colors.black87,
-                    ),
-                  ),
-                ],
-              ),
-              Icon(
-                _showPastReminders ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                size: 20,
-                color: isDark ? Colors.white54 : Colors.black54,
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 

@@ -12,22 +12,35 @@ exports.parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 120, memory:
     try {
         const uid = context.auth.uid;
         let userGeminiKey = "";
+        const { applicantName } = data;
+        let promptName = (applicantName || "").trim();
         try {
             const userDoc = await firebase_1.db.collection("users").doc(uid).get();
             if (userDoc.exists) {
                 const uData = userDoc.data() || {};
                 userGeminiKey = (((_a = uData.userApiKeys) === null || _a === void 0 ? void 0 : _a.geminiApiKey) || uData.geminiApiKey || "").trim();
+                if (!promptName) {
+                    promptName = (uData.applicantName || uData.displayName || "").trim();
+                }
+            }
+            if (!promptName) {
+                const authUser = await firebase_1.admin.auth().getUser(uid);
+                promptName = (authUser.displayName || "").trim();
+                if (!promptName && authUser.email) {
+                    promptName = authUser.email.split("@")[0];
+                }
             }
         }
         catch (e) {
-            console.warn("[JobPosterAI] Could not fetch userGeminiKey:", e.message);
+            console.warn("[JobPosterAI] User profile lookup:", e.message);
         }
-        const { imagesBase64, mode, resumeBase64, applicantName, customPrompt } = data;
+        if (!promptName)
+            promptName = "Candidate";
+        const { imagesBase64, mode, resumeBase64, customPrompt } = data;
         if (!imagesBase64 || !Array.isArray(imagesBase64) || imagesBase64.length === 0) {
             throw new functions.https.HttpsError('invalid-argument', 'No image data provided.');
         }
         const isSingleJob = (mode === 'single_job');
-        const promptName = applicantName || "Roshan J";
         const userDirective = customPrompt ? `\nUSER SPECIFIC DIRECTIVE / INSTRUCTION: "${customPrompt}"\nEnsure you strictly follow this user directive when selecting and analyzing job roles from the screenshots.\n` : "";
         const prompt = isSingleJob
             ? `Analyze the provided screenshot(s) and candidate Resume (PDF). These screenshot(s) belong to the SAME SINGLE job posting.
@@ -35,7 +48,7 @@ Stitch the text and context together. Extract structured job details.
 ${userDirective}
 CRITICAL INSTRUCTIONS FOR COVER LETTER & SUBJECT:
 1. Candidate's Full Name is: "${promptName}".
-2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, certifications (e.g. AWS certifications, DevOps platform operations, Kubernetes, etc.), work history, and key projects.
+2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, framework proficiencies, work history, and key projects.
 3. Compare candidate's actual resume experience against the job poster requirements. Write a highly personalized, compelling, professional cover letter that directly maps candidate's specific accomplishments, certifications, and skills from their resume to the exact requirements of the job posting.
 4. The cover letter MUST sound authentically human-written (not robotic, generic, or boilerplate AI output).
 5. Format the generated subject as: "${promptName} - [Job Title]" or "[Job Title] - ${promptName}".

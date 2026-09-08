@@ -75,6 +75,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   StreamSubscription? _profilesSub;
 
   // Auto-Apply Agent State & Excluded Companies
+  final TextEditingController _applicantNameController = TextEditingController();
   bool _autoApplyEnabled = true;
   final TextEditingController _targetRolesController = TextEditingController();
   final TextEditingController _locationsController = TextEditingController();
@@ -95,12 +96,22 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   StreamSubscription? _appsSub;
 
   // History Tab Filter
-  String _historyFilter = 'all'; // 'all', 'auto', 'manual'
+  String _historyFilter = 'all'; // 'all', 'replies'
+
+  // Monthly Calendar & Pagination State for Tabs
+  DateTime _autoApplyMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  int _autoApplyPage = 1;
+
+  DateTime _networkingMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  int _networkingPage = 1;
+
+  DateTime _historyMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  int _historyPage = 1;
 
   // Startup Radar & Cold Outreach State
   bool _isDiscoveringLeaders = false;
   final String _networkingCategoryFilter = 'all'; // 'all', 'founder', 'engineering_manager', 'talent_acquisition'
-  String _networkingStatusFilter = 'pending'; // 'pending' (default: cards vanish when sent!), 'completed', 'all'
+  String _networkingStatusFilter = 'all'; // Default 'all' so cards do not vanish!
   final ScrollController _networkingScrollController = ScrollController();
   List<String> _radarLocations = [];
   List<String> _radarTechDomains = [];
@@ -197,6 +208,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     _newRadarDomainController.dispose();
     _newAppScrollController.dispose();
     _historyScrollController.dispose();
+    _applicantNameController.dispose();
     _targetRolesController.dispose();
     _locationsController.dispose();
     _minExpController.dispose();
@@ -218,6 +230,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Future<void> _loadUserConfig() async {
+    final applicantName = await _service.getApplicantName();
     final emailConfig = await _service.getUserEmailConfig();
     final masterResume = await _service.getMasterResume();
     final autoSettings = await _service.getAutoApplySettings();
@@ -227,6 +240,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
     if (mounted) {
       setState(() {
+        _applicantNameController.text = applicantName;
         _userEmail = emailConfig['email'] ?? '';
         _userAppPassword = emailConfig['appPassword'] ?? '';
         _resumeFileName = masterResume['fileName'] ?? '';
@@ -459,6 +473,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   void _showJobAssistantSettingsDialog() {
+    final nameController = TextEditingController(text: _applicantNameController.text);
     final emailController = TextEditingController(text: _userEmail);
     final passwordController = TextEditingController(text: _userAppPassword);
 
@@ -482,6 +497,31 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Section 0: Candidate Profile / Full Name
+                    Text(
+                      '👤 Candidate Profile & Full Name',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Your full name used across all AI applications, emails, cold outreach pitches, and sign-offs.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: nameController,
+                      decoration: InputDecoration(
+                        labelText: 'Your Full Name (Candidate Name)',
+                        hintText: 'e.g. Roshan J or Dhanush',
+                        prefixIcon: const Icon(Icons.person_outline_rounded),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 12),
+
                     // Section 1: Multi-Resume Profiles (DevOps vs Flutter vs Cloud)
                     Row(
                       children: [
@@ -764,14 +804,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
                 onPressed: () async {
+                  final newName = nameController.text.trim();
                   final newEmail = emailController.text.trim();
                   final newPass = passwordController.text.trim();
+                  if (newName.isNotEmpty) {
+                    await _service.saveApplicantName(newName);
+                  }
                   await _service.saveUserEmailConfig(newEmail, newPass);
                   if (ctx.mounted) {
                     Navigator.pop(ctx);
                   }
                   if (mounted) {
                     setState(() {
+                      if (newName.isNotEmpty) {
+                        _applicantNameController.text = newName;
+                      }
                       _userEmail = newEmail;
                       _userAppPassword = newPass;
                     });
@@ -970,6 +1017,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         _selectedImagesBase64,
         _uploadMode,
         customPrompt: customPrompt.isEmpty ? null : customPrompt,
+        applicantName: _applicantNameController.text.trim().isNotEmpty ? _applicantNameController.text.trim() : null,
       );
       setState(() {
         _extractedJobs = jobs;
@@ -1022,6 +1070,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         recipientEmails: recipientEmails.isEmpty ? null : recipientEmails,
         companyNotes: companyNotes.isEmpty ? null : companyNotes,
         customPrompt: customPrompt.isEmpty ? null : customPrompt,
+        applicantName: _applicantNameController.text.trim().isNotEmpty ? _applicantNameController.text.trim() : null,
       );
 
       setState(() {
@@ -1072,6 +1121,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         userPrompt: userPrompt,
         jobTitle: app.jobTitle,
         companyName: app.companyName,
+        applicantName: _applicantNameController.text.trim().isNotEmpty ? _applicantNameController.text.trim() : null,
       );
 
       final newSubject = res['generatedSubject'] ?? currentSubject;
@@ -1311,6 +1361,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
     setState(() => _isSavingAutoSettings = true);
     try {
+      final name = _applicantNameController.text.trim();
+      if (name.isNotEmpty) {
+        await _service.saveApplicantName(name);
+      }
       await _service.saveAutoApplySettings(
         enabled: _autoApplyEnabled,
         targetRoles: roles,
@@ -1356,6 +1410,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
 
     final roles = _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    if (roles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please specify at least one target role (e.g. .NET Developer, Software Engineer).'),
+          backgroundColor: Colors.orangeAccent,
+        ),
+      );
+      return;
+    }
+
     final locs = _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
     final minExp = int.tryParse(_minExpController.text.trim()) ?? 0;
     final maxExp = int.tryParse(_maxExpController.text.trim()) ?? 3;
@@ -1367,6 +1431,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
     try {
       final res = await _service.triggerAutoJobDiscoveryAndApply(
+        applicantName: _applicantNameController.text.trim().isNotEmpty ? _applicantNameController.text.trim() : null,
         targetRoles: roles,
         locations: locs,
         excludedCompanies: _excludedCompanies,
@@ -1667,8 +1732,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 return StreamBuilder<List<NetworkingLead>>(
                   stream: _service.getNetworkingLeadsStream(),
                   builder: (context, leadSnap) {
-                    final appReplies = (appSnap.data ?? []).where((a) => a.status == 'reply_received').length;
-                    final leadReplies = (leadSnap.data ?? []).where((l) => l.status == 'replied').length;
+                    final appReplies = (appSnap.data ?? [])
+                        .where((a) => (a.status == 'reply_received' || a.isBounced) && !a.isReplyDismissed)
+                        .length;
+                    final leadReplies = (leadSnap.data ?? [])
+                        .where((l) => (l.status == 'replied' || l.isBounced) && !l.isReplyDismissed)
+                        .length;
                     final totalReplies = appReplies + leadReplies;
 
                     if (totalReplies > 0) {
@@ -1706,6 +1775,160 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           _buildNetworkingTab(),
           _buildNewApplicationTab(),
           _buildHistoryTab(),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================================
+  // REUSABLE MONTH SELECTOR & NUMBERED PAGINATION HELPERS
+  // ============================================================================
+
+  Widget _buildMonthSelector({
+    required DateTime selectedMonth,
+    required ValueChanged<DateTime> onMonthChanged,
+    required bool isDark,
+  }) {
+    final monthStr = DateFormat('MMMM yyyy').format(selectedMonth);
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? Colors.blueGrey.shade800 : Colors.grey.shade300,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back_ios_rounded, size: 16),
+            tooltip: 'Previous Month',
+            onPressed: () {
+              onMonthChanged(DateTime(selectedMonth.year, selectedMonth.month - 1, 1));
+            },
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.calendar_month_rounded, size: 18, color: Theme.of(context).primaryColor),
+              const SizedBox(width: 8),
+              Text(
+                monthStr,
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+            ],
+          ),
+          IconButton(
+            icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            tooltip: 'Next Month',
+            onPressed: () {
+              onMonthChanged(DateTime(selectedMonth.year, selectedMonth.month + 1, 1));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaginationBar({
+    required int currentPage,
+    required int totalPages,
+    required ValueChanged<int> onPageChanged,
+    required bool isDark,
+  }) {
+    if (totalPages <= 1) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          InkWell(
+            onTap: currentPage > 1 ? () => onPageChanged(currentPage - 1) : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: currentPage > 1
+                    ? (isDark ? const Color(0xFF1E293B) : Colors.grey.shade200)
+                    : (isDark ? Colors.white10 : Colors.grey.shade100),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.chevron_left_rounded,
+                size: 20,
+                color: currentPage > 1 ? (isDark ? Colors.white : Colors.black87) : Colors.grey,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          for (int i = 1; i <= totalPages; i++) ...[
+            if (totalPages <= 7 || i == 1 || i == totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) ...[
+              InkWell(
+                onTap: () => onPageChanged(i),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: i == currentPage
+                        ? Theme.of(context).primaryColor
+                        : (isDark ? const Color(0xFF1E293B) : Colors.grey.shade100),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: i == currentPage
+                          ? Theme.of(context).primaryColor
+                          : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+                    ),
+                  ),
+                  child: Text(
+                    '$i',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: i == currentPage ? FontWeight.bold : FontWeight.normal,
+                      color: i == currentPage ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                    ),
+                  ),
+                ),
+              ),
+            ] else if (i == 2 && currentPage > 3) ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 2),
+                child: Text('...', style: TextStyle(color: Colors.grey)),
+              ),
+            ] else if (i == totalPages - 1 && currentPage < totalPages - 2) ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 2),
+                child: Text('...', style: TextStyle(color: Colors.grey)),
+              ),
+            ],
+          ],
+          const SizedBox(width: 6),
+          InkWell(
+            onTap: currentPage < totalPages ? () => onPageChanged(currentPage + 1) : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: currentPage < totalPages
+                    ? (isDark ? const Color(0xFF1E293B) : Colors.grey.shade200)
+                    : (isDark ? Colors.white10 : Colors.grey.shade100),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: currentPage < totalPages ? (isDark ? Colors.white : Colors.black87) : Colors.grey,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1982,10 +2205,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           const Divider(),
                           const SizedBox(height: 8),
                     TextField(
+                      controller: _applicantNameController,
+                      decoration: InputDecoration(
+                        labelText: 'Your Full Name (used in applications & emails)',
+                        hintText: 'e.g. Roshan J or Dhanush',
+                        prefixIcon: const Icon(Icons.person_outline_rounded),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
                       controller: _targetRolesController,
                       decoration: InputDecoration(
                         labelText: 'Target Job Roles (comma-separated)',
-                        hintText: 'e.g. DevOps Engineer, Cloud Engineer, Flutter Developer',
+                        hintText: 'e.g. .NET Developer, Software Engineer, Full Stack Developer, Flutter Developer',
                         prefixIcon: const Icon(Icons.work_outline_rounded),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         isDense: true,
@@ -2351,29 +2585,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             const SizedBox(height: 24),
 
             // Recent Auto-Applied Applications Section (Filtered for isAutoApplied == true ONLY)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '📬 Recent Automated Applications',
-                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    'Last 10',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
-                    ),
-                  ),
-                ),
-              ],
+            // Automated Applications Section with Monthly View & Pagination
+            Text(
+              '📬 Automated Applications',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 6),
+            _buildMonthSelector(
+              selectedMonth: _autoApplyMonth,
+              onMonthChanged: (m) => setState(() {
+                _autoApplyMonth = m;
+                _autoApplyPage = 1;
+              }),
+              isDark: isDark,
             ),
             const SizedBox(height: 10),
 
@@ -2385,9 +2609,17 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 }
 
                 final allApps = snapshot.data ?? [];
-                final autoApps = allApps.where((a) => a.isAutoApplied).toList();
+                // Filter for isAutoApplied == true AND matching selected month & year
+                final monthApps = allApps.where((a) =>
+                    a.isAutoApplied &&
+                    a.appliedAt.year == _autoApplyMonth.year &&
+                    a.appliedAt.month == _autoApplyMonth.month
+                ).toList();
 
-                if (autoApps.isEmpty) {
+                // Sort latest first
+                monthApps.sort((a, b) => b.appliedAt.compareTo(a.appliedAt));
+
+                if (monthApps.isEmpty) {
                   return Card(
                     color: cardBg,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -2398,7 +2630,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           Icon(Icons.work_outline_rounded, size: 40, color: Colors.grey.shade400),
                           const SizedBox(height: 10),
                           Text(
-                            'No Automated Applications Sent Yet',
+                            'No Applications in ${DateFormat('MMMM yyyy').format(_autoApplyMonth)}',
                             style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14),
                           ),
                           const SizedBox(height: 4),
@@ -2413,7 +2645,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   );
                 }
 
-                final displayedApps = autoApps.take(10).toList();
+                final totalPages = (monthApps.length / 10).ceil();
+                final safePage = _autoApplyPage.clamp(1, totalPages);
+                final startIndex = (safePage - 1) * 10;
+                final displayedApps = monthApps.skip(startIndex).take(10).toList();
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2427,7 +2662,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         return _buildAutoAppCard(app, isDark);
                       },
                     ),
-                    const SizedBox(height: 10),
+                    _buildPaginationBar(
+                      currentPage: safePage,
+                      totalPages: totalPages,
+                      onPageChanged: (p) => setState(() => _autoApplyPage = p),
+                      isDark: isDark,
+                    ),
+                    const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                       decoration: BoxDecoration(
@@ -2449,7 +2690,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                'Total Applications Sent:',
+                                'In ${DateFormat('MMM yyyy').format(_autoApplyMonth)}: ${monthApps.length} (Page $safePage of $totalPages)',
                                 style: GoogleFonts.outfit(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 13,
@@ -2465,10 +2706,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              '${autoApps.length}',
+                              '${allApps.where((a) => a.isAutoApplied).length} Total Sent',
                               style: GoogleFonts.outfit(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 13,
+                                fontSize: 12,
                                 color: isDark ? Colors.white : Colors.blue.shade900,
                               ),
                             ),
@@ -3322,41 +3563,42 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
         final allApps = snapshot.data ?? [];
         // Applied History tab is strictly for manual applications (e.g. screenshot scans)
-        final manualApps = allApps.where((a) => !a.isAutoApplied).toList();
-        final manualReplyApps = manualApps.where((a) => a.status == 'reply_received').toList();
+        final allManualApps = allApps.where((a) => !a.isAutoApplied).toList();
 
-        List<JobApplication> displayApps = manualApps;
+        // Filter by selected month
+        final monthManualApps = allManualApps.where((a) =>
+            a.appliedAt.year == _historyMonth.year &&
+            a.appliedAt.month == _historyMonth.month
+        ).toList();
+        monthManualApps.sort((a, b) => b.appliedAt.compareTo(a.appliedAt));
+
+        final monthReplyApps = monthManualApps.where((a) => a.status == 'reply_received').toList();
+
+        List<JobApplication> displayApps = monthManualApps;
         if (_historyFilter == 'replies') {
-          displayApps = manualReplyApps;
+          displayApps = monthReplyApps;
         }
 
-        if (manualApps.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.photo_library_outlined, size: 56, color: subtextColor),
-                  const SizedBox(height: 12),
-                  Text(
-                    'No Manual Applications Sent Yet',
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16, color: textColor),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Applications sent manually via screenshot scans will appear here.\nAutomated applications are kept separate and can be viewed in the Auto-Apply tab.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: subtextColor),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
+        final totalPages = (displayApps.isEmpty ? 1 : (displayApps.length / 10).ceil());
+        final safePage = _historyPage.clamp(1, totalPages);
+        final startIndex = (safePage - 1) * 10;
+        final pagedApps = displayApps.skip(startIndex).take(10).toList();
 
         return Column(
           children: [
+            // Month Selector for History
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _buildMonthSelector(
+                selectedMonth: _historyMonth,
+                onMonthChanged: (m) => setState(() {
+                  _historyMonth = m;
+                  _historyPage = 1;
+                }),
+                isDark: isDark,
+              ),
+            ),
+
             // Filter Bar
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -3367,7 +3609,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   children: [
                     ChoiceChip(
                       label: Text(
-                        'All Manual (${manualApps.length})',
+                        'All Manual in Month (${monthManualApps.length})',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: _historyFilter == 'all' ? FontWeight.bold : FontWeight.normal,
@@ -3385,13 +3627,18 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                             : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
                       ),
                       onSelected: (val) {
-                        if (val) setState(() => _historyFilter = 'all');
+                        if (val) {
+                          setState(() {
+                            _historyFilter = 'all';
+                            _historyPage = 1;
+                          });
+                        }
                       },
                     ),
                     const SizedBox(width: 8),
                     ChoiceChip(
                       label: Text(
-                        '💬 Replies (${manualReplyApps.length})',
+                        '💬 Replies (${monthReplyApps.length})',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: _historyFilter == 'replies' ? FontWeight.bold : FontWeight.normal,
@@ -3409,7 +3656,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                             : (isDark ? const Color(0xFF334155) : Colors.grey.shade300),
                       ),
                       onSelected: (val) {
-                        if (val) setState(() => _historyFilter = 'replies');
+                        if (val) {
+                          setState(() {
+                            _historyFilter = 'replies';
+                            _historyPage = 1;
+                          });
+                        }
                       },
                     ),
                   ],
@@ -3420,7 +3672,26 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             Expanded(
               child: displayApps.isEmpty
                   ? Center(
-                      child: Text('No applications match this filter.', style: TextStyle(color: subtextColor)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(32.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.photo_library_outlined, size: 56, color: subtextColor),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No Manual Applications in ${DateFormat('MMMM yyyy').format(_historyMonth)}',
+                              style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16, color: textColor),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Applications sent manually via screenshot scans during this month will appear here.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12, color: subtextColor),
+                            ),
+                          ],
+                        ),
+                      ),
                     )
                   : Scrollbar(
                       controller: _historyScrollController,
@@ -3428,9 +3699,17 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         controller: _historyScrollController,
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.all(16),
-                        itemCount: displayApps.length,
+                        itemCount: pagedApps.length + (totalPages > 1 ? 1 : 0),
                         itemBuilder: (context, index) {
-                          final app = displayApps[index];
+                          if (index == pagedApps.length) {
+                            return _buildPaginationBar(
+                              currentPage: safePage,
+                              totalPages: totalPages,
+                              onPageChanged: (p) => setState(() => _historyPage = p),
+                              isDark: isDark,
+                            );
+                          }
+                          final app = pagedApps[index];
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
                             color: cardBg,
@@ -3576,13 +3855,28 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   // ============================================================================
 
   Future<void> _triggerNetworkingDiscoveryNow() async {
+    final domains = _radarTechDomains.isNotEmpty
+        ? _radarTechDomains
+        : _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+
+    if (domains.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please add at least one Target Tech Domain / Role before running Startup Radar (e.g. .NET Developer, Software Engineer).'),
+          backgroundColor: Colors.orangeAccent,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isDiscoveringLeaders = true;
     });
 
     try {
       final res = await _service.triggerNetworkingDiscovery(
-        targetRoles: _radarTechDomains.isNotEmpty ? _radarTechDomains : null,
+        applicantName: _applicantNameController.text.trim().isNotEmpty ? _applicantNameController.text.trim() : null,
+        targetRoles: domains,
         targetLocations: _radarLocations.isNotEmpty ? _radarLocations : null,
       );
 
@@ -3633,6 +3927,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       _isSavingRadarSettings = true;
     });
     try {
+      final name = _applicantNameController.text.trim();
+      if (name.isNotEmpty) {
+        await _service.saveApplicantName(name);
+      }
       await _service.saveStartupRadarSettings(
         locations: _radarLocations,
         techDomains: _radarTechDomains,
@@ -3708,7 +4006,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           controller: _newRadarDomainController,
           autofocus: true,
           decoration: const InputDecoration(
-            hintText: 'e.g. DevOps, Cloud, AWS, Kubernetes, SRE',
+            hintText: 'e.g. .NET Developer, Full Stack, DevOps, Python, AI/ML',
             border: OutlineInputBorder(),
           ),
         ),
@@ -3733,12 +4031,34 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Future<void> _openLinkedInProfileAndCopyNote(NetworkingLead lead) async {
+    // 1. Prepare and launch LinkedIn URL immediately in the user gesture loop (prevents browser popup blocking)
+    String rawUrl = lead.linkedinUrl.trim();
+    if (rawUrl.isEmpty) {
+      rawUrl = 'https://www.linkedin.com/search/results/all/?keywords=${Uri.encodeComponent("${lead.name} ${lead.companyName}")}';
+    } else if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
+      rawUrl = 'https://$rawUrl';
+    }
+
+    final uri = Uri.tryParse(rawUrl);
+    if (uri != null) {
+      try {
+        if (kIsWeb) {
+          launchUrl(uri, webOnlyWindowName: '_blank');
+        } else {
+          launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      } catch (e) {
+        debugPrint('Could not launch LinkedIn URL: $e');
+      }
+    }
+
+    // 2. Copy the customized connection note to clipboard
     if (lead.connectionNote.isNotEmpty) {
       await Clipboard.setData(ClipboardData(text: lead.connectionNote));
     }
 
-    // Advance status to 'note_sent' so it vanishes from the pending view
-    await _service.updateNetworkingLeadStatus(lead.id, 'note_sent');
+    // 3. Advance status to 'note_sent' (Card stays visible in current month list!)
+    _service.updateNetworkingLeadStatus(lead.id, 'note_sent');
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3748,7 +4068,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Copied 300-char note! Opening LinkedIn for ${lead.name}... (Moved to Completed)'),
+                child: Text('Copied 300-char note! Opening LinkedIn for ${lead.name}... (Marked as Note Sent / Opened)'),
               ),
             ],
           ),
@@ -3756,20 +4076,6 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           duration: const Duration(seconds: 3),
         ),
       );
-    }
-
-    // Launch LinkedIn profile URL
-    final uri = Uri.tryParse(lead.linkedinUrl);
-    if (uri != null) {
-      try {
-        if (kIsWeb) {
-          await launchUrl(uri, webOnlyWindowName: '_blank');
-        } else {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
-      } catch (e) {
-        debugPrint('Could not launch LinkedIn URL: $e');
-      }
     }
   }
 
@@ -3882,7 +4188,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   scheme: 'mailto',
                   path: lead.email,
                   queryParameters: {
-                    'subject': 'DevOps & Cloud Infrastructure for ${lead.companyName} (Roshan J)',
+                    'subject': lead.emailSubject ??
+                        '${_radarTechDomains.isNotEmpty ? _radarTechDomains.first : "Software Engineering"} for ${lead.companyName} (${_applicantNameController.text.trim().isNotEmpty ? _applicantNameController.text.trim() : "Candidate"})',
                     'body': lead.fullPitch,
                   },
                 );
@@ -4029,6 +4336,23 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         children: [
                           const Divider(),
                           const SizedBox(height: 6),
+                          TextField(
+                            controller: _applicantNameController,
+                            decoration: InputDecoration(
+                              labelText: 'Your Full Name (used in cold outreach & pitch sign-off)',
+                              hintText: 'e.g. Roshan J or Dhanush',
+                              prefixIcon: const Icon(Icons.person_outline_rounded),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              isDense: true,
+                            ),
+                            onChanged: (_) {
+                              final name = _applicantNameController.text.trim();
+                              if (name.isNotEmpty) {
+                                _service.saveApplicantName(name);
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 12),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -4081,7 +4405,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               ? const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 4),
                                   child: Text(
-                                    'No target domains set. Tap "+ Add Domain" to add (e.g. DevOps, Cloud, AI/ML)',
+                                    'No target domains set. Tap "+ Add Domain" to add (e.g. .NET Developer, Full Stack, DevOps, AI/ML)',
                                     style: TextStyle(fontSize: 11.5, color: Colors.grey, fontStyle: FontStyle.italic),
                                   ),
                                 )
@@ -4127,16 +4451,27 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             ),
             const SizedBox(height: 16),
 
-            // Action Filter: Pending Action (Vanish Rule) vs Completed vs All
+            // Month Selector for Startup Radar
+            _buildMonthSelector(
+              selectedMonth: _networkingMonth,
+              onMonthChanged: (m) => setState(() {
+                _networkingMonth = m;
+                _networkingPage = 1;
+              }),
+              isDark: isDark,
+            ),
+            const SizedBox(height: 10),
+
+            // Action Filter: All Startups vs Pending Action vs Completed
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _buildNetworkingStatusChip('pending', 'Pending Outreach ⚡ (Action Needed)'),
+                  _buildNetworkingStatusChip('all', 'All Startups'),
+                  const SizedBox(width: 8),
+                  _buildNetworkingStatusChip('pending', 'Pending Outreach ⚡'),
                   const SizedBox(width: 8),
                   _buildNetworkingStatusChip('completed', 'Completed / Sent ✅'),
-                  const SizedBox(width: 8),
-                  _buildNetworkingStatusChip('all', 'All Startups'),
                 ],
               ),
             ),
@@ -4157,13 +4492,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
                 final allLeads = snapshot.data ?? [];
 
-                // Filter based on vanish / pending action rule
-                var filteredLeads = allLeads;
+                // 1. Filter for selected month & year
+                final monthLeads = allLeads.where((l) =>
+                    l.discoveredAt.year == _networkingMonth.year &&
+                    l.discoveredAt.month == _networkingMonth.month
+                ).toList();
+
+                // 2. Sort latest first
+                monthLeads.sort((a, b) => b.discoveredAt.compareTo(a.discoveredAt));
+
+                // 3. Filter based on status
+                var filteredLeads = monthLeads;
                 if (_networkingStatusFilter == 'pending') {
-                  // Pending outreach: note has NOT been sent yet
-                  filteredLeads = allLeads.where((l) => l.status == 'discovered' || l.status == 'email_sent').toList();
+                  filteredLeads = monthLeads.where((l) => l.status == 'discovered' || l.status == 'email_sent').toList();
                 } else if (_networkingStatusFilter == 'completed') {
-                  filteredLeads = allLeads.where((l) => l.status == 'note_sent' || l.status == 'connected' || l.status == 'replied').toList();
+                  filteredLeads = monthLeads.where((l) => l.status == 'note_sent' || l.status == 'connected' || l.status == 'replied').toList();
                 }
 
                 if (_networkingCategoryFilter != 'all') {
@@ -4179,16 +4522,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         Icon(Icons.rocket_launch_rounded, size: 64, color: Colors.grey.withValues(alpha: 0.4)),
                         const SizedBox(height: 12),
                         Text(
-                          _networkingStatusFilter == 'pending'
-                              ? 'All Caught Up! 🎉'
-                              : 'No startup leads in this category',
+                          'No Startups Found in ${DateFormat('MMMM yyyy').format(_networkingMonth)}',
                           style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          _networkingStatusFilter == 'pending'
-                              ? 'You have addressed all pending startup outreaches. Completed cards have vanished into the "Completed / Sent" filter. Tap "Scan & Pitch 5 Startups Now" above to discover more!'
-                              : 'No startups found under this filter.',
+                          'Tap "Scan & Pitch 5 Startups Now" above or navigate to another month to see discovered startups.',
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                         ),
@@ -4197,15 +4536,30 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   );
                 }
 
-                return ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: filteredLeads.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 14),
-                  itemBuilder: (context, index) {
-                    final lead = filteredLeads[index];
-                    return _buildStartupLeadCard(lead, isDark, cardBg);
-                  },
+                final totalPages = (filteredLeads.length / 10).ceil();
+                final safePage = _networkingPage.clamp(1, totalPages);
+                final startIndex = (safePage - 1) * 10;
+                final displayedLeads = filteredLeads.skip(startIndex).take(10).toList();
+
+                return Column(
+                  children: [
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: displayedLeads.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 14),
+                      itemBuilder: (context, index) {
+                        final lead = displayedLeads[index];
+                        return _buildStartupLeadCard(lead, isDark, cardBg);
+                      },
+                    ),
+                    _buildPaginationBar(
+                      currentPage: safePage,
+                      totalPages: totalPages,
+                      onPageChanged: (p) => setState(() => _networkingPage = p),
+                      isDark: isDark,
+                    ),
+                  ],
                 );
               },
             ),
@@ -4551,7 +4905,35 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           ),
           const SizedBox(height: 12),
 
-          // Actions Row: Copy Note & Open LinkedIn (Vanish), Full Pitch, Mark Handled
+          // LinkedIn Outreach Status Banner (Persistent status badge)
+          if (lead.status == 'note_sent' || lead.status == 'connected' || lead.status == 'replied')
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0077B5).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF0077B5).withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle_rounded, size: 15, color: Color(0xFF0077B5)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      lead.status == 'connected'
+                          ? 'Connected in LinkedIn 🤝'
+                          : (lead.status == 'replied' ? 'Founder / CTO Replied 🎯' : 'LinkedIn Note Copied & Opened 🔗'),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF0077B5)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Actions Row: Copy Note & Open LinkedIn, Full Pitch, Mark Handled
           Row(
             children: [
               Expanded(
@@ -4559,7 +4941,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 child: ElevatedButton.icon(
                   onPressed: () => _openLinkedInProfileAndCopyNote(lead),
                   icon: const Icon(Icons.open_in_new_rounded, size: 15),
-                  label: const Text('Copy Note & Open LinkedIn'),
+                  label: Text(
+                    lead.status == 'note_sent' || lead.status == 'connected'
+                        ? 'Re-open LinkedIn & Note'
+                        : 'Copy Note & Open LinkedIn',
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0077B5),
                     foregroundColor: Colors.white,

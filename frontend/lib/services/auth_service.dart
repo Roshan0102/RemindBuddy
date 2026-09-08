@@ -55,6 +55,25 @@ class AuthService {
         debugPrint('Error saving FCM Token: $e');
       }
 
+      // Ensure users/{uid} has displayName & applicantName
+      if (credential.user != null) {
+        try {
+          final uDoc = _db.collection('users').doc(credential.user!.uid);
+          final snap = await uDoc.get();
+          final existingName = (snap.data()?['applicantName'] ?? snap.data()?['displayName'] ?? '').toString().trim();
+          if (existingName.isEmpty) {
+            final fallbackName = credential.user!.displayName ?? email.split('@')[0];
+            await uDoc.set({
+              'displayName': fallbackName,
+              'applicantName': fallbackName,
+              'email': credential.user!.email,
+            }, SetOptions(merge: true));
+          }
+        } catch (e) {
+          debugPrint('Error syncing user profile on login: $e');
+        }
+      }
+
     } catch (e) {
       debugPrint("Firebase Login failed: $e");
       throw Exception('Login failed: ${e.toString()}');
@@ -89,8 +108,18 @@ class AuthService {
 
       // 4. Update display name
       await credential.user?.updateDisplayName(username);
+
+      // 5. Initialize users/{uid} document with applicantName & displayName
+      if (credential.user?.uid != null) {
+        await _db.collection('users').doc(credential.user!.uid).set({
+          'displayName': username,
+          'applicantName': username,
+          'email': email,
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
       
-      // 5. Update FCM Token
+      // 6. Update FCM Token
       try {
         final token = await FirebaseMessaging.instance.getToken();
         if (token != null) {

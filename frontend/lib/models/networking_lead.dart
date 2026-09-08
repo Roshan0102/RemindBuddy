@@ -27,6 +27,8 @@ class NetworkingLead {
   final String? actionRequired;
   final String? fundingStage; // 'Seed', 'Series A', 'YC-backed', 'High-Growth'
   final List<String>? techStack;
+  final bool isReplyDismissed;
+  final bool isBounced;
 
   NetworkingLead({
     required this.id,
@@ -53,6 +55,8 @@ class NetworkingLead {
     this.actionRequired,
     this.fundingStage,
     this.techStack,
+    this.isReplyDismissed = false,
+    this.isBounced = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -81,6 +85,9 @@ class NetworkingLead {
       'actionRequired': actionRequired,
       'fundingStage': fundingStage,
       'techStack': techStack,
+      'isReplyDismissed': isReplyDismissed,
+      'replyDismissed': isReplyDismissed,
+      'isBounced': isBounced,
     };
   }
 
@@ -144,6 +151,8 @@ class NetworkingLead {
       actionRequired: map['actionRequired']?.toString(),
       fundingStage: map['fundingStage']?.toString(),
       techStack: parsedTechStack,
+      isReplyDismissed: map['replyDismissed'] == true || map['isReplyDismissed'] == true,
+      isBounced: map['isBounced'] == true || map['emailBounced'] == true || map['responseType'] == 'bounced' || map['status'] == 'bounced',
     );
   }
 
@@ -172,6 +181,8 @@ class NetworkingLead {
     String? actionRequired,
     String? fundingStage,
     List<String>? techStack,
+    bool? isReplyDismissed,
+    bool? isBounced,
   }) {
     return NetworkingLead(
       id: id ?? this.id,
@@ -198,6 +209,8 @@ class NetworkingLead {
       actionRequired: actionRequired ?? this.actionRequired,
       fundingStage: fundingStage ?? this.fundingStage,
       techStack: techStack ?? this.techStack,
+      isReplyDismissed: isReplyDismissed ?? this.isReplyDismissed,
+      isBounced: isBounced ?? this.isBounced,
     );
   }
 }

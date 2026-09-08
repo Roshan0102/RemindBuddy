@@ -4,7 +4,7 @@ class ResumeProfile {
   final String id;
   final String title; // e.g. "DevOps & Cloud Engineer"
   final List<String> targetRoles; // e.g. ["DevOps", "Cloud", "SRE", "Docker", "Kubernetes", "AWS"]
-  final String fileName; // e.g. "Roshan_DevOps_Resume.pdf"
+  final String fileName; // e.g. "Candidate_Resume.pdf"
   final String base64; // PDF base64 string
   final bool isDefault;
   final DateTime updatedAt;

@@ -217,15 +217,19 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
     setState(() => _isFetchingWalkIns = true);
     try {
       dynamic result;
+      final payload = {
+        'roles': _walkinRoles,
+        'location': _walkinLocation,
+      };
       try {
         final HttpsCallable callable =
             FirebaseFunctions.instance.httpsCallable('fetchUserWalkIns');
-        result = await callable.call();
+        result = await callable.call(payload);
       } catch (err) {
         // Fallback to fetchUserWalkInDrives if alias exists
         final HttpsCallable fallbackCallable =
             FirebaseFunctions.instance.httpsCallable('fetchUserWalkInDrives');
-        result = await fallbackCallable.call();
+        result = await fallbackCallable.call(payload);
       }
 
       if (mounted) {
