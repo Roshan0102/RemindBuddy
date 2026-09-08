@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
@@ -1388,7 +1389,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       }
     } catch (e) {
       if (mounted) {
-        String errorMsg = e.toString();
+        String errorMsg;
+        if (e is FirebaseFunctionsException) {
+          errorMsg = e.message ?? e.toString();
+        } else if (e is FirebaseException) {
+          errorMsg = e.message ?? e.toString();
+        } else {
+          errorMsg = e.toString().replaceFirst('Exception: ', '');
+        }
         if (errorMsg.contains('not-found') || errorMsg.contains('NOT_FOUND')) {
           errorMsg = 'Backend Cloud Function needs deployment. Once deployed to Firebase, auto-discovery & apply will run live.';
         }

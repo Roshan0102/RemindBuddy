@@ -2,7 +2,7 @@ name: remindbuddy
 description: "A comprehensive family management, reminder and finance tracking app."
 publish_to: 'none'
 
-version: 1.10.20+399
+version: 1.10.21+400
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -45,6 +45,8 @@ dependencies:
   flutter_web_plugins:
     sdk: flutter
   image_picker_for_web: ^3.1.1
+  cloud_functions_web: ^5.1.5
+  firebase_storage_web: ^3.11.2
 
 
 dev_dependencies:
