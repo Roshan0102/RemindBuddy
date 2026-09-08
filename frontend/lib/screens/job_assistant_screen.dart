@@ -3600,9 +3600,20 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       }
     } catch (e) {
       if (mounted) {
+        String errorMsg;
+        if (e is FirebaseFunctionsException) {
+          errorMsg = e.message ?? e.toString();
+        } else if (e is FirebaseException) {
+          errorMsg = e.message ?? e.toString();
+        } else {
+          errorMsg = e.toString().replaceFirst('Exception: ', '');
+        }
+        if (errorMsg.contains('not-found') || errorMsg.contains('NOT_FOUND')) {
+          errorMsg = 'Backend Cloud Function needs deployment. Once deployed to Firebase, Startup Radar will run live.';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Startup Radar error: ${e.toString().replaceAll("Exception: ", "")}'),
+            content: Text('Startup Radar error: $errorMsg'),
             backgroundColor: Colors.redAccent,
             duration: const Duration(seconds: 5),
           ),
