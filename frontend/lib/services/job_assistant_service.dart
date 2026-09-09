@@ -1,6 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/job_application.dart';
 import '../models/networking_lead.dart';
@@ -13,6 +16,74 @@ class JobAssistantService {
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
+
+  static List<JobApplication> _cachedApplications = [];
+  static List<NetworkingLead> _cachedLeads = [];
+  static bool _cacheInitialized = false;
+
+  final StreamController<List<JobApplication>> _appsStreamController = StreamController<List<JobApplication>>.broadcast();
+  final StreamController<List<NetworkingLead>> _leadsStreamController = StreamController<List<NetworkingLead>>.broadcast();
+
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _appsFirestoreSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _leadsFirestoreSub;
+  String? _listeningUid;
+
+  List<JobApplication> get cachedApplications => List.unmodifiable(_cachedApplications);
+  List<NetworkingLead> get cachedLeads => List.unmodifiable(_cachedLeads);
+
+  Future<void> initLocalCache() async {
+    if (_cacheInitialized && _cachedApplications.isNotEmpty && _cachedLeads.isNotEmpty) {
+      return;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final appsJson = prefs.getString('job_assistant_cached_applications');
+      if (appsJson != null && appsJson.isNotEmpty) {
+        final List<dynamic> decoded = jsonDecode(appsJson);
+        _cachedApplications = decoded
+            .map((e) => JobApplication.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+        if (!_appsStreamController.isClosed) {
+          _appsStreamController.add(List.unmodifiable(_cachedApplications));
+        }
+      }
+
+      final leadsJson = prefs.getString('job_assistant_cached_leads');
+      if (leadsJson != null && leadsJson.isNotEmpty) {
+        final List<dynamic> decoded = jsonDecode(leadsJson);
+        _cachedLeads = decoded
+            .map((e) => NetworkingLead.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+        if (!_leadsStreamController.isClosed) {
+          _leadsStreamController.add(List.unmodifiable(_cachedLeads));
+        }
+      }
+      _cacheInitialized = true;
+    } catch (e) {
+      debugPrint('Error initializing local job assistant cache: $e');
+    }
+  }
+
+  Future<void> _saveCachedApplications(List<JobApplication> apps) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = jsonEncode(apps.map((a) => a.toJson()).toList());
+      await prefs.setString('job_assistant_cached_applications', jsonStr);
+    } catch (e) {
+      debugPrint('Error saving cached applications: $e');
+    }
+  }
+
+  Future<void> _saveCachedLeads(List<NetworkingLead> leads) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = jsonEncode(leads.map((l) => l.toJson()).toList());
+      await prefs.setString('job_assistant_cached_leads', jsonStr);
+    } catch (e) {
+      debugPrint('Error saving cached leads: $e');
+    }
+  }
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
@@ -530,15 +601,82 @@ class JobAssistantService {
   // JOB APPLICATIONS CRUD
   // ============================================================================
 
-  Stream<List<JobApplication>> getJobApplicationsStream() {
-    final doc = _userDoc;
-    if (doc == null) return Stream.value([]);
+  void _ensureAppsFirestoreListening() {
+    final uid = _uid;
+    if (uid != null && (_appsFirestoreSub == null || _listeningUid != uid)) {
+      _startAppsFirestoreSubscription(uid);
+    }
 
-    return doc
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user == null) {
+        _appsFirestoreSub?.cancel();
+        _appsFirestoreSub = null;
+        return;
+      }
+      if (_appsFirestoreSub == null || _listeningUid != user.uid) {
+        _startAppsFirestoreSubscription(user.uid);
+      }
+    });
+  }
+
+  void _startAppsFirestoreSubscription(String uid) {
+    _listeningUid = uid;
+    _appsFirestoreSub?.cancel();
+    _appsFirestoreSub = _db
+        .collection('users')
+        .doc(uid)
         .collection('job_applications')
         .orderBy('appliedAt', descending: true)
         .snapshots()
-        .map((snap) => snap.docs.map((d) => JobApplication.fromMap(d.data(), d.id)).toList());
+        .listen(
+      (snap) {
+        final apps = snap.docs.map((d) => JobApplication.fromMap(d.data(), d.id)).toList();
+        _cachedApplications = apps;
+        _saveCachedApplications(apps);
+        if (!_appsStreamController.isClosed) {
+          _appsStreamController.add(List.unmodifiable(apps));
+        }
+      },
+      onError: (err) {
+        debugPrint('Error in job applications firestore snapshot: $err');
+      },
+    );
+  }
+
+  Stream<List<JobApplication>> getJobApplicationsStream() {
+    _ensureAppsFirestoreListening();
+
+    StreamController<List<JobApplication>>? controller;
+    StreamSubscription<List<JobApplication>>? pipeSub;
+
+    controller = StreamController<List<JobApplication>>.broadcast(
+      onListen: () {
+        if (_cachedApplications.isNotEmpty) {
+          scheduleMicrotask(() {
+            if (controller != null && !controller.isClosed) {
+              controller.add(List.unmodifiable(_cachedApplications));
+            }
+          });
+        }
+        pipeSub = _appsStreamController.stream.listen(
+          (data) {
+            if (controller != null && !controller.isClosed) {
+              controller.add(data);
+            }
+          },
+          onError: (err) {
+            if (controller != null && !controller.isClosed) {
+              controller.addError(err);
+            }
+          },
+        );
+      },
+      onCancel: () {
+        pipeSub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   Future<void> saveJobApplication(JobApplication app) async {
@@ -576,10 +714,27 @@ class JobAssistantService {
       resumeProfileName: app.resumeProfileName,
     );
 
+    final existingIndex = _cachedApplications.indexWhere((a) => a.id == newApp.id);
+    if (existingIndex >= 0) {
+      _cachedApplications[existingIndex] = newApp;
+    } else {
+      _cachedApplications.insert(0, newApp);
+    }
+    _saveCachedApplications(_cachedApplications);
+    if (!_appsStreamController.isClosed) {
+      _appsStreamController.add(List.unmodifiable(_cachedApplications));
+    }
+
     await ref.set(newApp.toMap(), SetOptions(merge: true));
   }
 
   Future<void> deleteJobApplication(String appId) async {
+    _cachedApplications.removeWhere((a) => a.id == appId);
+    _saveCachedApplications(_cachedApplications);
+    if (!_appsStreamController.isClosed) {
+      _appsStreamController.add(List.unmodifiable(_cachedApplications));
+    }
+
     final doc = _userDoc;
     if (doc == null) return;
 
@@ -764,18 +919,94 @@ class JobAssistantService {
   // COLD OUTREACH & NETWORKING LEADS
   // ============================================================================
 
-  Stream<List<NetworkingLead>> getNetworkingLeadsStream() {
-    final doc = _userDoc;
-    if (doc == null) return Stream.value([]);
+  void _ensureLeadsFirestoreListening() {
+    final uid = _uid;
+    if (uid != null && (_leadsFirestoreSub == null || _listeningUid != uid)) {
+      _startLeadsFirestoreSubscription(uid);
+    }
 
-    return doc
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user == null) {
+        _leadsFirestoreSub?.cancel();
+        _leadsFirestoreSub = null;
+        return;
+      }
+      if (_leadsFirestoreSub == null || _listeningUid != user.uid) {
+        _startLeadsFirestoreSubscription(user.uid);
+      }
+    });
+  }
+
+  void _startLeadsFirestoreSubscription(String uid) {
+    _listeningUid = uid;
+    _leadsFirestoreSub?.cancel();
+    _leadsFirestoreSub = _db
+        .collection('users')
+        .doc(uid)
         .collection('networking_leads')
         .orderBy('discoveredAt', descending: true)
         .snapshots()
-        .map((snap) => snap.docs.map((d) => NetworkingLead.fromMap(d.data(), d.id)).toList());
+        .listen(
+      (snap) {
+        final leads = snap.docs.map((d) => NetworkingLead.fromMap(d.data(), d.id)).toList();
+        _cachedLeads = leads;
+        _saveCachedLeads(leads);
+        if (!_leadsStreamController.isClosed) {
+          _leadsStreamController.add(List.unmodifiable(leads));
+        }
+      },
+      onError: (err) {
+        debugPrint('Error in networking leads firestore snapshot: $err');
+      },
+    );
+  }
+
+  Stream<List<NetworkingLead>> getNetworkingLeadsStream() {
+    _ensureLeadsFirestoreListening();
+
+    StreamController<List<NetworkingLead>>? controller;
+    StreamSubscription<List<NetworkingLead>>? pipeSub;
+
+    controller = StreamController<List<NetworkingLead>>.broadcast(
+      onListen: () {
+        if (_cachedLeads.isNotEmpty) {
+          scheduleMicrotask(() {
+            if (controller != null && !controller.isClosed) {
+              controller.add(List.unmodifiable(_cachedLeads));
+            }
+          });
+        }
+        pipeSub = _leadsStreamController.stream.listen(
+          (data) {
+            if (controller != null && !controller.isClosed) {
+              controller.add(data);
+            }
+          },
+          onError: (err) {
+            if (controller != null && !controller.isClosed) {
+              controller.addError(err);
+            }
+          },
+        );
+      },
+      onCancel: () {
+        pipeSub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   Future<void> updateNetworkingLeadStatus(String leadId, String newStatus) async {
+    final existingIndex = _cachedLeads.indexWhere((l) => l.id == leadId);
+    if (existingIndex >= 0) {
+      _cachedLeads[existingIndex] = _cachedLeads[existingIndex].copyWith(status: newStatus);
+      _saveCachedLeads(_cachedLeads);
+      if (!_leadsStreamController.isClosed) {
+        _leadsStreamController.add(List.unmodifiable(_cachedLeads));
+      }
+    }
+
     final doc = _userDoc;
     if (doc == null) return;
 
@@ -786,6 +1017,12 @@ class JobAssistantService {
   }
 
   Future<void> deleteNetworkingLead(String leadId) async {
+    _cachedLeads.removeWhere((l) => l.id == leadId);
+    _saveCachedLeads(_cachedLeads);
+    if (!_leadsStreamController.isClosed) {
+      _leadsStreamController.add(List.unmodifiable(_cachedLeads));
+    }
+
     final doc = _userDoc;
     if (doc == null) return;
 
@@ -793,6 +1030,54 @@ class JobAssistantService {
   }
 
   Future<void> dismissReply(String id, bool isStartupLead) async {
+    if (isStartupLead) {
+      final idx = _cachedLeads.indexWhere((l) => l.id == id);
+      if (idx >= 0) {
+        _cachedLeads[idx] = _cachedLeads[idx].copyWith(isReplyDismissed: true);
+        _saveCachedLeads(_cachedLeads);
+        if (!_leadsStreamController.isClosed) {
+          _leadsStreamController.add(List.unmodifiable(_cachedLeads));
+        }
+      }
+    } else {
+      final idx = _cachedApplications.indexWhere((a) => a.id == id);
+      if (idx >= 0) {
+        final old = _cachedApplications[idx];
+        _cachedApplications[idx] = JobApplication(
+          id: old.id,
+          jobTitle: old.jobTitle,
+          companyName: old.companyName,
+          recipientEmail: old.recipientEmail,
+          extractedSkills: old.extractedSkills,
+          generatedSubject: old.generatedSubject,
+          generatedCoverLetter: old.generatedCoverLetter,
+          status: old.status,
+          appliedAt: old.appliedAt,
+          posterImageUrls: old.posterImageUrls,
+          errorMessage: old.errorMessage,
+          isAutoApplied: old.isAutoApplied,
+          location: old.location,
+          experienceRequired: old.experienceRequired,
+          sourcePlatform: old.sourcePlatform,
+          modelUsed: old.modelUsed,
+          responseType: old.responseType,
+          replyReceivedAt: old.replyReceivedAt,
+          replySender: old.replySender,
+          replySubject: old.replySubject,
+          replySnippet: old.replySnippet,
+          replyBodyPreview: old.replyBodyPreview,
+          actionRequired: old.actionRequired,
+          resumeProfileName: old.resumeProfileName,
+          isReplyDismissed: true,
+          isBounced: old.isBounced,
+        );
+        _saveCachedApplications(_cachedApplications);
+        if (!_appsStreamController.isClosed) {
+          _appsStreamController.add(List.unmodifiable(_cachedApplications));
+        }
+      }
+    }
+
     final doc = _userDoc;
     if (doc == null) return;
 

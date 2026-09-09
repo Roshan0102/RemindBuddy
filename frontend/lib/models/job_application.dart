@@ -91,6 +91,19 @@ class JobApplication {
     };
   }
 
+  Map<String, dynamic> toJson() {
+    final map = toMap();
+    map['appliedAt'] = appliedAt.toIso8601String();
+    if (replyReceivedAt != null) {
+      map['replyReceivedAt'] = replyReceivedAt!.toIso8601String();
+    }
+    return map;
+  }
+
+  factory JobApplication.fromJson(Map<String, dynamic> json) {
+    return JobApplication.fromMap(json, (json['id'] ?? '').toString());
+  }
+
   factory JobApplication.fromMap(Map<String, dynamic> map, String docId) {
     DateTime parsedDate = DateTime.now();
     final timeVal = map['appliedAt'];
@@ -123,19 +136,23 @@ class JobApplication {
     final String subject = (map['generatedSubject'] ?? map['subject'] ?? '').toString();
     final String coverLetter = (map['generatedCoverLetter'] ?? map['coverLetter'] ?? map['body'] ?? '').toString();
 
+    final String resolvedTitle = (map['jobTitle'] ?? map['role'] ?? map['title'] ?? 'Unknown Position').toString();
+    final String resolvedCompany = (map['companyName'] ?? map['company'] ?? 'Unknown Company').toString();
+    final String resolvedEmail = (map['recipientEmail'] ?? map['contactEmail'] ?? map['email'] ?? '').toString();
+
     return JobApplication(
-      id: docId,
-      jobTitle: map['jobTitle'] ?? 'Unknown Position',
-      companyName: map['companyName'] ?? 'Unknown Company',
-      recipientEmail: map['recipientEmail'] ?? '',
+      id: docId.isNotEmpty ? docId : (map['id'] ?? '').toString(),
+      jobTitle: resolvedTitle.isNotEmpty ? resolvedTitle : 'Unknown Position',
+      companyName: resolvedCompany.isNotEmpty ? resolvedCompany : 'Unknown Company',
+      recipientEmail: resolvedEmail,
       extractedSkills: parsedSkills,
       generatedSubject: subject,
       generatedCoverLetter: coverLetter,
-      status: map['status'] ?? 'extracted',
+      status: (map['status'] ?? 'extracted').toString(),
       appliedAt: parsedDate,
       posterImageUrls: parsedImages,
-      errorMessage: map['errorMessage'],
-      isAutoApplied: map['isAutoApplied'] == true,
+      errorMessage: map['errorMessage']?.toString(),
+      isAutoApplied: map['isAutoApplied'] == true || map['autoApplied'] == true,
       location: map['location'] as String?,
       experienceRequired: map['experienceRequired'] as String?,
       sourcePlatform: map['sourcePlatform'] as String?,

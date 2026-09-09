@@ -127,6 +127,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   @override
   void initState() {
     super.initState();
+    _service.initLocalCache().then((_) {
+      if (mounted) setState(() {});
+    });
     _applicationsStream = _service.getJobApplicationsStream();
     _networkingLeadsStream = _service.getNetworkingLeadsStream();
     _tabController = TabController(length: 4, vsync: this);
@@ -1905,9 +1908,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         actions: [
           IconButton(
             icon: StreamBuilder<List<JobApplication>>(
+              initialData: _service.cachedApplications.isNotEmpty ? _service.cachedApplications : null,
               stream: _applicationsStream,
               builder: (context, appSnap) {
                 return StreamBuilder<List<NetworkingLead>>(
+                  initialData: _service.cachedLeads.isNotEmpty ? _service.cachedLeads : null,
                   stream: _networkingLeadsStream,
                   builder: (context, leadSnap) {
                     final appReplies = (appSnap.data ?? [])
@@ -1949,10 +1954,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildAutoApplyTab(),
-          _buildNetworkingTab(),
-          _buildNewApplicationTab(),
-          _buildHistoryTab(),
+          _KeepAliveTabWrapper(child: _buildAutoApplyTab()),
+          _KeepAliveTabWrapper(child: _buildNetworkingTab()),
+          _KeepAliveTabWrapper(child: _buildNewApplicationTab()),
+          _KeepAliveTabWrapper(child: _buildHistoryTab()),
         ],
       ),
     );
@@ -2790,6 +2795,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             const SizedBox(height: 10),
 
             StreamBuilder<List<JobApplication>>(
+              initialData: _service.cachedApplications.isNotEmpty ? _service.cachedApplications : null,
               stream: _applicationsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
@@ -3743,6 +3749,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     final subtextColor = isDark ? Colors.white70 : Colors.black54;
 
     return StreamBuilder<List<JobApplication>>(
+      initialData: _service.cachedApplications.isNotEmpty ? _service.cachedApplications : null,
       stream: _applicationsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
@@ -4678,6 +4685,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
             // Startup Leads Stream
             StreamBuilder<List<NetworkingLead>>(
+              initialData: _service.cachedLeads.isNotEmpty ? _service.cachedLeads : null,
               stream: _networkingLeadsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
@@ -5182,3 +5190,22 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 }
 
+class _KeepAliveTabWrapper extends StatefulWidget {
+  final Widget child;
+  const _KeepAliveTabWrapper({required this.child});
+
+  @override
+  State<_KeepAliveTabWrapper> createState() => _KeepAliveTabWrapperState();
+}
+
+class _KeepAliveTabWrapperState extends State<_KeepAliveTabWrapper>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
+}

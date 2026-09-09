@@ -91,6 +91,22 @@ class NetworkingLead {
     };
   }
 
+  Map<String, dynamic> toJson() {
+    final map = toMap();
+    map['discoveredAt'] = discoveredAt.toIso8601String();
+    if (emailSentAt != null) {
+      map['emailSentAt'] = emailSentAt!.toIso8601String();
+    }
+    if (replyReceivedAt != null) {
+      map['replyReceivedAt'] = replyReceivedAt!.toIso8601String();
+    }
+    return map;
+  }
+
+  factory NetworkingLead.fromJson(Map<String, dynamic> json) {
+    return NetworkingLead.fromMap(json, (json['id'] ?? '').toString());
+  }
+
   factory NetworkingLead.fromMap(Map<String, dynamic> map, String docId) {
     DateTime parsedDiscoveredAt = DateTime.now();
     if (map['discoveredAt'] != null) {
@@ -125,7 +141,7 @@ class NetworkingLead {
     }
 
     return NetworkingLead(
-      id: docId,
+      id: docId.isNotEmpty ? docId : (map['id'] ?? '').toString(),
       name: (map['name'] ?? 'Tech Leader').toString(),
       currentRole: (map['currentRole'] ?? map['role'] ?? 'Hiring Leader').toString(),
       companyName: (map['companyName'] ?? map['company'] ?? 'Tech Company').toString(),

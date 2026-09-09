@@ -280,9 +280,11 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
         ],
       ),
       body: StreamBuilder<List<JobApplication>>(
+        initialData: _service.cachedApplications.isNotEmpty ? _service.cachedApplications : null,
         stream: _applicationsStream,
         builder: (context, appSnap) {
           return StreamBuilder<List<NetworkingLead>>(
+            initialData: _service.cachedLeads.isNotEmpty ? _service.cachedLeads : null,
             stream: _networkingLeadsStream,
             builder: (context, leadSnap) {
               if (appSnap.connectionState == ConnectionState.waiting &&
