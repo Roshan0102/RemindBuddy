@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/job_application.dart';
 import '../models/networking_lead.dart';
 import '../services/job_assistant_service.dart';
+import '../services/url_launcher_helper/url_launcher_helper.dart';
 
 class JobRepliesScreen extends StatefulWidget {
   const JobRepliesScreen({super.key});
@@ -117,9 +118,10 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
       await Clipboard.setData(ClipboardData(text: item.connectionNote!));
     }
     if (item.linkedinUrl != null && item.linkedinUrl!.isNotEmpty) {
-      final uri = Uri.tryParse(item.linkedinUrl!);
-      if (uri != null) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      try {
+        await UrlLauncherHelper.openInNewTabOrExternal(item.linkedinUrl!);
+      } catch (e) {
+        debugPrint('Could not launch LinkedIn URL: $e');
       }
     }
     if (item.isStartupLead) {
@@ -994,9 +996,12 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
-                        final uri = Uri.tryParse(item.linkedinUrl!);
-                        if (uri != null) {
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        if (item.linkedinUrl != null && item.linkedinUrl!.isNotEmpty) {
+                          try {
+                            await UrlLauncherHelper.openInNewTabOrExternal(item.linkedinUrl!);
+                          } catch (e) {
+                            debugPrint('Could not launch LinkedIn URL: $e');
+                          }
                         }
                       },
                       icon: const Icon(Icons.person_rounded, size: 16),

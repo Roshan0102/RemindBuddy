@@ -16,6 +16,7 @@ import '../models/networking_lead.dart';
 import '../models/resume_profile.dart';
 import '../services/job_assistant_service.dart';
 import '../services/app_file_picker/app_file_picker.dart';
+import '../services/url_launcher_helper/url_launcher_helper.dart';
 import 'ai_keys_settings_screen.dart';
 import 'job_replies_screen.dart';
 
@@ -4237,7 +4238,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Future<void> _openLinkedInProfileAndCopyNote(NetworkingLead lead) async {
-    // 1. Prepare and launch LinkedIn URL immediately in the user gesture loop (prevents browser popup blocking)
+    // 1. Prepare and launch LinkedIn URL immediately in user gesture (opening in a new tab on web, or external app on mobile)
     String rawUrl = lead.linkedinUrl.trim();
     if (rawUrl.isEmpty) {
       rawUrl = 'https://www.linkedin.com/search/results/all/?keywords=${Uri.encodeComponent("${lead.name} ${lead.companyName}")}';
@@ -4245,17 +4246,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       rawUrl = 'https://$rawUrl';
     }
 
-    final uri = Uri.tryParse(rawUrl);
-    if (uri != null) {
-      try {
-        if (kIsWeb) {
-          launchUrl(uri, webOnlyWindowName: '_blank');
-        } else {
-          launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
-      } catch (e) {
-        debugPrint('Could not launch LinkedIn URL: $e');
-      }
+    try {
+      await UrlLauncherHelper.openInNewTabOrExternal(rawUrl);
+    } catch (e) {
+      debugPrint('Could not launch LinkedIn URL: $e');
     }
 
     // 2. Copy the customized connection note to clipboard
