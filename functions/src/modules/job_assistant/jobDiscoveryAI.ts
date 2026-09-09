@@ -330,7 +330,7 @@ export async function discoverAndApplyForUser(
                     ? `("0-${maxExp} years" OR "fresher" OR "junior")`
                     : `("${minExp}-${maxExp} years")`);
 
-            const query = `"${role}" ${expQuery} ("send resume to" OR "share your resume at" OR "email CV to" OR "send CV to" OR "mail your resume") "@" (${locQuery}) ${currentYear}`;
+            const query = `"${role}" ${expQuery} ("send resume to" OR "share your resume at" OR "email CV to" OR "send CV to" OR "mail your resume") "@" (${locQuery}) ${currentYear} -site:facebook.com/groups`;
             console.log(`[JobDiscovery] Querying Tavily for user ${uid} (Role: "${role}")...`);
             
             const tavilyResp = await searchTavily({
@@ -373,7 +373,9 @@ Candidate Name: "${applicantName}"
 Candidate Experience Target: ${expTargetStr}
 
 CRITICAL VERIFICATION & EXTRACTION MANDATES:
-1. RECRUITER EMAIL IS MANDATORY: Every single job item MUST contain a verified recruiter / HR / hiring contact email address (e.g. hr@company.com, careers@company.com, hiring@company.com, jobs@company.com, talent@company.com, or specific recruiter email) found in the post snippet or source. If NO valid email address is present in the post details, DO NOT INCLUDE THAT JOB.
+1. STRICT MANDATE — RECRUITER EMAIL MUST BE VERBATIM IN SNIPPET:
+   - Every single job item MUST contain a verified recruiter / HR / hiring contact email address that is EXPLICITLY and VERBATIM printed in the post details or source snippet text.
+   - STRICT PROHIBITION ON GUESSING OR INFERRING: NEVER guess, synthesize, or invent email addresses (such as jobs@company.com, hr@company.com, careers@company.com, or founder@company.com). If the post does NOT explicitly provide an email address in the snippet text, DO NOT INCLUDE THAT JOB.
 
 2. ${expMandateStr}
 
@@ -468,7 +470,23 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         return { success: true, appliedCount: 0, jobs: [], message: "No fresh matching openings with recruiter emails found today." };
     }
 
-    // Filter valid jobs with active MX record validation
+    // Load global bounce blacklist
+    const globalBouncedSet = new Set<string>();
+    try {
+        const bouncedSnap = await db.collection("system_bounced_emails").get();
+        bouncedSnap.forEach(d => {
+            const data = d.data() || {};
+            if (data.email) globalBouncedSet.add(data.email.toLowerCase().trim());
+            globalBouncedSet.add(d.id.toLowerCase().trim());
+            try {
+                globalBouncedSet.add(decodeURIComponent(d.id).toLowerCase().trim());
+            } catch (_) {}
+        });
+    } catch (bErr: any) {
+        console.warn("[JobDiscovery] Warning loading system_bounced_emails:", bErr.message);
+    }
+
+    // Filter valid jobs with active MX record validation, verbatim snippet verification, and bounce blacklist
     const validFilteredJobs: DiscoveredJob[] = [];
     for (const job of discoveredJobs) {
         const email = (job.recipientEmail || '').trim();
@@ -482,6 +500,25 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
 
         if (appliedEmails.has(emailLower) || appliedCompanyRoles.has(compRoleKey)) {
             console.log(`[JobDiscovery] Skipping duplicate application to ${emailLower} (${job.companyName})`);
+            continue;
+        }
+
+        // Check global bounce blacklist
+        if (globalBouncedSet.has(emailLower) || globalBouncedSet.has(encodeURIComponent(emailLower))) {
+            console.log(`[JobDiscovery] ⚠️ Skipping '${email}' for '${job.companyName}': Email is globally blacklisted due to previous delivery bounce/failure.`);
+            continue;
+        }
+
+        // Verbatim Snippet Verification (Zero Hallucination Guard)
+        // Ensure recipientEmail was literally present in the search results returned by Tavily
+        const isVerbatimInSnippet = allTavilyResults.some(r => {
+            const cLower = (r.content || "").toLowerCase();
+            const tLower = (r.title || "").toLowerCase();
+            const uLower = (r.url || "").toLowerCase();
+            return cLower.includes(emailLower) || tLower.includes(emailLower) || uLower.includes(emailLower);
+        });
+        if (!isVerbatimInSnippet) {
+            console.log(`[JobDiscovery] ⚠️ Rejecting '${email}' for '${job.companyName}': Email was NOT found verbatim in search snippets (AI hallucination prevention).`);
             continue;
         }
 

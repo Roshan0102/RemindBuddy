@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -438,29 +439,37 @@ class _HomeScreenState extends State<HomeScreen> {
       if (snapshot.exists && snapshot.data() != null) {
         final data = snapshot.data()!;
         final mods = List<String>.from(data['enabledModules'] ?? ['reminders', 'gold', 'notes', 'daily_reminders']);
-        if (mounted) {
+        List<String> newActive = List<String>.from(_activeWidgets);
+        String newHero = _heroWidget;
+
+        if (data['dashboardPreferences'] != null) {
+          final dashPrefs = Map<String, dynamic>.from(data['dashboardPreferences']);
+          if (dashPrefs['activeWidgets'] is List && (dashPrefs['activeWidgets'] as List).isNotEmpty) {
+            final fromDb = List<String>.from(dashPrefs['activeWidgets']).where(_isWidgetAllowed).toList();
+            if (fromDb.isNotEmpty) {
+              newActive = fromDb;
+            }
+          }
+          if (dashPrefs['heroWidget'] is String && _isWidgetAllowed(dashPrefs['heroWidget'])) {
+            newHero = dashPrefs['heroWidget'];
+          }
+        }
+
+        newActive.removeWhere((w) => !_isWidgetAllowed(w));
+        if (!_isWidgetAllowed(newHero)) {
+          newHero = newActive.isNotEmpty ? newActive.first : 'gold_price';
+        }
+
+        final bool hasChanged = !listEquals(_enabledModules, mods) ||
+            !listEquals(_activeWidgets, newActive) ||
+            _heroWidget != newHero;
+
+        if (mounted && hasChanged) {
           setState(() {
             _enabledModules = mods;
-
-            if (data['dashboardPreferences'] != null) {
-              final dashPrefs = Map<String, dynamic>.from(data['dashboardPreferences']);
-              if (dashPrefs['activeWidgets'] is List && (dashPrefs['activeWidgets'] as List).isNotEmpty) {
-                final fromDb = List<String>.from(dashPrefs['activeWidgets']).where(_isWidgetAllowed).toList();
-                if (fromDb.isNotEmpty) {
-                  _activeWidgets = fromDb;
-                }
-              }
-              if (dashPrefs['heroWidget'] is String && _isWidgetAllowed(dashPrefs['heroWidget'])) {
-                _heroWidget = dashPrefs['heroWidget'];
-              }
-            }
-
-            _activeWidgets.removeWhere((w) => !_isWidgetAllowed(w));
-            if (!_isWidgetAllowed(_heroWidget)) {
-              _heroWidget = _activeWidgets.isNotEmpty ? _activeWidgets.first : 'gold_price';
-            }
+            _activeWidgets = newActive;
+            _heroWidget = newHero;
           });
-          _saveDashboardConfig();
         }
       }
     });

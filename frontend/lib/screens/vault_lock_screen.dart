@@ -62,22 +62,28 @@ class _VaultLockScreenState extends State<VaultLockScreen> {
         final data = userPinDoc.data()!;
         _userSalt = data['salt'];
         _userVerifier = data['verifier'];
-        setState(() {
-          _isFirstTimeSetup = false;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isFirstTimeSetup = false;
+            _isLoading = false;
+          });
+        }
       } else {
         // No PIN configured for this user -> First Time Setup
+        if (mounted) {
+          setState(() {
+            _isFirstTimeSetup = true;
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         setState(() {
-          _isFirstTimeSetup = true;
+          _errorMessage = "Error checking vault config: $e";
           _isLoading = false;
         });
       }
-    } catch (e) {
-      setState(() {
-        _errorMessage = "Error checking vault config: $e";
-        _isLoading = false;
-      });
     }
   }
 

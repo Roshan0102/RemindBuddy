@@ -331,6 +331,23 @@ async function checkUserJobReplies(uid) {
                         };
                         await matchedApp.ref.update(updateData);
                         repliesFound++;
+                        // Automatically blacklist this bounced address globally
+                        const bouncedEmail = (matchedApp.recipientEmail || "").toLowerCase().trim();
+                        if (bouncedEmail && bouncedEmail.includes("@")) {
+                            try {
+                                await firebase_1.db.collection("system_bounced_emails").doc(encodeURIComponent(bouncedEmail)).set({
+                                    email: bouncedEmail,
+                                    companyName: matchedApp.companyName || "",
+                                    bouncedAt: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
+                                    reason: cleanBodySnippet.substring(0, 300),
+                                    reportedByUid: uid
+                                }, { merge: true });
+                                console.log(`[ReplyTracker] Added '${bouncedEmail}' to global system_bounced_emails blacklist.`);
+                            }
+                            catch (blErr) {
+                                console.warn("[ReplyTracker] Failed to record bounced email in blacklist:", blErr.message);
+                            }
+                        }
                         if (matchedApp.messageId)
                             appsByMessageId.delete(matchedApp.messageId.toLowerCase().trim().replace(/[<>]/g, ""));
                         appsByRecipient.delete((matchedApp.recipientEmail || "").toLowerCase().trim());

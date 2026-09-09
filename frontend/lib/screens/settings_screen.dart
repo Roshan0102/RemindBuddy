@@ -425,7 +425,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   iconGradient: const [Color(0xFF10B981), Color(0xFF059669)],
                   title: 'RemindBuddy Engine',
                   subtitle: 'All-in-One AI Daily Life & Assistant Platform',
-                  badgeText: 'v1.10.23',
+                  badgeText: 'v1.10.24',
                   badgeColor: const Color(0xFF10B981),
                   isFirst: kIsWeb,
                   isLast: true,

@@ -378,6 +378,23 @@ export async function checkUserJobReplies(uid: string): Promise<{ checked: numbe
                     await matchedApp.ref.update(updateData);
                     repliesFound++;
 
+                    // Automatically blacklist this bounced address globally
+                    const bouncedEmail = (matchedApp.recipientEmail || "").toLowerCase().trim();
+                    if (bouncedEmail && bouncedEmail.includes("@")) {
+                        try {
+                            await db.collection("system_bounced_emails").doc(encodeURIComponent(bouncedEmail)).set({
+                                email: bouncedEmail,
+                                companyName: matchedApp.companyName || "",
+                                bouncedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                reason: cleanBodySnippet.substring(0, 300),
+                                reportedByUid: uid
+                            }, { merge: true });
+                            console.log(`[ReplyTracker] Added '${bouncedEmail}' to global system_bounced_emails blacklist.`);
+                        } catch (blErr: any) {
+                            console.warn("[ReplyTracker] Failed to record bounced email in blacklist:", blErr.message);
+                        }
+                    }
+
                     if (matchedApp.messageId) appsByMessageId.delete(matchedApp.messageId.toLowerCase().trim().replace(/[<>]/g, ""));
                     appsByRecipient.delete((matchedApp.recipientEmail || "").toLowerCase().trim());
 

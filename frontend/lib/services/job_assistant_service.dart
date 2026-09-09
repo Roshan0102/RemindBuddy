@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/job_application.dart';
 import '../models/networking_lead.dart';
 import '../models/resume_profile.dart';
@@ -26,26 +27,47 @@ class JobAssistantService {
   // ============================================================================
 
   Future<String> getApplicantName() async {
+    String cachedName = '';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      cachedName = (prefs.getString('job_assistant_applicant_name') ?? '').trim();
+      if (cachedName.isNotEmpty) return cachedName;
+    } catch (_) {}
+
     final doc = _userDoc;
     if (doc == null) {
-      return FirebaseAuth.instance.currentUser?.displayName ?? '';
+      final authName = (FirebaseAuth.instance.currentUser?.displayName ?? '').trim();
+      return authName.isNotEmpty ? authName : cachedName;
     }
     try {
       final snap = await doc.get();
       if (snap.exists && snap.data() != null) {
         final data = snap.data() as Map<String, dynamic>;
-        final name = (data['applicantName'] ?? data['displayName'] ?? '').toString().trim();
-        if (name.isNotEmpty) return name;
+        final name = (data['applicantName'] ?? data['displayName'] ?? data['name'] ?? '').toString().trim();
+        if (name.isNotEmpty) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('job_assistant_applicant_name', name);
+          } catch (_) {}
+          return name;
+        }
       }
     } catch (_) {}
-    return FirebaseAuth.instance.currentUser?.displayName ?? '';
+
+    final authName = (FirebaseAuth.instance.currentUser?.displayName ?? '').trim();
+    return authName.isNotEmpty ? authName : cachedName;
   }
 
   Future<void> saveApplicantName(String name) async {
-    final doc = _userDoc;
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
 
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('job_assistant_applicant_name', trimmed);
+    } catch (_) {}
+
+    final doc = _userDoc;
     if (doc != null) {
       await doc.set({
         'applicantName': trimmed,
@@ -64,57 +86,151 @@ class JobAssistantService {
   // ============================================================================
 
   Future<Map<String, String>> getUserEmailConfig() async {
+    String cachedEmail = '';
+    String cachedPass = '';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      cachedEmail = (prefs.getString('job_assistant_user_email') ?? '').trim();
+      cachedPass = (prefs.getString('job_assistant_user_app_password') ?? '').trim();
+    } catch (_) {}
+
     final doc = _userDoc;
-    if (doc == null) return {'email': '', 'appPassword': ''};
+    if (doc == null) {
+      return {
+        'email': cachedEmail.isNotEmpty ? cachedEmail : (FirebaseAuth.instance.currentUser?.email ?? ''),
+        'appPassword': cachedPass,
+      };
+    }
 
-    final snap = await doc.get();
-    if (!snap.exists || snap.data() == null) return {'email': '', 'appPassword': ''};
+    try {
+      final snap = await doc.get();
+      if (snap.exists && snap.data() != null) {
+        final data = snap.data() as Map<String, dynamic>;
+        final emailConfig = Map<String, dynamic>.from(
+          data['emailConfig'] ?? data['jobEmailConfig'] ?? data['gmailConfig'] ?? {},
+        );
+        final email = (emailConfig['email'] ?? '').toString().trim();
+        final appPassword = (emailConfig['appPassword'] ?? '').toString().trim();
 
-    final data = snap.data() as Map<String, dynamic>;
-    final emailConfig = Map<String, dynamic>.from(data['emailConfig'] ?? {});
+        final resolvedEmail = email.isNotEmpty ? email : cachedEmail;
+        final resolvedPass = appPassword.isNotEmpty ? appPassword : cachedPass;
+
+        if (resolvedEmail.isNotEmpty || resolvedPass.isNotEmpty) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            if (resolvedEmail.isNotEmpty) await prefs.setString('job_assistant_user_email', resolvedEmail);
+            if (resolvedPass.isNotEmpty) await prefs.setString('job_assistant_user_app_password', resolvedPass);
+          } catch (_) {}
+        }
+
+        return {
+          'email': resolvedEmail.isNotEmpty ? resolvedEmail : (FirebaseAuth.instance.currentUser?.email ?? ''),
+          'appPassword': resolvedPass,
+        };
+      }
+    } catch (_) {}
 
     return {
-      'email': (emailConfig['email'] ?? '').toString(),
-      'appPassword': (emailConfig['appPassword'] ?? '').toString(),
+      'email': cachedEmail.isNotEmpty ? cachedEmail : (FirebaseAuth.instance.currentUser?.email ?? ''),
+      'appPassword': cachedPass,
     };
   }
 
   Future<void> saveUserEmailConfig(String email, String appPassword) async {
+    final cleanEmail = email.trim();
+    final cleanPass = appPassword.trim();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('job_assistant_user_email', cleanEmail);
+      await prefs.setString('job_assistant_user_app_password', cleanPass);
+    } catch (_) {}
+
     final doc = _userDoc;
     if (doc == null) return;
 
     await doc.set({
       'emailConfig': {
-        'email': email.trim(),
-        'appPassword': appPassword.trim(),
+        'email': cleanEmail,
+        'appPassword': cleanPass,
         'updatedAt': FieldValue.serverTimestamp(),
+      },
+      'jobEmailConfig': {
+        'email': cleanEmail,
+        'appPassword': cleanPass,
       }
     }, SetOptions(merge: true));
   }
 
   Future<Map<String, String>> getMasterResume() async {
+    String cachedFileName = '';
+    String cachedBase64 = '';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      cachedFileName = (prefs.getString('job_assistant_resume_filename') ?? '').trim();
+      cachedBase64 = (prefs.getString('job_assistant_resume_base64') ?? '').trim();
+    } catch (_) {}
+
     final doc = _userDoc;
-    if (doc == null) return {'base64': '', 'fileName': ''};
+    if (doc == null) {
+      return {'base64': cachedBase64, 'fileName': cachedFileName.isNotEmpty ? cachedFileName : 'Resume.pdf'};
+    }
 
-    final snap = await doc.get();
-    if (!snap.exists || snap.data() == null) return {'base64': '', 'fileName': ''};
+    try {
+      final snap = await doc.get();
+      if (snap.exists && snap.data() != null) {
+        final data = snap.data() as Map<String, dynamic>;
+        final resume = Map<String, dynamic>.from(data['masterResume'] ?? data['resume'] ?? {});
+        var b64 = (resume['base64'] ?? resume['base64Data'] ?? data['resumeBase64'] ?? '').toString();
+        var fName = (resume['fileName'] ?? data['resumeFileName'] ?? '').toString();
 
-    final data = snap.data() as Map<String, dynamic>;
-    final resume = Map<String, dynamic>.from(data['masterResume'] ?? {});
+        // If root masterResume base64 is empty, check targeted resume profiles subcollection
+        if (b64.isEmpty) {
+          final profiles = await getResumeProfiles();
+          if (profiles.isNotEmpty) {
+            final def = profiles.firstWhere((p) => p.isDefault, orElse: () => profiles.first);
+            b64 = def.base64;
+            fName = def.fileName;
+          }
+        }
 
-    return {
-      'base64': (resume['base64'] ?? '').toString(),
-      'fileName': (resume['fileName'] ?? 'Resume.pdf').toString(),
-    };
+        final resolvedB64 = b64.isNotEmpty ? b64 : cachedBase64;
+        final resolvedName = fName.isNotEmpty ? fName : (cachedFileName.isNotEmpty ? cachedFileName : 'Resume.pdf');
+
+        if (resolvedName.isNotEmpty || resolvedB64.isNotEmpty) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            if (resolvedName.isNotEmpty) await prefs.setString('job_assistant_resume_filename', resolvedName);
+            if (resolvedB64.isNotEmpty) await prefs.setString('job_assistant_resume_base64', resolvedB64);
+            await prefs.setBool('job_assistant_has_resume', resolvedB64.isNotEmpty || resolvedName.isNotEmpty);
+          } catch (_) {}
+        }
+
+        return {
+          'base64': resolvedB64,
+          'fileName': resolvedName,
+        };
+      }
+    } catch (_) {}
+
+    return {'base64': cachedBase64, 'fileName': cachedFileName.isNotEmpty ? cachedFileName : 'Resume.pdf'};
   }
 
   Future<void> saveMasterResume(String base64Content, String fileName) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('job_assistant_resume_filename', fileName);
+      await prefs.setString('job_assistant_resume_base64', base64Content);
+      await prefs.setBool('job_assistant_has_resume', true);
+    } catch (_) {}
+
     final doc = _userDoc;
     if (doc == null) return;
 
     await doc.set({
       'masterResume': {
         'base64': base64Content,
+        'base64Data': base64Content,
         'fileName': fileName,
         'updatedAt': FieldValue.serverTimestamp(),
       }
@@ -196,60 +312,126 @@ class JobAssistantService {
   // ============================================================================
 
   Future<Map<String, dynamic>> getAutoApplySettings() async {
+    List<String> cachedRoles = [];
+    List<String> cachedLocs = [];
+    List<String> cachedExcluded = [];
+    int cachedMinExp = 0;
+    int cachedMaxExp = 3;
+    bool cachedFresher = false;
+    bool cachedEnabled = true;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rolesStr = prefs.getString('job_assistant_target_roles') ?? '';
+      if (rolesStr.isNotEmpty) {
+        cachedRoles = rolesStr.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      }
+      final locsStr = prefs.getString('job_assistant_locations') ?? '';
+      if (locsStr.isNotEmpty) {
+        cachedLocs = locsStr.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      }
+      cachedExcluded = prefs.getStringList('job_assistant_excluded_companies') ?? [];
+      cachedMinExp = prefs.getInt('job_assistant_min_exp') ?? 0;
+      cachedMaxExp = prefs.getInt('job_assistant_max_exp') ?? 3;
+      cachedFresher = prefs.getBool('job_assistant_is_fresher') ?? (cachedMinExp == 0 && cachedMaxExp == 0);
+      cachedEnabled = prefs.getBool('job_assistant_enabled') ?? true;
+    } catch (_) {}
+
     final doc = _userDoc;
     if (doc == null) {
       return {
-        'enabled': true,
-        'targetRoles': <String>[],
-        'locations': ['Bengaluru', 'India', 'Remote'],
-        'excludedCompanies': <String>[],
-        'maxPerRun': 4,
+        'enabled': cachedEnabled,
+        'targetRoles': cachedRoles,
+        'locations': cachedLocs.isNotEmpty ? cachedLocs : ['Bengaluru', 'India', 'Remote'],
+        'excludedCompanies': cachedExcluded,
+        'minExpYears': cachedMinExp,
+        'maxExpYears': cachedMaxExp,
+        'isFresher': cachedFresher,
+        'maxPerRun': 6,
       };
     }
 
-    final snap = await doc.get();
-    if (!snap.exists || snap.data() == null) {
-      return {
-        'enabled': true,
-        'targetRoles': <String>[],
-        'locations': ['Bengaluru', 'India', 'Remote'],
-        'excludedCompanies': <String>[],
-        'maxPerRun': 4,
-      };
-    }
+    try {
+      final snap = await doc.get();
+      if (snap.exists && snap.data() != null) {
+        final data = snap.data() as Map<String, dynamic>;
+        final settings = Map<String, dynamic>.from(data['autoApplySettings'] ?? data['autoApply'] ?? data['jobPreferences'] ?? {});
 
-    final data = snap.data() as Map<String, dynamic>;
-    final settings = Map<String, dynamic>.from(data['autoApplySettings'] ?? {});
+        List<String> targetRoles = [];
+        final rawRoles = settings['targetRoles'] ?? data['targetRoles'] ?? data['techDomains'];
+        if (rawRoles is List) {
+          targetRoles = List<String>.from(rawRoles);
+        } else if (rawRoles is String) {
+          targetRoles = rawRoles.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        }
+        if (targetRoles.isEmpty && cachedRoles.isNotEmpty) {
+          targetRoles = cachedRoles;
+        }
 
-    List<String> targetRoles = [];
-    if (settings['targetRoles'] is List) {
-      targetRoles = List<String>.from(settings['targetRoles']);
-    } else if (settings['targetRoles'] is String) {
-      targetRoles = (settings['targetRoles'] as String).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-    }
+        List<String> locations = [];
+        final rawLocs = settings['locations'] ?? data['locations'] ?? data['targetLocations'];
+        if (rawLocs is List) {
+          locations = List<String>.from(rawLocs);
+        } else if (rawLocs is String) {
+          locations = rawLocs.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        }
+        if (locations.isEmpty && cachedLocs.isNotEmpty) {
+          locations = cachedLocs;
+        }
+        if (locations.isEmpty) {
+          locations = ['Bengaluru', 'India', 'Remote'];
+        }
 
-    List<String> locations = ['Bengaluru', 'India', 'Remote'];
-    if (settings['locations'] is List) {
-      locations = List<String>.from(settings['locations']);
-    } else if (settings['locations'] is String) {
-      locations = (settings['locations'] as String).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-    }
+        List<String> excludedCompanies = [];
+        final rawExcluded = settings['excludedCompanies'] ?? data['excludedCompanies'];
+        if (rawExcluded is List) {
+          excludedCompanies = List<String>.from(rawExcluded);
+        } else if (rawExcluded is String) {
+          excludedCompanies = rawExcluded.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        }
+        if (excludedCompanies.isEmpty && cachedExcluded.isNotEmpty) {
+          excludedCompanies = cachedExcluded;
+        }
 
-    List<String> excludedCompanies = [];
-    if (settings['excludedCompanies'] is List) {
-      excludedCompanies = List<String>.from(settings['excludedCompanies']);
-    } else if (settings['excludedCompanies'] is String) {
-      excludedCompanies = (settings['excludedCompanies'] as String).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-    }
+        final minE = settings['minExpYears'] ?? cachedMinExp;
+        final maxE = settings['maxExpYears'] ?? cachedMaxExp;
+        final isFr = settings['isFresher'] ?? cachedFresher;
+        final en = settings['enabled'] ?? cachedEnabled;
+
+        // Sync to SharedPreferences
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          if (targetRoles.isNotEmpty) await prefs.setString('job_assistant_target_roles', targetRoles.join(', '));
+          if (locations.isNotEmpty) await prefs.setString('job_assistant_locations', locations.join(', '));
+          await prefs.setStringList('job_assistant_excluded_companies', excludedCompanies);
+          await prefs.setInt('job_assistant_min_exp', minE is int ? minE : (int.tryParse(minE.toString()) ?? 0));
+          await prefs.setInt('job_assistant_max_exp', maxE is int ? maxE : (int.tryParse(maxE.toString()) ?? 3));
+          await prefs.setBool('job_assistant_is_fresher', isFr == true);
+          await prefs.setBool('job_assistant_enabled', en == true);
+        } catch (_) {}
+
+        return {
+          'enabled': en,
+          'targetRoles': targetRoles,
+          'locations': locations,
+          'excludedCompanies': excludedCompanies,
+          'minExpYears': minE,
+          'maxExpYears': maxE,
+          'isFresher': isFr,
+          'maxPerRun': settings['maxPerRun'] ?? 6,
+        };
+      }
+    } catch (_) {}
 
     return {
-      'enabled': settings['enabled'] ?? true,
-      'targetRoles': targetRoles,
-      'locations': locations,
-      'excludedCompanies': excludedCompanies,
-      'minExpYears': settings['minExpYears'] ?? 0,
-      'maxExpYears': settings['maxExpYears'] ?? 3,
-      'maxPerRun': settings['maxPerRun'] ?? 4,
+      'enabled': cachedEnabled,
+      'targetRoles': cachedRoles,
+      'locations': cachedLocs.isNotEmpty ? cachedLocs : ['Bengaluru', 'India', 'Remote'],
+      'excludedCompanies': cachedExcluded,
+      'minExpYears': cachedMinExp,
+      'maxExpYears': cachedMaxExp,
+      'isFresher': cachedFresher,
+      'maxPerRun': 6,
     };
   }
 
@@ -263,6 +445,17 @@ class JobAssistantService {
     bool isFresher = false,
     int maxPerRun = 6,
   }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('job_assistant_target_roles', targetRoles.join(', '));
+      await prefs.setString('job_assistant_locations', locations.join(', '));
+      await prefs.setStringList('job_assistant_excluded_companies', excludedCompanies);
+      await prefs.setInt('job_assistant_min_exp', minExpYears);
+      await prefs.setInt('job_assistant_max_exp', maxExpYears);
+      await prefs.setBool('job_assistant_is_fresher', isFresher);
+      await prefs.setBool('job_assistant_enabled', enabled);
+    } catch (_) {}
+
     final doc = _userDoc;
     if (doc == null) return;
 
@@ -276,6 +469,23 @@ class JobAssistantService {
         'maxExpYears': maxExpYears,
         'isFresher': isFresher,
         'maxPerRun': maxPerRun,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> setAutoApplyEnabled(bool enabled) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('job_assistant_enabled', enabled);
+    } catch (_) {}
+
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    await doc.set({
+      'autoApplySettings': {
+        'enabled': enabled,
         'updatedAt': FieldValue.serverTimestamp(),
       }
     }, SetOptions(merge: true));
@@ -659,6 +869,12 @@ class JobAssistantService {
     required List<String> locations,
     required List<String> techDomains,
   }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('job_assistant_radar_locations', locations);
+      await prefs.setStringList('job_assistant_radar_domains', techDomains);
+    } catch (_) {}
+
     final doc = _userDoc;
     if (doc == null) return;
 
@@ -672,11 +888,70 @@ class JobAssistantService {
   }
 
   Future<Map<String, dynamic>> getStartupRadarSettings() async {
+    List<String> cachedLocs = [];
+    List<String> cachedDomains = [];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      cachedLocs = prefs.getStringList('job_assistant_radar_locations') ?? [];
+      cachedDomains = prefs.getStringList('job_assistant_radar_domains') ?? [];
+    } catch (_) {}
+
     final doc = _userDoc;
-    if (doc == null) return {};
-    final snap = await doc.get();
-    if (!snap.exists || snap.data() == null) return {};
-    final data = snap.data() as Map<String, dynamic>?;
-    return Map<String, dynamic>.from(data?['startupRadarSettings'] ?? {});
+    if (doc == null) {
+      return {
+        'locations': cachedLocs,
+        'techDomains': cachedDomains,
+      };
+    }
+
+    try {
+      final snap = await doc.get();
+      if (snap.exists && snap.data() != null) {
+        final data = snap.data() as Map<String, dynamic>?;
+        final settings = Map<String, dynamic>.from(data?['startupRadarSettings'] ?? data?['startupSettings'] ?? data?['radarSettings'] ?? {});
+        List<String> locs = [];
+        if (settings['locations'] is List) {
+          locs = List<String>.from(settings['locations']);
+        }
+        if (locs.isEmpty && cachedLocs.isNotEmpty) {
+          locs = cachedLocs;
+        }
+
+        List<String> domains = [];
+        if (settings['techDomains'] is List) {
+          domains = List<String>.from(settings['techDomains']);
+        }
+        if (domains.isEmpty && cachedDomains.isNotEmpty) {
+          domains = cachedDomains;
+        }
+
+        // If still empty, fallback to autoApplySettings roles and locations!
+        if (locs.isEmpty) {
+          final autoApplyLocs = data?['autoApplySettings']?['locations'] ?? data?['locations'];
+          if (autoApplyLocs is List) locs = List<String>.from(autoApplyLocs);
+        }
+        if (domains.isEmpty) {
+          final autoApplyRoles = data?['autoApplySettings']?['targetRoles'] ?? data?['targetRoles'];
+          if (autoApplyRoles is List) domains = List<String>.from(autoApplyRoles);
+        }
+
+        // Cache to SharedPreferences
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          if (locs.isNotEmpty) await prefs.setStringList('job_assistant_radar_locations', locs);
+          if (domains.isNotEmpty) await prefs.setStringList('job_assistant_radar_domains', domains);
+        } catch (_) {}
+
+        return {
+          'locations': locs,
+          'techDomains': domains,
+        };
+      }
+    } catch (_) {}
+
+    return {
+      'locations': cachedLocs,
+      'techDomains': cachedDomains,
+    };
   }
 }

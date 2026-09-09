@@ -20,11 +20,15 @@ class _RemindersScreenState extends State<RemindersScreen> {
   DateTime? _selectedDay;
   bool _showPastReminders = false;
   final StorageService _storage = StorageService();
+  late Stream<List<CalendarReminder>> _remindersStream;
+  late Stream<List<Map<String, dynamic>>> _buddyRequestsStream;
 
   @override
   void initState() {
     super.initState();
     _selectedDay = _focusedDay;
+    _remindersStream = _storage.getAllCalendarRemindersStream();
+    _buddyRequestsStream = _storage.getIncomingBuddyRequestsStream();
   }
 
   @override
@@ -41,7 +45,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
         elevation: 0,
         actions: [
           StreamBuilder<List<Map<String, dynamic>>>(
-            stream: _storage.getIncomingBuddyRequestsStream(),
+            stream: _buddyRequestsStream,
             builder: (context, snapshot) {
               final requests = snapshot.data ?? [];
               final hasRequests = requests.isNotEmpty;
@@ -81,8 +85,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
         ],
       ),
       body: StreamBuilder<List<CalendarReminder>>(
-        stream: _storage.getAllCalendarRemindersStream(),
+        stream: _remindersStream,
         builder: (context, allSnapshot) {
+          if (allSnapshot.connectionState == ConnectionState.waiting && !allSnapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
           final allReminders = allSnapshot.data ?? [];
 
           return Column(
@@ -207,16 +214,38 @@ class _RemindersScreenState extends State<RemindersScreen> {
                               _showPastReminders = !_showPastReminders;
                             });
                           },
-                          borderRadius: BorderRadius.circular(6),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            child: Text(
-                              _showPastReminders ? 'Hide' : 'Show',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Theme.of(context).primaryColor,
-                                fontWeight: FontWeight.bold,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? const Color(0xFF38BDF8).withValues(alpha: 0.15)
+                                  : Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isDark
+                                    ? const Color(0xFF38BDF8).withValues(alpha: 0.4)
+                                    : Theme.of(context).primaryColor.withValues(alpha: 0.25),
                               ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _showPastReminders ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                  size: 14,
+                                  color: isDark ? const Color(0xFF38BDF8) : Theme.of(context).primaryColor,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _showPastReminders ? 'Hide' : 'Show',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: isDark ? const Color(0xFF38BDF8) : Theme.of(context).primaryColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -345,10 +374,40 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
-                    '${pastReminders.length} past reminder${pastReminders.length > 1 ? 's' : ''} hidden • Tap "Show" above to view',
+                    '${pastReminders.length} past reminder${pastReminders.length > 1 ? 's' : ''} hidden',
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _showPastReminders = true;
+                      });
+                    },
+                    icon: Icon(
+                      Icons.visibility_outlined,
+                      size: 15,
+                      color: isDarkMode ? const Color(0xFF38BDF8) : Theme.of(context).primaryColor,
+                    ),
+                    label: Text(
+                      'Show ${pastReminders.length} Past Reminder${pastReminders.length > 1 ? 's' : ''}',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                        color: isDarkMode ? const Color(0xFF38BDF8) : Theme.of(context).primaryColor,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: isDarkMode
+                            ? const Color(0xFF38BDF8).withValues(alpha: 0.5)
+                            : Theme.of(context).primaryColor.withValues(alpha: 0.4),
+                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    ),
                   ),
                 ],
               ),

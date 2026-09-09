@@ -149,18 +149,23 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         if (data.containsKey('favoriteModules') && data['favoriteModules'] is List) {
           firestoreFavorites = List<String>.from(data['favoriteModules']);
           await localPrefs.setStringList('user_favorite_modules', firestoreFavorites);
-        } else if (FirebaseAuth.instance.currentUser != null && _userFavoriteModules.isNotEmpty) {
-          await StorageService().updateUserFavoriteModules(_userFavoriteModules);
         }
 
-        if (mounted) {
+        List<String>? firestoreBottom;
+        if (data.containsKey('customBottomBar') && data['customBottomBar'] is List) {
+          firestoreBottom = List<String>.from(data['customBottomBar']);
+          await localPrefs.setStringList('user_bottom_modules', firestoreBottom);
+        }
+
+        final bool modulesChanged = firestoreModules != null && !listEquals(_enabledModules, firestoreModules);
+        final bool favoritesChanged = firestoreFavorites != null && !listEquals(_userFavoriteModules, firestoreFavorites);
+        final bool bottomChanged = firestoreBottom != null && !listEquals(_userSelectedBottomModules, firestoreBottom);
+
+        if (mounted && (modulesChanged || favoritesChanged || bottomChanged)) {
           setState(() {
-            if (firestoreModules != null) {
-              _enabledModules = firestoreModules;
-            }
-            if (firestoreFavorites != null) {
-              _userFavoriteModules = firestoreFavorites;
-            }
+            if (modulesChanged) _enabledModules = firestoreModules!;
+            if (favoritesChanged) _userFavoriteModules = firestoreFavorites!;
+            if (bottomChanged) _userSelectedBottomModules = firestoreBottom!;
           });
         }
       }
@@ -1670,7 +1675,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'RemindBuddy v1.10.23',
+                  'RemindBuddy v1.10.24',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

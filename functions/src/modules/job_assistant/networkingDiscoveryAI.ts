@@ -485,6 +485,22 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
     let emailsSentCount = 0;
     const cleanResumeB64 = resumeBase64.replace(/^data:application\/pdf;base64,/, "");
 
+    // Load global bounce blacklist
+    const globalBouncedSet = new Set<string>();
+    try {
+        const bouncedSnap = await db.collection("system_bounced_emails").get();
+        bouncedSnap.forEach(d => {
+            const data = d.data() || {};
+            if (data.email) globalBouncedSet.add(data.email.toLowerCase().trim());
+            globalBouncedSet.add(d.id.toLowerCase().trim());
+            try {
+                globalBouncedSet.add(decodeURIComponent(d.id).toLowerCase().trim());
+            } catch (_) {}
+        });
+    } catch (bErr: any) {
+        console.warn("[StartupRadar] Warning loading system_bounced_emails:", bErr.message);
+    }
+
     for (const lead of qualifiedLeads) {
         lead.emailSent = false;
 
@@ -495,6 +511,13 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
 
         const cleanEmail = lead.email.trim();
         const lowerEmail = cleanEmail.toLowerCase();
+
+        // Check global bounce blacklist
+        if (globalBouncedSet.has(lowerEmail) || globalBouncedSet.has(encodeURIComponent(lowerEmail))) {
+            console.log(`[StartupRadar] Discarding blacklisted email '${cleanEmail}' for ${lead.name} at ${lead.companyName}. Retaining for LinkedIn outreach.`);
+            lead.email = null;
+            continue;
+        }
 
         // Strict guard: discard speculative or generic role emails that cause "Address Not Found" bounces
         const speculativeRolePrefixes = ["cto@", "founder@", "founders@", "ceo@", "info@", "contact@", "admin@", "support@", "jobs@", "careers@"];

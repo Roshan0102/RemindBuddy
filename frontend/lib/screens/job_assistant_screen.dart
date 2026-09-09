@@ -10,6 +10,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/job_application.dart';
 import '../models/networking_lead.dart';
 import '../models/resume_profile.dart';
@@ -89,6 +90,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   String _autoApplyStatusMessage = '';
   final ScrollController _autoAppScrollController = ScrollController();
 
+  // Cached Stream References (Prevent continuous resubscriptions & blinking)
+  late Stream<List<JobApplication>> _applicationsStream;
+  late Stream<List<NetworkingLead>> _networkingLeadsStream;
+
   // Execution & Application Timestamps
   DateTime? _jobsLastRan;
   DateTime? _jobsLastApplied;
@@ -122,6 +127,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   @override
   void initState() {
     super.initState();
+    _applicationsStream = _service.getJobApplicationsStream();
+    _networkingLeadsStream = _service.getNetworkingLeadsStream();
     _tabController = TabController(length: 4, vsync: this);
     _loadUserConfig();
     _setupTimestampsListeners();
@@ -136,7 +143,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           if (profiles.isNotEmpty) {
             _hasResume = true;
             final defProfile = profiles.firstWhere((p) => p.isDefault, orElse: () => profiles.first);
-            _resumeFileName = defProfile.fileName;
+            if (_resumeFileName.isEmpty || defProfile.isDefault) {
+              _resumeFileName = defProfile.fileName;
+            }
           }
         });
       }
@@ -170,24 +179,93 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           parsedApplied = DateTime.tryParse(lastApplied);
         }
 
+        // Live real-time config extraction to ensure UI is never empty
+        final applicantName = (data['applicantName'] ?? data['displayName'] ?? data['name'] ?? '').toString().trim();
+        final emailCfg = Map<String, dynamic>.from(data['emailConfig'] ?? data['jobEmailConfig'] ?? data['gmailConfig'] ?? {});
+        final email = (emailCfg['email'] ?? '').toString().trim();
+        final pass = (emailCfg['appPassword'] ?? '').toString().trim();
+
+        final resumeData = Map<String, dynamic>.from(data['masterResume'] ?? data['resume'] ?? {});
+        final resumeBase64 = (resumeData['base64'] ?? resumeData['base64Data'] ?? data['resumeBase64'] ?? '').toString();
+        final resumeName = (resumeData['fileName'] ?? data['resumeFileName'] ?? '').toString();
+
+        final autoSettings = Map<String, dynamic>.from(data['autoApplySettings'] ?? data['autoApply'] ?? data['jobPreferences'] ?? {});
+        List<String> liveRoles = [];
+        final rawRoles = autoSettings['targetRoles'] ?? data['targetRoles'] ?? data['techDomains'];
+        if (rawRoles is List) {
+          liveRoles = List<String>.from(rawRoles);
+        } else if (rawRoles is String) {
+          liveRoles = rawRoles.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        }
+
+        List<String> liveLocs = [];
+        final rawLocs = autoSettings['locations'] ?? data['locations'] ?? data['targetLocations'];
+        if (rawLocs is List) {
+          liveLocs = List<String>.from(rawLocs);
+        } else if (rawLocs is String) {
+          liveLocs = rawLocs.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        }
+
+        final radarSettings = Map<String, dynamic>.from(data['startupRadarSettings'] ?? data['startupSettings'] ?? data['radarSettings'] ?? {});
+        final liveRadarLocs = List<String>.from(radarSettings['locations'] ?? []);
+        final liveRadarTechs = List<String>.from(radarSettings['techDomains'] ?? []);
+
         if (mounted) {
+          final bool ranChanged = parsedRan != null && parsedRan != _jobsLastRan;
+          final bool appliedChanged = parsedApplied != null && parsedApplied != _jobsLastApplied;
+
           setState(() {
-            if (parsedRan != null) _jobsLastRan = parsedRan;
-            if (parsedApplied != null) _jobsLastApplied = parsedApplied;
+            if (ranChanged) _jobsLastRan = parsedRan;
+            if (appliedChanged) _jobsLastApplied = parsedApplied;
+
+            if (applicantName.isNotEmpty && _applicantNameController.text.trim().isEmpty) {
+              _applicantNameController.text = applicantName;
+            }
+            if (email.isNotEmpty) {
+              _userEmail = email;
+            }
+            if (pass.isNotEmpty) {
+              _userAppPassword = pass;
+            }
+            if (resumeName.isNotEmpty && _resumeFileName.isEmpty) {
+              _resumeFileName = resumeName;
+            }
+            if (resumeBase64.isNotEmpty || resumeName.isNotEmpty) {
+              _hasResume = true;
+            }
+            if (liveRoles.isNotEmpty && _targetRolesController.text.trim().isEmpty) {
+              _targetRolesController.text = liveRoles.join(', ');
+            }
+            if (liveLocs.isNotEmpty && _locationsController.text.trim().isEmpty) {
+              _locationsController.text = liveLocs.join(', ');
+            }
+            if (liveRadarLocs.isNotEmpty && _radarLocations.isEmpty) {
+              _radarLocations = liveRadarLocs;
+            } else if (_radarLocations.isEmpty && liveLocs.isNotEmpty) {
+              _radarLocations = List.from(liveLocs);
+            }
+            if (liveRadarTechs.isNotEmpty && _radarTechDomains.isEmpty) {
+              _radarTechDomains = liveRadarTechs;
+            } else if (_radarTechDomains.isEmpty && liveRoles.isNotEmpty) {
+              _radarTechDomains = List.from(liveRoles);
+            }
+            if (autoSettings.containsKey('enabled')) {
+              _autoApplyEnabled = autoSettings['enabled'] == true;
+            }
           });
         }
       });
     }
 
-    _appsSub = _service.getJobApplicationsStream().listen((apps) {
+    _appsSub = _applicationsStream.listen((apps) {
       final sentApps = apps.where((a) => a.status == 'sent' || a.isAutoApplied).toList();
       if (sentApps.isNotEmpty && mounted) {
         final latest = sentApps.first.appliedAt;
-        setState(() {
-          if (_jobsLastApplied == null || latest.isAfter(_jobsLastApplied!)) {
+        if (_jobsLastApplied == null || latest.isAfter(_jobsLastApplied!)) {
+          setState(() {
             _jobsLastApplied = latest;
-          }
-        });
+          });
+        }
       }
     });
   }
@@ -230,6 +308,65 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Future<void> _loadUserConfig() async {
+    // 1. FAST LOCAL SYNC: load immediately from SharedPreferences so fields are never blank after app update
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final localName = prefs.getString('job_assistant_applicant_name') ?? '';
+      final localRoles = prefs.getString('job_assistant_target_roles') ?? '';
+      final localLocs = prefs.getString('job_assistant_locations') ?? '';
+      final localEmail = prefs.getString('job_assistant_user_email') ?? '';
+      final localPass = prefs.getString('job_assistant_user_app_password') ?? '';
+      final localResumeFileName = prefs.getString('job_assistant_resume_filename') ?? '';
+      final localHasResume = prefs.getBool('job_assistant_has_resume') ?? false;
+      final localEnabled = prefs.getBool('job_assistant_enabled') ?? true;
+      final localMinE = prefs.getInt('job_assistant_min_exp') ?? 0;
+      final localMaxE = prefs.getInt('job_assistant_max_exp') ?? 3;
+      final localIsFresher = prefs.getBool('job_assistant_is_fresher') ?? (localMinE == 0 && localMaxE == 0);
+      final localExcluded = prefs.getStringList('job_assistant_excluded_companies') ?? [];
+      final localRadarLocs = prefs.getStringList('job_assistant_radar_locations') ?? [];
+      final localRadarTechs = prefs.getStringList('job_assistant_radar_domains') ?? [];
+
+      if (mounted) {
+        setState(() {
+          if (localName.isNotEmpty && _applicantNameController.text.isEmpty) {
+            _applicantNameController.text = localName;
+          }
+          if (localRoles.isNotEmpty && _targetRolesController.text.isEmpty) {
+            _targetRolesController.text = localRoles;
+          }
+          if (localLocs.isNotEmpty && _locationsController.text.isEmpty) {
+            _locationsController.text = localLocs;
+          }
+          if (localEmail.isNotEmpty && _userEmail.isEmpty) {
+            _userEmail = localEmail;
+          }
+          if (localPass.isNotEmpty && _userAppPassword.isEmpty) {
+            _userAppPassword = localPass;
+          }
+          if (localResumeFileName.isNotEmpty && _resumeFileName.isEmpty) {
+            _resumeFileName = localResumeFileName;
+          }
+          if (localHasResume) {
+            _hasResume = true;
+          }
+          _autoApplyEnabled = localEnabled;
+          _isFresher = localIsFresher;
+          _minExpController.text = localMinE.toString();
+          _maxExpController.text = localMaxE.toString();
+          if (localExcluded.isNotEmpty && _excludedCompanies.isEmpty) {
+            _excludedCompanies = localExcluded;
+          }
+          if (localRadarLocs.isNotEmpty && _radarLocations.isEmpty) {
+            _radarLocations = localRadarLocs;
+          }
+          if (localRadarTechs.isNotEmpty && _radarTechDomains.isEmpty) {
+            _radarTechDomains = localRadarTechs;
+          }
+        });
+      }
+    } catch (_) {}
+
+    // 2. REMOTE SYNC: Fetch complete profile from Service / Firestore
     final applicantName = await _service.getApplicantName();
     final emailConfig = await _service.getUserEmailConfig();
     final masterResume = await _service.getMasterResume();
@@ -240,20 +377,36 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
     if (mounted) {
       setState(() {
-        _applicantNameController.text = applicantName;
-        _userEmail = emailConfig['email'] ?? '';
-        _userAppPassword = emailConfig['appPassword'] ?? '';
-        _resumeFileName = masterResume['fileName'] ?? '';
-        _hasResume = (masterResume['base64'] ?? '').isNotEmpty;
-        _autoApplyEnabled = autoSettings['enabled'] ?? true;
-        _excludedCompanies = excluded;
+        if (applicantName.isNotEmpty) {
+          _applicantNameController.text = applicantName;
+        }
+        if ((emailConfig['email'] ?? '').isNotEmpty) {
+          _userEmail = emailConfig['email']!;
+        }
+        if ((emailConfig['appPassword'] ?? '').isNotEmpty) {
+          _userAppPassword = emailConfig['appPassword']!;
+        }
+        if ((masterResume['fileName'] ?? '').isNotEmpty) {
+          _resumeFileName = masterResume['fileName']!;
+        }
+        if ((masterResume['base64'] ?? '').isNotEmpty || _resumeProfiles.isNotEmpty || _resumeFileName.isNotEmpty) {
+          _hasResume = true;
+        }
+        _autoApplyEnabled = autoSettings['enabled'] ?? _autoApplyEnabled;
+        if (excluded.isNotEmpty) {
+          _excludedCompanies = excluded;
+        }
         final minE = autoSettings['minExpYears'] ?? 0;
         final maxE = autoSettings['maxExpYears'] ?? 3;
         _isFresher = autoSettings['isFresher'] == true || (minE == 0 && maxE == 0);
         _minExpController.text = minE.toString();
         _maxExpController.text = maxE.toString();
-        _targetRolesController.text = targetRoles.join(', ');
-        _locationsController.text = locations.join(', ');
+        if (targetRoles.isNotEmpty) {
+          _targetRolesController.text = targetRoles.join(', ');
+        }
+        if (locations.isNotEmpty) {
+          _locationsController.text = locations.join(', ');
+        }
       });
 
       final radarSettings = await _service.getStartupRadarSettings();
@@ -261,8 +414,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       final radarTechs = List<String>.from(radarSettings['techDomains'] ?? []);
       if (mounted) {
         setState(() {
-          _radarLocations = radarLocs;
-          _radarTechDomains = radarTechs;
+          if (radarLocs.isNotEmpty) {
+            _radarLocations = radarLocs;
+          } else if (_radarLocations.isEmpty && locations.isNotEmpty) {
+            _radarLocations = List.from(locations);
+          }
+          if (radarTechs.isNotEmpty) {
+            _radarTechDomains = radarTechs;
+          } else if (_radarTechDomains.isEmpty && targetRoles.isNotEmpty) {
+            _radarTechDomains = List.from(targetRoles);
+          }
         });
       }
     }
@@ -447,6 +608,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                       updatedAt: DateTime.now(),
                     );
                     await _service.saveResumeProfile(profile);
+                    if (mounted) {
+                      setState(() {
+                        _hasResume = true;
+                        if (_resumeFileName.isEmpty || profile.isDefault) {
+                          _resumeFileName = profile.fileName;
+                        }
+                      });
+                    }
                     onSaved?.call();
                     if (dlgCtx.mounted) {
                       Navigator.pop(dlgCtx);
@@ -1354,10 +1523,18 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   // ============================================================================
 
   Future<void> _saveAutoApplySettings() async {
-    final roles = _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-    final locs = _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    var roles = _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    var locs = _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
     final minExp = _isFresher ? 0 : (int.tryParse(_minExpController.text.trim()) ?? 0);
     final maxExp = _isFresher ? 0 : (int.tryParse(_maxExpController.text.trim()) ?? 3);
+
+    // Safeguard: do not wipe existing roles/locations if user hasn't typed in new ones but had radar domains/locs
+    if (roles.isEmpty && _radarTechDomains.isNotEmpty) {
+      roles = List.from(_radarTechDomains);
+    }
+    if (locs.isEmpty && _radarLocations.isNotEmpty) {
+      locs = List.from(_radarLocations);
+    }
 
     setState(() => _isSavingAutoSettings = true);
     try {
@@ -1397,9 +1574,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Future<void> _runAutoApplyNow() async {
-    if (!_hasResume) {
+    final bool hasAnyResume = _hasResume || _resumeProfiles.isNotEmpty || _resumeFileName.isNotEmpty;
+    if (!hasAnyResume) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please upload your Master Resume PDF first in Settings (top right icon).')),
+        const SnackBar(content: Text('Please upload your Resume PDF first in Settings (top right icon).')),
       );
       _showJobAssistantSettingsDialog();
       return;
@@ -1727,10 +1905,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         actions: [
           IconButton(
             icon: StreamBuilder<List<JobApplication>>(
-              stream: _service.getJobApplicationsStream(),
+              stream: _applicationsStream,
               builder: (context, appSnap) {
                 return StreamBuilder<List<NetworkingLead>>(
-                  stream: _service.getNetworkingLeadsStream(),
+                  stream: _networkingLeadsStream,
                   builder: (context, leadSnap) {
                     final appReplies = (appSnap.data ?? [])
                         .where((a) => (a.status == 'reply_received' || a.isBounced) && !a.isReplyDismissed)
@@ -2008,7 +2186,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         activeTrackColor: Colors.blueAccent,
                         onChanged: (val) {
                           setState(() => _autoApplyEnabled = val);
-                          _saveAutoApplySettings();
+                          _service.setAutoApplyEnabled(val);
                         },
                       ),
                     ],
@@ -2017,70 +2195,80 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   const Divider(height: 1),
                   const SizedBox(height: 12),
                   // Health checklist: Resume & Gmail
-                  Row(
-                    children: [
-                      Expanded(
-                        child: InkWell(
-                          onTap: _showJobAssistantSettingsDialog,
-                          child: Row(
-                            children: [
-                              Icon(
-                                _hasResume ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
-                                color: _hasResume ? const Color(0xFF10B981) : Colors.orange,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  _hasResume ? 'Resume: $_resumeFileName' : 'Resume: Tap to upload',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w500,
-                                    color: isDark ? Colors.white70 : Colors.black87,
+                  Builder(
+                    builder: (context) {
+                      final bool hasResumeActive = _hasResume || _resumeProfiles.isNotEmpty || _resumeFileName.isNotEmpty;
+                      final String displayResumeName = _resumeFileName.isNotEmpty
+                          ? _resumeFileName
+                          : (_resumeProfiles.isNotEmpty ? _resumeProfiles.first.fileName : 'Active');
+                      final bool hasEmailConfig = _userEmail.trim().isNotEmpty && _userAppPassword.trim().isNotEmpty;
+
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: _showJobAssistantSettingsDialog,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    hasResumeActive ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+                                    color: hasResumeActive ? const Color(0xFF10B981) : Colors.orange,
+                                    size: 16,
                                   ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InkWell(
-                          onTap: _showJobAssistantSettingsDialog,
-                          child: Row(
-                            children: [
-                              Icon(
-                                (_userEmail.isNotEmpty && _userAppPassword.isNotEmpty)
-                                    ? Icons.check_circle_rounded
-                                    : Icons.warning_amber_rounded,
-                                color: (_userEmail.isNotEmpty && _userAppPassword.isNotEmpty)
-                                    ? const Color(0xFF10B981)
-                                    : Colors.orange,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  (_userEmail.isNotEmpty && _userAppPassword.isNotEmpty)
-                                      ? 'Gmail: $_userEmail'
-                                      : 'Gmail: Tap to set',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w500,
-                                    color: isDark ? Colors.white70 : Colors.black87,
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      hasResumeActive ? 'Resume: $displayResumeName' : 'Resume: Tap to upload',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w500,
+                                        color: isDark ? Colors.white70 : Colors.black87,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
-                    ],
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: InkWell(
+                              onTap: _showJobAssistantSettingsDialog,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    hasEmailConfig
+                                        ? Icons.check_circle_rounded
+                                        : Icons.warning_amber_rounded,
+                                    color: hasEmailConfig
+                                        ? const Color(0xFF10B981)
+                                        : Colors.orange,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      hasEmailConfig
+                                          ? 'Gmail: $_userEmail'
+                                          : 'Gmail: Tap to set',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w500,
+                                        color: isDark ? Colors.white70 : Colors.black87,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   // Last Run & Last Applied Timestamps Card
@@ -2602,9 +2790,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             const SizedBox(height: 10),
 
             StreamBuilder<List<JobApplication>>(
-              stream: _service.getJobApplicationsStream(),
+              stream: _applicationsStream,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                   return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
                 }
 
@@ -3555,9 +3743,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     final subtextColor = isDark ? Colors.white70 : Colors.black54;
 
     return StreamBuilder<List<JobApplication>>(
-      stream: _service.getJobApplicationsStream(),
+      stream: _applicationsStream,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
@@ -3931,9 +4119,20 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       if (name.isNotEmpty) {
         await _service.saveApplicantName(name);
       }
+
+      var locs = List<String>.from(_radarLocations);
+      if (locs.isEmpty && _locationsController.text.trim().isNotEmpty) {
+        locs = _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      }
+
+      var domains = List<String>.from(_radarTechDomains);
+      if (domains.isEmpty && _targetRolesController.text.trim().isNotEmpty) {
+        domains = _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      }
+
       await _service.saveStartupRadarSettings(
-        locations: _radarLocations,
-        techDomains: _radarTechDomains,
+        locations: locs,
+        techDomains: domains,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -4479,9 +4678,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
             // Startup Leads Stream
             StreamBuilder<List<NetworkingLead>>(
-              stream: _service.getNetworkingLeadsStream(),
+              stream: _networkingLeadsStream,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(32.0),

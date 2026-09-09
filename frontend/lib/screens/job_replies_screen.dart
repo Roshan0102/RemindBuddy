@@ -24,6 +24,9 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
   bool _showDismissed = false;
   DateTime? _lastChecked;
 
+  late Stream<List<JobApplication>> _applicationsStream;
+  late Stream<List<NetworkingLead>> _networkingLeadsStream;
+
   bool _isDeliveryBounce(String sender, String subject, String bodySnippet, String? responseType) {
     if (responseType == 'bounced') return true;
     final s = sender.toLowerCase();
@@ -136,6 +139,8 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
   @override
   void initState() {
     super.initState();
+    _applicationsStream = _service.getJobApplicationsStream();
+    _networkingLeadsStream = _service.getNetworkingLeadsStream();
     _loadLastChecked();
   }
 
@@ -275,13 +280,15 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
         ],
       ),
       body: StreamBuilder<List<JobApplication>>(
-        stream: _service.getJobApplicationsStream(),
+        stream: _applicationsStream,
         builder: (context, appSnap) {
           return StreamBuilder<List<NetworkingLead>>(
-            stream: _service.getNetworkingLeadsStream(),
+            stream: _networkingLeadsStream,
             builder: (context, leadSnap) {
               if (appSnap.connectionState == ConnectionState.waiting &&
-                  leadSnap.connectionState == ConnectionState.waiting) {
+                  leadSnap.connectionState == ConnectionState.waiting &&
+                  !appSnap.hasData &&
+                  !leadSnap.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
 
