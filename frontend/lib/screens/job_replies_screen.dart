@@ -115,7 +115,10 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
 
   Future<void> _handleConnectLinkedIn(UnifiedReplyItem item) async {
     if (item.connectionNote != null && item.connectionNote!.isNotEmpty) {
-      await Clipboard.setData(ClipboardData(text: item.connectionNote!));
+      final noteToCopy = item.connectionNote!.length > 200
+          ? '${item.connectionNote!.substring(0, 197)}...'
+          : item.connectionNote!;
+      await Clipboard.setData(ClipboardData(text: noteToCopy));
     }
     if (item.linkedinUrl != null && item.linkedinUrl!.isNotEmpty) {
       try {

@@ -10,6 +10,7 @@ const moment = require("moment-timezone");
 const dns = require("dns");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
+const featureLogger_1 = require("../../utils/featureLogger");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
@@ -116,7 +117,7 @@ function getBestMatchingResumeProfile(jobTitle, keySkills, profiles) {
     return bestProfile;
 }
 async function discoverAndApplyForUser(uid, options) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     if (!userDoc.exists) {
         return { success: false, appliedCount: 0, jobs: [], message: "User not found" };
@@ -142,6 +143,14 @@ async function discoverAndApplyForUser(uid, options) {
     }
     if (!userEmail || !appPassword) {
         console.log(`[JobDiscovery] User ${uid} has not configured Gmail/App Password. Skipping.`);
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'skipped',
+            count: 0,
+            message: 'Skipped: Gmail & App Password not configured in Job Assistant Settings.',
+            isManual: (_a = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _a !== void 0 ? _a : false
+        });
         return { success: false, appliedCount: 0, jobs: [], message: "Gmail & App Password not configured in Job Assistant Settings." };
     }
     // Resolve roles & locations from options or user profile
@@ -152,6 +161,14 @@ async function discoverAndApplyForUser(uid, options) {
     }
     if (targetRoles.length === 0) {
         console.log(`[JobDiscovery] User ${uid} has no target roles configured. Skipping.`);
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'skipped',
+            count: 0,
+            message: 'Skipped: Please enter your Target Job Roles (e.g. .NET Developer) in Auto-Apply settings.',
+            isManual: (_b = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _b !== void 0 ? _b : false
+        });
         return {
             success: false,
             appliedCount: 0,
@@ -197,6 +214,14 @@ async function discoverAndApplyForUser(uid, options) {
     }
     if (resumeProfiles.length === 0) {
         console.log(`[JobDiscovery] User ${uid} has not uploaded any resumes. Skipping.`);
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'skipped',
+            count: 0,
+            message: 'Skipped: Please upload your resume PDF in Job Assistant Settings.',
+            isManual: (_c = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _c !== void 0 ? _c : false
+        });
         return { success: false, appliedCount: 0, jobs: [], message: "Please upload your resume PDF in Job Assistant Settings." };
     }
     // Record jobsLastRan timestamp immediately
@@ -219,8 +244,8 @@ async function discoverAndApplyForUser(uid, options) {
     if (typeof excludedCompanies === 'string') {
         excludedCompanies = excludedCompanies.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
     }
-    const minExp = (options === null || options === void 0 ? void 0 : options.minExpYears) !== undefined ? Number(options.minExpYears) : Number((_a = autoApplySettings.minExpYears) !== null && _a !== void 0 ? _a : 0);
-    const maxExp = (options === null || options === void 0 ? void 0 : options.maxExpYears) !== undefined ? Number(options.maxExpYears) : Number((_b = autoApplySettings.maxExpYears) !== null && _b !== void 0 ? _b : 3);
+    const minExp = (options === null || options === void 0 ? void 0 : options.minExpYears) !== undefined ? Number(options.minExpYears) : Number((_d = autoApplySettings.minExpYears) !== null && _d !== void 0 ? _d : 0);
+    const maxExp = (options === null || options === void 0 ? void 0 : options.maxExpYears) !== undefined ? Number(options.maxExpYears) : Number((_e = autoApplySettings.maxExpYears) !== null && _e !== void 0 ? _e : 3);
     const maxApplyLimit = (options === null || options === void 0 ? void 0 : options.maxApplications) || autoApplySettings.maxPerRun || 6;
     // Fetch previously applied emails/companies to avoid duplicate applications
     const existingAppsSnap = await firebase_1.db.collection("users").doc(uid).collection("job_applications").get();
@@ -241,6 +266,14 @@ async function discoverAndApplyForUser(uid, options) {
     const userGeminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
     if (!userTavilyKey || !userGeminiKey) {
         console.log(`[JobDiscovery] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'error',
+            count: 0,
+            message: 'API Key Error: Missing Tavily or Gemini API key. Please configure them in Settings -> AI & Search Keys.',
+            isManual: (_f = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _f !== void 0 ? _f : false
+        });
         return {
             success: false,
             appliedCount: 0,
@@ -262,6 +295,7 @@ async function discoverAndApplyForUser(uid, options) {
     // 1. Perform intelligent multi-query web search via Tavily for each target role
     const allTavilyResults = [];
     const seenUrls = new Set();
+    let lastTavilyError = "";
     for (const role of targetRoles.slice(0, 4)) {
         try {
             const expQuery = isFresherCandidate
@@ -286,11 +320,23 @@ async function discoverAndApplyForUser(uid, options) {
         }
         catch (tavilyErr) {
             console.warn(`[JobDiscovery] Tavily search error for role "${role}":`, tavilyErr.message);
+            lastTavilyError = tavilyErr.message || String(tavilyErr);
         }
     }
     if (allTavilyResults.length === 0) {
         console.log(`[JobDiscovery] No search results returned from Tavily for user ${uid}.`);
-        return { success: true, appliedCount: 0, jobs: [], message: "No fresh matching job postings with recruiter emails found." };
+        const message = lastTavilyError
+            ? `Tavily Search Error: ${lastTavilyError}. Please check your Tavily API key and plan limits in Settings.`
+            : "No fresh matching job postings with recruiter emails found.";
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: lastTavilyError ? 'error' : 'no_results',
+            count: 0,
+            message,
+            isManual: (_g = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _g !== void 0 ? _g : false
+        });
+        return { success: !lastTavilyError, appliedCount: 0, jobs: [], message };
     }
     const searchResultsSummary = allTavilyResults.map((r, i) => `[Live Job Post ${i + 1}]\nTitle: ${r.title}\nSource: ${r.url}\nPost Details: ${r.content}`).join("\n\n");
     const prompt = `You are an elite automated job discovery and recruiter outreach AI agent.
@@ -345,7 +391,7 @@ Respond ONLY with a JSON array matching this schema:
 ]
 If no matching jobs with verified emails and ${minExp}-${maxExp} years experience are found, respond with an empty JSON array: [].`;
     const inlineParts = [];
-    const promptResumeB64 = ((_c = (resumeProfiles.find(p => p.isDefault) || resumeProfiles[0])) === null || _c === void 0 ? void 0 : _c.base64) || resumeBase64;
+    const promptResumeB64 = ((_h = (resumeProfiles.find(p => p.isDefault) || resumeProfiles[0])) === null || _h === void 0 ? void 0 : _h.base64) || resumeBase64;
     if (promptResumeB64) {
         const cleanResumeB64 = promptResumeB64.replace(/^data:application\/pdf;base64,/, '');
         inlineParts.push({
@@ -375,6 +421,15 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
     }
     catch (apiErr) {
         console.error("[JobDiscovery] Gemini analysis failed:", apiErr.message);
+        const errMsg = `Gemini API Error: ${apiErr.message || apiErr}. Check your Gemini API key and usage limit in Settings.`;
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'error',
+            count: 0,
+            message: errMsg,
+            isManual: (_j = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _j !== void 0 ? _j : false
+        });
         return { success: false, appliedCount: 0, jobs: [], message: `Job Search AI temporarily busy: ${apiErr.message}` };
     }
     if (!rawText) {
@@ -397,6 +452,14 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
     }
     if (!Array.isArray(discoveredJobs) || discoveredJobs.length === 0) {
         console.log(`[JobDiscovery] 0 matching jobs found with recruiter emails for user ${uid}.`);
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'no_results',
+            count: 0,
+            message: '0 fresh matching jobs with recruiter emails found for this run.',
+            isManual: (_k = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _k !== void 0 ? _k : false
+        });
         return { success: true, appliedCount: 0, jobs: [], message: "No fresh matching openings with recruiter emails found today." };
     }
     // Load global bounce blacklist
@@ -476,6 +539,14 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
     }
     if (validFilteredJobs.length === 0) {
         console.log(`[JobDiscovery] All discovered jobs were either duplicates, lacked valid emails, matched excluded blacklist, or had unreachable domains.`);
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'no_results',
+            count: 0,
+            message: 'Discovered openings were excluded, already applied to, or had unreachable domains.',
+            isManual: (_l = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _l !== void 0 ? _l : false
+        });
         return { success: true, appliedCount: 0, jobs: [], message: "Discovered openings were excluded, already applied to, or had unreachable domains." };
     }
     // Initialize Nodemailer transporter with user's Gmail App Password
@@ -551,7 +622,7 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         try {
             const userTokenDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
             if (!userTokenDoc.empty) {
-                const fcmToken = (_d = userTokenDoc.docs[0].data()) === null || _d === void 0 ? void 0 : _d.fcmToken;
+                const fcmToken = (_m = userTokenDoc.docs[0].data()) === null || _m === void 0 ? void 0 : _m.fcmToken;
                 if (fcmToken) {
                     const compNames = successfullyAppliedJobs.map(j => j.companyName).filter(Boolean).slice(0, 3).join(', ');
                     const notifTitle = `🚀 Auto-Applied to ${successfullyAppliedJobs.length} New Job${successfullyAppliedJobs.length > 1 ? 's' : ''}!`;
@@ -619,6 +690,18 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
     catch (inboxErr) {
         console.warn(`[JobDiscovery] Post-task inbox check error for user ${uid}:`, inboxErr.message || inboxErr);
     }
+    const appliedDetails = successfullyAppliedJobs.map(j => `${j.jobTitle} at ${j.companyName}`);
+    await (0, featureLogger_1.logFeatureExecution)(uid, {
+        feature: 'auto_apply',
+        featureTitle: 'Auto-Apply Agent',
+        status: successfullyAppliedJobs.length > 0 ? 'success' : 'no_results',
+        count: successfullyAppliedJobs.length,
+        message: successfullyAppliedJobs.length > 0
+            ? `Auto-applied to ${successfullyAppliedJobs.length} job(s): ${appliedDetails.slice(0, 3).join(', ')}`
+            : '0 matching jobs applied for this run.',
+        details: appliedDetails,
+        isManual: (_o = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _o !== void 0 ? _o : false
+    });
     return {
         success: true,
         appliedCount: successfullyAppliedJobs.length,

@@ -4,6 +4,7 @@ import * as moment from "moment-timezone";
 import * as dns from "dns";
 import { admin, db } from "../../config/firebase";
 import { logNotification } from "../../utils/logger";
+import { logFeatureExecution } from "../../utils/featureLogger";
 import { callGeminiAPI } from "../../utils/geminiHelper";
 import { searchTavily, TavilySearchResult } from "../../utils/tavilyHelper";
 import { enqueueUserCloudTask } from "../../utils/cloudTasksHelper";
@@ -184,6 +185,14 @@ export async function discoverAndApplyForUser(
 
     if (!userEmail || !appPassword) {
         console.log(`[JobDiscovery] User ${uid} has not configured Gmail/App Password. Skipping.`);
+        await logFeatureExecution(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'skipped',
+            count: 0,
+            message: 'Skipped: Gmail & App Password not configured in Job Assistant Settings.',
+            isManual: options?.isManualTrigger ?? false
+        });
         return { success: false, appliedCount: 0, jobs: [], message: "Gmail & App Password not configured in Job Assistant Settings." };
     }
 
@@ -195,6 +204,14 @@ export async function discoverAndApplyForUser(
     }
     if (targetRoles.length === 0) {
         console.log(`[JobDiscovery] User ${uid} has no target roles configured. Skipping.`);
+        await logFeatureExecution(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'skipped',
+            count: 0,
+            message: 'Skipped: Please enter your Target Job Roles (e.g. .NET Developer) in Auto-Apply settings.',
+            isManual: options?.isManualTrigger ?? false
+        });
         return {
             success: false,
             appliedCount: 0,
@@ -243,6 +260,14 @@ export async function discoverAndApplyForUser(
 
     if (resumeProfiles.length === 0) {
         console.log(`[JobDiscovery] User ${uid} has not uploaded any resumes. Skipping.`);
+        await logFeatureExecution(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'skipped',
+            count: 0,
+            message: 'Skipped: Please upload your resume PDF in Job Assistant Settings.',
+            isManual: options?.isManualTrigger ?? false
+        });
         return { success: false, appliedCount: 0, jobs: [], message: "Please upload your resume PDF in Job Assistant Settings." };
     }
 
@@ -296,6 +321,14 @@ export async function discoverAndApplyForUser(
 
     if (!userTavilyKey || !userGeminiKey) {
         console.log(`[JobDiscovery] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
+        await logFeatureExecution(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'error',
+            count: 0,
+            message: 'API Key Error: Missing Tavily or Gemini API key. Please configure them in Settings -> AI & Search Keys.',
+            isManual: options?.isManualTrigger ?? false
+        });
         return { 
             success: false, 
             appliedCount: 0, 
@@ -321,6 +354,7 @@ export async function discoverAndApplyForUser(
     // 1. Perform intelligent multi-query web search via Tavily for each target role
     const allTavilyResults: TavilySearchResult[] = [];
     const seenUrls = new Set<string>();
+    let lastTavilyError = "";
 
     for (const role of targetRoles.slice(0, 4)) {
         try {
@@ -348,12 +382,24 @@ export async function discoverAndApplyForUser(
             }
         } catch (tavilyErr: any) {
             console.warn(`[JobDiscovery] Tavily search error for role "${role}":`, tavilyErr.message);
+            lastTavilyError = tavilyErr.message || String(tavilyErr);
         }
     }
 
     if (allTavilyResults.length === 0) {
         console.log(`[JobDiscovery] No search results returned from Tavily for user ${uid}.`);
-        return { success: true, appliedCount: 0, jobs: [], message: "No fresh matching job postings with recruiter emails found." };
+        const message = lastTavilyError
+            ? `Tavily Search Error: ${lastTavilyError}. Please check your Tavily API key and plan limits in Settings.`
+            : "No fresh matching job postings with recruiter emails found.";
+        await logFeatureExecution(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: lastTavilyError ? 'error' : 'no_results',
+            count: 0,
+            message,
+            isManual: options?.isManualTrigger ?? false
+        });
+        return { success: !lastTavilyError, appliedCount: 0, jobs: [], message };
     }
 
     const searchResultsSummary = allTavilyResults.map((r, i) =>
@@ -444,6 +490,15 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         modelUsed = geminiResult.modelUsed || "";
     } catch (apiErr: any) {
         console.error("[JobDiscovery] Gemini analysis failed:", apiErr.message);
+        const errMsg = `Gemini API Error: ${apiErr.message || apiErr}. Check your Gemini API key and usage limit in Settings.`;
+        await logFeatureExecution(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'error',
+            count: 0,
+            message: errMsg,
+            isManual: options?.isManualTrigger ?? false
+        });
         return { success: false, appliedCount: 0, jobs: [], message: `Job Search AI temporarily busy: ${apiErr.message}` };
     }
 
@@ -467,6 +522,14 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
 
     if (!Array.isArray(discoveredJobs) || discoveredJobs.length === 0) {
         console.log(`[JobDiscovery] 0 matching jobs found with recruiter emails for user ${uid}.`);
+        await logFeatureExecution(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'no_results',
+            count: 0,
+            message: '0 fresh matching jobs with recruiter emails found for this run.',
+            isManual: options?.isManualTrigger ?? false
+        });
         return { success: true, appliedCount: 0, jobs: [], message: "No fresh matching openings with recruiter emails found today." };
     }
 
@@ -552,6 +615,14 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
 
     if (validFilteredJobs.length === 0) {
         console.log(`[JobDiscovery] All discovered jobs were either duplicates, lacked valid emails, matched excluded blacklist, or had unreachable domains.`);
+        await logFeatureExecution(uid, {
+            feature: 'auto_apply',
+            featureTitle: 'Auto-Apply Agent',
+            status: 'no_results',
+            count: 0,
+            message: 'Discovered openings were excluded, already applied to, or had unreachable domains.',
+            isManual: options?.isManualTrigger ?? false
+        });
         return { success: true, appliedCount: 0, jobs: [], message: "Discovered openings were excluded, already applied to, or had unreachable domains." };
     }
 
@@ -710,6 +781,19 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
     } catch (inboxErr: any) {
         console.warn(`[JobDiscovery] Post-task inbox check error for user ${uid}:`, inboxErr.message || inboxErr);
     }
+
+    const appliedDetails = successfullyAppliedJobs.map(j => `${j.jobTitle} at ${j.companyName}`);
+    await logFeatureExecution(uid, {
+        feature: 'auto_apply',
+        featureTitle: 'Auto-Apply Agent',
+        status: successfullyAppliedJobs.length > 0 ? 'success' : 'no_results',
+        count: successfullyAppliedJobs.length,
+        message: successfullyAppliedJobs.length > 0
+            ? `Auto-applied to ${successfullyAppliedJobs.length} job(s): ${appliedDetails.slice(0, 3).join(', ')}`
+            : '0 matching jobs applied for this run.',
+        details: appliedDetails,
+        isManual: options?.isManualTrigger ?? false
+    });
 
     return {
         success: true,

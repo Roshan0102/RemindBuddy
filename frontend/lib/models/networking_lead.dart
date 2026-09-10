@@ -9,7 +9,7 @@ class NetworkingLead {
   final String linkedinUrl;
   final String? email;
   final String category; // 'founder', 'engineering_manager', 'talent_acquisition'
-  final String connectionNote; // <= 300 characters for LinkedIn connection note
+  final String connectionNote; // <= 200 characters for LinkedIn connection note
   final String fullPitch; // Complete networking introductory pitch / cold email
   final String status; // 'discovered', 'email_sent', 'note_sent', 'connected', 'replied'
   final DateTime discoveredAt;

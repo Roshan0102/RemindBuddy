@@ -8,6 +8,7 @@ const nodemailer = require("nodemailer");
 const dns = require("dns");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
+const featureLogger_1 = require("../../utils/featureLogger");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const IT_SERVICES_MNC_BLACKLIST = [
@@ -46,7 +47,7 @@ async function verifyEmailDomainMx(email) {
  * and saves LinkedIn connection notes for 1-tap manual outreach.
  */
 async function discoverNetworkingLeadsForUser(uid, options) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
     console.log(`[StartupRadar] Starting Seed/Series A startup discovery for user ${uid}...`);
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     if (!userDoc.exists) {
@@ -108,6 +109,14 @@ async function discoverNetworkingLeadsForUser(uid, options) {
     const userGeminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
     if (!userTavilyKey || !userGeminiKey) {
         console.log(`[StartupRadar] User ${uid} missing personal Tavily or Gemini API key in Settings.`);
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'cold_outreach',
+            featureTitle: 'Cold Outreach',
+            status: 'error',
+            count: 0,
+            message: 'API Key Error: Missing Tavily or Gemini API key. Please configure in Settings -> AI & Search Keys.',
+            isManual: (_a = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _a !== void 0 ? _a : false
+        });
         return {
             success: false,
             count: 0,
@@ -117,8 +126,8 @@ async function discoverNetworkingLeadsForUser(uid, options) {
     }
     // Resolve Email Transporter & Resume for automatic email delivery
     const emailConfig = userData.emailConfig || {};
-    const userEmail = (_a = emailConfig.email) === null || _a === void 0 ? void 0 : _a.trim();
-    const appPassword = (_b = emailConfig.appPassword) === null || _b === void 0 ? void 0 : _b.trim();
+    const userEmail = (_b = emailConfig.email) === null || _b === void 0 ? void 0 : _b.trim();
+    const appPassword = (_c = emailConfig.appPassword) === null || _c === void 0 ? void 0 : _c.trim();
     let canSendEmails = !!(userEmail && appPassword);
     let resumeBase64 = "";
     let resumeFileName = "Resume.pdf";
@@ -187,6 +196,7 @@ async function discoverNetworkingLeadsForUser(uid, options) {
     ];
     const allTavilyResults = [];
     const seenUrls = new Set();
+    let lastTavilyError = "";
     for (const qObj of queries) {
         try {
             console.log(`[StartupRadar] Running Tavily search for: ${qObj.query}...`);
@@ -217,15 +227,26 @@ async function discoverNetworkingLeadsForUser(uid, options) {
         }
         catch (searchErr) {
             console.warn(`[StartupRadar] Tavily search error:`, searchErr.message);
+            lastTavilyError = searchErr.message || String(searchErr);
         }
     }
     if (allTavilyResults.length === 0) {
-        console.log(`[StartupRadar] 0 fresh startup profiles found for user ${uid}.`);
+        const message = lastTavilyError
+            ? `Tavily Search Error: ${lastTavilyError}. Please check your Tavily API key and plan limits in Settings.`
+            : "No fresh startup founders or CTOs found for this run.";
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'cold_outreach',
+            featureTitle: 'Cold Outreach',
+            status: lastTavilyError ? 'error' : 'no_results',
+            count: 0,
+            message,
+            isManual: (_d = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _d !== void 0 ? _d : false
+        });
         return {
-            success: true,
+            success: !lastTavilyError,
             count: 0,
             leads: [],
-            message: "No fresh startup founders or CTOs found today. Check back tomorrow!"
+            message
         };
     }
     const profilesText = allTavilyResults.map((item, idx) => {
@@ -275,7 +296,7 @@ Extract each verified person. For each:
 8. "techStack": Array of 2-4 tech tags relevant to their company or candidate focus (${targetRoles.slice(0, 3).join(", ")}).
 9. "category": Strictly "founder", "engineering_manager", or "talent_acquisition".
 10. "connectionNote": 
-    - MANDATORY HARD LIMIT: STRICTLY LESS THAN OR EQUAL TO 280 CHARACTERS (including spaces).
+    - MANDATORY HARD LIMIT: STRICTLY LESS THAN OR EQUAL TO 190 CHARACTERS (including spaces). MUST fit within LinkedIn free tier 200 character limit!
     - Authentic, polite invitation for LinkedIn mentioning their startup and candidate's domain (${primaryRole}).
 11. "fullPitch": 
     - A CRISP, HIGH-CONVERSION 4-SENTENCE STARTUP VALUE PITCH following instructions above.
@@ -309,6 +330,15 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
     }
     catch (apiErr) {
         console.error("[StartupRadar] Gemini analysis failed:", apiErr.message);
+        const errMsg = `Gemini API Error: ${apiErr.message || apiErr}. Check your Gemini API key and usage limit in Settings.`;
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'cold_outreach',
+            featureTitle: 'Cold Outreach',
+            status: 'error',
+            count: 0,
+            message: errMsg,
+            isManual: (_e = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _e !== void 0 ? _e : false
+        });
         return { success: false, count: 0, leads: [], message: `AI analysis busy: ${apiErr.message}` };
     }
     let parsedLeads = [];
@@ -359,10 +389,10 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             continue;
         }
         usedKeys.add(personKey);
-        // Clamp connection note to <= 300 characters
+        // Clamp connection note to <= 200 characters (LinkedIn free tier limit)
         let note = (lead.connectionNote || "").trim();
-        if (note.length > 300) {
-            note = note.substring(0, 297) + "...";
+        if (note.length > 200) {
+            note = note.substring(0, 197) + "...";
         }
         qualifiedLeads.push({
             name: lead.name.trim(),
@@ -373,7 +403,7 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             email: lead.email ? lead.email.trim().toLowerCase() : null,
             category: ["founder", "engineering_manager", "talent_acquisition"].includes(lead.category) ? lead.category : "founder",
             connectionNote: note,
-            fullPitch: ((_c = lead.fullPitch) === null || _c === void 0 ? void 0 : _c.trim()) || note,
+            fullPitch: ((_f = lead.fullPitch) === null || _f === void 0 ? void 0 : _f.trim()) || note,
             fundingStage: lead.fundingStage || "Seed / Series A",
             techStack: Array.isArray(lead.techStack) ? lead.techStack : targetRoles.slice(0, 3)
         });
@@ -395,9 +425,10 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             if (usedKeys.has(personKey) || existingNames.has(personKey) || existingCompanies.has(companyClean))
                 continue;
             usedKeys.add(personKey);
+            // Clamp connection note to <= 200 characters (LinkedIn free tier limit)
             let note = (lead.connectionNote || "").trim();
-            if (note.length > 300) {
-                note = note.substring(0, 297) + "...";
+            if (note.length > 200) {
+                note = note.substring(0, 197) + "...";
             }
             qualifiedLeads.push({
                 name: lead.name.trim(),
@@ -408,7 +439,7 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
                 email: lead.email ? lead.email.trim().toLowerCase() : null,
                 category: ["founder", "engineering_manager", "talent_acquisition"].includes(lead.category) ? lead.category : "engineering_manager",
                 connectionNote: note,
-                fullPitch: ((_d = lead.fullPitch) === null || _d === void 0 ? void 0 : _d.trim()) || note,
+                fullPitch: ((_g = lead.fullPitch) === null || _g === void 0 ? void 0 : _g.trim()) || note,
                 fundingStage: lead.fundingStage || "High-Growth Startup",
                 techStack: Array.isArray(lead.techStack) ? lead.techStack : targetRoles.slice(0, 3)
             });
@@ -418,6 +449,14 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
         }
     }
     if (qualifiedLeads.length === 0) {
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'cold_outreach',
+            featureTitle: 'Cold Outreach',
+            status: 'no_results',
+            count: 0,
+            message: 'All discovered startups were previously pitched or excluded.',
+            isManual: (_h = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _h !== void 0 ? _h : false
+        });
         return { success: true, count: 0, leads: [], message: "All discovered startups were previously pitched or excluded." };
     }
     // 4. Automatically Send Emails to Founders/CTOs ONLY if Email is Explicitly Verified
@@ -514,7 +553,7 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             fullPitch: lead.fullPitch,
             fundingStage: lead.fundingStage,
             techStack: lead.techStack,
-            emailSent: (_e = lead.emailSent) !== null && _e !== void 0 ? _e : false,
+            emailSent: (_j = lead.emailSent) !== null && _j !== void 0 ? _j : false,
             emailSentAt: lead.emailSentAt ? firebase_1.admin.firestore.Timestamp.fromDate(lead.emailSentAt) : null,
             emailSubject: lead.emailSubject || null,
             messageId: lead.messageId || null,
@@ -556,7 +595,7 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
                         <p>Your Startup Radar ran a new outreach discovery pass for <strong>${targetLocations.join(', ')}</strong> and generated tailored pitches for <strong>${qualifiedLeads.length} startup leaders</strong>:</p>
                         <ul style="padding-left: 20px; list-style-type: none;">${leadsHtml}</ul>
                         <p style="color: #6B7280; font-size: 13px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">
-                            Pitches and 300-char LinkedIn connection notes are also ready in your RemindBuddy Cold Outreach dashboard.
+                            Pitches and 200-char LinkedIn connection notes are also ready in your RemindBuddy Cold Outreach dashboard.
                         </p>
                     </div>
                 `
@@ -567,6 +606,18 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
     catch (e) {
         console.warn("[StartupRadar] Notification / email digest error:", e);
     }
+    const leadDetails = qualifiedLeads.map(l => `${l.name} (${l.currentRole} at ${l.companyName})`);
+    await (0, featureLogger_1.logFeatureExecution)(uid, {
+        feature: 'cold_outreach',
+        featureTitle: 'Cold Outreach',
+        status: qualifiedLeads.length > 0 ? 'success' : 'no_results',
+        count: qualifiedLeads.length,
+        message: emailsSentCount > 0
+            ? `Auto-dispatched ${emailsSentCount} startup pitch(es) via email. ${qualifiedLeads.length} LinkedIn notes ready.`
+            : `Discovered ${qualifiedLeads.length} startup leader(s) in ${targetLocations[0] || 'target area'} (LinkedIn notes ready).`,
+        details: leadDetails,
+        isManual: (_k = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _k !== void 0 ? _k : false
+    });
     return {
         success: true,
         count: qualifiedLeads.length,

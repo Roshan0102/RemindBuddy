@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import * as moment from "moment-timezone";
 import { admin, db } from "../../config/firebase";
 import { logNotification } from "../../utils/logger";
+import { logFeatureExecution } from "../../utils/featureLogger";
 import * as nodemailer from "nodemailer";
 
 import { callGeminiAPI } from "../../utils/geminiHelper";
@@ -55,6 +56,14 @@ export async function fetchAndStoreWalkInsForUserInternal(
 
     if (!userTavilyKey || !userGeminiKey) {
         console.log(`[WalkinDrives] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
+        await logFeatureExecution(uid, {
+            feature: 'walkin_drives',
+            featureTitle: 'Walk-In Drives',
+            status: 'error',
+            count: 0,
+            message: 'API Key Error: Missing Tavily or Gemini API key. Please configure in Settings -> AI & Search Keys.',
+            isManual: !triggerNotification
+        });
         return { success: false, walkins: [], message: "Tavily and Gemini API keys not configured in Settings." };
     }
 
@@ -65,6 +74,7 @@ export async function fetchAndStoreWalkInsForUserInternal(
     // Run targeted Tavily search query per role
     const allTavilyResults: TavilySearchResult[] = [];
     const seenUrls = new Set<string>();
+    let lastTavilyError = "";
 
     for (const role of roles.slice(0, 4)) {
         try {
@@ -85,12 +95,24 @@ export async function fetchAndStoreWalkInsForUserInternal(
             }
         } catch (tavilyErr: any) {
             console.warn(`[WalkinDrives] Tavily search error for role "${role}":`, tavilyErr.message);
+            lastTavilyError = tavilyErr.message || String(tavilyErr);
         }
     }
 
     if (allTavilyResults.length === 0) {
         console.log(`[WalkinDrives] No search results returned from Tavily for user ${uid}.`);
-        return { success: true, walkins: [], message: "No upcoming walk-in drives found from search." };
+        const message = lastTavilyError
+            ? `Tavily Search Error: ${lastTavilyError}. Please check your Tavily API key and plan limits in Settings.`
+            : "No upcoming walk-in drives found from search.";
+        await logFeatureExecution(uid, {
+            feature: 'walkin_drives',
+            featureTitle: 'Walk-In Drives',
+            status: lastTavilyError ? 'error' : 'no_results',
+            count: 0,
+            message,
+            isManual: !triggerNotification
+        });
+        return { success: !lastTavilyError, walkins: [], message };
     }
 
     const searchResultsSummary = allTavilyResults.map((r, i) =>
@@ -131,10 +153,26 @@ Respond ONLY with a JSON array matching this schema:
         ]
     };
 
-    const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 60000 });
-    const textResponse = geminiResult.text;
+    let textResponse = "";
+    try {
+        const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 60000 });
+        textResponse = geminiResult.text || "";
+    } catch (apiErr: any) {
+        console.error("[WalkinDrives] Gemini analysis failed:", apiErr.message);
+        const errMsg = `Gemini API Error: ${apiErr.message || apiErr}. Check your Gemini API key and quota in Settings.`;
+        await logFeatureExecution(uid, {
+            feature: 'walkin_drives',
+            featureTitle: 'Walk-In Drives',
+            status: 'error',
+            count: 0,
+            message: errMsg,
+            isManual: !triggerNotification
+        });
+        return { success: false, walkins: [], message: errMsg };
+    }
+
     if (!textResponse) {
-        throw new Error('Empty content returned from Gemini API.');
+        return { success: true, walkins: [], message: "Empty content returned from Gemini API." };
     }
 
     let cleanedText = textResponse.trim();
@@ -221,6 +259,19 @@ Respond ONLY with a JSON array matching this schema:
         updateData.walkinsLastUpdated = admin.firestore.FieldValue.serverTimestamp();
     }
     await db.collection("users").doc(uid).update(updateData);
+
+    const driveTitles = uniqueWalkIns.map((w: any) => `${w.title || w.role} at ${w.company || ''}`).filter(Boolean);
+    await logFeatureExecution(uid, {
+        feature: 'walkin_drives',
+        featureTitle: 'Walk-In Drives',
+        status: newCount > 0 ? 'success' : 'no_results',
+        count: newCount,
+        message: newCount > 0
+            ? `Found ${newCount} new walk-in drive(s) in ${location || 'your area'}: ${driveTitles.slice(0, 3).join(', ')}`
+            : `0 new walk-in drives found in ${location || 'your area'} for this run.`,
+        details: driveTitles,
+        isManual: !triggerNotification
+    });
 
     // Send push notification if automatic scheduling triggered it and new items were added
     if (triggerNotification && newCount > 0 && userDoc.exists) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../models/note.dart';
 import '../services/storage_service.dart';
 import '../widgets/collaboration_widgets.dart';
@@ -18,13 +19,30 @@ class NotesScreen extends StatefulWidget {
 
 class _NotesScreenState extends State<NotesScreen> {
   final StorageService _storageService = StorageService();
+  final TextEditingController _searchController = TextEditingController();
   List<String> _customOrderIds = [];
-  int? _draggedIndex;
+  String? _draggedNoteId;
+  String _searchQuery = '';
+  String _selectedFilter = 'all'; // 'all', 'pinned', 'checklists', 'private', 'shared'
+
+  final List<Map<String, dynamic>> _filterTabs = [
+    {'id': 'all', 'label': 'All', 'icon': Icons.grid_view_rounded},
+    {'id': 'pinned', 'label': 'Pinned', 'icon': Icons.push_pin_rounded},
+    {'id': 'checklists', 'label': 'Checklists', 'icon': Icons.checklist_rounded},
+    {'id': 'private', 'label': 'Private', 'icon': Icons.lock_outline_rounded},
+    {'id': 'shared', 'label': 'Shared', 'icon': Icons.people_outline_rounded},
+  ];
 
   @override
   void initState() {
     super.initState();
     _loadCustomOrder();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadCustomOrder() async {
@@ -75,7 +93,59 @@ class _NotesScreenState extends State<NotesScreen> {
     return [...starredNotes, ...unstarredNotes];
   }
 
-  Future<void> _addOrEditNote({Note? note}) async {
+  List<Note> _filterNotes(List<Note> notes, User? currentUser) {
+    return notes.where((note) {
+      // Search query filter
+      if (_searchQuery.isNotEmpty) {
+        final q = _searchQuery.toLowerCase();
+        final titleMatch = note.title.toLowerCase().contains(q);
+        final contentMatch = note.content.toLowerCase().contains(q);
+        final checklistMatch = note.checklistItems.any(
+          (item) => (item['text'] as String? ?? '').toLowerCase().contains(q),
+        );
+        if (!titleMatch && !contentMatch && !checklistMatch) return false;
+      }
+
+      final isShared = note.sharedWith.isNotEmpty ||
+          (note.ownerUid != null && note.ownerUid != currentUser?.uid);
+
+      switch (_selectedFilter) {
+        case 'pinned':
+          return note.isStarred;
+        case 'checklists':
+          return note.isChecklist;
+        case 'private':
+          return !isShared;
+        case 'shared':
+          return isShared;
+        case 'all':
+        default:
+          return true;
+      }
+    }).toList();
+  }
+
+  int _getFilterCount(List<Note> notes, String filterId, User? currentUser) {
+    switch (filterId) {
+      case 'pinned':
+        return notes.where((n) => n.isStarred).length;
+      case 'checklists':
+        return notes.where((n) => n.isChecklist).length;
+      case 'private':
+        return notes.where((n) =>
+          n.sharedWith.isEmpty && (n.ownerUid == null || n.ownerUid == currentUser?.uid)
+        ).length;
+      case 'shared':
+        return notes.where((n) =>
+          n.sharedWith.isNotEmpty || (n.ownerUid != null && n.ownerUid != currentUser?.uid)
+        ).length;
+      case 'all':
+      default:
+        return notes.length;
+    }
+  }
+
+  Future<void> _addOrEditNote({Note? note, bool startAsChecklist = false}) async {
     final titleController = TextEditingController(text: note?.title ?? '');
     final String rawContent = note?.content ?? '';
     final String editableContent = rawContent.isNotEmpty
@@ -83,17 +153,22 @@ class _NotesScreenState extends State<NotesScreen> {
         : '';
     final contentController = LinkTextEditingController(text: editableContent);
     bool isLocked = note?.isLocked ?? false;
-    bool isChecklist = note?.isChecklist ?? false;
-    List<Map<String, dynamic>> checklistItems = List<Map<String, dynamic>>.from(
-      (note?.checklistItems ?? []).map((item) {
-        final String text = item['text'] as String? ?? '';
-        return {
-          ...item,
-          'text': _stripSignature(text),
-        };
-      })
-    );
-    final List<TextEditingController> itemControllers = checklistItems.map((item) => LinkTextEditingController(text: item['text'] as String)).toList();
+    bool isChecklist = note?.isChecklist ?? (note == null && startAsChecklist);
+    List<Map<String, dynamic>> checklistItems = note != null
+        ? List<Map<String, dynamic>>.from(
+            note.checklistItems.map((item) {
+              final String text = item['text'] as String? ?? '';
+              return {
+                ...item,
+                'text': _stripSignature(text),
+              };
+            }),
+          )
+        : (startAsChecklist ? [{'text': '', 'isChecked': false}] : []);
+
+    final List<TextEditingController> itemControllers = checklistItems
+        .map((item) => LinkTextEditingController(text: item['text'] as String))
+        .toList();
     final List<FocusNode> itemFocusNodes = checklistItems.map((_) => FocusNode()).toList();
 
     void toggleItemChecked(int index, bool isChecked, void Function(void Function()) setDialogState) {
@@ -112,7 +187,7 @@ class _NotesScreenState extends State<NotesScreen> {
         itemFocusNodes.removeAt(index);
 
         if (isChecked) {
-          // When marked done, place at the VERY TOP of the checked items section (above previously checked items)
+          // Place at top of checked items section
           int firstCheckedIndex = checklistItems.indexWhere((it) => it['isChecked'] == true);
           if (firstCheckedIndex == -1) {
             checklistItems.add(item);
@@ -124,7 +199,7 @@ class _NotesScreenState extends State<NotesScreen> {
             itemFocusNodes.insert(firstCheckedIndex, focusNode);
           }
         } else {
-          // When unchecked, place at the bottom of the unchecked items section (just before the first checked item)
+          // Place at bottom of unchecked items section
           int firstCheckedIndex = checklistItems.indexWhere((it) => it['isChecked'] == true);
           if (firstCheckedIndex == -1) {
             checklistItems.add(item);
@@ -154,452 +229,537 @@ class _NotesScreenState extends State<NotesScreen> {
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (context) => StatefulBuilder(
-          builder: (context, setDialogState) => PopScope(
-            canPop: true,
-            onPopInvokedWithResult: (bool didPop, Object? result) async {
-              if (didPop && !hasSaved) {
-                final title = titleController.text;
-                if (isChecklist) {
-                  final List<Map<String, dynamic>> filteredItems = [];
-                  for (int i = 0; i < checklistItems.length; i++) {
-                    final text = itemControllers[i].text;
-                    if (text.isNotEmpty) {
-                      checklistItems[i]['text'] = text;
-                      filteredItems.add(checklistItems[i]);
-                    }
-                  }
-                  checklistItems = filteredItems;
-                }
-
-                final currentUser = FirebaseAuth.instance.currentUser;
-                final isShared = note != null && (
-                  note.sharedWith.isNotEmpty || 
-                  (note.ownerUid != null && note.ownerUid != currentUser?.uid)
-                );
-
-                if (isShared) {
-                  final currentUsername = currentUser?.displayName ?? currentUser?.email?.split('@').first ?? 'User';
+          builder: (context, setDialogState) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            return PopScope(
+              canPop: true,
+              onPopInvokedWithResult: (bool didPop, Object? result) async {
+                if (didPop && !hasSaved) {
+                  final title = titleController.text;
                   if (isChecklist) {
-                    checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername, ownerUsername: note.ownerUsername);
-                  } else {
-                    contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername, ownerUsername: note.ownerUsername);
-                  }
-                }
-
-                if (isChecklist) {
-                  contentController.text = checklistItems.map((item) => (item['isChecked'] == true ? '[x] ' : '[ ] ') + (item['text'] as String)).join('\n');
-                }
-                final content = contentController.text;
-                if (note == null) {
-                  if (title.isNotEmpty || (isChecklist ? checklistItems.isNotEmpty : content.isNotEmpty)) {
-                    hasSaved = true;
-                    final newNote = Note(
-                      title: title,
-                      content: content,
-                      date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
-                      isLocked: isLocked,
-                      sharedWith: [],
-                      isChecklist: isChecklist,
-                      checklistItems: checklistItems,
-                    );
-                    try {
-                      await _storageService.insertNote(newNote);
-                    } catch (e) {
-                      debugPrint("Error auto-saving new note: $e");
+                    final List<Map<String, dynamic>> filteredItems = [];
+                    for (int i = 0; i < checklistItems.length; i++) {
+                      final text = itemControllers[i].text;
+                      if (text.isNotEmpty) {
+                        checklistItems[i]['text'] = text;
+                        filteredItems.add(checklistItems[i]);
+                      }
                     }
+                    checklistItems = filteredItems;
                   }
-                } else {
-                  bool isChanged = title != note.title || isLocked != note.isLocked || isChecklist != note.isChecklist;
-                  if (!isChanged) {
+
+                  final currentUser = FirebaseAuth.instance.currentUser;
+                  final isShared = note != null && (
+                    note.sharedWith.isNotEmpty || 
+                    (note.ownerUid != null && note.ownerUid != currentUser?.uid)
+                  );
+
+                  if (isShared) {
+                    final currentUsername = currentUser?.displayName ?? currentUser?.email?.split('@').first ?? 'User';
                     if (isChecklist) {
-                      if (checklistItems.length != note.checklistItems.length) {
-                        isChanged = true;
-                      } else {
-                        for (int i = 0; i < checklistItems.length; i++) {
-                          if (checklistItems[i]['text'] != note.checklistItems[i]['text'] ||
-                              checklistItems[i]['isChecked'] != note.checklistItems[i]['isChecked']) {
-                            isChanged = true;
-                            break;
-                          }
-                        }
-                      }
+                      checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername, ownerUsername: note.ownerUsername);
                     } else {
-                      isChanged = content != note.content;
+                      contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername, ownerUsername: note.ownerUsername);
                     }
                   }
-                  if (isChanged) {
-                    hasSaved = true;
-                    final updatedNote = Note(
-                      id: note.id,
-                      title: title,
-                      content: content,
-                      date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
-                      isLocked: isLocked,
-                      ownerUid: note.ownerUid,
-                      sharedWith: note.sharedWith,
-                      isChecklist: isChecklist,
-                      checklistItems: checklistItems,
-                      isStarred: note.isStarred,
-                    );
-                    try {
-                      await _storageService.updateNote(updatedNote);
-                    } catch (e) {
-                      debugPrint("Error auto-saving updated note: $e");
+
+                  if (isChecklist) {
+                    contentController.text = checklistItems.map((item) => (item['isChecked'] == true ? '[x] ' : '[ ] ') + (item['text'] as String)).join('\n');
+                  }
+                  final content = contentController.text;
+                  if (note == null) {
+                    if (title.isNotEmpty || (isChecklist ? checklistItems.isNotEmpty : content.isNotEmpty)) {
+                      hasSaved = true;
+                      final newNote = Note(
+                        title: title,
+                        content: content,
+                        date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                        isLocked: isLocked,
+                        sharedWith: [],
+                        isChecklist: isChecklist,
+                        checklistItems: checklistItems,
+                      );
+                      try {
+                        await _storageService.insertNote(newNote);
+                      } catch (e) {
+                        debugPrint("Error auto-saving new note: $e");
+                      }
+                    }
+                  } else {
+                    bool isChanged = title != note.title || isLocked != note.isLocked || isChecklist != note.isChecklist;
+                    if (!isChanged) {
+                      if (isChecklist) {
+                        if (checklistItems.length != note.checklistItems.length) {
+                          isChanged = true;
+                        } else {
+                          for (int i = 0; i < checklistItems.length; i++) {
+                            if (checklistItems[i]['text'] != note.checklistItems[i]['text'] ||
+                                checklistItems[i]['isChecked'] != note.checklistItems[i]['isChecked']) {
+                              isChanged = true;
+                              break;
+                            }
+                          }
+                        }
+                      } else {
+                        isChanged = content != note.content;
+                      }
+                    }
+                    if (isChanged) {
+                      hasSaved = true;
+                      final updatedNote = Note(
+                        id: note.id,
+                        title: title,
+                        content: content,
+                        date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                        isLocked: isLocked,
+                        ownerUid: note.ownerUid,
+                        sharedWith: note.sharedWith,
+                        isChecklist: isChecklist,
+                        checklistItems: checklistItems,
+                        isStarred: note.isStarred,
+                      );
+                      try {
+                        await _storageService.updateNote(updatedNote);
+                      } catch (e) {
+                        debugPrint("Error auto-saving updated note: $e");
+                      }
                     }
                   }
                 }
-              }
-            },
-            child: Scaffold(
-              appBar: AppBar(
-                title: Text(note == null ? 'New Note' : 'Edit Note'),
-                actions: [
-                  IconButton(
-                    icon: Icon(isChecklist ? Icons.notes : Icons.playlist_add_check),
-                    onPressed: () {
-                      setDialogState(() {
-                        if (isChecklist) {
-                          // Switching to normal Note
-                          for (int i = 0; i < checklistItems.length; i++) {
-                            checklistItems[i]['text'] = itemControllers[i].text;
-                          }
-                          contentController.text = checklistItems
-                              .map((item) => item['text'] as String)
-                              .where((text) => text.trim().isNotEmpty)
-                              .join('\n');
-                          isChecklist = false;
-                        } else {
-                          // Switching to Checklist
-                          final text = contentController.text;
-                          checklistItems = text
-                              .split('\n')
-                              .map((line) {
-                                String cleaned = line;
-                                bool isChecked = false;
-                                if (line.startsWith('[x] ')) {
-                                  cleaned = line.substring(4);
-                                  isChecked = true;
-                                } else if (line.startsWith('[ ] ')) {
-                                  cleaned = line.substring(4);
-                                }
-                                return {'text': cleaned, 'isChecked': isChecked};
-                              })
-                              .where((item) => (item['text'] as String).trim().isNotEmpty)
-                              .toList();
-                          if (checklistItems.isEmpty) {
-                            checklistItems = [{'text': '', 'isChecked': false}];
-                          }
-                          itemControllers.clear();
-                          for (var node in itemFocusNodes) {
-                            node.dispose();
-                          }
-                          itemFocusNodes.clear();
-                          for (var item in checklistItems) {
-                            itemControllers.add(LinkTextEditingController(text: item['text'] as String));
-                            itemFocusNodes.add(FocusNode());
-                          }
-                          isChecklist = true;
-                        }
-                      });
-                    },
-                    tooltip: isChecklist ? 'Convert to Note' : 'Convert to Checklist',
+              },
+              child: Scaffold(
+                backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                appBar: AppBar(
+                  backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                  elevation: 0,
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    onPressed: () => Navigator.pop(context),
                   ),
-                  IconButton(
-                    icon: Icon(isLocked ? Icons.lock : Icons.lock_open, 
-                      color: isLocked ? Colors.red : Colors.green),
-                    onPressed: () async {
-                      if (!isLocked) {
-                        bool hasPin = await _ensureNotesPin(context);
-                        if (!hasPin) return;
-                      }
-                      setDialogState(() {
-                        isLocked = !isLocked;
-                      });
-                    },
-                    tooltip: isLocked ? 'Unlock Note' : 'Lock Note',
+                  title: Text(
+                    note == null
+                        ? (isChecklist ? 'New Checklist' : 'New Note')
+                        : (isChecklist ? 'Edit Checklist' : 'Edit Note'),
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18),
                   ),
-                  isSaving 
-                    ? const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                      )
-                    : TextButton(
-                        onPressed: () async {
-                          final title = titleController.text;
+                  actions: [
+                    IconButton(
+                      icon: Icon(isChecklist ? Icons.notes_rounded : Icons.playlist_add_check_rounded),
+                      tooltip: isChecklist ? 'Convert to Note' : 'Convert to Checklist',
+                      onPressed: () {
+                        setDialogState(() {
                           if (isChecklist) {
-                            final List<Map<String, dynamic>> filteredItems = [];
+                            // Switching to normal Note
                             for (int i = 0; i < checklistItems.length; i++) {
-                              final text = itemControllers[i].text;
-                              if (text.isNotEmpty) {
-                                checklistItems[i]['text'] = text;
-                                filteredItems.add(checklistItems[i]);
-                              }
+                              checklistItems[i]['text'] = itemControllers[i].text;
                             }
-                            checklistItems = filteredItems;
-                          }
-
-                          final currentUser = FirebaseAuth.instance.currentUser;
-                          final isShared = note != null && (
-                            note.sharedWith.isNotEmpty || 
-                            (note.ownerUid != null && note.ownerUid != currentUser?.uid)
-                          );
-
-                          if (isShared) {
-                            final currentUsername = currentUser?.displayName ?? currentUser?.email?.split('@').first ?? 'User';
-                            if (isChecklist) {
-                              checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername, ownerUsername: note.ownerUsername);
-                            } else {
-                              contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername, ownerUsername: note.ownerUsername);
+                            contentController.text = checklistItems
+                                .map((item) => item['text'] as String)
+                                .where((text) => text.trim().isNotEmpty)
+                                .join('\n');
+                            isChecklist = false;
+                          } else {
+                            // Switching to Checklist
+                            final text = contentController.text;
+                            checklistItems = text
+                                .split('\n')
+                                .map((line) {
+                                  String cleaned = line;
+                                  bool isChecked = false;
+                                  if (line.startsWith('[x] ')) {
+                                    cleaned = line.substring(4);
+                                    isChecked = true;
+                                  } else if (line.startsWith('[ ] ')) {
+                                    cleaned = line.substring(4);
+                                  }
+                                  return {'text': cleaned, 'isChecked': isChecked};
+                                })
+                                .where((item) => (item['text'] as String).trim().isNotEmpty)
+                                .toList();
+                            if (checklistItems.isEmpty) {
+                              checklistItems = [{'text': '', 'isChecked': false}];
                             }
-                          }
-
-                          if (isChecklist) {
-                            contentController.text = checklistItems.map((item) => (item['isChecked'] == true ? '[x] ' : '[ ] ') + (item['text'] as String)).join('\n');
-                          }
-                          final content = contentController.text;
-                          if (title.isNotEmpty || (isChecklist ? checklistItems.isNotEmpty : content.isNotEmpty)) {
-                            setDialogState(() {
-                              isSaving = true;
-                              hasSaved = true;
-                            });
-                            final newNote = Note(
-                              id: note?.id,
-                              title: title,
-                              content: content,
-                              date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
-                              isLocked: isLocked,
-                              ownerUid: note?.ownerUid,
-                              sharedWith: note?.sharedWith ?? [],
-                              isChecklist: isChecklist,
-                              checklistItems: checklistItems,
-                              isStarred: note?.isStarred ?? false,
-                            );
-                            try {
-                              if (note == null) {
-                                await _storageService.insertNote(newNote);
-                              } else {
-                                await _storageService.updateNote(newNote);
-                              }
-                              if (context.mounted) Navigator.pop(context);
-                            } catch (e) {
-                              setDialogState(() {
-                                isSaving = false;
-                                hasSaved = false;
-                              });
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Error saving note: $e'), backgroundColor: Colors.red),
-                                );
-                              }
+                            itemControllers.clear();
+                            for (var node in itemFocusNodes) {
+                              node.dispose();
                             }
+                            itemFocusNodes.clear();
+                            for (var item in checklistItems) {
+                              itemControllers.add(LinkTextEditingController(text: item['text'] as String));
+                              itemFocusNodes.add(FocusNode());
+                            }
+                            isChecklist = true;
                           }
-                        },
-                        child: const Text('SAVE', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                ],
-              ),
-              body: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: titleController,
-                      decoration: const InputDecoration(
-                        hintText: 'Title',
-                        border: InputBorder.none,
-                        hintStyle: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                      autofocus: note == null,
-                    ),
-                    const Divider(),
-                    Expanded(
-                      child: isChecklist
-                          ? Column(
-                              children: [
-                                Expanded(
-                                  child: ListView.builder(
-                                    itemCount: checklistItems.length,
-                                    itemBuilder: (context, index) {
-                                      final item = checklistItems[index];
-                                      return Row(
-                                        crossAxisAlignment: CrossAxisAlignment.center,
-                                        children: [
-                                          Checkbox(
-                                            value: item['isChecked'] == true,
-                                            onChanged: (val) {
-                                              toggleItemChecked(index, val ?? false, setDialogState);
-                                            },
-                                          ),
-                                          Expanded(
-                                            child: Padding(
-                                              padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                              child: Focus(
-                                                onKeyEvent: (node, event) {
-                                                  if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
-                                                    final bool isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
-                                                    if (!isShiftPressed) {
-                                                      setDialogState(() {
-                                                        checklistItems.insert(index + 1, {'text': '', 'isChecked': false});
-                                                        itemControllers.insert(index + 1, LinkTextEditingController(text: ''));
-                                                        final newFocusNode = FocusNode();
-                                                        itemFocusNodes.insert(index + 1, newFocusNode);
-                                                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                                                          newFocusNode.requestFocus();
-                                                        });
-                                                      });
-                                                      return KeyEventResult.handled;
-                                                    }
-                                                  }
-                                                  return KeyEventResult.ignored;
-                                                },
-                                                child: TextField(
-                                                  controller: itemControllers[index],
-                                                  focusNode: itemFocusNodes[index],
-                                                  style: TextStyle(
-                                                    decoration: item['isChecked'] == true
-                                                        ? TextDecoration.lineThrough
-                                                        : null,
-                                                    color: item['isChecked'] == true
-                                                        ? Colors.grey
-                                                        : null,
-                                                  ),
-                                                  decoration: const InputDecoration(
-                                                    hintText: 'Add item...',
-                                                    border: InputBorder.none,
-                                                    isDense: true,
-                                                    contentPadding: EdgeInsets.symmetric(vertical: 4.0),
-                                                  ),
-                                                  textCapitalization: TextCapitalization.sentences,
-                                                  maxLines: null,
-                                                  keyboardType: TextInputType.multiline,
-                                                  onChanged: (val) {
-                                                    item['text'] = val;
-                                                    setDialogState(() {});
-                                                  },
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          if (note != null && index < note.checklistItems.length) ...[
-                                            Builder(
-                                              builder: (ctx) {
-                                                final origText = note.checklistItems[index]['text'] as String? ?? '';
-                                                final origUser = _extractUsername(origText);
-                                                if (origUser != null && origUser.isNotEmpty) {
-                                                  final isDark = Theme.of(ctx).brightness == Brightness.dark;
-                                                  final color = _getSignatureColor(origUser, isDark);
-                                                  return Padding(
-                                                    padding: const EdgeInsets.only(right: 4.0),
-                                                    child: Text(
-                                                      '(by $origUser)',
-                                                      style: TextStyle(
-                                                        fontSize: 11,
-                                                        fontStyle: FontStyle.italic,
-                                                        fontWeight: FontWeight.w500,
-                                                        color: color,
-                                                      ),
-                                                    ),
-                                                  );
-                                                }
-                                                return const SizedBox.shrink();
-                                              },
-                                            ),
-                                          ],
-                                          IconButton(
-                                            icon: const Icon(Icons.close, color: Colors.grey),
-                                            onPressed: () {
-                                              setDialogState(() {
-                                                checklistItems.removeAt(index);
-                                                itemControllers[index].dispose();
-                                                itemControllers.removeAt(index);
-                                                itemFocusNodes[index].dispose();
-                                                itemFocusNodes.removeAt(index);
-                                              });
-                                            },
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  ),
-                                ),
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: TextButton.icon(
-                                    icon: const Icon(Icons.add),
-                                    label: const Text('Add Item'),
-                                    onPressed: () {
-                                      setDialogState(() {
-                                        checklistItems.insert(0, {'text': '', 'isChecked': false});
-                                        itemControllers.insert(0, LinkTextEditingController(text: ''));
-                                        final newFocusNode = FocusNode();
-                                        itemFocusNodes.insert(0, newFocusNode);
-                                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                                          newFocusNode.requestFocus();
-                                        });
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ],
-                            )
-                          : TextField(
-                              controller: contentController,
-                              decoration: const InputDecoration(
-                                hintText: 'Start typing your note...',
-                                border: InputBorder.none,
-                              ),
-                              maxLines: null,
-                              expands: true,
-                              textAlignVertical: TextAlignVertical.top,
-                              keyboardType: TextInputType.multiline,
-                              textCapitalization: TextCapitalization.sentences,
-                              onChanged: (val) => setDialogState(() {}),
-                            ),
-                    ),
-                    Builder(
-                      builder: (context) {
-                        final detectedLinks = _extractAllLinks(
-                          titleController.text,
-                          isChecklist ? '' : contentController.text,
-                          isChecklist,
-                          isChecklist ? checklistItems.map((item) => {'text': item['text']}).toList() : [],
-                        );
-                        if (detectedLinks.isEmpty) return const SizedBox.shrink();
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Divider(),
-                              const Text(
-                                'Links in Note:',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
-                              ),
-                              const SizedBox(height: 4),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: detectedLinks.map((url) => ActionChip(
-                                  avatar: const Icon(Icons.open_in_new, size: 12, color: Colors.blue),
-                                  label: Text(
-                                    url.length > 30 ? '${url.substring(0, 27)}...' : url,
-                                    style: const TextStyle(fontSize: 11, color: Colors.blue),
-                                  ),
-                                  onPressed: () => _openExternalUrl(url),
-                                )).toList(),
-                              ),
-                            ],
-                          ),
-                        );
+                        });
                       },
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                        color: isLocked ? const Color(0xFFF43F5E) : const Color(0xFF10B981),
+                      ),
+                      tooltip: isLocked ? 'Unlock Note' : 'Lock Note',
+                      onPressed: () async {
+                        if (!isLocked) {
+                          bool hasPin = await _ensureNotesPin(context);
+                          if (!hasPin) return;
+                        }
+                        setDialogState(() {
+                          isLocked = !isLocked;
+                        });
+                      },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12.0),
+                      child: isSaving
+                          ? const Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2.5),
+                              ),
+                            )
+                          : FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF6366F1),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              ),
+                              icon: const Icon(Icons.check_rounded, size: 18),
+                              label: Text(
+                                'Save',
+                                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              onPressed: () async {
+                                final title = titleController.text;
+                                if (isChecklist) {
+                                  final List<Map<String, dynamic>> filteredItems = [];
+                                  for (int i = 0; i < checklistItems.length; i++) {
+                                    final text = itemControllers[i].text;
+                                    if (text.isNotEmpty) {
+                                      checklistItems[i]['text'] = text;
+                                      filteredItems.add(checklistItems[i]);
+                                    }
+                                  }
+                                  checklistItems = filteredItems;
+                                }
+
+                                final currentUser = FirebaseAuth.instance.currentUser;
+                                final isShared = note != null && (
+                                  note.sharedWith.isNotEmpty || 
+                                  (note.ownerUid != null && note.ownerUid != currentUser?.uid)
+                                );
+
+                                if (isShared) {
+                                  final currentUsername = currentUser?.displayName ?? currentUser?.email?.split('@').first ?? 'User';
+                                  if (isChecklist) {
+                                    checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername, ownerUsername: note.ownerUsername);
+                                  } else {
+                                    contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername, ownerUsername: note.ownerUsername);
+                                  }
+                                }
+
+                                if (isChecklist) {
+                                  contentController.text = checklistItems.map((item) => (item['isChecked'] == true ? '[x] ' : '[ ] ') + (item['text'] as String)).join('\n');
+                                }
+                                final content = contentController.text;
+                                if (title.isNotEmpty || (isChecklist ? checklistItems.isNotEmpty : content.isNotEmpty)) {
+                                  setDialogState(() {
+                                    isSaving = true;
+                                    hasSaved = true;
+                                  });
+                                  final newNote = Note(
+                                    id: note?.id,
+                                    title: title,
+                                    content: content,
+                                    date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                                    isLocked: isLocked,
+                                    ownerUid: note?.ownerUid,
+                                    sharedWith: note?.sharedWith ?? [],
+                                    isChecklist: isChecklist,
+                                    checklistItems: checklistItems,
+                                    isStarred: note?.isStarred ?? false,
+                                  );
+                                  try {
+                                    if (note == null) {
+                                      await _storageService.insertNote(newNote);
+                                    } else {
+                                      await _storageService.updateNote(newNote);
+                                    }
+                                    if (context.mounted) Navigator.pop(context);
+                                  } catch (e) {
+                                    setDialogState(() {
+                                      isSaving = false;
+                                      hasSaved = false;
+                                    });
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Error saving note: $e'), backgroundColor: Colors.red),
+                                      );
+                                    }
+                                  }
+                                }
+                              },
+                            ),
                     ),
                   ],
                 ),
+                body: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: titleController,
+                        decoration: InputDecoration(
+                          hintText: 'Title...',
+                          border: InputBorder.none,
+                          hintStyle: GoogleFonts.outfit(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white38 : Colors.black38,
+                          ),
+                        ),
+                        style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold),
+                        autofocus: note == null,
+                      ),
+                      Divider(
+                        color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
+                        height: 20,
+                      ),
+                      Expanded(
+                        child: isChecklist
+                            ? Column(
+                                children: [
+                                  Expanded(
+                                    child: ListView.builder(
+                                      itemCount: checklistItems.length,
+                                      itemBuilder: (context, index) {
+                                        final item = checklistItems[index];
+                                        return Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 3.0),
+                                          child: Row(
+                                            crossAxisAlignment: CrossAxisAlignment.center,
+                                            children: [
+                                              Checkbox(
+                                                value: item['isChecked'] == true,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                                                activeColor: const Color(0xFF6366F1),
+                                                onChanged: (val) {
+                                                  toggleItemChecked(index, val ?? false, setDialogState);
+                                                },
+                                              ),
+                                              Expanded(
+                                                child: Focus(
+                                                  onKeyEvent: (node, event) {
+                                                    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
+                                                      final bool isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
+                                                      if (!isShiftPressed) {
+                                                        setDialogState(() {
+                                                          checklistItems.insert(index + 1, {'text': '', 'isChecked': false});
+                                                          itemControllers.insert(index + 1, LinkTextEditingController(text: ''));
+                                                          final newFocusNode = FocusNode();
+                                                          itemFocusNodes.insert(index + 1, newFocusNode);
+                                                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                            newFocusNode.requestFocus();
+                                                          });
+                                                        });
+                                                        return KeyEventResult.handled;
+                                                      }
+                                                    }
+                                                    return KeyEventResult.ignored;
+                                                  },
+                                                  child: TextField(
+                                                    controller: itemControllers[index],
+                                                    focusNode: itemFocusNodes[index],
+                                                    style: GoogleFonts.outfit(
+                                                      decoration: item['isChecked'] == true
+                                                          ? TextDecoration.lineThrough
+                                                          : null,
+                                                      color: item['isChecked'] == true
+                                                          ? (isDark ? Colors.white38 : Colors.black38)
+                                                          : null,
+                                                      fontSize: 15,
+                                                    ),
+                                                    decoration: InputDecoration(
+                                                      hintText: 'Add checklist item...',
+                                                      border: InputBorder.none,
+                                                      isDense: true,
+                                                      contentPadding: const EdgeInsets.symmetric(vertical: 6.0),
+                                                      hintStyle: GoogleFonts.outfit(
+                                                        color: isDark ? Colors.white30 : Colors.black38,
+                                                      ),
+                                                    ),
+                                                    textCapitalization: TextCapitalization.sentences,
+                                                    maxLines: null,
+                                                    keyboardType: TextInputType.multiline,
+                                                    onChanged: (val) {
+                                                      item['text'] = val;
+                                                      setDialogState(() {});
+                                                    },
+                                                  ),
+                                                ),
+                                              ),
+                                              if (note != null && index < note.checklistItems.length) ...[
+                                                Builder(
+                                                  builder: (ctx) {
+                                                    final origText = note.checklistItems[index]['text'] as String? ?? '';
+                                                    final origUser = _extractUsername(origText);
+                                                    if (origUser != null && origUser.isNotEmpty) {
+                                                      final isDarkCtx = Theme.of(ctx).brightness == Brightness.dark;
+                                                      final color = _getSignatureColor(origUser, isDarkCtx);
+                                                      return Padding(
+                                                        padding: const EdgeInsets.only(right: 6.0),
+                                                        child: Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                          decoration: BoxDecoration(
+                                                            color: color.withValues(alpha: 0.15),
+                                                            borderRadius: BorderRadius.circular(6),
+                                                          ),
+                                                          child: Text(
+                                                            origUser,
+                                                            style: GoogleFonts.outfit(
+                                                              fontSize: 10,
+                                                              fontWeight: FontWeight.w600,
+                                                              color: color,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      );
+                                                    }
+                                                    return const SizedBox.shrink();
+                                                  },
+                                                ),
+                                              ],
+                                              IconButton(
+                                                icon: const Icon(Icons.close_rounded, size: 18, color: Colors.grey),
+                                                onPressed: () {
+                                                  setDialogState(() {
+                                                    checklistItems.removeAt(index);
+                                                    itemControllers[index].dispose();
+                                                    itemControllers.removeAt(index);
+                                                    itemFocusNodes[index].dispose();
+                                                    itemFocusNodes.removeAt(index);
+                                                  });
+                                                },
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: TextButton.icon(
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: const Color(0xFF6366F1),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      ),
+                                      icon: const Icon(Icons.add_rounded, size: 20),
+                                      label: Text(
+                                        'Add Item',
+                                        style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 14),
+                                      ),
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          checklistItems.insert(0, {'text': '', 'isChecked': false});
+                                          itemControllers.insert(0, LinkTextEditingController(text: ''));
+                                          final newFocusNode = FocusNode();
+                                          itemFocusNodes.insert(0, newFocusNode);
+                                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                                            newFocusNode.requestFocus();
+                                          });
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : TextField(
+                                controller: contentController,
+                                decoration: InputDecoration(
+                                  hintText: 'Start typing your note...',
+                                  border: InputBorder.none,
+                                  hintStyle: GoogleFonts.outfit(
+                                    fontSize: 15,
+                                    color: isDark ? Colors.white30 : Colors.black38,
+                                  ),
+                                ),
+                                style: GoogleFonts.outfit(fontSize: 15, height: 1.5),
+                                maxLines: null,
+                                expands: true,
+                                textAlignVertical: TextAlignVertical.top,
+                                keyboardType: TextInputType.multiline,
+                                textCapitalization: TextCapitalization.sentences,
+                                onChanged: (val) => setDialogState(() {}),
+                              ),
+                      ),
+                      Builder(
+                        builder: (context) {
+                          final detectedLinks = _extractAllLinks(
+                            titleController.text,
+                            isChecklist ? '' : contentController.text,
+                            isChecklist,
+                            isChecklist ? checklistItems.map((item) => {'text': item['text']}).toList() : [],
+                          );
+                          if (detectedLinks.isEmpty) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 10.0),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.link_rounded, size: 16, color: Color(0xFF6366F1)),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          'Links in Note (${detectedLinks.length}):',
+                                          style: GoogleFonts.outfit(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: isDark ? Colors.white70 : Colors.black87,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: detectedLinks.map((url) => ActionChip(
+                                      avatar: const Icon(Icons.open_in_new_rounded, size: 13, color: Color(0xFF6366F1)),
+                                      label: Text(
+                                        url.length > 28 ? '${url.substring(0, 25)}...' : url,
+                                        style: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFF6366F1), fontWeight: FontWeight.w600),
+                                      ),
+                                      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                                      side: BorderSide(
+                                        color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
+                                      ),
+                                      onPressed: () => _openExternalUrl(url),
+                                    )).toList(),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
@@ -628,13 +788,14 @@ class _NotesScreenState extends State<NotesScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogCtx) => AlertDialog(
-        title: const Text('Set up Notes PIN'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Set up Notes PIN', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'You need to set up a 4-digit PIN to lock your notes.',
-              style: TextStyle(fontSize: 13, color: Colors.grey),
+              style: GoogleFonts.outfit(fontSize: 13, color: Colors.grey),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -663,9 +824,13 @@ class _NotesScreenState extends State<NotesScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx, false),
-            child: const Text('Cancel'),
+            child: Text('Cancel', style: GoogleFonts.outfit()),
           ),
-          TextButton(
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
             onPressed: () async {
               final p1 = newPinController.text;
               final p2 = confirmPinController.text;
@@ -686,7 +851,7 @@ class _NotesScreenState extends State<NotesScreen> {
                 Navigator.pop(dialogCtx, true);
               }
             },
-            child: const Text('Save PIN'),
+            child: Text('Save PIN', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -701,17 +866,26 @@ class _NotesScreenState extends State<NotesScreen> {
     return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Enter PIN'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Enter PIN', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         content: TextField(
           controller: pinController,
           keyboardType: TextInputType.number,
           obscureText: true,
           maxLength: 4,
-          decoration: const InputDecoration(hintText: 'Enter PIN'),
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Enter 4-digit PIN'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel', style: GoogleFonts.outfit()),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
             onPressed: () {
               if (pinController.text == correctPin) {
                 Navigator.pop(context, true);
@@ -719,76 +893,96 @@ class _NotesScreenState extends State<NotesScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incorrect PIN')));
               }
             },
-            child: const Text('Unlock'),
+            child: Text('Unlock', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     ) ?? false;
   }
 
-  static const List<Color> _lightAestheticColors = [
-    Color(0xFFFFE5E5), // Soft Pink
-    Color(0xFFE5FFEB), // Mint
-    Color(0xFFE5F6FF), // Soft Blue
-    Color(0xFFFFF9E5), // Soft Yellow
-    Color(0xFFF3E5FF), // Lavender
-    Color(0xFFFFECE5), // Peach
-    Color(0xFFE5FFF9), // Aqua
-  ];
-
-  static const List<Color> _darkAestheticColors = [
-    Color(0xFF352222), // Soft Pink (Dark)
-    Color(0xFF223525), // Mint (Dark)
-    Color(0xFF222B35), // Soft Blue (Dark)
-    Color(0xFF353022), // Soft Yellow (Dark)
-    Color(0xFF2B2235), // Lavender (Dark)
-    Color(0xFF352622), // Peach (Dark)
-    Color(0xFF223530), // Aqua (Dark)
-  ];
-
-  Color _getNoteColor(BuildContext context, String id, String content) {
-    int hash = id.hashCode + content.hashCode;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colors = isDark ? _darkAestheticColors : _lightAestheticColors;
-    return colors[hash.abs() % colors.length];
+  Color _getCardAccent(Note note) {
+    final List<Color> accents = [
+      const Color(0xFF38BDF8), // Cyan / Sky Blue
+      const Color(0xFF818CF8), // Indigo
+      const Color(0xFF34D399), // Emerald
+      const Color(0xFFFBBF24), // Amber
+      const Color(0xFFA78BFA), // Purple
+      const Color(0xFFF472B6), // Pink
+      const Color(0xFF2DD4BF), // Teal
+      const Color(0xFFFB923C), // Coral
+    ];
+    final hash = (note.id ?? note.title).hashCode.abs();
+    return accents[hash % accents.length];
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final currentUser = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0B101E) : const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Notes', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
+        backgroundColor: isDark ? const Color(0xFF0B101E) : Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Notes & Ideas',
+              style: GoogleFonts.outfit(
+                fontWeight: FontWeight.bold,
+                fontSize: 22,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            Text(
+              'Capture thoughts, checklists & team notes',
+              style: GoogleFonts.outfit(
+                fontSize: 12,
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
+            ),
+          ],
+        ),
         actions: [
           StreamBuilder<List<Map<String, dynamic>>>(
             stream: _storageService.getIncomingRequestsStream('note'),
             builder: (context, snapshot) {
               final requests = snapshot.data ?? [];
               final hasRequests = requests.isNotEmpty;
-              return IconButton(
-                icon: hasRequests
-                    ? Badge(
-                        backgroundColor: Colors.red,
-                        label: Text(
-                          requests.length.toString(),
-                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+              return Container(
+                margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: hasRequests
+                      ? Badge(
+                          backgroundColor: const Color(0xFFEF4444),
+                          label: Text(
+                            requests.length.toString(),
+                            style: GoogleFonts.outfit(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                          child: Icon(Icons.people_alt_rounded, color: isDark ? Colors.white70 : Colors.black87),
+                        )
+                      : Icon(Icons.people_alt_rounded, color: isDark ? Colors.white70 : Colors.black87),
+                  onPressed: () {
+                    showModalBottomSheet(
+                      context: context,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(24),
+                          topRight: Radius.circular(24),
                         ),
-                        child: const Icon(Icons.people_outline),
-                      )
-                    : const Icon(Icons.people_outline),
-                onPressed: () {
-                  showModalBottomSheet(
-                    context: context,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(20),
-                        topRight: Radius.circular(20),
                       ),
-                    ),
-                    builder: (context) => CollaborationRequestsSheet(type: 'note'),
-                  );
-                },
-                tooltip: 'Collaboration Requests',
+                      builder: (context) => CollaborationRequestsSheet(type: 'note'),
+                    );
+                  },
+                  tooltip: 'Collaboration Requests',
+                ),
               );
             },
           ),
@@ -800,141 +994,298 @@ class _NotesScreenState extends State<NotesScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          
-          final notes = snapshot.data ?? [];
-          final orderedNotes = _sortNotesWithCustomOrder(notes);
-          
-          if (orderedNotes.isEmpty) {
-            return ListView(children: const [
-              SizedBox(height: 50),
-              Center(child: Text('No notes yet. Tap + to add one.\nUpdates are synced in real-time.', textAlign: TextAlign.center))
-            ]);
-          }
 
-          final currentUser = FirebaseAuth.instance.currentUser;
+          final allNotes = snapshot.data ?? [];
+          final orderedNotes = _sortNotesWithCustomOrder(allNotes);
+          final displayedNotes = _filterNotes(orderedNotes, currentUser);
 
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final double width = constraints.maxWidth;
-              int crossAxisCount = 2;
-              if (width > 1200) {
-                crossAxisCount = 5;
-              } else if (width > 900) {
-                crossAxisCount = 4;
-              } else if (width > 600) {
-                crossAxisCount = 3;
-              }
-              
-              final double cardWidth = (width - (crossAxisCount - 1) * 10 - 24) / crossAxisCount;
-              final double childAspectRatio = cardWidth / 180.0; // Keeping card height around 180px
-
-              return GridView.builder(
-                padding: const EdgeInsets.only(left: 12, right: 12, top: 12, bottom: 88),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  childAspectRatio: childAspectRatio,
+          return Column(
+            children: [
+              // Search Box
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF151D2A) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.07),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                itemCount: orderedNotes.length,
-                itemBuilder: (context, index) {
-                  final note = orderedNotes[index];
-                  final Color noteColor = _getNoteColor(context, note.id ?? '', note.title + note.content);
-                  final isShared = note.sharedWith.isNotEmpty || (note.ownerUid != null && note.ownerUid != currentUser?.uid);
-                  final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
-                  final titleColor = isDarkTheme ? Colors.white.withValues(alpha: 0.9) : Colors.black87;
-                  final subtitleColor = isDarkTheme ? Colors.white.withValues(alpha: 0.7) : Colors.black54;
-                  final hintIconColor = isDarkTheme ? Colors.white.withValues(alpha: 0.5) : Colors.black38;
-                  
-                  final isDragging = _draggedIndex == index;
-                  final cardContent = _buildNoteCard(
-                    note: note,
-                    currentUser: currentUser,
-                    noteColor: noteColor,
-                    isShared: isShared,
-                    titleColor: titleColor,
-                    subtitleColor: subtitleColor,
-                    hintIconColor: hintIconColor,
-                    dragHandle: Icon(Icons.drag_indicator, size: 18, color: hintIconColor),
-                  );
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (val) => setState(() => _searchQuery = val.trim()),
+                  style: GoogleFonts.outfit(
+                    fontSize: 14,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Search notes, checklists, links...',
+                    hintStyle: GoogleFonts.outfit(
+                      fontSize: 14,
+                      color: isDark ? Colors.white38 : Colors.black38,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: Color(0xFF6366F1),
+                      size: 20,
+                    ),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                ),
+              ),
 
-                  Widget draggableWidget = LongPressDraggable<int>(
-                    data: index,
-                    feedback: SizedBox(
-                      width: cardWidth,
-                      height: 180.0,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: Transform.scale(
-                          scale: 1.05,
-                          child: _buildNoteCard(
-                            note: note,
-                            currentUser: currentUser,
-                            noteColor: noteColor,
-                            isShared: isShared,
-                            titleColor: titleColor,
-                            subtitleColor: subtitleColor,
-                            hintIconColor: hintIconColor,
-                          ),
+              // Filter Category Chips
+              SizedBox(
+                height: 42,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: _filterTabs.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final tab = _filterTabs[index];
+                    final isSelected = _selectedFilter == tab['id'];
+                    final count = _getFilterCount(allNotes, tab['id'] as String, currentUser);
+                    return ChoiceChip(
+                      avatar: Icon(
+                        tab['icon'] as IconData,
+                        size: 15,
+                        color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black54),
+                      ),
+                      label: Text(
+                        '${tab['label']} ($count)',
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
                         ),
                       ),
-                    ),
-                    childWhenDragging: Opacity(
-                      opacity: 0.2,
-                      child: cardContent,
-                    ),
-                    onDragStarted: () {
-                      setState(() {
-                        _draggedIndex = index;
-                      });
-                    },
-                    onDraggableCanceled: (_, __) {
-                      setState(() {
-                        _draggedIndex = null;
-                      });
-                    },
-                    onDragCompleted: () {
-                      setState(() {
-                        _draggedIndex = null;
-                      });
-                    },
-                    child: Opacity(
-                      opacity: isDragging ? 0.4 : 1.0,
-                      child: cardContent,
-                    ),
-                  );
+                      selected: isSelected,
+                      selectedColor: const Color(0xFF6366F1),
+                      backgroundColor: isDark ? const Color(0xFF151D2A) : Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        side: BorderSide(
+                          color: isSelected
+                              ? const Color(0xFF6366F1)
+                              : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08)),
+                        ),
+                      ),
+                      showCheckmark: false,
+                      onSelected: (val) {
+                        if (val) setState(() => _selectedFilter = tab['id'] as String);
+                      },
+                    );
+                  },
+                ),
+              ),
 
-                  return DragTarget<int>(
-                    onWillAcceptWithDetails: (details) {
-                      final fromIndex = details.data;
-                      if (fromIndex == index) return false;
-                      final fromNote = orderedNotes[fromIndex];
-                      final toNote = orderedNotes[index];
-                      return fromNote.isStarred == toNote.isStarred;
-                    },
-                    onAcceptWithDetails: (details) {
-                      final fromIndex = details.data;
-                      setState(() {
-                        final currentIds = orderedNotes.map((n) => n.id ?? '').toList();
-                        final draggedId = currentIds.removeAt(fromIndex);
-                        currentIds.insert(index, draggedId);
-                        _customOrderIds = currentIds;
-                        _saveCustomOrder(_customOrderIds);
-                      });
-                    },
-                    builder: (context, candidateData, rejectedData) {
-                      return draggableWidget;
-                    },
-                  );
-                },
-              );
-            },
+              const SizedBox(height: 8),
+
+              // Notes Grid or Empty State
+              Expanded(
+                child: displayedNotes.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.edit_note_rounded,
+                                  size: 38,
+                                  color: Color(0xFF6366F1),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _searchQuery.isNotEmpty
+                                    ? 'No matching notes found'
+                                    : 'No notes yet in this category',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                _searchQuery.isNotEmpty
+                                    ? 'Try searching with different keywords.'
+                                    : 'Tap below to create a quick note or checklist.',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 13,
+                                  color: isDark ? Colors.white54 : Colors.black54,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          final double width = constraints.maxWidth;
+                          int crossAxisCount = 2;
+                          if (width > 1200) {
+                            crossAxisCount = 5;
+                          } else if (width > 900) {
+                            crossAxisCount = 4;
+                          } else if (width > 600) {
+                            crossAxisCount = 3;
+                          }
+
+                          final double cardWidth = (width - (crossAxisCount - 1) * 12 - 28) / crossAxisCount;
+                          final double childAspectRatio = cardWidth / 195.0;
+
+                          return GridView.builder(
+                            padding: const EdgeInsets.only(left: 14, right: 14, top: 6, bottom: 96),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: crossAxisCount,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
+                              childAspectRatio: childAspectRatio,
+                            ),
+                            itemCount: displayedNotes.length,
+                            itemBuilder: (context, index) {
+                              final note = displayedNotes[index];
+                              final isShared = note.sharedWith.isNotEmpty ||
+                                  (note.ownerUid != null && note.ownerUid != currentUser?.uid);
+                              final accentColor = _getCardAccent(note);
+                              final isDragging = _draggedNoteId == note.id;
+
+                              final cardContent = _buildNoteCard(
+                                note: note,
+                                currentUser: currentUser,
+                                accentColor: accentColor,
+                                isShared: isShared,
+                                isDark: isDark,
+                                dragHandle: Icon(
+                                  Icons.drag_indicator_rounded,
+                                  size: 18,
+                                  color: isDark ? Colors.white30 : Colors.black26,
+                                ),
+                              );
+
+                              // Drag & Drop reordering support
+                              return DragTarget<String>(
+                                onWillAcceptWithDetails: (details) {
+                                  final draggedId = details.data;
+                                  if (draggedId == note.id) return false;
+                                  return true;
+                                },
+                                onAcceptWithDetails: (details) {
+                                  final draggedId = details.data;
+                                  if (draggedId.isEmpty || draggedId == note.id) return;
+                                  setState(() {
+                                    final currentIds = orderedNotes.map((n) => n.id ?? '').toList();
+                                    currentIds.remove(draggedId);
+                                    final targetIndex = currentIds.indexOf(note.id ?? '');
+                                    if (targetIndex != -1) {
+                                      currentIds.insert(targetIndex, draggedId);
+                                    } else {
+                                      currentIds.add(draggedId);
+                                    }
+                                    _customOrderIds = currentIds;
+                                    _saveCustomOrder(_customOrderIds);
+                                  });
+                                },
+                                builder: (context, candidateData, rejectedData) {
+                                  return LongPressDraggable<String>(
+                                    data: note.id ?? '',
+                                    feedback: SizedBox(
+                                      width: cardWidth,
+                                      height: 195.0,
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: Transform.scale(
+                                          scale: 1.05,
+                                          child: _buildNoteCard(
+                                            note: note,
+                                            currentUser: currentUser,
+                                            accentColor: accentColor,
+                                            isShared: isShared,
+                                            isDark: isDark,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    childWhenDragging: Opacity(
+                                      opacity: 0.25,
+                                      child: cardContent,
+                                    ),
+                                    onDragStarted: () {
+                                      setState(() => _draggedNoteId = note.id);
+                                    },
+                                    onDraggableCanceled: (_, __) {
+                                      setState(() => _draggedNoteId = null);
+                                    },
+                                    onDragCompleted: () {
+                                      setState(() => _draggedNoteId = null);
+                                    },
+                                    child: Opacity(
+                                      opacity: isDragging ? 0.35 : 1.0,
+                                      child: cardContent,
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
           );
-        }
+        },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _addOrEditNote(),
-        child: const Icon(Icons.add),
+      floatingActionButton: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'fab_checklist',
+            onPressed: () => _addOrEditNote(startAsChecklist: true),
+            icon: const Icon(Icons.playlist_add_check_rounded, size: 20),
+            label: Text('Checklist', style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13)),
+            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            foregroundColor: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+            elevation: 3,
+          ),
+          const SizedBox(width: 12),
+          FloatingActionButton.extended(
+            heroTag: 'fab_note',
+            onPressed: () => _addOrEditNote(startAsChecklist: false),
+            icon: const Icon(Icons.edit_note_rounded, size: 22),
+            label: Text('Note', style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13)),
+            backgroundColor: const Color(0xFF6366F1),
+            foregroundColor: Colors.white,
+            elevation: 4,
+          ),
+        ],
       ),
     );
   }
@@ -942,211 +1293,322 @@ class _NotesScreenState extends State<NotesScreen> {
   Widget _buildNoteCard({
     required Note note,
     required User? currentUser,
-    required Color noteColor,
+    required Color accentColor,
     required bool isShared,
-    required Color titleColor,
-    required Color subtitleColor,
-    required Color hintIconColor,
+    required bool isDark,
     Widget? dragHandle,
   }) {
-    final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
-    return Card(
-      elevation: 0,
-      color: noteColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: () => _addOrEditNote(note: note),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (note.title.isNotEmpty)
+    final titleColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subtitleColor = isDark ? Colors.white.withValues(alpha: 0.65) : Colors.black.withValues(alpha: 0.65);
+    final hintIconColor = isDark ? Colors.white.withValues(alpha: 0.4) : Colors.black.withValues(alpha: 0.4);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF151D2A) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: note.isStarred
+              ? const Color(0xFFFBBF24).withValues(alpha: 0.6)
+              : accentColor.withValues(alpha: isDark ? 0.22 : 0.3),
+          width: note.isStarred ? 1.5 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: note.isStarred
+                ? const Color(0xFFFBBF24).withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _addOrEditNote(note: note),
+          child: Padding(
+            padding: const EdgeInsets.all(14.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Card Header: Badges & Status Indicators
+                Row(
+                  children: [
+                    // Type Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: note.isStarred
+                            ? const Color(0xFFFBBF24).withValues(alpha: 0.15)
+                            : (note.isChecklist
+                                ? const Color(0xFF2DD4BF).withValues(alpha: 0.15)
+                                : (isShared
+                                    ? const Color(0xFFA78BFA).withValues(alpha: 0.15)
+                                    : accentColor.withValues(alpha: 0.15))),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            note.isStarred
+                                ? Icons.push_pin_rounded
+                                : (note.isChecklist
+                                    ? Icons.checklist_rounded
+                                    : (isShared ? Icons.people_outline_rounded : Icons.notes_rounded)),
+                            size: 11,
+                            color: note.isStarred
+                                ? const Color(0xFFFBBF24)
+                                : (note.isChecklist
+                                    ? const Color(0xFF2DD4BF)
+                                    : (isShared ? const Color(0xFFA78BFA) : accentColor)),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            note.isStarred
+                                ? 'Pinned'
+                                : (note.isChecklist
+                                    ? 'Checklist'
+                                    : (isShared ? 'Shared' : 'Note')),
+                            style: GoogleFonts.outfit(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: note.isStarred
+                                  ? const Color(0xFFFBBF24)
+                                  : (note.isChecklist
+                                      ? const Color(0xFF2DD4BF)
+                                      : (isShared ? const Color(0xFFA78BFA) : accentColor)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    if (isShared) ...[
+                      const Icon(Icons.people_alt_rounded, size: 14, color: Color(0xFFA78BFA)),
+                      const SizedBox(width: 4),
+                    ],
+                    if (note.isLocked)
+                      const Icon(Icons.lock_rounded, size: 13, color: Color(0xFFF43F5E)),
+                  ],
+                ),
+
+                const SizedBox(height: 8),
+
+                // Note Title
+                if (note.title.isNotEmpty)
+                  Text(
+                    note.title,
+                    style: GoogleFonts.outfit(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+
+                if (note.title.isNotEmpty) const SizedBox(height: 6),
+
+                // Card Body Content
+                Expanded(
+                  child: note.isLocked
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.lock_outline_rounded,
+                                size: 22,
+                                color: isDark ? Colors.white38 : Colors.black38,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'PIN Protected',
+                                style: GoogleFonts.outfit(
+                                  color: subtitleColor,
+                                  fontSize: 12,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : note.isChecklist
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: note.checklistItems.take(3).map<Widget>((item) {
+                                final checked = item['isChecked'] == true;
+                                final String itemText = item['text'] ?? '';
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 3.0),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        checked
+                                            ? Icons.check_circle_rounded
+                                            : Icons.radio_button_unchecked_rounded,
+                                        size: 13,
+                                        color: checked
+                                            ? const Color(0xFF10B981)
+                                            : (isDark ? Colors.white38 : Colors.black38),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: _buildFormattedTextWithSignature(
+                                          text: itemText,
+                                          baseStyle: GoogleFonts.outfit(
+                                            color: checked
+                                                ? (isDark ? Colors.white30 : Colors.black38)
+                                                : subtitleColor,
+                                            fontSize: 12,
+                                            decoration: checked ? TextDecoration.lineThrough : null,
+                                          ),
+                                          isDarkTheme: isDark,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: note.content
+                                  .split('\n')
+                                  .take(3)
+                                  .map((line) => Padding(
+                                        padding: const EdgeInsets.only(bottom: 2.0),
+                                        child: _buildFormattedTextWithSignature(
+                                          text: line,
+                                          baseStyle: GoogleFonts.outfit(
+                                            color: subtitleColor,
+                                            fontSize: 12.5,
+                                            height: 1.3,
+                                          ),
+                                          isDarkTheme: isDark,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ))
+                                  .toList(),
+                            ),
+                ),
+
+                const SizedBox(height: 6),
+
+                // Card Bottom Row
+                Row(
+                  children: [
                     Expanded(
                       child: Text(
-                        note.title,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: titleColor,
+                        DateFormat('MMM d, yyyy').format(
+                          DateFormat('yyyy-MM-dd HH:mm').parse(note.date),
                         ),
-                        maxLines: 1,
+                        style: GoogleFonts.outfit(
+                          fontSize: 10,
+                          color: hintIconColor,
+                          fontWeight: FontWeight.w600,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (isShared)
-                        Icon(Icons.people_outline, size: 16, color: subtitleColor),
-                      if (note.isLocked) ...[
-                        if (isShared) const SizedBox(width: 4),
-                        Icon(Icons.lock, size: 14, color: subtitleColor),
-                      ],
+                    if (dragHandle != null) ...[
+                      dragHandle,
+                      const SizedBox(width: 8),
                     ],
-                  ),
-                ],
-              ),
-              if (note.title.isNotEmpty) const SizedBox(height: 8),
-              Expanded(
-                child: note.isLocked
-                    ? Text(
-                        'Locked Content',
-                        style: TextStyle(
-                          color: subtitleColor,
-                          fontSize: 13,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      )
-                    : note.isChecklist
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: note.checklistItems.take(3).map<Widget>((item) {
-                              final checked = item['isChecked'] == true;
-                              final String itemText = item['text'] ?? '';
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 2.0),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      checked ? Icons.check_box_outlined : Icons.check_box_outline_blank,
-                                      size: 14,
-                                      color: subtitleColor.withValues(alpha: 0.7),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: _buildFormattedTextWithSignature(
-                                        text: itemText,
-                                        baseStyle: TextStyle(
-                                          color: subtitleColor,
-                                          fontSize: 12,
-                                          decoration: checked ? TextDecoration.lineThrough : null,
-                                        ),
-                                        isDarkTheme: isDarkTheme,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                          )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: note.content
-                                .split('\n')
-                                .take(4)
-                                .map((line) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 2.0),
-                                      child: _buildFormattedTextWithSignature(
-                                        text: line,
-                                        baseStyle: TextStyle(color: subtitleColor, fontSize: 13),
-                                        isDarkTheme: isDarkTheme,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ))
-                                .toList(),
-                          ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      DateFormat('MMM d').format(DateFormat('yyyy-MM-dd HH:mm').parse(note.date)),
-                      style: TextStyle(fontSize: 10, color: hintIconColor, fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (dragHandle != null) ...[
-                        dragHandle,
-                        const SizedBox(width: 12),
-                      ],
-                      GestureDetector(
-                        onTap: () async {
-                          final updatedNote = Note(
-                            id: note.id,
-                            title: note.title,
-                            content: note.content,
-                            date: note.date,
-                            isLocked: note.isLocked,
-                            ownerUid: note.ownerUid,
-                            sharedWith: note.sharedWith,
-                            isChecklist: note.isChecklist,
-                            checklistItems: note.checklistItems,
-                            isStarred: !note.isStarred,
-                          );
-                          await _storageService.updateNote(updatedNote);
-                        },
-                        child: Icon(
-                          note.isStarred ? Icons.star : Icons.star_border,
-                          size: 18,
-                          color: note.isStarred ? Colors.amber : hintIconColor,
-                        ),
+                    GestureDetector(
+                      onTap: () async {
+                        final updatedNote = Note(
+                          id: note.id,
+                          title: note.title,
+                          content: note.content,
+                          date: note.date,
+                          isLocked: note.isLocked,
+                          ownerUid: note.ownerUid,
+                          sharedWith: note.sharedWith,
+                          isChecklist: note.isChecklist,
+                          checklistItems: note.checklistItems,
+                          isStarred: !note.isStarred,
+                        );
+                        await _storageService.updateNote(updatedNote);
+                      },
+                      child: Icon(
+                        note.isStarred ? Icons.star_rounded : Icons.star_border_rounded,
+                        size: 20,
+                        color: note.isStarred ? const Color(0xFFFBBF24) : hintIconColor,
                       ),
-                      const SizedBox(width: 12),
-                      if (note.ownerUid == null || note.ownerUid == currentUser?.uid) ...[
-                        GestureDetector(
-                          onTap: () {
-                            showDialog(
-                              context: context,
-                              builder: (context) => CollaboratorSelectionDialog(
-                                itemId: note.id!,
-                                itemTitle: note.title.isNotEmpty ? note.title : 'Untitled Note',
-                                type: 'note',
-                              ),
-                            );
-                          },
-                          child: Icon(Icons.person_add_alt_1_outlined, size: 18, color: hintIconColor),
-                        ),
-                        const SizedBox(width: 12),
-                      ],
+                    ),
+                    const SizedBox(width: 8),
+                    if (note.ownerUid == null || note.ownerUid == currentUser?.uid) ...[
                       GestureDetector(
-                        onTap: () async {
-                          if (note.isLocked) {
-                            bool auth = await _showPinDialog();
-                            if (!auth) return;
-                          }
-                          if (!mounted) return;
-                          final isOwn = note.ownerUid == null || note.ownerUid == currentUser?.uid;
-                          final confirm = await showDialog<bool>(
+                        onTap: () {
+                          showDialog(
                             context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: Text(isOwn ? 'Delete Note' : 'Leave Shared Note'),
-                              content: Text(isOwn ? 'Are you sure you want to delete this note?' : 'Are you sure you want to stop collaborating on this note?'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx, true), 
-                                  style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                  child: Text(isOwn ? 'Delete' : 'Leave')
-                                ),
-                              ],
+                            builder: (context) => CollaboratorSelectionDialog(
+                              itemId: note.id!,
+                              itemTitle: note.title.isNotEmpty ? note.title : 'Untitled Note',
+                              type: 'note',
                             ),
                           );
-
-                          if (confirm != true) return;
-                          await _storageService.deleteNote(note.id!, ownerUid: note.ownerUid);
                         },
-                        child: Icon(Icons.delete_outline, size: 18, color: hintIconColor),
+                        child: Icon(Icons.person_add_alt_1_rounded, size: 18, color: hintIconColor),
                       ),
+                      const SizedBox(width: 8),
                     ],
-                  ),
-                ],
-              ),
-            ],
+                    GestureDetector(
+                      onTap: () async {
+                        if (note.isLocked) {
+                          bool auth = await _showPinDialog();
+                          if (!auth) return;
+                        }
+                        if (!mounted) return;
+                        final isOwn = note.ownerUid == null || note.ownerUid == currentUser?.uid;
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            title: Text(
+                              isOwn ? 'Delete Note' : 'Leave Shared Note',
+                              style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+                            ),
+                            content: Text(
+                              isOwn
+                                  ? 'Are you sure you want to delete this note?'
+                                  : 'Are you sure you want to stop collaborating on this note?',
+                              style: GoogleFonts.outfit(fontSize: 14),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: Text('Cancel', style: GoogleFonts.outfit()),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFFEF4444),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                child: Text(isOwn ? 'Delete' : 'Leave', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirm != true) return;
+                        await _storageService.deleteNote(note.id!, ownerUid: note.ownerUid);
+                      },
+                      child: Icon(Icons.delete_outline_rounded, size: 18, color: hintIconColor),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1218,14 +1680,14 @@ class _NotesScreenState extends State<NotesScreen> {
   List<InlineSpan> _buildTextSpansWithUrls(String text, TextStyle baseStyle) {
     final RegExp urlRegExp = RegExp(r'(https?://[^\s]+|www\.[^\s]+)', caseSensitive: false);
     final Iterable<RegExpMatch> matches = urlRegExp.allMatches(text);
-    
+
     if (matches.isEmpty) {
       return [TextSpan(text: text, style: baseStyle)];
     }
-    
+
     final List<InlineSpan> spans = [];
     int lastMatchEnd = 0;
-    
+
     for (final RegExpMatch match in matches) {
       if (match.start > lastMatchEnd) {
         spans.add(TextSpan(
@@ -1233,28 +1695,28 @@ class _NotesScreenState extends State<NotesScreen> {
           style: baseStyle,
         ));
       }
-      
+
       final String url = match.group(0)!;
       spans.add(TextSpan(
         text: url,
         style: baseStyle.copyWith(
-          color: Colors.blue,
+          color: const Color(0xFF6366F1),
           decoration: TextDecoration.underline,
         ),
         recognizer: TapGestureRecognizer()
           ..onTap = () => _openExternalUrl(url),
       ));
-      
+
       lastMatchEnd = match.end;
     }
-    
+
     if (lastMatchEnd < text.length) {
       spans.add(TextSpan(
         text: text.substring(lastMatchEnd),
         style: baseStyle,
       ));
     }
-    
+
     return spans;
   }
 
@@ -1268,7 +1730,7 @@ class _NotesScreenState extends State<NotesScreen> {
   }) {
     final username = _extractUsername(text) ?? defaultAuthor;
     final cleanedText = _stripSignature(text);
-    
+
     final textSpans = _buildTextSpansWithUrls(cleanedText, baseStyle);
 
     if (username == null || username.isEmpty) {
@@ -1404,17 +1866,17 @@ class _NotesScreenState extends State<NotesScreen> {
   ) {
     final RegExp urlRegExp = RegExp(r'(https?://[^\s]+|www\.[^\s]+)', caseSensitive: false);
     final Set<String> links = {};
-    
+
     final cleanTitle = _stripSignature(title);
     final cleanContent = _stripSignature(content);
-    
+
     for (final match in urlRegExp.allMatches(cleanTitle)) {
       links.add(match.group(0)!);
     }
     for (final match in urlRegExp.allMatches(cleanContent)) {
       links.add(match.group(0)!);
     }
-    
+
     if (isChecklist) {
       for (var item in checklistItems) {
         final text = item['text'] as String? ?? '';
@@ -1424,7 +1886,7 @@ class _NotesScreenState extends State<NotesScreen> {
         }
       }
     }
-    
+
     return links.toList();
   }
 }
@@ -1440,7 +1902,7 @@ class LinkTextEditingController extends TextEditingController {
   }) {
     final RegExp urlRegExp = RegExp(r'(https?://[^\s]+|www\.[^\s]+)', caseSensitive: false);
     final String textStr = text;
-    
+
     if (textStr.isEmpty) {
       return TextSpan(text: textStr, style: style);
     }
@@ -1449,7 +1911,7 @@ class LinkTextEditingController extends TextEditingController {
     final matches = urlRegExp.allMatches(textStr);
     int lastMatchEnd = 0;
 
-    for (final match in matches) {
+    for (final RegExpMatch match in matches) {
       if (match.start > lastMatchEnd) {
         children.add(TextSpan(
           text: textStr.substring(lastMatchEnd, match.start),
@@ -1461,7 +1923,7 @@ class LinkTextEditingController extends TextEditingController {
       children.add(TextSpan(
         text: url,
         style: (style ?? const TextStyle()).copyWith(
-          color: Colors.blue,
+          color: const Color(0xFF6366F1),
           decoration: TextDecoration.underline,
         ),
       ));

@@ -19,6 +19,7 @@ import '../services/app_file_picker/app_file_picker.dart';
 import '../services/url_launcher_helper/url_launcher_helper.dart';
 import 'ai_keys_settings_screen.dart';
 import 'job_replies_screen.dart';
+import 'feature_logs_screen.dart';
 
 class JobAssistantScreen extends StatefulWidget {
   const JobAssistantScreen({super.key});
@@ -117,7 +118,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   // Startup Radar & Cold Outreach State
   bool _isDiscoveringLeaders = false;
   final String _networkingCategoryFilter = 'all'; // 'all', 'founder', 'engineering_manager', 'talent_acquisition'
-  String _networkingStatusFilter = 'all'; // Default 'all' so cards do not vanish!
+  String _networkingStatusFilter = 'pending'; // Default 'pending' to show pending outreach by default
   final ScrollController _networkingScrollController = ScrollController();
   List<String> _radarLocations = [];
   List<String> _radarTechDomains = [];
@@ -1907,6 +1908,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.receipt_long_rounded),
+            tooltip: 'Automation Run Logs',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const FeatureLogsScreen(
+                    title: 'AI Applicant Logs',
+                    allowedFeatures: ['auto_apply', 'cold_outreach'],
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: StreamBuilder<List<JobApplication>>(
               initialData: _service.cachedApplications.isNotEmpty ? _service.cachedApplications : null,
@@ -4252,9 +4268,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       debugPrint('Could not launch LinkedIn URL: $e');
     }
 
-    // 2. Copy the customized connection note to clipboard
+    // 2. Copy the customized connection note to clipboard (enforcing <= 200 chars for LinkedIn free tier)
     if (lead.connectionNote.isNotEmpty) {
-      await Clipboard.setData(ClipboardData(text: lead.connectionNote));
+      final noteToCopy = lead.connectionNote.length > 200
+          ? '${lead.connectionNote.substring(0, 197)}...'
+          : lead.connectionNote;
+      await Clipboard.setData(ClipboardData(text: noteToCopy));
     }
 
     // 3. Advance status to 'note_sent' (Card stays visible in current month list!)
@@ -4268,7 +4287,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Copied 300-char note! Opening LinkedIn for ${lead.name}... (Marked as Note Sent / Opened)'),
+                child: Text('Copied 200-char note! Opening LinkedIn for ${lead.name}... (Marked as Note Sent / Opened)'),
               ),
             ],
           ),
@@ -4471,7 +4490,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Discovers high-growth Seed & Series A tech startups in your target locations and auto-dispatches tailored pitches with your resume PDF attached directly to CTOs & Founders. Generates ≤ 300-char LinkedIn notes for 1-tap dual outreach.',
+                    'Discovers high-growth Seed & Series A tech startups in your target locations and auto-dispatches tailored pitches with your resume PDF attached directly to CTOs & Founders. Generates ≤ 200-char LinkedIn notes for 1-tap dual outreach.',
                     style: TextStyle(
                       fontSize: 12,
                       height: 1.4,
@@ -4662,16 +4681,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             ),
             const SizedBox(height: 10),
 
-            // Action Filter: All Startups vs Pending Action vs Completed
+            // Action Filter: Pending Outreach (Default) vs Completed vs All Startups
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _buildNetworkingStatusChip('all', 'All Startups'),
-                  const SizedBox(width: 8),
                   _buildNetworkingStatusChip('pending', 'Pending Outreach ⚡'),
                   const SizedBox(width: 8),
                   _buildNetworkingStatusChip('completed', 'Completed / Sent ✅'),
+                  const SizedBox(width: 8),
+                  _buildNetworkingStatusChip('all', 'All Startups'),
                 ],
               ),
             ),
@@ -4723,12 +4742,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         Icon(Icons.rocket_launch_rounded, size: 64, color: Colors.grey.withValues(alpha: 0.4)),
                         const SizedBox(height: 12),
                         Text(
-                          'No Startups Found in ${DateFormat('MMMM yyyy').format(_networkingMonth)}',
+                          _networkingStatusFilter == 'pending'
+                              ? 'No Pending Outreach Leads in ${DateFormat('MMMM yyyy').format(_networkingMonth)}'
+                              : 'No Startups Found in ${DateFormat('MMMM yyyy').format(_networkingMonth)}',
                           style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Tap "Scan & Pitch 5 Startups Now" above or navigate to another month to see discovered startups.',
+                          _networkingStatusFilter == 'pending'
+                              ? 'All discovered leads for this month have been addressed! Check "Completed / Sent" or "All Startups", or tap "Scan & Pitch 5 Startups Now".'
+                              : 'Tap "Scan & Pitch 5 Startups Now" above or navigate to another month to see discovered startups.',
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                         ),
@@ -4779,6 +4802,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         if (selected) {
           setState(() {
             _networkingStatusFilter = key;
+            _networkingPage = 1;
           });
         }
       },
@@ -4792,6 +4816,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Widget _buildStartupLeadCard(NetworkingLead lead, bool isDark, Color cardBg) {
+    // Connection Note (≤ 200 characters for LinkedIn free tier)
+    final displayNote = lead.connectionNote.length > 200
+        ? '${lead.connectionNote.substring(0, 197)}...'
+        : lead.connectionNote;
+
     // Stage color
     Color stageBg = Colors.amber.withValues(alpha: 0.15);
     Color stageFg = Colors.amber.shade800;
@@ -5047,7 +5076,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               ),
             ),
 
-          // Connection Note Box (≤ 300 characters)
+          // Connection Note Box (≤ 200 characters for LinkedIn free tier)
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -5076,17 +5105,17 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: lead.connectionNote.length <= 300
+                        color: displayNote.length <= 200
                             ? Colors.green.withValues(alpha: 0.15)
                             : Colors.red.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        '${lead.connectionNote.length}/300 chars',
+                        '${displayNote.length}/200 chars',
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.bold,
-                          color: lead.connectionNote.length <= 300 ? Colors.green : Colors.red,
+                          color: displayNote.length <= 200 ? Colors.green : Colors.red,
                         ),
                       ),
                     ),
@@ -5094,7 +5123,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 ),
                 const SizedBox(height: 6),
                 SelectableText(
-                  lead.connectionNote,
+                  displayNote,
                   style: TextStyle(
                     fontSize: 12.5,
                     height: 1.4,

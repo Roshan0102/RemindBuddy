@@ -8,6 +8,7 @@ const functions = require("firebase-functions");
 const moment = require("moment-timezone");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
+const featureLogger_1 = require("../../utils/featureLogger");
 const nodemailer = require("nodemailer");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
@@ -58,6 +59,14 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification, cust
     console.log(`[TechEvents] Isolated execution for user ${uid}: Interests=[${interests.join(', ')}], Location="${location}", Mode="${eventMode}"`);
     if (!userTavilyKey || !userGeminiKey) {
         console.log(`[TechEvents] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'tech_events',
+            featureTitle: 'Tech Events',
+            status: 'error',
+            count: 0,
+            message: 'API Key Error: Missing Tavily or Gemini API key. Please configure in Settings -> AI & Search Keys.',
+            isManual: !triggerNotification
+        });
         return { success: false, events: [], message: "Tavily and Gemini API keys not configured in Settings." };
     }
     const today = moment().tz('Asia/Kolkata');
@@ -77,6 +86,7 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification, cust
     // Run targeted Tavily search query per interest
     const allTavilyResults = [];
     const seenUrls = new Set();
+    let lastTavilyError = "";
     for (const interest of interests.slice(0, 4)) {
         try {
             let modeTerm = "meetup OR hackathon OR tech workshop";
@@ -106,11 +116,23 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification, cust
         }
         catch (tavilyErr) {
             console.warn(`[TechEvents] Tavily search error for interest "${interest}":`, tavilyErr.message);
+            lastTavilyError = tavilyErr.message || String(tavilyErr);
         }
     }
     if (allTavilyResults.length === 0) {
         console.log(`[TechEvents] No search results returned from Tavily for user ${uid}.`);
-        return { success: true, events: [], message: "No upcoming events found from search." };
+        const message = lastTavilyError
+            ? `Tavily Search Error: ${lastTavilyError}. Please check your Tavily API key and plan limits in Settings.`
+            : "No upcoming events found from search.";
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'tech_events',
+            featureTitle: 'Tech Events',
+            status: lastTavilyError ? 'error' : 'no_results',
+            count: 0,
+            message,
+            isManual: !triggerNotification
+        });
+        return { success: !lastTavilyError, events: [], message };
     }
     const searchResultsSummary = allTavilyResults.map((r, i) => `[Event Search Result ${i + 1}]\nTitle: ${r.title}\nSource: ${r.url}\nDetails: ${r.content}`).join("\n\n");
     const prompt = `You are an expert event curator. Below are real-time search results for upcoming tech events, developer meetups, workshops, and hackathons:
@@ -149,10 +171,26 @@ Respond ONLY with a JSON array matching this schema:
             }
         ]
     };
-    const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { apiKey: userGeminiKey, timeout: 60000 });
-    const textResponse = geminiResult.text;
+    let textResponse = "";
+    try {
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { apiKey: userGeminiKey, timeout: 60000 });
+        textResponse = geminiResult.text || "";
+    }
+    catch (apiErr) {
+        console.error("[TechEvents] Gemini analysis failed:", apiErr.message);
+        const errMsg = `Gemini API Error: ${apiErr.message || apiErr}. Check your Gemini API key and quota in Settings.`;
+        await (0, featureLogger_1.logFeatureExecution)(uid, {
+            feature: 'tech_events',
+            featureTitle: 'Tech Events',
+            status: 'error',
+            count: 0,
+            message: errMsg,
+            isManual: !triggerNotification
+        });
+        return { success: false, events: [], message: errMsg };
+    }
     if (!textResponse) {
-        throw new Error('Empty content returned from Gemini API.');
+        return { success: true, events: [], message: "Empty content returned from Gemini API." };
     }
     let cleanedText = textResponse.trim();
     if (cleanedText.startsWith("```")) {
@@ -245,6 +283,18 @@ Respond ONLY with a JSON array matching this schema:
         updateData.eventsLastUpdated = firebase_1.admin.firestore.FieldValue.serverTimestamp();
     }
     await firebase_1.db.collection("users").doc(uid).update(updateData);
+    const eventTitles = uniqueEvents.map((e) => e.title).filter(Boolean);
+    await (0, featureLogger_1.logFeatureExecution)(uid, {
+        feature: 'tech_events',
+        featureTitle: 'Tech Events',
+        status: newCount > 0 ? 'success' : 'no_results',
+        count: newCount,
+        message: newCount > 0
+            ? `Found ${newCount} new tech event(s) in ${location || 'your area'}: ${eventTitles.slice(0, 3).join(', ')}`
+            : `0 new tech events found in ${location || 'your area'} for this run.`,
+        details: eventTitles,
+        isManual: !triggerNotification
+    });
     // Send push notification if automatic scheduling triggered it and new items were added
     if (triggerNotification && newCount > 0 && userDoc.exists) {
         const uData = userDoc.data();

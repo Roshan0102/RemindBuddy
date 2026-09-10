@@ -7,7 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/log_service.dart';
-import 'ai_keys_settings_screen.dart';
+import 'feature_logs_screen.dart';
 
 class TechEventsScreen extends StatefulWidget {
   const TechEventsScreen({super.key});
@@ -557,12 +557,17 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.vpn_key_rounded),
-            tooltip: 'AI & Search Keys',
+            icon: const Icon(Icons.receipt_long_rounded),
+            tooltip: 'Tech Events Run Logs',
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const AIKeysSettingsScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const FeatureLogsScreen(
+                    title: 'Tech Events Logs',
+                    allowedFeatures: ['tech_events'],
+                  ),
+                ),
               );
             },
           ),

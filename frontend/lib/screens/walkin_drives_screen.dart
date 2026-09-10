@@ -7,7 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/log_service.dart';
-import 'ai_keys_settings_screen.dart';
+import 'feature_logs_screen.dart';
 
 class WalkInDrivesScreen extends StatefulWidget {
   const WalkInDrivesScreen({super.key});
@@ -534,12 +534,17 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.vpn_key_rounded),
-            tooltip: 'AI & Search Keys',
+            icon: const Icon(Icons.receipt_long_rounded),
+            tooltip: 'Walk-In Drives Run Logs',
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const AIKeysSettingsScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const FeatureLogsScreen(
+                    title: 'Walk-In Drives Logs',
+                    allowedFeatures: ['walkin_drives'],
+                  ),
+                ),
               );
             },
           ),
