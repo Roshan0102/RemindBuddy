@@ -117,7 +117,7 @@ Respond ONLY with a JSON object in this format:
             extractedSkills: rawJob.extractedSkills || [],
             generatedSubject: subj,
             generatedCoverLetter: body,
-            modelUsed: geminiResult.modelUsed || "gemini-3.7-flash"
+            modelUsed: geminiResult.modelUsed || "gemini-3.8-flash"
         };
         return {
             success: true,
@@ -219,7 +219,7 @@ Respond ONLY with a JSON object in this format:
             success: true,
             generatedSubject: genSubject,
             generatedCoverLetter: genBody,
-            modelUsed: geminiResult.modelUsed || "gemini-3.7-flash"
+            modelUsed: geminiResult.modelUsed || "gemini-3.8-flash"
         };
     }
     catch (error) {

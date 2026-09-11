@@ -59,13 +59,22 @@ async function checkUserJobReplies(uid) {
         console.log(`[ReplyTracker] User ${uid} has 0 pending 'sent' applications or startup pitches.`);
         return { checked: 0, repliesFound: 0 };
     }
-    const sentApps = [
+    const rawSentApps = [
         ...appsSnap.docs.map(d => (Object.assign({ id: d.id, ref: d.ref, isNetworkingLead: false }, d.data()))),
         ...leadsSnap.docs.map(d => {
             const data = d.data();
             return Object.assign({ id: d.id, ref: d.ref, isNetworkingLead: true, jobTitle: data.currentRole || "Technology Leader", companyName: data.companyName, recipientEmail: data.email, appliedAt: data.emailSentAt || data.discoveredAt, messageId: data.messageId }, data);
         })
     ];
+    // Exclude any application or lead that the user already deleted or dismissed
+    const sentApps = rawSentApps.filter(app => !app.replyDeleted &&
+        !app.isReplyDeleted &&
+        !app.replyDismissed &&
+        !app.isReplyDismissed &&
+        !app.isDeleted &&
+        app.status !== "reply_deleted" &&
+        app.status !== "lead_dismissed" &&
+        app.status !== "bounced_dismissed");
     // Determine search start date (earliest applied date, capped at 30 days ago)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -308,6 +317,13 @@ async function checkUserJobReplies(uid) {
                         cleanBodySnippet.toLowerCase().includes("address could not be found") ||
                         cleanBodySnippet.toLowerCase().includes("recipient address rejected") ||
                         cleanBodySnippet.toLowerCase().includes("user unknown");
+                    if (matchedApp.replyDeleted || matchedApp.isReplyDeleted || matchedApp.replyDismissed || matchedApp.isReplyDismissed) {
+                        console.log(`[ReplyTracker] Skipping already deleted/dismissed lead/application '${matchedApp.companyName}'`);
+                        if (matchedApp.messageId)
+                            appsByMessageId.delete(matchedApp.messageId.toLowerCase().trim().replace(/[<>]/g, ""));
+                        appsByRecipient.delete((matchedApp.recipientEmail || "").toLowerCase().trim());
+                        continue;
+                    }
                     if (isBounce) {
                         console.log(`[ReplyTracker] ⚠️ Detected mail delivery bounce for '${matchedApp.companyName}' (${matchedApp.recipientEmail || ''})`);
                         const replyTime = envelope.date || new Date();

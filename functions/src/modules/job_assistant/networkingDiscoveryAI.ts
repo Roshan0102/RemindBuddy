@@ -107,6 +107,8 @@ export async function discoverNetworkingLeadsForUser(
     let targetRoles: string[] = options?.targetRoles || startupSettings.techDomains || autoApplySettings.targetRoles || [];
     if (typeof targetRoles === "string") {
         targetRoles = (targetRoles as string).split(",").map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    } else if (Array.isArray(targetRoles)) {
+        targetRoles = targetRoles.flatMap((r: string) => String(r).split(",")).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
     }
     if (targetRoles.length === 0) {
         console.log(`[StartupRadar] User ${uid} has no target roles or tech domains configured. Skipping.`);
@@ -125,6 +127,8 @@ export async function discoverNetworkingLeadsForUser(
     ];
     if (typeof targetLocations === "string") {
         targetLocations = (targetLocations as string).split(",").map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    } else if (Array.isArray(targetLocations)) {
+        targetLocations = targetLocations.flatMap((l: string) => String(l).split(",")).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
     }
     if (targetLocations.length === 0) {
         targetLocations = ["Bengaluru", "Remote", "India"];

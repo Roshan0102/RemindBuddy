@@ -29,6 +29,7 @@ class NetworkingLead {
   final List<String>? techStack;
   final bool isReplyDismissed;
   final bool isBounced;
+  final bool replyDeleted;
 
   NetworkingLead({
     required this.id,
@@ -57,6 +58,7 @@ class NetworkingLead {
     this.techStack,
     this.isReplyDismissed = false,
     this.isBounced = false,
+    this.replyDeleted = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -88,6 +90,7 @@ class NetworkingLead {
       'isReplyDismissed': isReplyDismissed,
       'replyDismissed': isReplyDismissed,
       'isBounced': isBounced,
+      'replyDeleted': replyDeleted,
     };
   }
 
@@ -168,7 +171,9 @@ class NetworkingLead {
       fundingStage: map['fundingStage']?.toString(),
       techStack: parsedTechStack,
       isReplyDismissed: map['replyDismissed'] == true || map['isReplyDismissed'] == true,
-      isBounced: map['isBounced'] == true || map['emailBounced'] == true || map['responseType'] == 'bounced' || map['status'] == 'bounced',
+      replyDeleted: map['replyDeleted'] == true || map['isReplyDeleted'] == true || map['isDeleted'] == true || map['status'] == 'reply_deleted' || map['status'] == 'lead_dismissed' || map['status'] == 'bounced_dismissed',
+      isBounced: (map['isBounced'] == true || map['emailBounced'] == true || map['responseType'] == 'bounced' || map['status'] == 'bounced') &&
+          !(map['replyDeleted'] == true || map['isReplyDeleted'] == true || map['isDeleted'] == true || map['status'] == 'reply_deleted' || map['status'] == 'lead_dismissed' || map['status'] == 'bounced_dismissed'),
     );
   }
 
@@ -199,6 +204,7 @@ class NetworkingLead {
     List<String>? techStack,
     bool? isReplyDismissed,
     bool? isBounced,
+    bool? replyDeleted,
   }) {
     return NetworkingLead(
       id: id ?? this.id,
@@ -227,6 +233,7 @@ class NetworkingLead {
       techStack: techStack ?? this.techStack,
       isReplyDismissed: isReplyDismissed ?? this.isReplyDismissed,
       isBounced: isBounced ?? this.isBounced,
+      replyDeleted: replyDeleted ?? this.replyDeleted,
     );
   }
 }

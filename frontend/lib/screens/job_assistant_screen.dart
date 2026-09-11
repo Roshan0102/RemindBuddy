@@ -4144,15 +4144,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         await _service.saveApplicantName(name);
       }
 
-      var locs = List<String>.from(_radarLocations);
+      var locs = _radarLocations.expand((e) => e.split(',')).map((s) => s.trim()).where((s) => s.isNotEmpty).toSet().toList();
       if (locs.isEmpty && _locationsController.text.trim().isNotEmpty) {
         locs = _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
       }
 
-      var domains = List<String>.from(_radarTechDomains);
+      var domains = _radarTechDomains.expand((e) => e.split(',')).map((s) => s.trim()).where((s) => s.isNotEmpty).toSet().toList();
       if (domains.isEmpty && _targetRolesController.text.trim().isNotEmpty) {
         domains = _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
       }
+
+      // Update in-memory state with cleanly normalized chips
+      setState(() {
+        _radarLocations = List.from(locs);
+        _radarTechDomains = List.from(domains);
+      });
 
       await _service.saveStartupRadarSettings(
         locations: locs,
@@ -4204,9 +4210,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           ElevatedButton(
             onPressed: () {
               final text = _newRadarLocController.text.trim();
-              if (text.isNotEmpty && !_radarLocations.contains(text)) {
+              if (text.isNotEmpty) {
+                final parts = text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
                 setState(() {
-                  _radarLocations.add(text);
+                  for (final p in parts) {
+                    if (!_radarLocations.contains(p)) {
+                      _radarLocations.add(p);
+                    }
+                  }
                 });
                 _saveRadarPreferences();
               }
@@ -4238,9 +4249,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           ElevatedButton(
             onPressed: () {
               final text = _newRadarDomainController.text.trim();
-              if (text.isNotEmpty && !_radarTechDomains.contains(text)) {
+              if (text.isNotEmpty) {
+                final parts = text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
                 setState(() {
-                  _radarTechDomains.add(text);
+                  for (final p in parts) {
+                    if (!_radarTechDomains.contains(p)) {
+                      _radarTechDomains.add(p);
+                    }
+                  }
                 });
                 _saveRadarPreferences();
               }

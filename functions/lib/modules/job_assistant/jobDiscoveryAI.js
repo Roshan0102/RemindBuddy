@@ -598,7 +598,7 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
                 messageId: info.messageId || "",
                 isAutoApplied: true,
                 appliedDateStr: todayStr,
-                modelUsed: modelUsed || "gemini-3.7-flash",
+                modelUsed: modelUsed || "gemini-3.8-flash",
                 resumeProfileName: matchedProfile.title
             };
             const appDocRef = await firebase_1.db.collection("users").doc(uid).collection("job_applications").add(applicationRecord);

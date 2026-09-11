@@ -2,11 +2,25 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.analyzeRosterImage = void 0;
 const functions = require("firebase-functions");
+const firebase_1 = require("../../config/firebase");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 exports.analyzeRosterImage = functions.runWith({ timeoutSeconds: 180, memory: "1GB" }).https.onCall(async (data, context) => {
+    var _a;
     // Ensure user is authenticated
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    }
+    const uid = context.auth.uid;
+    let userGeminiKey = "";
+    try {
+        const userDoc = await firebase_1.db.collection("users").doc(uid).get();
+        if (userDoc.exists) {
+            const uData = userDoc.data() || {};
+            userGeminiKey = (((_a = uData.userApiKeys) === null || _a === void 0 ? void 0 : _a.geminiApiKey) || uData.geminiApiKey || "").trim();
+        }
+    }
+    catch (e) {
+        console.warn("[ShiftVisionAI] Could not fetch user API key:", e.message);
     }
     const { image, employeeName } = data;
     if (!image || !employeeName) {
@@ -93,8 +107,8 @@ Return ONLY the JSON object matching the requested schema with all days in "shif
     };
     try {
         const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, {
-            timeout: 35000,
-            models: ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-latest"]
+            apiKey: userGeminiKey || undefined,
+            timeout: 60000
         });
         const textResponse = geminiResult.text;
         if (!textResponse) {

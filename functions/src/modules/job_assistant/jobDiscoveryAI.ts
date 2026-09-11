@@ -681,7 +681,7 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
                 messageId: info.messageId || "",
                 isAutoApplied: true,
                 appliedDateStr: todayStr,
-                modelUsed: modelUsed || "gemini-3.7-flash",
+                modelUsed: modelUsed || "gemini-3.8-flash",
                 resumeProfileName: matchedProfile.title
             };
 

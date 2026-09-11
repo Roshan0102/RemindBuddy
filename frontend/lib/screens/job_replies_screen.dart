@@ -302,9 +302,9 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
               final allApps = appSnap.data ?? [];
               final allLeads = leadSnap.data ?? [];
 
-              // Filter to items that have received replies or bounced
-              final appReplies = allApps.where((a) => a.status == 'reply_received' || a.isBounced).toList();
-              final leadReplies = allLeads.where((l) => l.status == 'replied' || l.isBounced).toList();
+              // Filter to items that have received replies or bounced (excluding deleted ones)
+              final appReplies = allApps.where((a) => !a.replyDeleted && (a.status == 'reply_received' || a.isBounced)).toList();
+              final leadReplies = allLeads.where((l) => !l.replyDeleted && (l.status == 'replied' || l.isBounced)).toList();
 
               // Unified reply list
               final List<UnifiedReplyItem> unifiedReplies = [];

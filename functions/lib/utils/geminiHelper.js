@@ -1,14 +1,20 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.DEFAULT_MODELS = void 0;
 exports.fetchAvailableModelsFromAPI = fetchAvailableModelsFromAPI;
 exports.callGeminiAPI = callGeminiAPI;
 const axios_1 = require("axios");
 const firebase_1 = require("../config/firebase");
 // Active Gemini models ordered by speed, intelligence and fallback hierarchy
-const DEFAULT_MODELS = [
+exports.DEFAULT_MODELS = [
+    "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-3.6-flash",
-    "gemini-3.5-flash"
+    "gemini-flash-latest",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite"
 ];
 /**
  * Dynamically queries Google AI Studio REST API (/v1beta/models)
@@ -34,17 +40,15 @@ async function fetchAvailableModelsFromAPI(apiKey) {
     catch (e) {
         console.warn(`[GeminiHelper] Could not fetch dynamic models list from Google API: ${e.message}`);
     }
-    return DEFAULT_MODELS;
+    return exports.DEFAULT_MODELS;
 }
 // In-memory runtime cache to eliminate latency on repeated calls
 const unsupportedModels = new Set();
-let cachedWorkingModel = null;
 /**
  * High-performance Gemini API caller:
- * - Supports custom user BYOK apiKey via options.apiKey
- * - Falls back to central admin Gemini API key from admin_creds/gemini_config
- * - Cascade failover across models: Gemini 3.7 Flash -> Gemini 3.6 Flash -> Gemini 3.5 Flash
- * - Instant response via cached working model
+ * - Operates purely on custom user BYOK apiKey (or falls back to central admin key if none configured)
+ * - Intelligent 8-tier cascade starting with gemini-3.8-flash -> 3.7 -> 3.6 -> flash-latest -> 3.5 -> 3.5-lite -> flash-lite-latest -> 3.1-lite
+ * - Built-in exponential backoff for HTTP 503 (high-demand transient spikes) and HTTP 429
  */
 async function callGeminiAPI(payload, options = {}) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
@@ -60,15 +64,11 @@ async function callGeminiAPI(payload, options = {}) {
     if (!targetApiKey) {
         throw new Error("Gemini API key is not configured (neither user key nor admin key available).");
     }
-    let candidateModels = options.models && options.models.length > 0 ? [...options.models] : [...DEFAULT_MODELS];
+    let candidateModels = options.models && options.models.length > 0 ? [...options.models] : [...exports.DEFAULT_MODELS];
     // Filter out models that were already identified as 404/unsupported in this container instance
     candidateModels = candidateModels.filter(m => !unsupportedModels.has(m));
-    // Prioritize the known working model to get instant responses
-    if (cachedWorkingModel && candidateModels.includes(cachedWorkingModel)) {
-        candidateModels = [cachedWorkingModel, ...candidateModels.filter(m => m !== cachedWorkingModel)];
-    }
     if (candidateModels.length === 0) {
-        candidateModels = [...DEFAULT_MODELS];
+        candidateModels = [...exports.DEFAULT_MODELS];
     }
     const timeout = options.timeout || 120000;
     const maxRetries = (_a = options.maxRetries) !== null && _a !== void 0 ? _a : 1;
@@ -101,8 +101,6 @@ async function callGeminiAPI(payload, options = {}) {
                 }
                 const text = ((_e = (_d = (_c = candidates[0].content) === null || _c === void 0 ? void 0 : _c.parts) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.text) || "";
                 console.log(`[GeminiHelper] Successfully executed '${model}' with ${keyLabel}!`);
-                // Remember working model for instant future executions
-                cachedWorkingModel = model;
                 return {
                     text,
                     raw: response.data,
@@ -119,22 +117,38 @@ async function callGeminiAPI(payload, options = {}) {
                 if (status === 404 || (status === 400 && (errMsg.includes("no longer available") || errMsg.includes("not supported") || errMsg.includes("not found")))) {
                     console.log(`[GeminiHelper] Model '${model}' is unavailable on Google API. Pruning from active list.`);
                     unsupportedModels.add(model);
-                    if (cachedWorkingModel === model) {
-                        cachedWorkingModel = null;
-                    }
                     break;
                 }
+                // 429 Rate limit
                 if (status === 429) {
                     attempt++;
                     if (attempt <= maxRetries) {
-                        const delayMs = attempt * 1000;
+                        const delayMs = attempt * 1500;
                         console.log(`[GeminiHelper] 429 for '${model}'. Backing off ${delayMs}ms before retry...`);
                         await new Promise((res) => setTimeout(res, delayMs));
                         continue;
                     }
+                    console.log(`[GeminiHelper] 429 limit reached for '${model}'. Cascading to next model in tier...`);
+                    await new Promise((res) => setTimeout(res, 500));
                     break; // Move to next model in cascade
                 }
-                break; // For other errors, move to next model
+                // 503 / 502 / 504 Transient high demand or server overload spike
+                if (status === 503 || status === 502 || status === 504 || (errMsg && (errMsg.includes("high demand") || errMsg.includes("spikes in demand") || errMsg.includes("temporarily unavailable") || errMsg.includes("overloaded")))) {
+                    attempt++;
+                    if (attempt <= maxRetries) {
+                        const delayMs = attempt * 2000;
+                        console.log(`[GeminiHelper] Server transient high-demand/busy spike (Status ${status}) on '${model}'. Backing off ${delayMs}ms before retry...`);
+                        await new Promise((res) => setTimeout(res, delayMs));
+                        continue;
+                    }
+                    console.log(`[GeminiHelper] Server still busy for '${model}'. Cascading to next model in tier...`);
+                    await new Promise((res) => setTimeout(res, 500));
+                    break; // Move to next model in cascade
+                }
+                // For any other unexpected error, pause briefly and cascade to next model
+                console.warn(`[GeminiHelper] Unhandled error on '${model}' (${status}): ${errMsg}. Cascading to next model...`);
+                await new Promise((res) => setTimeout(res, 400));
+                break; // Move to next model
             }
         }
     }

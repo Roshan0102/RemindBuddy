@@ -116,19 +116,11 @@ Spoken Text:
         }
     };
 
-    // 3. Call Gemini with explicit user API key and model fallback cascade
-    const candidateModels = [
-        "gemini-3.7-flash",
-        "gemini-3.6-flash",
-        "gemini-3.5-flash",
-        "gemini-2.5-flash"
-    ];
-
+    // 3. Call Gemini with explicit user API key and default 8-tier fallback cascade
     try {
         const aiResponse = await callGeminiAPI(geminiPayload, {
             apiKey: userGeminiKey,
-            models: candidateModels,
-            timeout: 25000,
+            timeout: 30000,
             maxRetries: 1
         });
 

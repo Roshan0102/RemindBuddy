@@ -20,6 +20,8 @@ class NotesScreen extends StatefulWidget {
 class _NotesScreenState extends State<NotesScreen> {
   final StorageService _storageService = StorageService();
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  late final Stream<List<Note>> _notesStream;
   List<String> _customOrderIds = [];
   String? _draggedNoteId;
   String _searchQuery = '';
@@ -36,12 +38,14 @@ class _NotesScreenState extends State<NotesScreen> {
   @override
   void initState() {
     super.initState();
+    _notesStream = _storageService.getNotesStream();
     _loadCustomOrder();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -930,7 +934,7 @@ class _NotesScreenState extends State<NotesScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Notes & Ideas',
+              'Notes & Checklist',
               style: GoogleFonts.outfit(
                 fontWeight: FontWeight.bold,
                 fontSize: 22,
@@ -989,9 +993,9 @@ class _NotesScreenState extends State<NotesScreen> {
         ],
       ),
       body: StreamBuilder<List<Note>>(
-        stream: _storageService.getNotesStream(),
+        stream: _notesStream,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -1008,17 +1012,20 @@ class _NotesScreenState extends State<NotesScreen> {
                   color: isDark ? const Color(0xFF151D2A) : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.07),
+                    color: isDark ? const Color(0xFF6366F1).withValues(alpha: 0.45) : const Color(0xFF6366F1).withValues(alpha: 0.35),
+                    width: 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-                      blurRadius: 8,
+                      color: const Color(0xFF6366F1).withValues(alpha: isDark ? 0.12 : 0.08),
+                      blurRadius: 10,
                       offset: const Offset(0, 2),
                     ),
                   ],
                 ),
                 child: TextField(
+                  key: const ValueKey('notes_search_input'),
+                  focusNode: _searchFocusNode,
                   controller: _searchController,
                   onChanged: (val) => setState(() => _searchQuery = val.trim()),
                   style: GoogleFonts.outfit(

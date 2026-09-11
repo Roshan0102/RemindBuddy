@@ -1094,35 +1094,38 @@ class JobAssistantService {
     if (doc == null) return;
 
     final col = isStartupLead ? 'networking_leads' : 'job_applications';
-    if (isStartupLead) {
-      await doc.collection(col).doc(id).update({
-        'status': 'email_sent',
-        'replyDismissed': true,
-        'isReplyDismissed': true,
-        'responseType': FieldValue.delete(),
-        'replyReceivedAt': FieldValue.delete(),
-        'replySender': FieldValue.delete(),
-        'replySubject': FieldValue.delete(),
-        'replySnippet': FieldValue.delete(),
-        'replyBodyPreview': FieldValue.delete(),
-        'actionRequired': FieldValue.delete(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } else {
-      await doc.collection(col).doc(id).update({
-        'status': 'sent',
-        'replyDismissed': true,
-        'isReplyDismissed': true,
-        'responseType': FieldValue.delete(),
-        'replyReceivedAt': FieldValue.delete(),
-        'replySender': FieldValue.delete(),
-        'replySubject': FieldValue.delete(),
-        'replySnippet': FieldValue.delete(),
-        'replyBodyPreview': FieldValue.delete(),
-        'actionRequired': FieldValue.delete(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    }
+    final targetDocRef = doc.collection(col).doc(id);
+
+    // Fetch existing document to check if it was bounced
+    final snap = await targetDocRef.get();
+    final data = snap.data() ?? {};
+    final wasBounced = data['isBounced'] == true ||
+        data['emailBounced'] == true ||
+        data['responseType'] == 'bounced' ||
+        data['status'] == 'bounced';
+
+    final resolvedStatus = wasBounced
+        ? (isStartupLead ? 'lead_dismissed' : 'bounced_dismissed')
+        : (isStartupLead ? 'lead_dismissed' : 'reply_deleted');
+
+    await targetDocRef.update({
+      'status': resolvedStatus,
+      'replyDeleted': true,
+      'isReplyDeleted': true,
+      'replyDismissed': true,
+      'isReplyDismissed': true,
+      'isBounced': false,
+      'emailBounced': false,
+      'responseType': FieldValue.delete(),
+      'replyReceivedAt': FieldValue.delete(),
+      'replySender': FieldValue.delete(),
+      'replySubject': FieldValue.delete(),
+      'replySnippet': FieldValue.delete(),
+      'replyBodyPreview': FieldValue.delete(),
+      'actionRequired': FieldValue.delete(),
+      'replyMessageId': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<Map<String, dynamic>> triggerNetworkingDiscovery({

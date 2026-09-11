@@ -27,6 +27,7 @@ class JobApplication {
   final String? resumeProfileName;
   final bool isReplyDismissed;
   final bool isBounced;
+  final bool replyDeleted;
 
   JobApplication({
     required this.id,
@@ -55,6 +56,7 @@ class JobApplication {
     this.resumeProfileName,
     this.isReplyDismissed = false,
     this.isBounced = false,
+    this.replyDeleted = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -88,6 +90,7 @@ class JobApplication {
       'isReplyDismissed': isReplyDismissed,
       'replyDismissed': isReplyDismissed,
       'isBounced': isBounced,
+      'replyDeleted': replyDeleted,
     };
   }
 
@@ -166,7 +169,9 @@ class JobApplication {
       actionRequired: map['actionRequired'] as String?,
       resumeProfileName: map['resumeProfileName'] as String?,
       isReplyDismissed: map['replyDismissed'] == true || map['isReplyDismissed'] == true,
-      isBounced: map['isBounced'] == true || map['emailBounced'] == true || map['responseType'] == 'bounced' || map['status'] == 'bounced',
+      replyDeleted: map['replyDeleted'] == true || map['isReplyDeleted'] == true || map['isDeleted'] == true || map['status'] == 'reply_deleted' || map['status'] == 'bounced_dismissed',
+      isBounced: (map['isBounced'] == true || map['emailBounced'] == true || map['responseType'] == 'bounced' || map['status'] == 'bounced') &&
+          !(map['replyDeleted'] == true || map['isReplyDeleted'] == true || map['isDeleted'] == true || map['status'] == 'reply_deleted' || map['status'] == 'bounced_dismissed'),
     );
   }
 }

@@ -2,7 +2,7 @@ name: remindbuddy
 description: "A comprehensive family management, reminder and finance tracking app."
 publish_to: 'none'
 
-version: 1.10.27+406
+version: 1.10.28+407
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
