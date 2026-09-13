@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_widget_service.dart';
 import 'web_desktop_notifications/web_desktop_notifications.dart';
+import 'alarm_audio_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -61,7 +62,10 @@ void notificationTapBackground(NotificationResponse notificationResponse) async 
           .collection('calendar_reminders')
           .doc(reminderId);
           
-      if (actionId == 'action_yes') {
+      if (actionId == 'action_alarm_dismiss' || actionId == 'action_yes') {
+        try {
+          await AlarmAudioService().stopAlarm();
+        } catch (_) {}
         final expireAt = DateTime.now().add(const Duration(days: 30));
         await docRef.update({
           'status': 'completed',
@@ -69,6 +73,20 @@ void notificationTapBackground(NotificationResponse notificationResponse) async 
           'expireAt': Timestamp.fromDate(expireAt),
         });
         LogService.staticLog("BG Handler: Marked reminder $reminderId as completed.");
+      } else if (actionId == 'action_alarm_snooze') {
+        try {
+          await AlarmAudioService().stopAlarm();
+        } catch (_) {}
+        final nextTime = DateTime.now().add(const Duration(minutes: 10));
+        final dateStr = "${nextTime.year}-${nextTime.month.toString().padLeft(2, '0')}-${nextTime.day.toString().padLeft(2, '0')}";
+        final timeStr = "${nextTime.hour.toString().padLeft(2, '0')}:${nextTime.minute.toString().padLeft(2, '0')}";
+        await docRef.update({
+          'date': dateStr,
+          'time': timeStr,
+          'status': 'pending',
+          'currentSnoozeCount': FieldValue.increment(1),
+        });
+        LogService.staticLog("BG Handler: Snoozed alarm reminder $reminderId to $dateStr $timeStr.");
       } else if (actionId == 'action_no') {
         final doc = await docRef.get();
         if (doc.exists) {
@@ -301,7 +319,10 @@ class NotificationService {
                   .collection('calendar_reminders')
                   .doc(reminderId);
                   
-              if (actionId == 'action_yes') {
+              if (actionId == 'action_alarm_dismiss' || actionId == 'action_yes') {
+                try {
+                  await AlarmAudioService().stopAlarm();
+                } catch (_) {}
                 final expireAt = DateTime.now().add(const Duration(days: 30));
                 await docRef.update({
                   'status': 'completed',
@@ -309,6 +330,20 @@ class NotificationService {
                   'expireAt': Timestamp.fromDate(expireAt),
                 });
                 LogService.staticLog("FG Handler: Marked reminder $reminderId as completed.");
+              } else if (actionId == 'action_alarm_snooze') {
+                try {
+                  await AlarmAudioService().stopAlarm();
+                } catch (_) {}
+                final nextTime = DateTime.now().add(const Duration(minutes: 10));
+                final dateStr = "${nextTime.year}-${nextTime.month.toString().padLeft(2, '0')}-${nextTime.day.toString().padLeft(2, '0')}";
+                final timeStr = "${nextTime.hour.toString().padLeft(2, '0')}:${nextTime.minute.toString().padLeft(2, '0')}";
+                await docRef.update({
+                  'date': dateStr,
+                  'time': timeStr,
+                  'status': 'pending',
+                  'currentSnoozeCount': FieldValue.increment(1),
+                });
+                LogService.staticLog("FG Handler: Snoozed alarm reminder $reminderId to $dateStr $timeStr.");
               } else if (actionId == 'action_no') {
                 final doc = await docRef.get();
                 if (doc.exists) {
@@ -476,6 +511,33 @@ class NotificationService {
           importance: Importance.max,
           playSound: true,
         ),
+        AndroidNotificationChannel(
+          'alarm_reminder_channel_alarm_digital',
+          'Digital Alarm Reminders',
+          description: 'High priority digital alarm notifications with continuous ringing',
+          importance: Importance.max,
+          playSound: true,
+          sound: RawResourceAndroidNotificationSound('alarm_digital'),
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+        ),
+        AndroidNotificationChannel(
+          'alarm_reminder_channel_alarm_siren',
+          'Siren Alarm Reminders',
+          description: 'High priority siren alarm notifications with continuous ringing',
+          importance: Importance.max,
+          playSound: true,
+          sound: RawResourceAndroidNotificationSound('alarm_siren'),
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+        ),
+        AndroidNotificationChannel(
+          'alarm_reminder_channel_alarm_chime',
+          'Chime Alarm Reminders',
+          description: 'High priority chime alarm notifications with continuous ringing',
+          importance: Importance.max,
+          playSound: true,
+          sound: RawResourceAndroidNotificationSound('alarm_chime'),
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+        ),
       ];
 
       final androidPlugin = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
@@ -615,45 +677,123 @@ class NotificationService {
           payload = "DAILY_REMINDER|$reminderId|$uid";
         }
 
-        _localNotifications.show(
-          notification.hashCode,
-          notification.title,
-          notification.body,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              android.channelId ?? 'gold_price_channel',
-              'Default Notifications',
-              importance: Importance.max,
-              priority: Priority.high,
-              icon: android.smallIcon,
-              actions: (payload != null && payload.startsWith("DAILY_REMINDER|"))
-                  ? <AndroidNotificationAction>[
-                      const AndroidNotificationAction(
-                        'action_done',
-                        'Mark Done',
-                        showsUserInterface: true,
-                      ),
-                    ]
-                  : (payload != null && payload.startsWith("CALENDAR_REMINDER|") && isSnoozeEnabled)
-                      ? <AndroidNotificationAction>[
-                          const AndroidNotificationAction(
-                            'action_yes',
-                            'Done',
-                            showsUserInterface: true,
-                          ),
-                          const AndroidNotificationAction(
-                            'action_no',
-                            'Snooze',
-                            showsUserInterface: true,
-                          ),
-                        ]
-                      : null,
+        final isAlarmMode = message.data['isAlarmMode'] == 'true';
+        final alarmSound = message.data['alarmSound'] ?? 'digital';
+
+        if (isAlarmMode) {
+          showAlarmNotification(
+            id: notification.hashCode,
+            title: notification.title ?? 'Reminder Alarm',
+            body: notification.body ?? '',
+            payload: payload ?? '',
+            sound: alarmSound,
+          );
+          AlarmAudioService().startAlarm(sound: alarmSound, reminderId: message.data['reminderId']);
+        } else {
+          _localNotifications.show(
+            notification.hashCode,
+            notification.title,
+            notification.body,
+            NotificationDetails(
+              android: AndroidNotificationDetails(
+                android.channelId ?? 'gold_price_channel',
+                'Default Notifications',
+                importance: Importance.max,
+                priority: Priority.high,
+                icon: android.smallIcon,
+                actions: (payload != null && payload.startsWith("DAILY_REMINDER|"))
+                    ? <AndroidNotificationAction>[
+                        const AndroidNotificationAction(
+                          'action_done',
+                          'Mark Done',
+                          showsUserInterface: true,
+                        ),
+                      ]
+                    : (payload != null && payload.startsWith("CALENDAR_REMINDER|") && isSnoozeEnabled)
+                        ? <AndroidNotificationAction>[
+                            const AndroidNotificationAction(
+                              'action_yes',
+                              'Done',
+                              showsUserInterface: true,
+                            ),
+                            const AndroidNotificationAction(
+                              'action_no',
+                              'Snooze',
+                              showsUserInterface: true,
+                            ),
+                          ]
+                        : null,
+              ),
             ),
-          ),
-          payload: payload,
-        );
+            payload: payload,
+          );
+        }
       }
     });
+  }
+
+  Future<void> cancelNotification(int id) async {
+    try {
+      await _localNotifications.cancel(id);
+    } catch (_) {}
+  }
+
+  Future<void> showAlarmNotification({
+    required int id,
+    required String title,
+    required String body,
+    required String payload,
+    String sound = 'digital',
+  }) async {
+    if (kIsWeb) {
+      WebDesktopNotificationService.showNotification(
+        title: title,
+        body: body,
+        payload: payload,
+      );
+      return;
+    }
+
+    String rawSound = 'alarm_digital';
+    if (sound == 'siren') rawSound = 'alarm_siren';
+    if (sound == 'chime') rawSound = 'alarm_chime';
+
+    final androidDetails = AndroidNotificationDetails(
+      'alarm_reminder_channel_$rawSound',
+      'Continuous Alarm Reminders ($sound)',
+      channelDescription: 'High priority continuous ringing alarms',
+      importance: Importance.max,
+      priority: Priority.max,
+      icon: '@mipmap/ic_launcher',
+      sound: RawResourceAndroidNotificationSound(rawSound),
+      playSound: true,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
+      category: AndroidNotificationCategory.alarm,
+      fullScreenIntent: true,
+      additionalFlags: Int32List.fromList([4]), // FLAG_INSISTENT = 4
+      actions: const <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          'action_alarm_dismiss',
+          'Dismiss',
+          showsUserInterface: true,
+          cancelNotification: true,
+        ),
+        AndroidNotificationAction(
+          'action_alarm_snooze',
+          'Snooze 10m',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+      ],
+    );
+
+    await _localNotifications.show(
+      id,
+      title,
+      body,
+      NotificationDetails(android: androidDetails),
+      payload: payload,
+    );
   }
 
   Future<void> showNotification({

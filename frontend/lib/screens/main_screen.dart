@@ -35,6 +35,8 @@ import 'walkin_drives_screen.dart';
 import 'ai_keys_settings_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../main.dart';
+import 'alarm_ringing_screen.dart';
+import '../models/calendar_reminder.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -413,6 +415,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       }
 
       final data = doc.data()!;
+      final isAlarmMode = data['isAlarmMode'] == true;
+      if (isAlarmMode) {
+        final reminder = CalendarReminder.fromMap(data, reminderId);
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => AlarmRingingScreen(reminder: reminder),
+            fullscreenDialog: true,
+          ),
+        );
+        return;
+      }
+
       final title = data['title'] ?? 'Reminder';
       final description = data['description'] ?? '';
       final snoozeEnabled = data['snoozeEnabled'] ?? false;

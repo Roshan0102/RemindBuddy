@@ -10,6 +10,8 @@ import '../models/calendar_reminder.dart';
 import '../models/saved_place.dart';
 import '../services/saved_places_service.dart';
 import '../services/location_reminder_service.dart';
+import '../services/alarm_audio_service.dart';
+import 'package:file_picker/file_picker.dart';
 import '../widgets/location_picker_sheet.dart';
 import '../widgets/saved_places_sheet.dart';
 
@@ -49,6 +51,12 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   String? _savedPlaceId;
   final SavedPlacesService _savedPlacesService = SavedPlacesService();
 
+  bool _isAlarmMode = false;
+  String _alarmSound = 'digital';
+  String? _customAudioPath;
+  String? _customAudioName;
+  bool _isPreviewPlaying = false;
+
   List<Map<String, dynamic>> _approvedBuddies = [];
   bool _isLoadingBuddies = true;
   StreamSubscription? _buddiesSubscription;
@@ -64,11 +72,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _titleController.text = r.title;
       _descriptionController.text = r.description;
       _date = DateFormat('yyyy-MM-dd').parse(r.date);
-      final timeParts = r.time.split(':');
-      _time = TimeOfDay(
-        hour: int.parse(timeParts[0]),
-        minute: int.parse(timeParts[1]),
-      );
+      if (r.time.contains(':')) {
+        final timeParts = r.time.split(':');
+        _time = TimeOfDay(
+          hour: int.tryParse(timeParts[0]) ?? 0,
+          minute: int.tryParse(timeParts[1]) ?? 0,
+        );
+      } else {
+        _time = const TimeOfDay(hour: 0, minute: 0);
+      }
       _isRecurring = r.isRecurring;
       _recurrenceValue = r.recurrenceValue;
       _recurrenceUnit = r.recurrenceUnit;
@@ -83,6 +95,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _radiusMeters = r.radiusMeters;
       _triggerCondition = r.triggerCondition;
       _savedPlaceId = r.savedPlaceId;
+      _isAlarmMode = r.isAlarmMode;
+      _alarmSound = r.alarmSound;
+      _customAudioPath = r.customAudioPath;
+      _customAudioName = r.customAudioName;
       if (_occurrencesLimit != null) {
         _occurrencesController.text = _occurrencesLimit.toString();
       }
@@ -100,6 +116,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _isLocationBased = false;
       _radiusMeters = 50.0;
       _triggerCondition = 'enter';
+      _isAlarmMode = false;
+      _alarmSound = 'digital';
       if (_myUid != null) {
         _selectedRecipients.add(_myUid!);
       }
@@ -120,6 +138,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
   @override
   void dispose() {
+    AlarmAudioService().stopAlarm();
     _buddiesSubscription?.cancel();
     _titleController.dispose();
     _descriptionController.dispose();
@@ -283,7 +302,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     if (_formKey.currentState!.validate()) {
       setState(() { _isSaving = true; });
       final String dateStr = DateFormat('yyyy-MM-dd').format(_date);
-      final String timeStr = '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}';
+      final String timeStr = _isLocationBased
+          ? 'Location'
+          : '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}';
 
       try {
         final storage = StorageService();
@@ -304,6 +325,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             currentSnoozeCount: 0,
             taskId: widget.existingReminder!.taskId,
             isLocationBased: _isLocationBased,
+            scheduledForUid: _isLocationBased ? 'location_guard' : widget.existingReminder!.scheduledForUid,
             locationName: _locationName,
             latitude: _latitude,
             longitude: _longitude,
@@ -311,6 +333,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             triggerCondition: _triggerCondition,
             savedPlaceId: _savedPlaceId,
             isLocationTriggered: false,
+            isAlarmMode: _isAlarmMode,
+            alarmSound: _alarmSound,
+            customAudioPath: _customAudioPath,
+            customAudioName: _customAudioName,
           );
           await storage.updateCalendarReminder(updated);
         } else {
@@ -346,6 +372,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               radiusMeters: _radiusMeters,
               triggerCondition: _triggerCondition,
               savedPlaceId: _savedPlaceId,
+              isAlarmMode: _isAlarmMode,
+              alarmSound: _alarmSound,
+              customAudioPath: _customAudioPath,
+              customAudioName: _customAudioName,
             );
           }
         }
@@ -564,6 +594,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
+              _buildAlarmCard(context),
               const SizedBox(height: 16),
               Card(
                 elevation: 1,
@@ -1079,5 +1111,230 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildAlarmCard(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: _isAlarmMode 
+              ? const Color(0xFFE11D48).withValues(alpha: 0.5)
+              : (isDark ? Colors.white12 : Colors.black12),
+          width: _isAlarmMode ? 1.5 : 1,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _isAlarmMode
+                        ? const Color(0xFFE11D48).withValues(alpha: 0.15)
+                        : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _isAlarmMode ? Icons.alarm_on_rounded : Icons.alarm_rounded,
+                    color: _isAlarmMode ? const Color(0xFFE11D48) : Colors.grey,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Continuous Alarm Mode',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      Text(
+                        'Rings continuously like an alarm clock until dismissed',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.white60 : Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch.adaptive(
+                  value: _isAlarmMode,
+                  activeTrackColor: const Color(0xFFE11D48),
+                  onChanged: (val) {
+                    setState(() {
+                      _isAlarmMode = val;
+                      if (!val && _isPreviewPlaying) {
+                        AlarmAudioService().stopAlarm();
+                        _isPreviewPlaying = false;
+                      }
+                    });
+                  },
+                ),
+              ],
+            ),
+            if (_isAlarmMode) ...[
+              const SizedBox(height: 16),
+              const Divider(height: 1),
+              const SizedBox(height: 14),
+              const Text(
+                'Select Alarm Tone',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildToneChip('digital', '🔔 Digital Watch', Icons.watch_later_outlined),
+                  _buildToneChip('siren', '🚨 Urgent Siren', Icons.warning_amber_rounded),
+                  _buildToneChip('chime', '🎵 Gentle Chime', Icons.music_note_rounded),
+                  _buildToneChip('custom', '📁 Custom Audio...', Icons.folder_open_rounded),
+                ],
+              ),
+              if (_alarmSound == 'custom') ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.audio_file_rounded, size: 20, color: Color(0xFFE11D48)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _customAudioName ?? 'No file selected',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _pickCustomAudio,
+                        child: Text(_customAudioPath == null ? 'Browse' : 'Change'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Test alarm sound:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.white60 : Colors.black54,
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _togglePreviewSound,
+                    icon: Icon(
+                      _isPreviewPlaying ? Icons.stop_circle_rounded : Icons.play_circle_fill_rounded,
+                      color: const Color(0xFFE11D48),
+                      size: 20,
+                    ),
+                    label: Text(
+                      _isPreviewPlaying ? 'Stop Preview' : 'Play Preview',
+                      style: const TextStyle(
+                        color: Color(0xFFE11D48),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE11D48), width: 1.2),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToneChip(String soundKey, String label, IconData icon) {
+    final isSelected = _alarmSound == soundKey;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      selectedColor: const Color(0xFFE11D48).withValues(alpha: 0.2),
+      side: BorderSide(
+        color: isSelected ? const Color(0xFFE11D48) : Colors.grey.withValues(alpha: 0.3),
+      ),
+      labelStyle: TextStyle(
+        fontSize: 12,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        color: isSelected ? const Color(0xFFE11D48) : null,
+      ),
+      onSelected: (selected) {
+        if (selected) {
+          setState(() {
+            _alarmSound = soundKey;
+          });
+          if (soundKey == 'custom' && _customAudioPath == null) {
+            _pickCustomAudio();
+          } else if (_isPreviewPlaying) {
+            _togglePreviewSound();
+          }
+        }
+      },
+    );
+  }
+
+  Future<void> _pickCustomAudio() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.audio,
+        allowMultiple: false,
+      );
+      if (result != null && result.files.single.path != null) {
+        setState(() {
+          _alarmSound = 'custom';
+          _customAudioPath = result.files.single.path;
+          _customAudioName = result.files.single.name;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking audio: $e');
+    }
+  }
+
+  Future<void> _togglePreviewSound() async {
+    if (_isPreviewPlaying) {
+      await AlarmAudioService().stopAlarm();
+      setState(() => _isPreviewPlaying = false);
+    } else {
+      setState(() => _isPreviewPlaying = true);
+      await AlarmAudioService().previewSound(
+        sound: _alarmSound,
+        customPath: _customAudioPath,
+      );
+      AlarmAudioService().isRingingNotifier.addListener(_onPreviewAudioStateChanged);
+    }
+  }
+
+  void _onPreviewAudioStateChanged() {
+    if (!AlarmAudioService().isRingingNotifier.value && mounted && _isPreviewPlaying) {
+      setState(() => _isPreviewPlaying = false);
+    }
   }
 }

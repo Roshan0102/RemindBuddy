@@ -44,6 +44,10 @@ class StorageService {
     double radiusMeters = 50.0,
     String triggerCondition = 'enter',
     String? savedPlaceId,
+    bool isAlarmMode = false,
+    String alarmSound = 'digital',
+    String? customAudioPath,
+    String? customAudioName,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return '';
@@ -65,6 +69,7 @@ class StorageService {
       'maxSnoozeCount': maxSnoozeCount,
       'currentSnoozeCount': currentSnoozeCount,
       'isLocationBased': isLocationBased,
+      if (isLocationBased) 'scheduledForUid': 'location_guard',
       if (locationName != null) 'locationName': locationName,
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
@@ -72,6 +77,10 @@ class StorageService {
       'triggerCondition': triggerCondition,
       'isLocationTriggered': false,
       if (savedPlaceId != null) 'savedPlaceId': savedPlaceId,
+      'isAlarmMode': isAlarmMode,
+      'alarmSound': alarmSound,
+      if (customAudioPath != null) 'customAudioPath': customAudioPath,
+      if (customAudioName != null) 'customAudioName': customAudioName,
     };
 
     if (destinationUid != user.uid) {

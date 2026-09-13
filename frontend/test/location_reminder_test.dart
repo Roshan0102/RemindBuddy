@@ -126,4 +126,83 @@ void main() {
       expect(farDistanceMeters, greaterThan(50.0));
     });
   });
+
+  group('CalendarReminder Continuous Alarm Mode Tests', () {
+    test('CalendarReminder.fromMap parses continuous alarm mode and custom audio correctly', () {
+      final map = {
+        'title': 'Wake up and take thyroid medicine',
+        'description': 'Continuous morning alarm',
+        'date': '2026-09-14',
+        'time': '07:00',
+        'status': 'pending',
+        'isAlarmMode': true,
+        'alarmSound': 'custom',
+        'customAudioPath': '/storage/emulated/0/Music/morning_alarm.mp3',
+        'customAudioName': 'morning_alarm.mp3',
+      };
+
+      final reminder = CalendarReminder.fromMap(map, 'alarm_101');
+
+      expect(reminder.id, 'alarm_101');
+      expect(reminder.isAlarmMode, isTrue);
+      expect(reminder.alarmSound, 'custom');
+      expect(reminder.customAudioPath, '/storage/emulated/0/Music/morning_alarm.mp3');
+      expect(reminder.customAudioName, 'morning_alarm.mp3');
+    });
+
+    test('CalendarReminder.toMap serializes continuous alarm mode fields accurately', () {
+      final reminder = CalendarReminder(
+        id: 'alarm_102',
+        title: 'Emergency Server Maintenance',
+        description: 'Check high CPU usage',
+        date: '2026-09-14',
+        time: '02:00',
+        isAlarmMode: true,
+        alarmSound: 'alarm_siren',
+      );
+
+      final map = reminder.toMap();
+
+      expect(map['isAlarmMode'], isTrue);
+      expect(map['alarmSound'], 'alarm_siren');
+      expect(map['customAudioPath'], isNull);
+      expect(map['customAudioName'], isNull);
+    });
+
+    test('CalendarReminder defaults alarm mode to false and alarmSound to digital', () {
+      final reminder = CalendarReminder(
+        id: 'standard_103',
+        title: 'Regular notification task',
+        description: 'Standard description',
+        date: '2026-09-14',
+        time: '12:00',
+      );
+
+      expect(reminder.isAlarmMode, isFalse);
+      expect(reminder.alarmSound, 'digital');
+      expect(reminder.customAudioPath, isNull);
+      expect(reminder.customAudioName, isNull);
+    });
+
+    test('CalendarReminder.copyWith allows toggling alarm mode and sound', () {
+      final original = CalendarReminder(
+        id: 'rem_104',
+        title: 'Dentist appointment',
+        description: 'Regular checkup',
+        date: '2026-09-15',
+        time: '15:30',
+        isAlarmMode: false,
+      );
+
+      final updated = original.copyWith(
+        isAlarmMode: true,
+        alarmSound: 'alarm_chime',
+      );
+
+      expect(updated.id, 'rem_104');
+      expect(updated.isAlarmMode, isTrue);
+      expect(updated.alarmSound, 'alarm_chime');
+    });
+  });
 }
+

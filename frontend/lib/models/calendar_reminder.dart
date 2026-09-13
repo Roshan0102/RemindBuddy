@@ -30,6 +30,10 @@ class CalendarReminder {
   final String triggerCondition; // 'enter' or 'exit'
   final bool isLocationTriggered;
   final String? savedPlaceId;
+  final bool isAlarmMode;
+  final String alarmSound; // 'digital', 'siren', 'chime', 'custom'
+  final String? customAudioPath;
+  final String? customAudioName;
 
   CalendarReminder({
     this.id,
@@ -61,6 +65,10 @@ class CalendarReminder {
     this.triggerCondition = 'enter',
     this.isLocationTriggered = false,
     this.savedPlaceId,
+    this.isAlarmMode = false,
+    this.alarmSound = 'digital',
+    this.customAudioPath,
+    this.customAudioName,
   });
 
   factory CalendarReminder.fromMap(Map<String, dynamic> json, String docId) {
@@ -94,6 +102,10 @@ class CalendarReminder {
       triggerCondition: json['triggerCondition'] as String? ?? 'enter',
       isLocationTriggered: json['isLocationTriggered'] ?? false,
       savedPlaceId: json['savedPlaceId'] as String?,
+      isAlarmMode: json['isAlarmMode'] ?? false,
+      alarmSound: json['alarmSound'] as String? ?? 'digital',
+      customAudioPath: json['customAudioPath'] as String?,
+      customAudioName: json['customAudioName'] as String?,
     );
   }
 
@@ -130,6 +142,10 @@ class CalendarReminder {
       'triggerCondition': triggerCondition,
       'isLocationTriggered': isLocationTriggered,
       if (savedPlaceId != null) 'savedPlaceId': savedPlaceId,
+      'isAlarmMode': isAlarmMode,
+      'alarmSound': alarmSound,
+      if (customAudioPath != null) 'customAudioPath': customAudioPath,
+      if (customAudioName != null) 'customAudioName': customAudioName,
     };
   }
 
@@ -163,6 +179,10 @@ class CalendarReminder {
     String? triggerCondition,
     bool? isLocationTriggered,
     String? savedPlaceId,
+    bool? isAlarmMode,
+    String? alarmSound,
+    String? customAudioPath,
+    String? customAudioName,
   }) {
     return CalendarReminder(
       id: id ?? this.id,
@@ -194,6 +214,10 @@ class CalendarReminder {
       triggerCondition: triggerCondition ?? this.triggerCondition,
       isLocationTriggered: isLocationTriggered ?? this.isLocationTriggered,
       savedPlaceId: savedPlaceId ?? this.savedPlaceId,
+      isAlarmMode: isAlarmMode ?? this.isAlarmMode,
+      alarmSound: alarmSound ?? this.alarmSound,
+      customAudioPath: customAudioPath ?? this.customAudioPath,
+      customAudioName: customAudioName ?? this.customAudioName,
     );
   }
 }

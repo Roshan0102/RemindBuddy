@@ -77,18 +77,28 @@ exports.processCalendarReminderTask = functions.tasks
                 token = (_a = userProfileDoc.data()) === null || _a === void 0 ? void 0 : _a.fcmToken;
             }
             if (token) {
+                const isAlarmMode = (rData === null || rData === void 0 ? void 0 : rData.isAlarmMode) === true;
+                const alarmSound = (rData === null || rData === void 0 ? void 0 : rData.alarmSound) || 'digital';
+                let rawSound = 'alarm_digital';
+                if (alarmSound === 'siren')
+                    rawSound = 'alarm_siren';
+                if (alarmSound === 'chime')
+                    rawSound = 'alarm_chime';
                 const message = {
                     token,
                     notification: { title, body },
                     android: {
                         notification: {
-                            channelId: "calendar_reminder_channel",
-                            tag: `calendar_reminder_${reminderId}`
+                            channelId: isAlarmMode ? `alarm_reminder_channel_${rawSound}` : "calendar_reminder_channel",
+                            tag: `calendar_reminder_${reminderId}`,
+                            sound: isAlarmMode ? rawSound : undefined
                         }
                     },
                     data: {
                         type: "CALENDAR_REMINDER",
                         reminderId: reminderId,
+                        isAlarmMode: isAlarmMode ? "true" : "false",
+                        alarmSound: alarmSound,
                         snoozeEnabled: snoozeEnabled ? "true" : "false",
                         snoozeIntervalMinutes: String((rData === null || rData === void 0 ? void 0 : rData.snoozeIntervalMinutes) || 15),
                         maxSnoozeCount: String((rData === null || rData === void 0 ? void 0 : rData.maxSnoozeCount) || 3),
@@ -397,6 +407,11 @@ exports.onCalendarReminderUpdated = functions.firestore
     if (after.status === "notified") {
         return;
     }
+    // Skip location-based reminders - they are handled by client-side geofencing
+    if (after.isLocationBased === true) {
+        console.log(`Reminder ${reminderId} is location-based. Skipping time-based Cloud Tasks rescheduling.`);
+        return;
+    }
     if (after.scheduledForUid && after.scheduledForUid !== uid) {
         console.log(`Reminder update for creator copy. Status is ${after.status}.`);
         if (after.status === "pending") {
@@ -497,6 +512,10 @@ exports.onCalendarReminderCreated = functions.firestore
     if (!data)
         return;
     const { uid, reminderId } = context.params;
+    if (data.isLocationBased === true) {
+        console.log(`Reminder ${reminderId} is location-based. Skipping time-based Cloud Tasks scheduling.`);
+        return;
+    }
     if (data.scheduledForUid && data.scheduledForUid !== uid) {
         console.log(`Reminder ${reminderId} is for another user (${data.scheduledForUid}). Setting status to scheduled without enqueuing task for creator.`);
         return snapshot.ref.update({ status: "scheduled" });

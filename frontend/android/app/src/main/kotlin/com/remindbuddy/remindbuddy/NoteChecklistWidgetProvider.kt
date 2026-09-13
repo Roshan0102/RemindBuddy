@@ -71,7 +71,7 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
                 // 1. Bind RemoteViewsService to ListView
                 val serviceIntent = Intent(context, NoteChecklistWidgetService::class.java).apply {
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                    data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+                    data = Uri.parse("content://com.remindbuddy.remindbuddy/note_checklist_widget/$appWidgetId")
                 }
                 setRemoteAdapter(R.id.widget_checklist_list, serviceIntent)
 

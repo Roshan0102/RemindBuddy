@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/calendar_reminder.dart';
 import 'notification_service.dart';
+import 'alarm_audio_service.dart';
 
 class LocationReminderService {
   static final LocationReminderService _instance = LocationReminderService._internal();
@@ -40,9 +41,11 @@ class LocationReminderService {
         .doc(uid)
         .collection('calendar_reminders')
         .where('isLocationBased', isEqualTo: true)
-        .where('status', isEqualTo: 'pending')
         .snapshots()
-        .map((snap) => snap.docs.map((d) => CalendarReminder.fromMap(d.data(), d.id)).toList())
+        .map((snap) => snap.docs
+            .map((d) => CalendarReminder.fromMap(d.data(), d.id))
+            .where((r) => r.status != 'completed' && r.status != 'expired')
+            .toList())
         .listen((reminders) {
       _activeLocationReminders = reminders;
       if (reminders.isNotEmpty) {
@@ -172,12 +175,27 @@ class LocationReminderService {
     debugPrint('[LocationReminderService] TRIGGERING ALERT: $title - $body');
 
     try {
-      await NotificationService().showNotification(
-        id: reminder.id.hashCode,
-        title: title,
-        body: body,
-        payload: 'LOCATION_REMINDER|${reminder.id}|$uid',
-      );
+      if (reminder.isAlarmMode) {
+        AlarmAudioService().startAlarm(
+          sound: reminder.alarmSound,
+          customPath: reminder.customAudioPath,
+          reminderId: reminder.id,
+        );
+        await NotificationService().showAlarmNotification(
+          id: reminder.id.hashCode,
+          title: title,
+          body: body,
+          payload: 'CALENDAR_REMINDER|${reminder.id}|$uid',
+          sound: reminder.alarmSound,
+        );
+      } else {
+        await NotificationService().showNotification(
+          id: reminder.id.hashCode,
+          title: title,
+          body: body,
+          payload: 'CALENDAR_REMINDER|${reminder.id}|$uid',
+        );
+      }
     } catch (e) {
       debugPrint('[LocationReminderService] Notification error: $e');
     }
