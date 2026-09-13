@@ -2,7 +2,7 @@ import * as functions from "firebase-functions";
 import { admin, db } from "../../config/firebase";
 import { callGeminiAPI } from "../../utils/geminiHelper";
 
-export const parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 120, memory: "1GB" }).https.onCall(async (data, context) => {
+export const parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 300, memory: "1GB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
     }
@@ -135,7 +135,9 @@ Respond ONLY with a JSON object matching this schema:
             }
         };
 
-        const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 90000 });
+        console.log(`[JobPosterAI] Calling Gemini (${payload.contents[0].parts.length - 1} attachments, mode: ${mode}) with 45s per-model cascade...`);
+        const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 45000 });
+        console.log(`[JobPosterAI] Successfully analyzed job posters using ${geminiResult.modelUsed}`);
         const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new Error('Empty response from Gemini API.');

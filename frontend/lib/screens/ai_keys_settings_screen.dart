@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import '../services/url_launcher_helper/url_launcher_helper.dart';
 
 class AIKeysSettingsScreen extends StatefulWidget {
   const AIKeysSettingsScreen({super.key});
@@ -129,14 +128,8 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
   }
 
   Future<void> _openUrl(String urlString) async {
-    final uri = Uri.tryParse(urlString);
-    if (uri == null) return;
     try {
-      if (kIsWeb) {
-        await launchUrl(uri, webOnlyWindowName: '_blank');
-      } else {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
+      await UrlLauncherHelper.openInNewTabOrExternal(urlString);
     } catch (e) {
       debugPrint('Could not launch URL: $e');
     }
@@ -314,7 +307,7 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton.icon(
-                            onPressed: () => _openUrl('https://app.tavily.com'),
+                            onPressed: () => _openUrl('https://app.tavily.com/home'),
                             icon: const Icon(Icons.open_in_new, size: 14),
                             label: const Text('Get Free Key (1,000 Searches/Month)', style: TextStyle(fontSize: 12)),
                           ),

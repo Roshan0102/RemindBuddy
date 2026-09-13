@@ -60,6 +60,26 @@ export const masterMinuteRunner = functions.pubsub.schedule('* * * * *')
                 console.error("Error in internalCheckInterestedWalkinsNotifications inside masterMinuteRunner:", err);
             }
         }
+
+        // 10:15 AM IST (10:15): Post-Morning Auto-Apply Reply & Bounce Check (15 mins after 10:00 AM dispatch)
+        if (hour === 10 && minute === 15) {
+            try {
+                console.log("[masterMinuteRunner] Executing 10:15 AM task: Post-Morning Auto-Apply Reply & Bounce Check...");
+                await internalCheckAllJobReplies();
+            } catch (err) {
+                console.error("Error in internalCheckAllJobReplies at 10:15 inside masterMinuteRunner:", err);
+            }
+        }
+
+        // 10:15 PM IST (22:15): Post-Night Auto-Apply Reply & Bounce Check (15 mins after 10:00 PM dispatch)
+        if (hour === 22 && minute === 15) {
+            try {
+                console.log("[masterMinuteRunner] Executing 10:15 PM task: Post-Night Auto-Apply Reply & Bounce Check...");
+                await internalCheckAllJobReplies();
+            } catch (err) {
+                console.error("Error in internalCheckAllJobReplies at 22:15 inside masterMinuteRunner:", err);
+            }
+        }
     });
 
 // 2. Periodic Master Runner (Runs every 30 minutes at :00 and :30, supporting any hourly or half-hourly scheduled task)
@@ -86,18 +106,13 @@ export const masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, m
                 }
             }
 
-            // 10:00 AM IST (Hour 10): Automated AI Job Discovery & Email Applicant Agent + Reply Check
+            // 10:00 AM IST (Hour 10): Automated AI Job Discovery & Email Applicant Agent
             if (hour === 10) {
                 console.log("[masterHalfHourlyRunner] Executing 10:00 AM tasks: Automated Job Discovery & Outreach...");
                 try {
                     await internalAutoJobDiscoveryAndApply();
                 } catch (err) {
                     console.error("Error in internalAutoJobDiscoveryAndApply inside masterHalfHourlyRunner:", err);
-                }
-                try {
-                    await internalCheckAllJobReplies();
-                } catch (err) {
-                    console.error("Error in internalCheckAllJobReplies at 10:00 inside masterHalfHourlyRunner:", err);
                 }
             }
 
@@ -161,18 +176,13 @@ export const masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, m
                 }
             }
 
-            // 10:00 PM IST (Hour 22): Automated AI Job Discovery & Reply Check & Shift Reminders
+            // 10:00 PM IST (Hour 22): Automated AI Job Discovery & Shift Reminders
             if (hour === 22) {
                 console.log("[masterHalfHourlyRunner] Executing 10:00 PM tasks: Job Discovery & Shift Reminders...");
                 try {
                     await internalAutoJobDiscoveryAndApply();
                 } catch (err) {
                     console.error("Error in internalAutoJobDiscoveryAndApply inside masterHalfHourlyRunner:", err);
-                }
-                try {
-                    await internalCheckAllJobReplies();
-                } catch (err) {
-                    console.error("Error in internalCheckAllJobReplies at 22:00 inside masterHalfHourlyRunner:", err);
                 }
                 try {
                     await internalDailyShiftReminder();

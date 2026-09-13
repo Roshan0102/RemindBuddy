@@ -751,7 +751,10 @@ class JobAssistantService {
         ? applicantName.trim()
         : await getApplicantName();
 
-    final callable = _functions.httpsCallable('parseJobPostersWithAI');
+    final callable = _functions.httpsCallable(
+      'parseJobPostersWithAI',
+      options: HttpsCallableOptions(timeout: const Duration(minutes: 4)),
+    );
     final response = await callable.call({
       'imagesBase64': imagesBase64,
       'mode': mode, // 'single_job' or 'multiple_jobs'
@@ -800,7 +803,10 @@ class JobAssistantService {
         ? applicantName.trim()
         : await getApplicantName();
 
-    final callable = _functions.httpsCallable('generateManualJobApplicationWithAI');
+    final callable = _functions.httpsCallable(
+      'generateManualJobApplicationWithAI',
+      options: HttpsCallableOptions(timeout: const Duration(minutes: 3)),
+    );
     final response = await callable.call({
       'companyName': companyName,
       'jobTitle': jobTitle,
@@ -844,7 +850,10 @@ class JobAssistantService {
         ? applicantName.trim()
         : await getApplicantName();
 
-    final callable = _functions.httpsCallable('refineCoverLetterWithAI');
+    final callable = _functions.httpsCallable(
+      'refineCoverLetterWithAI',
+      options: HttpsCallableOptions(timeout: const Duration(minutes: 3)),
+    );
     final response = await callable.call({
       'currentSubject': currentSubject,
       'currentCoverLetter': currentCoverLetter,

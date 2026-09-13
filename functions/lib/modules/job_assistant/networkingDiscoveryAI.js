@@ -1,11 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.triggerNetworkingDiscovery = void 0;
+exports.sanitizeConnectionNote = sanitizeConnectionNote;
+exports.resolveUserResumeGroundTruth = resolveUserResumeGroundTruth;
 exports.discoverNetworkingLeadsForUser = discoverNetworkingLeadsForUser;
 exports.internalNetworkingDiscoveryDispatcher = internalNetworkingDiscoveryDispatcher;
 const functions = require("firebase-functions");
 const nodemailer = require("nodemailer");
 const dns = require("dns");
+const crypto = require("crypto");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
 const featureLogger_1 = require("../../utils/featureLogger");
@@ -24,6 +27,157 @@ const IT_SERVICES_MNC_BLACKLIST = [
     "ust", "ust global", "sopra steria", "cgi", "ntt data",
     "dxc", "dxc technology", "atos"
 ];
+/**
+ * Strips ellipses, unfinished thoughts, and guarantees a 100% syntactically complete,
+ * professional LinkedIn note <= 190 characters.
+ */
+function sanitizeConnectionNote(rawNote, recipientName, companyName, verifiedTitle) {
+    if (!rawNote || !rawNote.trim()) {
+        const first = recipientName ? recipientName.split(" ")[0].trim() : "there";
+        const comp = companyName ? companyName.trim() : "your startup";
+        const title = verifiedTitle ? verifiedTitle.trim() : "Engineer";
+        return `Hi ${first}, love what ${comp} is building. As a ${title}, I'd love to connect and follow your journey!`;
+    }
+    let note = rawNote.trim();
+    // Strip trailing ellipses, dashes, or incomplete word markers
+    note = note.replace(/[\.\s…\-]+$/, "");
+    // Remove surrounding quotes if model wrapped it
+    note = note.replace(/^["']|["']$/g, "").trim();
+    // If already under 185 characters, ensure proper punctuation
+    if (note.length <= 185) {
+        if (!note.endsWith(".") && !note.endsWith("!")) {
+            note += ".";
+        }
+        if (note.length <= 190) {
+            return note;
+        }
+    }
+    // Try finding the last complete sentence ending before 185 characters
+    const sentenceMatches = [...note.matchAll(/[\.\!\?]\s+/g)];
+    let lastSentenceEnd = -1;
+    for (const match of sentenceMatches) {
+        const endIdx = (match.index || 0) + 1;
+        if (endIdx <= 185 && endIdx >= 70) {
+            lastSentenceEnd = endIdx;
+        }
+    }
+    if (lastSentenceEnd > 0) {
+        return note.substring(0, lastSentenceEnd).trim();
+    }
+    // Backtrack to the last complete word boundary before 175 chars to avoid cutting off words
+    const safeSlice = note.substring(0, 175);
+    const lastSpace = safeSlice.lastIndexOf(" ");
+    if (lastSpace > 40) {
+        const cleanWordEnd = safeSlice.substring(0, lastSpace).replace(/[,;:\-\s]+$/, "");
+        return `${cleanWordEnd}.`;
+    }
+    return `${safeSlice.trim()}.`;
+}
+/**
+ * Factual Ground-Truth Resume Resolver:
+ * Parses candidate's actual resume PDF to extract real title, verified skills, and genuine impact.
+ * Caches by resume MD5 hash in user document so it is instant on subsequent runs and auto-updates
+ * if the candidate updates their resume.
+ */
+async function resolveUserResumeGroundTruth(uid, userData, resumeBase64, userGeminiKey, fallbackRoles) {
+    var _a;
+    if (!resumeBase64) {
+        return {
+            exactTitle: fallbackRoles[0] || "Software Engineer",
+            yearsOfExperience: "1-2 years",
+            coreSkills: fallbackRoles,
+            certifications: [],
+            education: [],
+            measurableAchievements: [],
+            resumeHash: "",
+            extractedAt: new Date().toISOString()
+        };
+    }
+    const cleanResumeB64 = resumeBase64.replace(/^data:application\/pdf;base64,/, "");
+    const resumeHash = crypto.createHash("md5").update(cleanResumeB64).digest("hex");
+    // Check if user already has an up-to-date extracted profile matching this resume hash
+    const cachedProfile = userData.extractedResumeProfile;
+    if (cachedProfile && cachedProfile.resumeHash === resumeHash && cachedProfile.exactTitle && ((_a = cachedProfile.coreSkills) === null || _a === void 0 ? void 0 : _a.length) > 0) {
+        console.log(`[StartupRadar] Reusing cached verified resume ground truth for user ${uid} (Hash: ${resumeHash.slice(0, 8)}...)`);
+        return cachedProfile;
+    }
+    console.log(`[StartupRadar] Extracting factual ground truth from candidate resume for user ${uid}...`);
+    try {
+        const prompt = `You are a strict, factual Resume Parser and Ground-Truth Extractor.
+Analyze the attached candidate Resume PDF and extract the EXACT, UNMODIFIED facts into JSON.
+
+CRITICAL RULES:
+1. "exactTitle": Extract the candidate's exact current or most recent job title (e.g., "Cloud & DevOps Engineer"). DO NOT inflate to "Lead" or "Senior" unless the resume literally says "Lead" or "Senior".
+2. "yearsOfExperience": Real total years of experience (e.g. "1+ years" or "Entry level, 2024 graduate").
+3. "coreSkills": Array of 8-15 verified programming languages, tools, cloud platforms, and frameworks explicitly listed on the resume. DO NOT invent skills (e.g., do NOT list Flutter unless Flutter is explicitly on the resume).
+4. "certifications": Array of official certifications listed (e.g., "AWS Certified Solutions Architect Associate").
+5. "education": Array of degrees (e.g., "B.Tech in Artificial Intelligence and Data Science").
+6. "measurableAchievements": Array of 2-4 quantitative bullets directly from their projects/experience (e.g., "Reduced deployment time by 70%", "30% cloud cost reduction").
+
+Return ONLY valid JSON in this structure:
+{
+  "exactTitle": "string",
+  "yearsOfExperience": "string",
+  "coreSkills": ["string"],
+  "certifications": ["string"],
+  "education": ["string"],
+  "measurableAchievements": ["string"]
+}`;
+        const payload = {
+            contents: [
+                {
+                    parts: [
+                        { text: prompt },
+                        {
+                            inlineData: {
+                                mimeType: "application/pdf",
+                                data: cleanResumeB64
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+        const result = await (0, geminiHelper_1.callGeminiAPI)(payload, { apiKey: userGeminiKey, timeout: 60000 });
+        const jsonMatch = (result.text || "").match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            const groundTruth = {
+                exactTitle: (parsed.exactTitle || fallbackRoles[0] || "Software Engineer").trim(),
+                yearsOfExperience: (parsed.yearsOfExperience || "1-2 years").trim(),
+                coreSkills: Array.isArray(parsed.coreSkills) && parsed.coreSkills.length > 0 ? parsed.coreSkills : fallbackRoles,
+                certifications: Array.isArray(parsed.certifications) ? parsed.certifications : [],
+                education: Array.isArray(parsed.education) ? parsed.education : [],
+                measurableAchievements: Array.isArray(parsed.measurableAchievements) ? parsed.measurableAchievements : [],
+                resumeHash,
+                extractedAt: new Date().toISOString()
+            };
+            // Cache to user document for future runs
+            try {
+                await firebase_1.db.collection("users").doc(uid).update({
+                    extractedResumeProfile: groundTruth
+                });
+            }
+            catch (updateErr) {
+                console.warn(`[StartupRadar] Could not cache extractedResumeProfile for ${uid}:`, updateErr.message);
+            }
+            return groundTruth;
+        }
+    }
+    catch (parseErr) {
+        console.warn(`[StartupRadar] Error extracting resume ground truth for ${uid}: ${parseErr.message}. Falling back to settings.`);
+    }
+    return {
+        exactTitle: fallbackRoles[0] || "Software Engineer",
+        yearsOfExperience: "1-2 years",
+        coreSkills: fallbackRoles,
+        certifications: [],
+        education: [],
+        measurableAchievements: [],
+        resumeHash,
+        extractedAt: new Date().toISOString()
+    };
+}
 /**
  * Validates that an email has valid MX DNS records before attempting to send.
  */
@@ -137,19 +291,21 @@ async function discoverNetworkingLeadsForUser(uid, options) {
     let canSendEmails = !!(userEmail && appPassword);
     let resumeBase64 = "";
     let resumeFileName = "Resume.pdf";
-    const masterResume = userData.masterResume || {};
-    if (masterResume.base64) {
-        resumeBase64 = masterResume.base64;
+    const masterResume = userData.masterResume || userData.resume || {};
+    if (masterResume.base64 || masterResume.base64Data) {
+        resumeBase64 = masterResume.base64 || masterResume.base64Data;
         resumeFileName = masterResume.fileName || "Resume.pdf";
     }
     else {
         const profilesSnap = await firebase_1.db.collection("users").doc(uid).collection("resume_profiles").get();
         if (!profilesSnap.empty) {
             const defProf = profilesSnap.docs.find(d => d.data().isDefault) || profilesSnap.docs[0];
-            resumeBase64 = defProf.data().base64 || "";
+            resumeBase64 = defProf.data().base64 || defProf.data().base64Data || "";
             resumeFileName = defProf.data().fileName || "Resume.pdf";
         }
     }
+    // Resolve verified candidate profile strictly grounded in the actual resume PDF
+    const resumeGroundTruth = await resolveUserResumeGroundTruth(uid, userData, resumeBase64, userGeminiKey, targetRoles);
     let transporter = null;
     if (canSendEmails && resumeBase64) {
         transporter = nodemailer.createTransport({
@@ -176,8 +332,9 @@ async function discoverNetworkingLeadsForUser(uid, options) {
     });
     // 1. Build Google X-Ray Tavily queries for High-Growth Startups & Founders / CTOs
     const locQuery = targetLocations.map(l => `"${l}"`).join(" OR ");
-    const roleFocus = targetRoles.slice(0, 3).map(r => `"${r}"`).join(" OR ");
-    const primaryRole = targetRoles[0] || "Software Engineering";
+    const primaryRole = resumeGroundTruth.exactTitle || targetRoles[0] || "Software Engineering";
+    const activeRoles = [primaryRole, ...targetRoles.filter(r => r.toLowerCase() !== primaryRole.toLowerCase())];
+    const roleFocus = activeRoles.slice(0, 3).map(r => `"${r}"`).join(" OR ");
     const queries = [
         {
             category: "founder",
@@ -262,14 +419,19 @@ Headline: ${item.result.title}
 Profile URL: ${item.result.url}
 Snippet & Bio: ${item.result.content}`;
     }).join("\n\n");
-    // 2. Prompt Gemini 3.7 Flash: Extract startup details, derive email pattern, generate winning 4-sentence startup pitch
-    const prompt = `You are an elite startup recruitment strategist and career coach working directly for candidate "${applicantName}".
-Candidate Profile:
+    // 2. Prompt Gemini: Extract startup details, derive verified email pattern, generate tailored startup pitch & crisp LinkedIn note
+    const prompt = `You are an elite startup recruitment strategist and executive career coach working directly for candidate "${applicantName}".
+
+=============================================================================
+VERIFIED CANDIDATE PROFILE (EXTRACTED DIRECTLY FROM CANDIDATE'S LATEST RESUME):
 - Full Name: "${applicantName}"
-- Target Domains & Roles: ${targetRoles.join(", ")}
-- Primary Specialization: ${primaryRole}
+- Actual Professional Title: "${resumeGroundTruth.exactTitle}"
+- Verified Experience Level: "${resumeGroundTruth.yearsOfExperience}"
+- Real Verified Technologies: ${resumeGroundTruth.coreSkills.join(", ")}
+- Official Certifications: ${resumeGroundTruth.certifications.length > 0 ? resumeGroundTruth.certifications.join(", ") : "N/A"}
+- Real Quantified Impact: ${resumeGroundTruth.measurableAchievements.length > 0 ? resumeGroundTruth.measurableAchievements.join("; ") : "Production cloud & automation implementations"}
 - Target Locations: ${targetLocations.join(", ")}
-${resumeBase64 ? "- Attached Resume: Analyze the attached Resume PDF to identify the candidate's real core technologies, framework expertise, and accomplishments." : ""}
+=============================================================================
 
 Analyze these real LinkedIn profiles of startup founders, CTOs, and tech leaders:
 ${profilesText}
@@ -280,14 +442,18 @@ CRITICAL RULES & MANDATES:
    - The company MUST be an active startup, funded company (Seed / Series A / Series B / YC / Techstars / Bootstrapped), or specialized tech product company.
 2. CURRENT ROLE MUST BE A STARTUP LEADER:
    - The person must CURRENTLY be a Founder, Co-Founder, CEO, CTO, Head of Engineering, VP of Engineering, or Tech Lead. Discard past founders who now work as general employees at large consultancies.
-3. AUTHENTIC, DYNAMIC VALUE PITCH TAILORED TO CANDIDATE'S ACTUAL RESUME & DOMAIN:
-   - Base the pitch on candidate's real skills from their domain (${primaryRole}) and attached resume. DO NOT default to any unrelated tech stack unless present in candidate's profile.
+3. STRICT RESUME FIDELITY & NO INVENTED SKILLS / NO INFLATED TITLES:
+   - Candidate's Exact Verified Title: "${resumeGroundTruth.exactTitle}".
+   - ABSOLUTE PROHIBITION ON TITLE INFLATION: Refer to candidate strictly as "${resumeGroundTruth.exactTitle}" or their natural discipline (e.g. "DevOps/Cloud Engineer"). NEVER invent or assume titles like "Lead Engineer", "Senior Engineer", "Principal", "Director", or "Tech Lead" unless literally present in their verified title above.
+   - ABSOLUTE PROHIBITION ON INVENTED SKILLS: Highlight ONLY the candidate's real verified technologies: ${resumeGroundTruth.coreSkills.slice(0, 8).join(", ")}.
+   - ABSOLUTELY NEVER mention or invent unverified frameworks or languages (e.g. NEVER mention Flutter, React Native, Java, Kotlin, Swift, Golang unless explicitly in the verified technologies list above).
+4. AUTHENTIC, DYNAMIC VALUE PITCH TAILORED TO CANDIDATE'S ACTUAL RESUME:
    - Sentence 1: Enthusiastic acknowledgement of their startup's growth or mission in ${targetLocations[0] || 'tech'}.
-   - Sentence 2: Value proposition: How ${applicantName} can directly help their engineering team build, optimize, and scale using ${applicantName}'s real skills.
+   - Sentence 2: Value proposition: How ${applicantName} can directly help their engineering team build, optimize, and scale using ${applicantName}'s real skills (${resumeGroundTruth.coreSkills.slice(0, 4).join(", ")}) and verified achievements.
    - Sentence 3: Mention of attached resume for review.
    - Sentence 4: Low-friction call to action: "Open for a brief 10-minute sync this week to see how I can add immediate engineering value to your team?"
    - Sign-off: "Sincerely,\n${applicantName}" (Never use placeholders like [Your Name]).
-4. STRICT VOLUME MANDATE (EXACTLY 5 PROFILES):
+5. STRICT VOLUME MANDATE (EXACTLY 5 PROFILES):
    - You MUST extract, structure, and return AT LEAST 5 high-quality startup leader profiles.
    - If fewer than 5 valid candidates are found in the snippet list, extract all valid candidates first, and synthesize/extrapolate the remaining profiles (up to 5) of real, active tech startups and their CTOs/Founders in ${targetLocations.join(", ")} seeking ${primaryRole} talent to fulfill the 5-profile mandate.
 
@@ -299,11 +465,14 @@ Extract each verified person. For each:
 5. "linkedinUrl": Clean LinkedIn URL (https://www.linkedin.com/in/...).
 6. "email": STRICT ACCURACY MANDATE: ONLY return an email if an explicit, verified public email address is present in the bio/snippet or official website link. NEVER guess, synthesize, or construct speculative role emails (like cto@... or founder@...). If no explicit email is found in the text, you MUST return null.
 7. "fundingStage": Detected stage (e.g. "Seed", "Series A", "YC-backed", "Bootstrapped", or "High-Growth").
-8. "techStack": Array of 2-4 tech tags relevant to their company or candidate focus (${targetRoles.slice(0, 3).join(", ")}).
+8. "techStack": Array of 2-4 tech tags relevant to their company and candidate focus (${resumeGroundTruth.coreSkills.slice(0, 4).join(", ")}).
 9. "category": Strictly "founder", "engineering_manager", or "talent_acquisition".
 10. "connectionNote": 
-    - MANDATORY HARD LIMIT: STRICTLY LESS THAN OR EQUAL TO 190 CHARACTERS (including spaces). MUST fit within LinkedIn free tier 200 character limit!
-    - Authentic, polite invitation for LinkedIn mentioning their startup and candidate's domain (${primaryRole}).
+    - MANDATORY HARD CEILING: STRICTLY BETWEEN 130 AND 180 CHARACTERS (including spaces). MUST NEVER EXCEED 185 CHARACTERS!
+    - Must be a 100% COMPLETE, syntactically whole sentence ending with a period (.) or exclamation mark (!).
+    - ABSOLUTELY NEVER end with an ellipsis ("...") or leave a sentence or word incomplete.
+    - Grounded strictly in candidate's real title ("${resumeGroundTruth.exactTitle}") and real skills (${resumeGroundTruth.coreSkills.slice(0, 3).join(", ")}).
+    - Template: "Hi [FirstName], love what [Company] is building in [Field]. As a ${resumeGroundTruth.exactTitle} skilled in [Skill1] & [Skill2], I'd love to connect and follow your journey!"
 11. "fullPitch": 
     - A CRISP, HIGH-CONVERSION 4-SENTENCE STARTUP VALUE PITCH following instructions above.
 
@@ -395,11 +564,8 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             continue;
         }
         usedKeys.add(personKey);
-        // Clamp connection note to <= 200 characters (LinkedIn free tier limit)
-        let note = (lead.connectionNote || "").trim();
-        if (note.length > 200) {
-            note = note.substring(0, 197) + "...";
-        }
+        // Sanitize connection note cleanly without ellipses or chopped words (<= 190 characters)
+        const note = sanitizeConnectionNote(lead.connectionNote, lead.name, lead.companyName, resumeGroundTruth.exactTitle);
         qualifiedLeads.push({
             name: lead.name.trim(),
             currentRole: lead.currentRole || "Co-Founder & CTO",
@@ -411,7 +577,9 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             connectionNote: note,
             fullPitch: ((_f = lead.fullPitch) === null || _f === void 0 ? void 0 : _f.trim()) || note,
             fundingStage: lead.fundingStage || "Seed / Series A",
-            techStack: Array.isArray(lead.techStack) ? lead.techStack : targetRoles.slice(0, 3)
+            techStack: Array.isArray(lead.techStack) && lead.techStack.length > 0
+                ? lead.techStack
+                : resumeGroundTruth.coreSkills.slice(0, 3)
         });
         if (qualifiedLeads.length >= MAX_STARTUPS_PER_RUN) {
             break;
@@ -431,11 +599,8 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             if (usedKeys.has(personKey) || existingNames.has(personKey) || existingCompanies.has(companyClean))
                 continue;
             usedKeys.add(personKey);
-            // Clamp connection note to <= 200 characters (LinkedIn free tier limit)
-            let note = (lead.connectionNote || "").trim();
-            if (note.length > 200) {
-                note = note.substring(0, 197) + "...";
-            }
+            // Sanitize connection note cleanly without ellipses or chopped words (<= 190 characters)
+            const note = sanitizeConnectionNote(lead.connectionNote, lead.name, lead.companyName, resumeGroundTruth.exactTitle);
             qualifiedLeads.push({
                 name: lead.name.trim(),
                 currentRole: lead.currentRole || "Tech Lead",
@@ -447,7 +612,9 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
                 connectionNote: note,
                 fullPitch: ((_g = lead.fullPitch) === null || _g === void 0 ? void 0 : _g.trim()) || note,
                 fundingStage: lead.fundingStage || "High-Growth Startup",
-                techStack: Array.isArray(lead.techStack) ? lead.techStack : targetRoles.slice(0, 3)
+                techStack: Array.isArray(lead.techStack) && lead.techStack.length > 0
+                    ? lead.techStack
+                    : resumeGroundTruth.coreSkills.slice(0, 3)
             });
             if (qualifiedLeads.length >= MAX_STARTUPS_PER_RUN) {
                 break;

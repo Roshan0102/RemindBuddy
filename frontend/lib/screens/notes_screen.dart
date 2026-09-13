@@ -8,7 +8,7 @@ import '../widgets/collaboration_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../services/url_launcher_helper/url_launcher_helper.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
@@ -331,7 +331,17 @@ class _NotesScreenState extends State<NotesScreen> {
                   }
                 }
               },
-              child: Scaffold(
+              child: CallbackShortcuts(
+                bindings: {
+                  const SingleActivator(LogicalKeyboardKey.escape): () {
+                    if (context.mounted) {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                },
+                child: Focus(
+                  autofocus: true,
+                  child: Scaffold(
                 backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
                 appBar: AppBar(
                   backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
@@ -553,54 +563,100 @@ class _NotesScreenState extends State<NotesScreen> {
                                                 },
                                               ),
                                               Expanded(
-                                                child: Focus(
-                                                  onKeyEvent: (node, event) {
-                                                    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
-                                                      final bool isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
-                                                      if (!isShiftPressed) {
-                                                        setDialogState(() {
-                                                          checklistItems.insert(index + 1, {'text': '', 'isChecked': false});
-                                                          itemControllers.insert(index + 1, LinkTextEditingController(text: ''));
-                                                          final newFocusNode = FocusNode();
-                                                          itemFocusNodes.insert(index + 1, newFocusNode);
-                                                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                                                            newFocusNode.requestFocus();
-                                                          });
-                                                        });
-                                                        return KeyEventResult.handled;
-                                                      }
-                                                    }
-                                                    return KeyEventResult.ignored;
-                                                  },
-                                                  child: TextField(
-                                                    controller: itemControllers[index],
-                                                    focusNode: itemFocusNodes[index],
-                                                    style: GoogleFonts.outfit(
-                                                      decoration: item['isChecked'] == true
-                                                          ? TextDecoration.lineThrough
-                                                          : null,
-                                                      color: item['isChecked'] == true
-                                                          ? (isDark ? Colors.white38 : Colors.black38)
-                                                          : null,
-                                                      fontSize: 15,
-                                                    ),
-                                                    decoration: InputDecoration(
-                                                      hintText: 'Add checklist item...',
-                                                      border: InputBorder.none,
-                                                      isDense: true,
-                                                      contentPadding: const EdgeInsets.symmetric(vertical: 6.0),
-                                                      hintStyle: GoogleFonts.outfit(
-                                                        color: isDark ? Colors.white30 : Colors.black38,
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Focus(
+                                                      onKeyEvent: (node, event) {
+                                                        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
+                                                          final bool isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
+                                                          if (!isShiftPressed) {
+                                                            setDialogState(() {
+                                                              checklistItems.insert(index + 1, {'text': '', 'isChecked': false});
+                                                              itemControllers.insert(index + 1, LinkTextEditingController(text: ''));
+                                                              final newFocusNode = FocusNode();
+                                                              itemFocusNodes.insert(index + 1, newFocusNode);
+                                                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                                newFocusNode.requestFocus();
+                                                              });
+                                                            });
+                                                            return KeyEventResult.handled;
+                                                          }
+                                                        }
+                                                        return KeyEventResult.ignored;
+                                                      },
+                                                      child: TextField(
+                                                        controller: itemControllers[index],
+                                                        focusNode: itemFocusNodes[index],
+                                                        style: GoogleFonts.outfit(
+                                                          decoration: item['isChecked'] == true
+                                                              ? TextDecoration.lineThrough
+                                                              : null,
+                                                          color: item['isChecked'] == true
+                                                              ? (isDark ? Colors.white38 : Colors.black38)
+                                                              : null,
+                                                          fontSize: 15,
+                                                        ),
+                                                        decoration: InputDecoration(
+                                                          hintText: 'Add checklist item...',
+                                                          border: InputBorder.none,
+                                                          isDense: true,
+                                                          contentPadding: const EdgeInsets.symmetric(vertical: 6.0),
+                                                          hintStyle: GoogleFonts.outfit(
+                                                            color: isDark ? Colors.white30 : Colors.black38,
+                                                          ),
+                                                        ),
+                                                        textCapitalization: TextCapitalization.sentences,
+                                                        maxLines: null,
+                                                        keyboardType: TextInputType.multiline,
+                                                        onChanged: (val) {
+                                                          item['text'] = val;
+                                                          setDialogState(() {});
+                                                        },
                                                       ),
                                                     ),
-                                                    textCapitalization: TextCapitalization.sentences,
-                                                    maxLines: null,
-                                                    keyboardType: TextInputType.multiline,
-                                                    onChanged: (val) {
-                                                      item['text'] = val;
-                                                      setDialogState(() {});
-                                                    },
-                                                  ),
+                                                    if (_extractUrlsFromText(item['text'] as String? ?? '').isNotEmpty)
+                                                      Padding(
+                                                        padding: const EdgeInsets.only(top: 2.0, bottom: 4.0),
+                                                        child: Wrap(
+                                                          spacing: 6,
+                                                          runSpacing: 4,
+                                                          children: _extractUrlsFromText(item['text'] as String? ?? '').map((url) => Material(
+                                                            color: Colors.transparent,
+                                                            child: InkWell(
+                                                              onTap: () => _promptAndOpenUrl(context, url),
+                                                              borderRadius: BorderRadius.circular(8),
+                                                              child: Container(
+                                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                                decoration: BoxDecoration(
+                                                                  color: const Color(0xFF6366F1).withValues(alpha: isDark ? 0.2 : 0.1),
+                                                                  borderRadius: BorderRadius.circular(8),
+                                                                  border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.35)),
+                                                                ),
+                                                                child: Row(
+                                                                  mainAxisSize: MainAxisSize.min,
+                                                                  children: [
+                                                                    const Icon(Icons.link_rounded, size: 13, color: Color(0xFF6366F1)),
+                                                                    const SizedBox(width: 4),
+                                                                    Text(
+                                                                      _formatDisplayUrl(url),
+                                                                      style: GoogleFonts.outfit(
+                                                                        fontSize: 11,
+                                                                        color: const Color(0xFF6366F1),
+                                                                        fontWeight: FontWeight.w600,
+                                                                      ),
+                                                                    ),
+                                                                    const SizedBox(width: 4),
+                                                                    const Icon(Icons.open_in_new_rounded, size: 11, color: Color(0xFF6366F1)),
+                                                                  ],
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          )).toList(),
+                                                        ),
+                                                      ),
+                                                  ],
                                                 ),
                                               ),
                                               if (note != null && index < note.checklistItems.length) ...[
@@ -679,87 +735,76 @@ class _NotesScreenState extends State<NotesScreen> {
                                   ),
                                 ],
                               )
-                            : TextField(
-                                controller: contentController,
-                                decoration: InputDecoration(
-                                  hintText: 'Start typing your note...',
-                                  border: InputBorder.none,
-                                  hintStyle: GoogleFonts.outfit(
-                                    fontSize: 15,
-                                    color: isDark ? Colors.white30 : Colors.black38,
-                                  ),
-                                ),
-                                style: GoogleFonts.outfit(fontSize: 15, height: 1.5),
-                                maxLines: null,
-                                expands: true,
-                                textAlignVertical: TextAlignVertical.top,
-                                keyboardType: TextInputType.multiline,
-                                textCapitalization: TextCapitalization.sentences,
-                                onChanged: (val) => setDialogState(() {}),
-                              ),
-                      ),
-                      Builder(
-                        builder: (context) {
-                          final detectedLinks = _extractAllLinks(
-                            titleController.text,
-                            isChecklist ? '' : contentController.text,
-                            isChecklist,
-                            isChecklist ? checklistItems.map((item) => {'text': item['text']}).toList() : [],
-                          );
-                          if (detectedLinks.isEmpty) return const SizedBox.shrink();
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 10.0),
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Column(
+                            : Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.link_rounded, size: 16, color: Color(0xFF6366F1)),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          'Links in Note (${detectedLinks.length}):',
-                                          style: GoogleFonts.outfit(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: isDark ? Colors.white70 : Colors.black87,
+                                  if (_extractUrlsFromText(contentController.text).isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8.0),
+                                      child: Wrap(
+                                        spacing: 6,
+                                        runSpacing: 4,
+                                        children: _extractUrlsFromText(contentController.text).map((url) => Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: () => _promptAndOpenUrl(context, url),
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFF6366F1).withValues(alpha: isDark ? 0.2 : 0.1),
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.35)),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(Icons.link_rounded, size: 13, color: Color(0xFF6366F1)),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    _formatDisplayUrl(url),
+                                                    style: GoogleFonts.outfit(
+                                                      fontSize: 11,
+                                                      color: const Color(0xFF6366F1),
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  const Icon(Icons.open_in_new_rounded, size: 11, color: Color(0xFF6366F1)),
+                                                ],
+                                              ),
+                                            ),
                                           ),
+                                        )).toList(),
+                                      ),
+                                    ),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: contentController,
+                                      decoration: InputDecoration(
+                                        hintText: 'Start typing your note...',
+                                        border: InputBorder.none,
+                                        hintStyle: GoogleFonts.outfit(
+                                          fontSize: 15,
+                                          color: isDark ? Colors.white30 : Colors.black38,
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: detectedLinks.map((url) => ActionChip(
-                                      avatar: const Icon(Icons.open_in_new_rounded, size: 13, color: Color(0xFF6366F1)),
-                                      label: Text(
-                                        url.length > 28 ? '${url.substring(0, 25)}...' : url,
-                                        style: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFF6366F1), fontWeight: FontWeight.w600),
-                                      ),
-                                      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                                      side: BorderSide(
-                                        color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
-                                      ),
-                                      onPressed: () => _openExternalUrl(url),
-                                    )).toList(),
+                                      style: GoogleFonts.outfit(fontSize: 15, height: 1.5),
+                                      maxLines: null,
+                                      expands: true,
+                                      textAlignVertical: TextAlignVertical.top,
+                                      keyboardType: TextInputType.multiline,
+                                      textCapitalization: TextCapitalization.sentences,
+                                      onChanged: (val) => setDialogState(() {}),
+                                    ),
                                   ),
                                 ],
                               ),
-                            ),
-                          );
-                        },
                       ),
                     ],
                   ),
+                ),
+                ),
                 ),
               ),
             );
@@ -1666,21 +1711,128 @@ class _NotesScreenState extends State<NotesScreen> {
     return baseColor.withValues(alpha: 0.85);
   }
 
-  Future<void> _openExternalUrl(String rawUrl) async {
+  List<String> _extractUrlsFromText(String text) {
+    if (text.isEmpty) return [];
+    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+|www\.[^\s]+)', caseSensitive: false);
+    final Iterable<RegExpMatch> matches = urlRegExp.allMatches(text);
+    final List<String> urls = [];
+    for (final m in matches) {
+      String raw = m.group(0)!;
+      if (raw.endsWith('.') || raw.endsWith(',') || raw.endsWith(')')) {
+        raw = raw.substring(0, raw.length - 1);
+      }
+      if (raw.isNotEmpty && !urls.contains(raw)) {
+        urls.add(raw);
+      }
+    }
+    return urls;
+  }
+
+  String _formatDisplayUrl(String url) {
+    String clean = url.replaceFirst(RegExp(r'^https?://', caseSensitive: false), '');
+    clean = clean.replaceFirst(RegExp(r'^www\.', caseSensitive: false), '');
+    if (clean.length > 35) {
+      clean = '${clean.substring(0, 32)}...';
+    }
+    return clean;
+  }
+
+  Future<void> _promptAndOpenUrl(BuildContext context, String rawUrl) async {
     String cleanUrl = rawUrl.trim();
     if (cleanUrl.endsWith(')')) cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
     if (!cleanUrl.toLowerCase().startsWith('http://') && !cleanUrl.toLowerCase().startsWith('https://')) {
       cleanUrl = 'https://$cleanUrl';
     }
-    try {
-      final Uri uri = Uri.parse(cleanUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        await launchUrl(uri);
-      }
-    } catch (e) {
-      debugPrint('Error launching URL ($cleanUrl): $e');
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final shouldOpen = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.open_in_new_rounded, color: Color(0xFF6366F1), size: 20),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Open External Link?',
+              style: GoogleFonts.outfit(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: isDark ? Colors.white : const Color(0xFF0F172A),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You are about to navigate to an external website:',
+              style: GoogleFonts.outfit(
+                fontSize: 13,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDark ? Colors.white12 : Colors.black12,
+                ),
+              ),
+              child: SelectableText(
+                cleanUrl,
+                style: GoogleFonts.firaCode(
+                  fontSize: 12,
+                  color: const Color(0xFF6366F1),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.outfit(
+                color: isDark ? Colors.white60 : Colors.black54,
+              ),
+            ),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            icon: const Icon(Icons.launch_rounded, size: 16),
+            label: Text(
+              'Open Link',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldOpen == true) {
+      await UrlLauncherHelper.openInNewTabOrExternal(cleanUrl);
     }
   }
 
@@ -1711,7 +1863,7 @@ class _NotesScreenState extends State<NotesScreen> {
           decoration: TextDecoration.underline,
         ),
         recognizer: TapGestureRecognizer()
-          ..onTap = () => _openExternalUrl(url),
+          ..onTap = () => _promptAndOpenUrl(context, url),
       ));
 
       lastMatchEnd = match.end;
@@ -1863,38 +2015,6 @@ class _NotesScreenState extends State<NotesScreen> {
         'text': '$stripped (by $currentUsername)',
       };
     }).toList();
-  }
-
-  List<String> _extractAllLinks(
-    String title,
-    String content,
-    bool isChecklist,
-    List<Map<String, dynamic>> checklistItems,
-  ) {
-    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+|www\.[^\s]+)', caseSensitive: false);
-    final Set<String> links = {};
-
-    final cleanTitle = _stripSignature(title);
-    final cleanContent = _stripSignature(content);
-
-    for (final match in urlRegExp.allMatches(cleanTitle)) {
-      links.add(match.group(0)!);
-    }
-    for (final match in urlRegExp.allMatches(cleanContent)) {
-      links.add(match.group(0)!);
-    }
-
-    if (isChecklist) {
-      for (var item in checklistItems) {
-        final text = item['text'] as String? ?? '';
-        final cleanText = _stripSignature(text);
-        for (final match in urlRegExp.allMatches(cleanText)) {
-          links.add(match.group(0)!);
-        }
-      }
-    }
-
-    return links.toList();
   }
 }
 

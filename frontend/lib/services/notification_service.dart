@@ -8,6 +8,7 @@ import 'log_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_widget_service.dart';
+import 'web_desktop_notifications/web_desktop_notifications.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -183,9 +184,76 @@ class NotificationService {
 
   NotificationService._internal();
 
+  DateTime _webSessionStartTime = DateTime.now();
+  StreamSubscription? _webNotificationSubscription;
+  StreamSubscription? _webAuthSubscription;
+
+  void _initWebNotifications() {
+    if (!kIsWeb) return;
+    _webSessionStartTime = DateTime.now();
+    _webAuthSubscription?.cancel();
+
+    _webAuthSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      _webNotificationSubscription?.cancel();
+      if (user == null) return;
+
+      LogService.staticLog("Web desktop notifications listener initialized for user ${user.uid}");
+      _webNotificationSubscription = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(_webSessionStartTime))
+          .snapshots()
+          .listen((snapshot) async {
+        for (var change in snapshot.docChanges) {
+          if (change.type == DocumentChangeType.added) {
+            final data = change.doc.data();
+            if (data == null) continue;
+
+            final title = data['title']?.toString() ?? 'RemindBuddy Alert';
+            final body = data['body']?.toString() ?? '';
+            final type = data['type']?.toString() ?? '';
+
+            try {
+              final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+              final notifPrefs = Map<String, dynamic>.from(userDoc.data()?['notificationPreferences'] ?? {});
+              final bool desktopEnabled = notifPrefs['desktop_notifications'] ?? true;
+              if (!desktopEnabled) continue;
+
+              bool featureEnabled = true;
+              if (type == 'SHIFT_REMINDER' && notifPrefs['shifts'] == false) featureEnabled = false;
+              if (type == 'JOB_ASSISTANT' && notifPrefs['job_assistant'] == false) featureEnabled = false;
+              if (type == 'JOB_ASSISTANT_REPLY' && notifPrefs['job_assistant'] == false) featureEnabled = false;
+              if (type == 'CALENDAR_REMINDER' && notifPrefs['calendar_reminders'] == false) featureEnabled = false;
+              if (type == 'DAILY_REMINDER' && notifPrefs['daily_reminders'] == false) featureEnabled = false;
+              if (type == 'BILL_REMINDER' && notifPrefs['finance_bills'] == false) featureEnabled = false;
+              if (type == 'TECH_EVENTS' && notifPrefs['events'] == false) featureEnabled = false;
+              if (type == 'WALKIN_DRIVES' && notifPrefs['walkin'] == false) featureEnabled = false;
+              if (type == 'GOLD_PRICE' && notifPrefs['gold_rates'] == false) featureEnabled = false;
+              if (type == 'GOLD_CHIT_ADVICE' && notifPrefs['gold_advice'] == false) featureEnabled = false;
+              if (type == 'ASTRO_CALENDAR' && notifPrefs['astro_calendar'] == false) featureEnabled = false;
+
+              if (featureEnabled) {
+                WebDesktopNotificationService.showNotification(
+                  title: title,
+                  body: body,
+                  payload: type,
+                  tag: 'notif_${change.doc.id}',
+                );
+              }
+            } catch (e) {
+              debugPrint("Error handling web notification doc: $e");
+            }
+          }
+        }
+      });
+    });
+  }
+
   Future<void> init() async {
     if (kIsWeb) {
-      LogService.staticLog("Notifications disabled on Web platform (Mobile-only requirement).");
+      LogService.staticLog("Initializing Web Desktop Notifications.");
+      _initWebNotifications();
       return;
     }
     FirebaseMessaging messaging = FirebaseMessaging.instance;
@@ -596,7 +664,14 @@ class NotificationService {
     String channelName = 'Calendar Reminders',
     String? payload,
   }) async {
-    if (kIsWeb) return;
+    if (kIsWeb) {
+      WebDesktopNotificationService.showNotification(
+        title: title,
+        body: body,
+        payload: payload,
+      );
+      return;
+    }
     await _localNotifications.show(
       id,
       title,

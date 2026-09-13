@@ -5,6 +5,7 @@ const functions = require("firebase-functions");
 const moment = require("moment-timezone");
 const firebase_1 = require("../../config/firebase");
 const geminiHelper_1 = require("../../utils/geminiHelper");
+const astroNotifications_1 = require("../astro/astroNotifications");
 exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
     var _a;
     if (!context.auth) {
@@ -50,16 +51,16 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
         const eventsPromise = firebase_1.db.collection("users").doc(uid).collection("events")
             .where("notInterested", "==", false)
             .orderBy("date")
-            .limit(5)
+            .limit(10)
             .get();
         const walkinsPromise = firebase_1.db.collection("users").doc(uid).collection("walkins")
             .where("notInterested", "==", false)
             .orderBy("date")
-            .limit(5)
+            .limit(10)
             .get();
         const goldInsightsPromise = firebase_1.db.collection("gold_ai_insights").doc("latest").get();
         const goldChitAdvicePromise = firebase_1.db.collection("gold_chit_advice").doc("latest").get();
-        const jobAppsPromise = firebase_1.db.collection("users").doc(uid).collection("job_applications").orderBy("appliedAt", "desc").limit(5).get();
+        const jobAppsPromise = firebase_1.db.collection("users").doc(uid).collection("job_applications").orderBy("appliedAt", "desc").limit(15).get();
         const [remindersSnap, dailyRemindersSnap, notesSnap, shiftsSnap, goldSnap, eventsSnap, walkinsSnap, goldInsightsSnap, goldChitAdviceSnap, jobAppsSnap] = await Promise.all([
             remindersPromise,
             dailyRemindersPromise,
@@ -168,13 +169,20 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
         contextText += "\n";
         contextText += "--- AI JOB ASSISTANT RECENT APPLICATIONS ---\n";
         if (jobAppsSnap && !jobAppsSnap.empty) {
+            const todayStr = nowKolkata.format('YYYY-MM-DD');
+            let todayCount = 0;
             jobAppsSnap.docs.forEach((doc) => {
                 const d = doc.data();
-                contextText += `- Role: "${d.jobTitle}", Company: "${d.companyName}", Recipient: "${d.recipientEmail}", Status: ${d.status || 'sent'}\n`;
+                const appliedDate = d.appliedAt ? moment(d.appliedAt.toDate ? d.appliedAt.toDate() : d.appliedAt).tz('Asia/Kolkata').format('YYYY-MM-DD') : '';
+                const isToday = appliedDate === todayStr;
+                if (isToday)
+                    todayCount++;
+                contextText += `- Role: "${d.jobTitle}", Company: "${d.companyName}", Recipient: "${d.recipientEmail}", Status: ${d.status || 'sent'}, Date: ${appliedDate || 'Recent'}${isToday ? ' (Applied Today)' : ''}\n`;
             });
+            contextText += `Total applications listed: ${jobAppsSnap.size}. Total applied today: ${todayCount}.\n`;
         }
         else {
-            contextText += "No job applications sent yet.\n";
+            contextText += "No job applications sent yet. Zero applications today.\n";
         }
         contextText += "\n";
         contextText += "--- UPCOMING TECH EVENTS ---\n";
@@ -198,17 +206,43 @@ exports.voiceAssistantQuery = functions.runWith({ timeoutSeconds: 60, memory: "2
         else {
             contextText += "No upcoming walk-in drives.\n";
         }
+        contextText += "\n";
+        // Astro Calendar & Lunar Phases
+        contextText += "--- ASTRO CALENDAR & LUNAR PHASES ---\n";
+        const todayPhase = (0, astroNotifications_1.getTodayLunarPhase)(nowKolkata);
+        const tomorrowPhase = (0, astroNotifications_1.getTodayLunarPhase)(nowKolkata.clone().add(1, 'day'));
+        contextText += `Today's Lunar Status: ${todayPhase === 'new_moon' ? '🌑 Amavasya (New Moon) Today' : todayPhase === 'full_moon' ? '🌕 Pournami (Full Moon) Today' : 'Regular lunar day'}\n`;
+        if (tomorrowPhase) {
+            contextText += `Tomorrow's Lunar Status: ${tomorrowPhase === 'new_moon' ? '🌑 Amavasya (New Moon) Tomorrow' : '🌕 Pournami (Full Moon) Tomorrow'}\n`;
+        }
+        const dayOfWeek = nowKolkata.day(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+        const rahuYamaMap = {
+            0: { rahu: "04:30 PM - 06:00 PM", yama: "12:00 PM - 01:30 PM" },
+            1: { rahu: "07:30 AM - 09:00 AM", yama: "01:30 PM - 03:00 PM" },
+            2: { rahu: "03:00 PM - 04:30 PM", yama: "09:00 AM - 10:30 AM" },
+            3: { rahu: "12:00 PM - 01:30 PM", yama: "07:30 AM - 09:00 AM" },
+            4: { rahu: "01:30 PM - 03:00 PM", yama: "06:00 AM - 07:30 AM" },
+            5: { rahu: "10:30 AM - 12:00 PM", yama: "03:00 PM - 04:30 PM" },
+            6: { rahu: "09:00 AM - 10:30 AM", yama: "01:30 PM - 03:00 PM" }
+        };
+        const ry = rahuYamaMap[dayOfWeek];
+        if (ry) {
+            contextText += `Today's Rahu Kaalam: ${ry.rahu}, Yamagandam: ${ry.yama}\n`;
+        }
+        contextText += "\n";
         // 4. Send query to Gemini
-        const systemInstruction = `You are the RemindBuddy AI Voice Assistant. Your goal is to help the user manage reminders, daily alarms, notes, shifts, gold prices & insights, tech events, walk-in drives, and job applications.
+        const systemInstruction = `You are the RemindBuddy AI Voice Assistant. Your goal is to help the user manage reminders, daily alarms, notes, work shifts, gold prices & insights, tech events, walk-in drives, astro calendar & lunar phases, and job applications.
 
-CRITICAL PRIVACY & SECURITY GUARDRAILS:
-1. SECURE VAULT: The Secure Vault feature is encrypted and strictly confidential. You do NOT have access to it and must NEVER query, speak about, or reveal vault documents, passwords, or files.
-2. FINANCE: The Finance feature (bank accounts, balances, transactions, and bills) is strictly private and confidential. You do NOT have access to it and must NEVER query, speak about, or reveal bank accounts, balances, or transactions. If the user asks about bank balances or finances, politely respond: "I do not have access to your private financial details or bank balances for privacy and security."
-3. ADMIN CONSOLE: The Admin Console, user management, and Cloud/GCP billing data are strictly restricted and must NEVER be queried or revealed.
+CRITICAL PRIVACY & SECURITY GUARDRAILS (STRICT COMPLIANCE REQUIRED):
+1. USER DATA ISOLATION: You are strictly querying and accessing ONLY the authenticated user's private data. You NEVER share, summarize, or reveal data across different users. (Gold price is the only shared global market information).
+2. FINANCE PRIVACY: The Finance feature (bank accounts, balances, transactions, debit/credit SMS, spends, and budgets) is strictly private and confidential. You do NOT have access to it and must NEVER query, speak about, or reveal bank accounts, balances, or transactions. If the user asks about bank balances, spending, or finances, politely respond: "I do not have access to your private financial details or bank balances for privacy and security."
+3. SECURE VAULT PRIVACY: The Secure Vault feature is encrypted and strictly confidential. You do NOT have access to it and must NEVER query, speak about, or reveal vault documents, passwords, credentials, or secret files. If asked, politely respond: "I do not have access to your Secure Vault documents or passwords."
+4. ADMIN CONSOLE & USER CREDENTIALS: The Admin Console, user management, and user passwords/credentials are strictly restricted. You do not have access. If asked, politely decline.
+5. GCP CLOUD COST TRACKER: Google Cloud Platform cost tracker and infrastructure billing are strictly restricted system administrator data. You do not have access.
 
 Look at the user's voice search or typed query, and the current state of their app data:
-1. Answer queries about Tech events, Walk-in drives, Job applications, Gold prices & insights, Notes, Calendar reminders, Daily alarms, and Work shifts.
-2. Resolve dates and times using the provided Current Date and Time (IST) anchor (e.g. today, tomorrow, next week).
+1. Answer queries about Job applications (e.g. what jobs applied today, companies, status), Walk-in drives, Tech events, Notes, Work shifts, Calendar reminders, Daily alarms, Gold rate & buying advice, and Astro calendar (lunar phases like Amavasya/Pournami, Rahu Kaalam, Yamagandam).
+2. Resolve dates and times using the provided Current Date and Time (IST) anchor (e.g. today, tomorrow, this week).
 3. If they ask to add/create or delete/remove items (reminders, notes): extract the action and its parameters.
 4. Keep the spokenResponse extremely brief, friendly, natural, and speech-ready (avoid markdown formatting like asterisks or bullet points since it will be read out loud).
 

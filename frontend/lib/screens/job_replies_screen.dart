@@ -113,11 +113,49 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
     }
   }
 
+  static String cleanAndBoundConnectionNote(String rawNote) {
+    if (rawNote.trim().isEmpty) return '';
+    String note = rawNote.trim();
+    note = note.replaceAll(RegExp(r'[\.\s…\-]+$'), '');
+    while (note.startsWith('"') || note.startsWith("'")) {
+      note = note.substring(1).trim();
+    }
+    while (note.endsWith('"') || note.endsWith("'")) {
+      note = note.substring(0, note.length - 1).trim();
+    }
+
+    if (note.length <= 185) {
+      if (!note.endsWith('.') && !note.endsWith('!')) {
+        note = '$note.';
+      }
+      if (note.length <= 190) return note;
+    }
+
+    final matches = RegExp(r'[\.\!\?]\s+').allMatches(note);
+    int lastSentenceEnd = -1;
+    for (final m in matches) {
+      final endIdx = m.start + 1;
+      if (endIdx <= 185 && endIdx >= 70) {
+        lastSentenceEnd = endIdx;
+      }
+    }
+
+    if (lastSentenceEnd > 0) {
+      return note.substring(0, lastSentenceEnd).trim();
+    }
+
+    final safeSlice = note.substring(0, 175);
+    final lastSpace = safeSlice.lastIndexOf(' ');
+    if (lastSpace > 40) {
+      final cleanWordEnd = safeSlice.substring(0, lastSpace).replaceAll(RegExp(r'[,;:\-\s]+$'), '');
+      return '$cleanWordEnd.';
+    }
+    return '${safeSlice.trim()}.';
+  }
+
   Future<void> _handleConnectLinkedIn(UnifiedReplyItem item) async {
     if (item.connectionNote != null && item.connectionNote!.isNotEmpty) {
-      final noteToCopy = item.connectionNote!.length > 200
-          ? '${item.connectionNote!.substring(0, 197)}...'
-          : item.connectionNote!;
+      final noteToCopy = cleanAndBoundConnectionNote(item.connectionNote!);
       await Clipboard.setData(ClipboardData(text: noteToCopy));
     }
     if (item.linkedinUrl != null && item.linkedinUrl!.isNotEmpty) {

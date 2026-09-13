@@ -1215,6 +1215,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final dateStr = DateFormat('EEEE, d MMMM').format(DateTime.now());
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final bool isWeb = kIsWeb && screenWidth >= 650;
+
+    if (!isWeb) {
+      return _buildMobileAmbientRibbon(isDark, greeting, cleanName, emoji, dateStr);
+    }
+    return _buildWebAmbientRibbon(isDark, greeting, cleanName, emoji, dateStr, screenWidth);
+  }
+
+  /// 📱 Mobile Layout: 100% Unchanged & Preserved
+  Widget _buildMobileAmbientRibbon(
+    bool isDark,
+    String greeting,
+    String cleanName,
+    String emoji,
+    String dateStr,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
@@ -1343,6 +1360,304 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 🌐 Web Application Layout: High-density 2-line greeting, live glance pills, desktop weather
+  Widget _buildWebAmbientRibbon(
+    bool isDark,
+    String greeting,
+    String cleanName,
+    String emoji,
+    String dateStr,
+    double screenWidth,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF131C2E) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 1. Left: 2-line Greeting (Line 1: "Good Morning, Roshan J 👋", Line 2: "📅 Sunday, 13 September")
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$greeting, ',
+                      style: GoogleFonts.outfit(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    Flexible(
+                      child: Text(
+                        cleanName,
+                        style: GoogleFonts.outfit(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          letterSpacing: -0.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      emoji,
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.calendar_today_rounded,
+                      size: 14,
+                      color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      dateStr,
+                      style: GoogleFonts.outfit(
+                        fontSize: 14,
+                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // 2. Middle: Live Ambient Quick-Glance Badges (fills the desktop horizontal gap)
+          if (screenWidth >= 1080) ...[
+            const SizedBox(width: 16),
+            _buildWebGlancePills(isDark),
+            const SizedBox(width: 16),
+          ] else ...[
+            const SizedBox(width: 16),
+          ],
+
+          // 3. Right: Desktop Weather Card
+          _buildWebWeatherChip(isDark),
+        ],
+      ),
+    );
+  }
+
+  /// 🌐 Web Glance Pills: Live shift, reminders, and habit status
+  Widget _buildWebGlancePills(bool isDark) {
+    String shiftLabel = 'Off Duty';
+    IconData shiftIcon = Icons.beach_access_rounded;
+    Color shiftColor = Colors.tealAccent;
+    if (_todayShift != null) {
+      final raw = (_todayShift!['shift_type'] ?? _todayShift!['shiftType'] ?? '').toString().toLowerCase();
+      if (!raw.contains('off') && raw.isNotEmpty) {
+        shiftLabel = '${raw.replaceAll('_', ' ').toUpperCase()} SHIFT';
+        shiftIcon = Icons.work_history_rounded;
+        shiftColor = Colors.purpleAccent;
+      }
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildGlanceChip(
+          icon: shiftIcon,
+          label: shiftLabel,
+          accentColor: shiftColor,
+          isDark: isDark,
+          tooltip: 'Work Roster',
+          onTap: () => widget.onNavigateToFeature?.call('shifts'),
+        ),
+        const SizedBox(width: 10),
+        _buildGlanceChip(
+          icon: Icons.notifications_active_rounded,
+          label: '$_todayRemindersCount Due',
+          accentColor: Colors.orangeAccent,
+          isDark: isDark,
+          tooltip: 'Reminders',
+          onTap: () => widget.onNavigateToFeature?.call('reminders'),
+        ),
+        const SizedBox(width: 10),
+        _buildGlanceChip(
+          icon: Icons.alarm_on_rounded,
+          label: '$_dailyRemindersCount Habits',
+          accentColor: Colors.blueAccent,
+          isDark: isDark,
+          tooltip: 'Daily Habits',
+          onTap: () => widget.onNavigateToFeature?.call('daily_reminders'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGlanceChip({
+    required IconData icon,
+    required String label,
+    required Color accentColor,
+    required bool isDark,
+    required String tooltip,
+    VoidCallback? onTap,
+  }) {
+    return Tooltip(
+      message: '$tooltip (Click to open)',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B).withValues(alpha: 0.6) : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: accentColor.withValues(alpha: isDark ? 0.35 : 0.25),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: accentColor),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: GoogleFonts.outfit(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF1E293B),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 🌐 Web Weather Chip: Enhanced desktop chip with temperature, condition tag, city & refresh
+  Widget _buildWebWeatherChip(bool isDark) {
+    return Tooltip(
+      message: '$_weatherCondition in $_weatherCity (Click to refresh)',
+      child: InkWell(
+        onTap: () => _fetchWeather(force: true),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.blue.shade50.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDark ? Colors.blueAccent.withValues(alpha: 0.35) : Colors.blue.shade200,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.blueAccent.withValues(alpha: isDark ? 0.12 : 0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(_weatherIcon, color: Colors.blueAccent, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _weatherTemp,
+                        style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.blue.shade100,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          _weatherCondition,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white70 : Colors.blue.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.location_on_outlined,
+                        size: 12,
+                        color: isDark ? Colors.white54 : Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        _weatherCity,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white60 : Colors.blueGrey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(width: 10),
+              Icon(
+                Icons.refresh_rounded,
+                size: 15,
+                color: isDark ? Colors.white38 : Colors.grey.shade400,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

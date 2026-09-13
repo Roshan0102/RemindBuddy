@@ -42,17 +42,19 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('last_sync_time');
 
-      // Update FCM Token
-      try {
-        final token = await FirebaseMessaging.instance.getToken();
-        if (token != null) {
-          final query = await _db.collection('usernames').where('uid', isEqualTo: credential.user?.uid).limit(1).get();
-          if (query.docs.isNotEmpty) {
-            await query.docs.first.reference.update({'fcmToken': token});
+      // Update FCM Token (Mobile only - preserve mobile push notifications when logging into Web)
+      if (!kIsWeb) {
+        try {
+          final token = await FirebaseMessaging.instance.getToken();
+          if (token != null) {
+            final query = await _db.collection('usernames').where('uid', isEqualTo: credential.user?.uid).limit(1).get();
+            if (query.docs.isNotEmpty) {
+              await query.docs.first.reference.update({'fcmToken': token});
+            }
           }
+        } catch (e) {
+          debugPrint('Error saving FCM Token: $e');
         }
-      } catch (e) {
-        debugPrint('Error saving FCM Token: $e');
       }
 
       // Ensure users/{uid} has displayName & applicantName
@@ -135,6 +137,53 @@ class AuthService {
     } catch (e) {
       debugPrint("❌ Firebase Signup failed: $e");
       throw Exception('Signup failed: ${e.toString()}');
+    }
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null || user.email == null) {
+      throw Exception('No authenticated user found. Please log in again.');
+    }
+
+    if (newPassword.trim().length < 6) {
+      throw Exception('New password must be at least 6 characters long.');
+    }
+
+    if (currentPassword.trim() == newPassword.trim()) {
+      throw Exception('New password cannot be the same as your current password.');
+    }
+
+    // 1. Re-authenticate with current password to verify identity
+    try {
+      final cred = EmailAuthProvider.credential(
+        email: user.email!,
+        password: currentPassword.trim(),
+      );
+      await user.reauthenticateWithCredential(cred);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        throw Exception('The current password you entered is incorrect.');
+      }
+      throw Exception('Authentication failed: ${e.message ?? e.code}');
+    } catch (e) {
+      throw Exception('The current password you entered is incorrect.');
+    }
+
+    // 2. Update to new password
+    try {
+      await user.updatePassword(newPassword.trim());
+      debugPrint('✅ Successfully updated password for user: ${user.uid}');
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'weak-password') {
+        throw Exception('The new password is too weak. Please use a stronger password.');
+      } else if (e.code == 'requires-recent-login') {
+        throw Exception('Please log out and log back in to change your password.');
+      }
+      throw Exception('Failed to update password: ${e.message ?? e.code}');
     }
   }
 

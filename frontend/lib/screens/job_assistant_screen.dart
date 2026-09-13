@@ -20,6 +20,7 @@ import '../services/url_launcher_helper/url_launcher_helper.dart';
 import 'ai_keys_settings_screen.dart';
 import 'job_replies_screen.dart';
 import 'feature_logs_screen.dart';
+import '../services/web_clipboard_drag/web_clipboard_drag.dart';
 
 class JobAssistantScreen extends StatefulWidget {
   const JobAssistantScreen({super.key});
@@ -138,6 +139,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     _loadUserConfig();
     _setupTimestampsListeners();
     _setupResumeProfilesListener();
+    _setupPasteAndDropListener();
   }
 
   void _setupResumeProfilesListener() {
@@ -309,7 +311,51 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     for (var c in _subjectControllers.values) { c.dispose(); }
     for (var c in _bodyControllers.values) { c.dispose(); }
     for (var c in _refinePromptControllers.values) { c.dispose(); }
+    WebClipboardDrag.disposeListeners();
     super.dispose();
+  }
+
+  void _setupPasteAndDropListener() {
+    WebClipboardDrag.initListeners(
+      onImageReceived: (bytes, name) {
+        if (!mounted) return;
+        final b64 = base64Encode(bytes);
+        setState(() {
+          _selectedImageFiles.add(XFile.fromData(bytes, name: name));
+          _selectedImagesBase64.add(b64);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📸 Added image: $name (${(bytes.length / 1024).toStringAsFixed(1)} KB)'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.indigo,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      },
+      isActive: () => mounted && _tabController.index == 2,
+    );
+  }
+
+  Future<void> _pasteImageFromClipboard() async {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('📋 Right-click any image in LinkedIn -> "Copy Image" and press Ctrl+V (or drop here)!'),
+          duration: Duration(seconds: 4),
+          backgroundColor: Colors.indigo,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Clipboard paste active. Copy an image and press Ctrl+V.'),
+          duration: Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _loadUserConfig() async {
@@ -1210,8 +1256,20 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         _isAnalyzing = false;
       });
       if (mounted) {
+        String msg = e.toString();
+        if (msg.contains('deadline-exceeded') || msg.contains('DEADLINE_EXCEEDED')) {
+          msg = 'AI analysis timed out processing the image and resume. Please tap "Analyze with Gemini AI" to retry.';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error analyzing posters: $e')),
+          SnackBar(
+            content: Text(msg.startsWith('AI') ? msg : 'Error analyzing posters: $msg'),
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.amberAccent,
+              onPressed: _analyzePostersWithAI,
+            ),
+          ),
         );
       }
     }
@@ -1667,13 +1725,20 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Widget _buildResponseBadge(JobApplication app, bool isDark) {
-    final type = app.responseType ?? 'reply';
+    final bool isBounce = app.isBounced || app.status == 'bounced' || app.responseType == 'bounced';
+    final type = isBounce ? 'bounced' : (app.responseType ?? 'reply');
     Color bgColor;
     Color textColor;
     IconData icon;
     String label;
 
     switch (type) {
+      case 'bounced':
+        bgColor = const Color(0xFFEF4444).withValues(alpha: 0.18);
+        textColor = isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626);
+        icon = Icons.error_outline_rounded;
+        label = '⚠️ Address Not Found';
+        break;
       case 'interview_invite':
         bgColor = const Color(0xFF8B5CF6).withValues(alpha: 0.2);
         textColor = isDark ? const Color(0xFFA78BFA) : const Color(0xFF6D28D9);
@@ -1737,6 +1802,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Widget _buildRecruiterReplyCard(JobApplication app, bool isDark) {
+    final bool isBounce = app.isBounced || app.status == 'bounced' || app.responseType == 'bounced';
     final timeStr = app.replyReceivedAt != null
         ? DateFormat('dd MMM yyyy, h:mm a').format(app.replyReceivedAt!)
         : 'Recently';
@@ -1746,15 +1812,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: isDark
-              ? [const Color(0xFF064E3B).withValues(alpha: 0.35), const Color(0xFF042F2E).withValues(alpha: 0.45)]
-              : [const Color(0xFFECFDF5), const Color(0xFFD1FAE5)],
+          colors: isBounce
+              ? (isDark
+                  ? [const Color(0xFF7F1D1D).withValues(alpha: 0.35), const Color(0xFF450A0A).withValues(alpha: 0.45)]
+                  : [const Color(0xFFFEF2F2), const Color(0xFFFEE2E2)])
+              : (isDark
+                  ? [const Color(0xFF064E3B).withValues(alpha: 0.35), const Color(0xFF042F2E).withValues(alpha: 0.45)]
+                  : [const Color(0xFFECFDF5), const Color(0xFFD1FAE5)]),
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: const Color(0xFF10B981).withValues(alpha: 0.4),
+          color: isBounce
+              ? const Color(0xFFEF4444).withValues(alpha: 0.4)
+              : const Color(0xFF10B981).withValues(alpha: 0.4),
         ),
       ),
       child: Column(
@@ -1765,14 +1837,20 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             children: [
               Row(
                 children: [
-                  const Icon(Icons.mark_email_unread_rounded, color: Color(0xFF10B981), size: 18),
+                  Icon(
+                    isBounce ? Icons.error_outline_rounded : Icons.mark_email_unread_rounded,
+                    color: isBounce ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                    size: 18,
+                  ),
                   const SizedBox(width: 6),
                   Text(
-                    'Recruiter Response',
+                    isBounce ? 'Delivery Failure: Address Not Found' : 'Recruiter Response',
                     style: GoogleFonts.outfit(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      color: isDark ? const Color(0xFF34D399) : const Color(0xFF065F46),
+                      color: isBounce
+                          ? (isDark ? const Color(0xFFF87171) : const Color(0xFF991B1B))
+                          : (isDark ? const Color(0xFF34D399) : const Color(0xFF065F46)),
                     ),
                   ),
                 ],
@@ -2943,24 +3021,38 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         ? app.sourcePlatform!
         : 'LinkedIn';
 
+    final bool isBounced = app.isBounced || app.status == 'bounced' || app.responseType == 'bounced';
+    final bool hasReplied = app.status == 'reply_received' || (app.responseType != null && app.responseType!.isNotEmpty && !isBounced);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isBounced
+            ? BorderSide(color: const Color(0xFFEF4444).withValues(alpha: 0.4), width: 1)
+            : BorderSide.none,
+      ),
       color: isDark ? const Color(0xFF1E293B) : Colors.white,
       elevation: 1.5,
       child: ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: CircleAvatar(
-          backgroundColor: app.status == 'reply_received'
-              ? const Color(0xFF10B981).withValues(alpha: 0.2)
-              : Colors.blueAccent.withValues(alpha: 0.15),
+          backgroundColor: isBounced
+              ? const Color(0xFFEF4444).withValues(alpha: 0.18)
+              : (hasReplied
+                  ? const Color(0xFF10B981).withValues(alpha: 0.2)
+                  : Colors.blueAccent.withValues(alpha: 0.15)),
           child: Icon(
-            app.status == 'reply_received'
-                ? Icons.mark_email_unread_rounded
-                : Icons.send_rounded,
-            color: app.status == 'reply_received'
-                ? const Color(0xFF10B981)
-                : Colors.blueAccent,
+            isBounced
+                ? Icons.error_outline_rounded
+                : (hasReplied
+                    ? Icons.mark_email_unread_rounded
+                    : Icons.send_rounded),
+            color: isBounced
+                ? const Color(0xFFEF4444)
+                : (hasReplied
+                    ? const Color(0xFF10B981)
+                    : Colors.blueAccent),
             size: 18,
           ),
         ),
@@ -2981,7 +3073,27 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               spacing: 6,
               runSpacing: 4,
               children: [
-                if (app.status == 'reply_received')
+                if (isBounced)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.45)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.error_outline_rounded, size: 10, color: Color(0xFFEF4444)),
+                        SizedBox(width: 3),
+                        Text(
+                          'Address Not Found',
+                          style: TextStyle(fontSize: 9.5, color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (hasReplied)
                   _buildResponseBadge(app, isDark)
                 else
                   Container(
@@ -3049,7 +3161,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (app.status == 'reply_received')
+                if (isBounced || hasReplied)
                   _buildRecruiterReplyCard(app, isDark),
                 Text(
                   'Sent Application Subject: ${app.generatedSubject}',
@@ -3228,28 +3340,64 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             if (_uploadMode == 'manual_url') ...[
               _buildManualJobEntryForm(),
             ] else ...[
-              // Pick Poster Screenshots Button
-              Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.grey.shade300),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      if (_selectedImageFiles.isEmpty) ...[
-                        const Icon(Icons.add_a_photo_outlined, size: 48, color: Colors.grey),
-                        const SizedBox(height: 8),
-                        const Text('Select 1 or more Job Poster Screenshots from LinkedIn/Gallery'),
-                        const SizedBox(height: 12),
-                        ElevatedButton.icon(
-                          onPressed: _pickJobPosters,
-                          icon: const Icon(Icons.photo_library),
-                          label: const Text('Select Screenshots'),
-                        ),
-                      ] else ...[
+              // Pick Poster Screenshots Button / Drag & Drop / Paste Area
+              CallbackShortcuts(
+                bindings: {
+                  const SingleActivator(LogicalKeyboardKey.keyV, control: true): _pasteImageFromClipboard,
+                  const SingleActivator(LogicalKeyboardKey.keyV, meta: true): _pasteImageFromClipboard,
+                },
+                child: Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(
+                      color: Colors.indigoAccent.withValues(alpha: 0.35),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(18.0),
+                    child: Column(
+                      children: [
+                        if (_selectedImageFiles.isEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.indigoAccent.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.add_photo_alternate_rounded, size: 40, color: Colors.indigoAccent),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Select, Drop, or Paste Job Poster Image(s)',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Drag & drop images here, or right-click any job image in LinkedIn -> "Copy Image" and press Ctrl+V',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 14),
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 12,
+                            runSpacing: 10,
+                            children: [
+                              ElevatedButton.icon(
+                                onPressed: _pickJobPosters,
+                                icon: const Icon(Icons.photo_library),
+                                label: const Text('Browse Files'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: _pasteImageFromClipboard,
+                                icon: const Icon(Icons.content_paste_rounded),
+                                label: const Text('Paste Copied Image (Ctrl+V)'),
+                              ),
+                            ],
+                          ),
+                        ] else ...[
                         Text('${_selectedImageFiles.length} Screenshot(s) Selected',
                             style: const TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 12),
@@ -3301,9 +3449,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               OutlinedButton.icon(
                                 onPressed: _pickJobPosters,
                                 icon: const Icon(Icons.add),
-                                label: const Text('Add More'),
+                                label: const Text('Add File'),
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                onPressed: _pasteImageFromClipboard,
+                                icon: const Icon(Icons.content_paste_rounded),
+                                label: const Text('Paste (Ctrl+V)'),
+                              ),
+                              const SizedBox(width: 10),
                               ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.amber.shade700,
@@ -3312,12 +3466,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                 onPressed: _isAnalyzing ? null : _analyzePostersWithAI,
                                 icon: _isAnalyzing
                                     ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                       )
-                                    : const Icon(Icons.psychology),
-                                label: Text(_isAnalyzing ? 'Analyzing...' : 'Analyze with Gemini AI'),
+                                    : const Icon(Icons.lightbulb_outline, size: 18),
+                                label: Text(
+                                  _isAnalyzing ? 'Analyzing with AI...' : 'Analyze with Gemini AI',
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
                               ),
                             ],
                           ),
@@ -3326,7 +3483,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   ),
                 ),
               ),
-            ],
+            ),
+          ],
             const SizedBox(height: 20),
 
             // Extracted Job Application Cards
@@ -3922,22 +4080,36 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                             );
                           }
                           final app = pagedApps[index];
+                          final bool isBounced = app.isBounced || app.status == 'bounced' || app.responseType == 'bounced';
+                          final bool hasReplied = app.status == 'reply_received' || (app.responseType != null && app.responseType!.isNotEmpty && !isBounced);
+
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
                             color: cardBg,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: isBounced
+                                  ? BorderSide(color: const Color(0xFFEF4444).withValues(alpha: 0.4), width: 1)
+                                  : BorderSide.none,
+                            ),
                             child: ExpansionTile(
                               leading: CircleAvatar(
-                                backgroundColor: app.status == 'reply_received'
-                                    ? const Color(0xFF10B981).withValues(alpha: 0.2)
-                                    : Colors.purple.withValues(alpha: 0.15),
+                                backgroundColor: isBounced
+                                    ? const Color(0xFFEF4444).withValues(alpha: 0.18)
+                                    : (hasReplied
+                                        ? const Color(0xFF10B981).withValues(alpha: 0.2)
+                                        : Colors.purple.withValues(alpha: 0.15)),
                                 child: Icon(
-                                  app.status == 'reply_received'
-                                      ? Icons.mark_email_unread_rounded
-                                      : Icons.photo_library_outlined,
-                                  color: app.status == 'reply_received'
-                                      ? const Color(0xFF10B981)
-                                      : Colors.purple,
+                                  isBounced
+                                      ? Icons.error_outline_rounded
+                                      : (hasReplied
+                                          ? Icons.mark_email_unread_rounded
+                                          : Icons.photo_library_outlined),
+                                  color: isBounced
+                                      ? const Color(0xFFEF4444)
+                                      : (hasReplied
+                                          ? const Color(0xFF10B981)
+                                          : Colors.purple),
                                   size: 18,
                                 ),
                               ),
@@ -3955,7 +4127,27 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                     spacing: 6,
                                     runSpacing: 4,
                                     children: [
-                                      if (app.status == 'reply_received')
+                                      if (isBounced)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFEF4444).withValues(alpha: 0.18),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.45)),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.error_outline_rounded, size: 10, color: Color(0xFFEF4444)),
+                                              SizedBox(width: 3),
+                                              Text(
+                                                'Address Not Found',
+                                                style: TextStyle(fontSize: 9.5, color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      else if (hasReplied)
                                         _buildResponseBadge(app, isDark),
                                       if (app.resumeProfileName != null && app.resumeProfileName!.isNotEmpty)
                                         Container(
@@ -4028,7 +4220,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      if (app.status == 'reply_received')
+                                      if (isBounced || hasReplied)
                                         _buildRecruiterReplyCard(app, isDark),
                                       Text(
                                         'Subject: ${app.generatedSubject}',
@@ -4284,11 +4476,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       debugPrint('Could not launch LinkedIn URL: $e');
     }
 
-    // 2. Copy the customized connection note to clipboard (enforcing <= 200 chars for LinkedIn free tier)
+    // 2. Copy the customized connection note to clipboard (guaranteeing <= 190 chars, complete sentence, no chopped words)
     if (lead.connectionNote.isNotEmpty) {
-      final noteToCopy = lead.connectionNote.length > 200
-          ? '${lead.connectionNote.substring(0, 197)}...'
-          : lead.connectionNote;
+      final noteToCopy = cleanAndBoundConnectionNote(lead.connectionNote);
       await Clipboard.setData(ClipboardData(text: noteToCopy));
     }
 
@@ -4831,11 +5021,54 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     );
   }
 
+  /// Sanitizes connection note: strips trailing ellipses or cutoffs,
+  /// ensures complete sentences, avoids chopping words, and guarantees <= 190 characters.
+  static String cleanAndBoundConnectionNote(String rawNote) {
+    if (rawNote.trim().isEmpty) return '';
+    String note = rawNote.trim();
+    // Strip trailing ellipses, dashes, or incomplete markers
+    note = note.replaceAll(RegExp(r'[\.\s…\-]+$'), '');
+    while (note.startsWith('"') || note.startsWith("'")) {
+      note = note.substring(1).trim();
+    }
+    while (note.endsWith('"') || note.endsWith("'")) {
+      note = note.substring(0, note.length - 1).trim();
+    }
+
+    if (note.length <= 185) {
+      if (!note.endsWith('.') && !note.endsWith('!')) {
+        note = '$note.';
+      }
+      if (note.length <= 190) return note;
+    }
+
+    // Find last complete sentence ending before 185
+    final matches = RegExp(r'[\.\!\?]\s+').allMatches(note);
+    int lastSentenceEnd = -1;
+    for (final m in matches) {
+      final endIdx = m.start + 1;
+      if (endIdx <= 185 && endIdx >= 70) {
+        lastSentenceEnd = endIdx;
+      }
+    }
+
+    if (lastSentenceEnd > 0) {
+      return note.substring(0, lastSentenceEnd).trim();
+    }
+
+    // Backtrack to last complete word boundary before 175 chars
+    final safeSlice = note.substring(0, 175);
+    final lastSpace = safeSlice.lastIndexOf(' ');
+    if (lastSpace > 40) {
+      final cleanWordEnd = safeSlice.substring(0, lastSpace).replaceAll(RegExp(r'[,;:\-\s]+$'), '');
+      return '$cleanWordEnd.';
+    }
+    return '${safeSlice.trim()}.';
+  }
+
   Widget _buildStartupLeadCard(NetworkingLead lead, bool isDark, Color cardBg) {
-    // Connection Note (≤ 200 characters for LinkedIn free tier)
-    final displayNote = lead.connectionNote.length > 200
-        ? '${lead.connectionNote.substring(0, 197)}...'
-        : lead.connectionNote;
+    // Crisp, complete Connection Note (guaranteed <= 190 chars, no chopped words or ellipses)
+    final displayNote = cleanAndBoundConnectionNote(lead.connectionNote);
 
     // Stage color
     Color stageBg = Colors.amber.withValues(alpha: 0.15);
@@ -4846,33 +5079,38 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     Color statusFg;
     String statusDisplay;
 
-    switch (lead.status) {
-      case 'note_sent':
-        statusBg = Colors.blue.withValues(alpha: 0.15);
-        statusFg = Colors.blue;
-        statusDisplay = 'Note Sent';
-        break;
-      case 'connected':
-        statusBg = Colors.green.withValues(alpha: 0.15);
-        statusFg = Colors.green;
-        statusDisplay = 'Connected';
-        break;
-      case 'replied':
-        statusBg = Colors.purple.withValues(alpha: 0.15);
-        statusFg = Colors.purple;
-        statusDisplay = 'Replied 🎯';
-        break;
-      case 'email_sent':
-        statusBg = Colors.teal.withValues(alpha: 0.15);
-        statusFg = Colors.teal;
-        statusDisplay = 'Email Sent ✉️';
-        break;
-      case 'discovered':
-      default:
-        statusBg = Colors.orange.withValues(alpha: 0.15);
-        statusFg = Colors.orange.shade800;
-        statusDisplay = 'Discovered';
-        break;
+    final bool isBounced = lead.isBounced || lead.status == 'bounced' || lead.responseType == 'bounced';
+    final bool isReplied = lead.status == 'replied' || (lead.responseType != null && lead.responseType!.isNotEmpty && !isBounced);
+    final bool hasNoEmail = lead.email == null || lead.email!.trim().isEmpty;
+
+    if (isBounced) {
+      statusBg = const Color(0xFFEF4444).withValues(alpha: 0.15);
+      statusFg = const Color(0xFFEF4444);
+      statusDisplay = 'Address Not Found';
+    } else if (isReplied) {
+      statusBg = Colors.purple.withValues(alpha: 0.15);
+      statusFg = Colors.purpleAccent;
+      statusDisplay = 'Reply Received 🎯';
+    } else if (lead.status == 'email_sent' || lead.emailSent) {
+      statusBg = Colors.teal.withValues(alpha: 0.15);
+      statusFg = Colors.teal;
+      statusDisplay = 'Email Sent ✉️';
+    } else if (lead.status == 'note_sent') {
+      statusBg = Colors.blue.withValues(alpha: 0.15);
+      statusFg = Colors.blue;
+      statusDisplay = 'Note Sent';
+    } else if (lead.status == 'connected') {
+      statusBg = Colors.green.withValues(alpha: 0.15);
+      statusFg = Colors.green;
+      statusDisplay = 'Connected';
+    } else if (hasNoEmail) {
+      statusBg = Colors.amber.withValues(alpha: 0.15);
+      statusFg = Colors.amber.shade700;
+      statusDisplay = 'Email Not Found';
+    } else {
+      statusBg = Colors.orange.withValues(alpha: 0.15);
+      statusFg = Colors.orange.shade800;
+      statusDisplay = 'Discovered';
     }
 
     return Container(
@@ -4880,10 +5118,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         color: cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: lead.emailSent
-              ? Colors.green.withValues(alpha: 0.3)
-              : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
-          width: lead.emailSent ? 1.5 : 1.0,
+          color: isBounced
+              ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+              : (isReplied
+                  ? Colors.purpleAccent.withValues(alpha: 0.4)
+                  : (lead.emailSent
+                      ? Colors.green.withValues(alpha: 0.3)
+                      : (isDark ? Colors.grey.shade800 : Colors.grey.shade200))),
+          width: (isBounced || isReplied || lead.emailSent) ? 1.5 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
@@ -4905,10 +5147,26 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: Colors.indigoAccent.withValues(alpha: 0.15),
+                  color: isBounced
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                      : (isReplied
+                          ? Colors.purple.withValues(alpha: 0.15)
+                          : Colors.indigoAccent.withValues(alpha: 0.15)),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.rocket_launch_rounded, color: Colors.indigoAccent, size: 22),
+                child: Icon(
+                  isBounced
+                      ? Icons.error_outline_rounded
+                      : (isReplied
+                          ? Icons.mark_email_unread_rounded
+                          : Icons.rocket_launch_rounded),
+                  color: isBounced
+                      ? const Color(0xFFEF4444)
+                      : (isReplied
+                          ? Colors.purpleAccent
+                          : Colors.indigoAccent),
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -5003,6 +5261,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   PopupMenuItem(value: 'note_sent', child: Text('Note Sent')),
                   PopupMenuItem(value: 'connected', child: Text('Connected')),
                   PopupMenuItem(value: 'replied', child: Text('Replied')),
+                  PopupMenuItem(value: 'bounced', child: Text('Address Not Found (Bounced)')),
                 ],
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -5066,8 +5325,56 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             const SizedBox(height: 10),
           ],
 
-          // Email Dispatch Status Banner
-          if (lead.emailSent)
+          // Email Dispatch / Reply / Bounce Status Banner
+          if (isBounced)
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded, size: 15, color: Color(0xFFEF4444)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Delivery Failure: Address not found for ${lead.email ?? 'recipient'}. Connect on LinkedIn instead.',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFEF4444)),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (isReplied)
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.purple.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.purple.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.mark_email_unread_rounded, size: 15, color: Colors.purpleAccent),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Founder Replied: ${lead.replySnippet ?? 'Check Replies Hub for full details'} 🎯',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.purpleAccent),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (lead.emailSent)
             Container(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -5084,6 +5391,30 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     child: Text(
                       'Pitch & Resume PDF dispatched to ${lead.email ?? 'Founder'} ✉️',
                       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (hasNoEmail)
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.withValues(alpha: 0.25)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.person_search_rounded, size: 15, color: Colors.amber),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Email not found. Send the personalized LinkedIn connection note below.',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.amber),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),

@@ -9,6 +9,7 @@ import 'email_notification_control_screen.dart';
 import 'ai_keys_settings_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/update_service.dart';
+import '../services/auth_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -281,6 +282,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
+                if (user != null) ...[
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      _showChangePasswordDialog(context);
+                    },
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.lock_reset_rounded,
+                            size: 18,
+                            color: isDark ? Colors.amberAccent : Colors.orange.shade800,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Change Password',
+                            style: GoogleFonts.outfit(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.amberAccent : Colors.orange.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -353,7 +393,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.notifications_active_rounded,
                   iconGradient: const [Color(0xFFF59E0B), Color(0xFFD97706)],
                   title: 'Notification Control',
-                  subtitle: 'Fine-tune push and in-app alerts for every feature',
+                  subtitle: 'Push, web desktop alerts & feature notification toggles',
                   isFirst: false,
                   isLast: false,
                   textColor: textColor,
@@ -593,6 +633,230 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Icon(Icons.chevron_right_rounded, size: 20, color: subtextColor.withValues(alpha: 0.6)),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showChangePasswordDialog(BuildContext context) {
+    final currentPasswordCtrl = TextEditingController();
+    final newPasswordCtrl = TextEditingController();
+    final confirmPasswordCtrl = TextEditingController();
+
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    bool isUpdating = false;
+    String? errorMessage;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          final dialogBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+          final titleColor = isDark ? Colors.white : const Color(0xFF0F172A);
+
+          return AlertDialog(
+            backgroundColor: dialogBg,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.lock_reset_rounded, color: Colors.amber, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Change Password',
+                  style: GoogleFonts.outfit(
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: SizedBox(
+                width: 380,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Enter your current password and choose a new secure password.',
+                      style: GoogleFonts.outfit(
+                        fontSize: 13,
+                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    if (errorMessage != null) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                errorMessage!,
+                                style: const TextStyle(color: Color(0xFFEF4444), fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+
+                    // Current Password
+                    TextField(
+                      controller: currentPasswordCtrl,
+                      obscureText: obscureCurrent,
+                      decoration: InputDecoration(
+                        labelText: 'Current Password',
+                        isDense: true,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.key_rounded, size: 18),
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureCurrent ? Icons.visibility_off : Icons.visibility, size: 18),
+                          onPressed: () => setDialogState(() => obscureCurrent = !obscureCurrent),
+                        ),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // New Password
+                    TextField(
+                      controller: newPasswordCtrl,
+                      obscureText: obscureNew,
+                      decoration: InputDecoration(
+                        labelText: 'New Password',
+                        helperText: 'At least 6 characters',
+                        isDense: true,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureNew ? Icons.visibility_off : Icons.visibility, size: 18),
+                          onPressed: () => setDialogState(() => obscureNew = !obscureNew),
+                        ),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Confirm New Password
+                    TextField(
+                      controller: confirmPasswordCtrl,
+                      obscureText: obscureConfirm,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm New Password',
+                        isDense: true,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.lock_rounded, size: 18),
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureConfirm ? Icons.visibility_off : Icons.visibility, size: 18),
+                          onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
+                        ),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isUpdating ? null : () => Navigator.pop(dialogCtx),
+                child: Text('Cancel', style: GoogleFonts.outfit(color: Colors.grey)),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF6366F1),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                ),
+                onPressed: isUpdating
+                    ? null
+                    : () async {
+                        final curr = currentPasswordCtrl.text.trim();
+                        final next = newPasswordCtrl.text.trim();
+                        final conf = confirmPasswordCtrl.text.trim();
+
+                        if (curr.isEmpty) {
+                          setDialogState(() => errorMessage = 'Please enter your current password.');
+                          return;
+                        }
+                        if (next.length < 6) {
+                          setDialogState(() => errorMessage = 'New password must be at least 6 characters long.');
+                          return;
+                        }
+                        if (next != conf) {
+                          setDialogState(() => errorMessage = 'New passwords do not match.');
+                          return;
+                        }
+                        if (curr == next) {
+                          setDialogState(() => errorMessage = 'New password must be different from current password.');
+                          return;
+                        }
+
+                        setDialogState(() {
+                          isUpdating = true;
+                          errorMessage = null;
+                        });
+
+                        try {
+                          await AuthService().changePassword(
+                            currentPassword: curr,
+                            newPassword: next,
+                          );
+                          if (dialogCtx.mounted) {
+                            Navigator.pop(dialogCtx);
+                          }
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('✅ Password updated successfully! Your account is now secured.'),
+                                backgroundColor: Color(0xFF10B981),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() {
+                            isUpdating = false;
+                            final cleanMsg = e.toString().replaceAll('Exception:', '').trim();
+                            errorMessage = cleanMsg;
+                          });
+                        }
+                      },
+                child: isUpdating
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : Text(
+                        'Update Password',
+                        style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

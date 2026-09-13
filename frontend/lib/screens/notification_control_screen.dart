@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/log_service.dart';
+import '../services/web_desktop_notifications/web_desktop_notifications.dart';
 
 class NotificationControlScreen extends StatefulWidget {
   const NotificationControlScreen({super.key});
@@ -28,6 +30,7 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
     'job_assistant': true,
     'job_assistant_email': true,
     'astro_calendar': false,
+    'desktop_notifications': true,
   };
 
   @override
@@ -66,6 +69,7 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
             'job_assistant': prefs['job_assistant'] ?? true,
             'job_assistant_email': prefs['job_assistant_email'] ?? true,
             'astro_calendar': prefs['astro_calendar'] ?? false,
+            'desktop_notifications': prefs['desktop_notifications'] ?? true,
           };
           _isLoading = false;
         });
@@ -127,6 +131,62 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                   const SizedBox(height: 20),
+
+                  // Desktop / Web Notifications Master Switch
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      side: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.indigo.withValues(alpha: 0.4)
+                            : Colors.indigo.shade200,
+                        width: 1.5,
+                      ),
+                    ),
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF1E293B)
+                        : const Color(0xFFEEF2FF),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
+                      child: SwitchListTile(
+                        secondary: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.desktop_windows_rounded, color: Color(0xFF6366F1), size: 22),
+                        ),
+                        title: const Text(
+                          'Desktop Notifications (Web)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        subtitle: const Text(
+                          'Display native OS desktop alerts when RemindBuddy is open in your browser tab',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        value: _notifPrefs['desktop_notifications'] ?? true,
+                        activeThumbColor: const Color(0xFF6366F1),
+                        onChanged: (val) async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          if (val && kIsWeb) {
+                            final perm = await WebDesktopNotificationService.requestPermission();
+                            if (perm == 'denied') {
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text('Notifications are blocked by your browser settings. Please allow notifications in your browser address bar.'),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                            }
+                          }
+                          await _saveNotificationPreference('desktop_notifications', val);
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   
                   // Gold Rates
                   if (_enabledModules.contains('gold')) ...[
