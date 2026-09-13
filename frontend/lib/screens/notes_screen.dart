@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import '../services/url_launcher_helper/url_launcher_helper.dart';
+import '../services/home_widget_service.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
@@ -40,6 +41,7 @@ class _NotesScreenState extends State<NotesScreen> {
     super.initState();
     _notesStream = _storageService.getNotesStream();
     _loadCustomOrder();
+    HomeWidgetService().syncWidgetChangesToFirestore();
   }
 
   @override
@@ -324,6 +326,7 @@ class _NotesScreenState extends State<NotesScreen> {
                       );
                       try {
                         await _storageService.updateNote(updatedNote);
+                        await HomeWidgetService().checkAndSyncIfPinnedNote(updatedNote);
                       } catch (e) {
                         debugPrint("Error auto-saving updated note: $e");
                       }
@@ -423,6 +426,48 @@ class _NotesScreenState extends State<NotesScreen> {
                         });
                       },
                     ),
+                    if (isChecklist)
+                      IconButton(
+                        icon: const Icon(Icons.widgets_outlined, size: 20),
+                        tooltip: 'Pin Checklist to Home Screen',
+                        onPressed: () async {
+                          final currentNote = Note(
+                            id: note?.id,
+                            title: titleController.text.trim(),
+                            content: contentController.text,
+                            date: note?.date ?? DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                            isLocked: isLocked,
+                            ownerUid: note?.ownerUid,
+                            sharedWith: note?.sharedWith ?? [],
+                            isChecklist: true,
+                            checklistItems: checklistItems,
+                            isStarred: note?.isStarred ?? false,
+                          );
+                          final pinned = await HomeWidgetService().pinNoteChecklistWidget(currentNote);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      pinned
+                                          ? 'Pinned "${currentNote.title.isNotEmpty ? currentNote.title : 'Checklist'}" to Home Screen!'
+                                          : 'Checklist synced to Home Widget! Add the "Checklist Note" widget to your home screen.',
+                                      style: GoogleFonts.outfit(),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: const Color(0xFF6366F1),
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          );
+                        },
+                      ),
                     Padding(
                       padding: const EdgeInsets.only(right: 12.0),
                       child: isSaving
@@ -499,6 +544,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                       await _storageService.insertNote(newNote);
                                     } else {
                                       await _storageService.updateNote(newNote);
+                                      await HomeWidgetService().checkAndSyncIfPinnedNote(newNote);
                                     }
                                     if (context.mounted) Navigator.pop(context);
                                   } catch (e) {
@@ -1610,6 +1656,40 @@ class _NotesScreenState extends State<NotesScreen> {
                           );
                         },
                         child: Icon(Icons.person_add_alt_1_rounded, size: 18, color: hintIconColor),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (note.isChecklist) ...[
+                      GestureDetector(
+                        onTap: () async {
+                          final pinned = await HomeWidgetService().pinNoteChecklistWidget(note);
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      pinned
+                                          ? 'Pinned "${note.title.isNotEmpty ? note.title : 'Checklist'}" to Home Screen!'
+                                          : 'Checklist synced to Home Widget! Add the "Checklist Note" widget to your home screen.',
+                                      style: GoogleFonts.outfit(),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: const Color(0xFF6366F1),
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          );
+                        },
+                        child: Tooltip(
+                          message: 'Pin to Home Screen Widget',
+                          child: Icon(Icons.widgets_outlined, size: 18, color: hintIconColor),
+                        ),
                       ),
                       const SizedBox(width: 8),
                     ],

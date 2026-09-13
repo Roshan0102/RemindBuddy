@@ -565,6 +565,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       HomeWidgetService().syncFinanceWidget();
     } else if (uriStr.contains('gold') || uri.path.contains('gold')) {
       _selectTabOrPush('gold');
+    } else if (uriStr.contains('notes') || uri.path.contains('notes')) {
+      _selectTabOrPush('notes');
+      HomeWidgetService().syncWidgetChangesToFirestore();
     }
   }
 

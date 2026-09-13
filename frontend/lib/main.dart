@@ -7,6 +7,7 @@ import 'screens/main_screen.dart';
 import 'screens/auth_screen.dart';
 import 'services/notification_service.dart';
 import 'services/job_assistant_service.dart';
+import 'services/location_reminder_service.dart';
 import 'firebase_options.dart';
 import 'services/web_plugin_init/web_plugin_init.dart';
 
@@ -35,6 +36,12 @@ void main() async {
     await NotificationService().init();
   } catch (e) {
     debugPrint('Error initializing services: $e');
+  }
+
+  try {
+    LocationReminderService().init();
+  } catch (e) {
+    debugPrint('Error initializing LocationReminderService: $e');
   }
 
   try {

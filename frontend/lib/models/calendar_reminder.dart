@@ -22,6 +22,14 @@ class CalendarReminder {
   final int currentSnoozeCount;
   final String? taskId;
   final Timestamp? notifiedAt;
+  final bool isLocationBased;
+  final String? locationName;
+  final double? latitude;
+  final double? longitude;
+  final double radiusMeters;
+  final String triggerCondition; // 'enter' or 'exit'
+  final bool isLocationTriggered;
+  final String? savedPlaceId;
 
   CalendarReminder({
     this.id,
@@ -45,6 +53,14 @@ class CalendarReminder {
     this.currentSnoozeCount = 0,
     this.taskId,
     this.notifiedAt,
+    this.isLocationBased = false,
+    this.locationName,
+    this.latitude,
+    this.longitude,
+    this.radiusMeters = 50.0,
+    this.triggerCondition = 'enter',
+    this.isLocationTriggered = false,
+    this.savedPlaceId,
   });
 
   factory CalendarReminder.fromMap(Map<String, dynamic> json, String docId) {
@@ -70,6 +86,14 @@ class CalendarReminder {
       currentSnoozeCount: json['currentSnoozeCount'] ?? 0,
       taskId: json['taskId'] as String?,
       notifiedAt: json['notifiedAt'] as Timestamp?,
+      isLocationBased: json['isLocationBased'] ?? false,
+      locationName: json['locationName'] as String?,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
+      radiusMeters: (json['radiusMeters'] as num?)?.toDouble() ?? 50.0,
+      triggerCondition: json['triggerCondition'] as String? ?? 'enter',
+      isLocationTriggered: json['isLocationTriggered'] ?? false,
+      savedPlaceId: json['savedPlaceId'] as String?,
     );
   }
 
@@ -98,6 +122,14 @@ class CalendarReminder {
       if (scheduledForUsername != null) 'scheduledForUsername': scheduledForUsername,
       if (taskId != null) 'taskId': taskId,
       if (notifiedAt != null) 'notifiedAt': notifiedAt,
+      'isLocationBased': isLocationBased,
+      if (locationName != null) 'locationName': locationName,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      'radiusMeters': radiusMeters,
+      'triggerCondition': triggerCondition,
+      'isLocationTriggered': isLocationTriggered,
+      if (savedPlaceId != null) 'savedPlaceId': savedPlaceId,
     };
   }
 
@@ -123,6 +155,14 @@ class CalendarReminder {
     int? currentSnoozeCount,
     String? taskId,
     Timestamp? notifiedAt,
+    bool? isLocationBased,
+    String? locationName,
+    double? latitude,
+    double? longitude,
+    double? radiusMeters,
+    String? triggerCondition,
+    bool? isLocationTriggered,
+    String? savedPlaceId,
   }) {
     return CalendarReminder(
       id: id ?? this.id,
@@ -146,6 +186,14 @@ class CalendarReminder {
       currentSnoozeCount: currentSnoozeCount ?? this.currentSnoozeCount,
       taskId: taskId ?? this.taskId,
       notifiedAt: notifiedAt ?? this.notifiedAt,
+      isLocationBased: isLocationBased ?? this.isLocationBased,
+      locationName: locationName ?? this.locationName,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      radiusMeters: radiusMeters ?? this.radiusMeters,
+      triggerCondition: triggerCondition ?? this.triggerCondition,
+      isLocationTriggered: isLocationTriggered ?? this.isLocationTriggered,
+      savedPlaceId: savedPlaceId ?? this.savedPlaceId,
     );
   }
 }

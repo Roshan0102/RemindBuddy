@@ -37,6 +37,13 @@ class StorageService {
     int snoozeIntervalMinutes = 15,
     int maxSnoozeCount = 3,
     int currentSnoozeCount = 0,
+    bool isLocationBased = false,
+    String? locationName,
+    double? latitude,
+    double? longitude,
+    double radiusMeters = 50.0,
+    String triggerCondition = 'enter',
+    String? savedPlaceId,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return '';
@@ -57,6 +64,14 @@ class StorageService {
       'snoozeIntervalMinutes': snoozeIntervalMinutes,
       'maxSnoozeCount': maxSnoozeCount,
       'currentSnoozeCount': currentSnoozeCount,
+      'isLocationBased': isLocationBased,
+      if (locationName != null) 'locationName': locationName,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      'radiusMeters': radiusMeters,
+      'triggerCondition': triggerCondition,
+      'isLocationTriggered': false,
+      if (savedPlaceId != null) 'savedPlaceId': savedPlaceId,
     };
 
     if (destinationUid != user.uid) {

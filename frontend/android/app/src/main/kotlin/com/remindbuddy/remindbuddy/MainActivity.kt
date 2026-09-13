@@ -23,6 +23,8 @@ import io.flutter.plugin.common.EventChannel
 import android.provider.Telephony
 
 import androidx.core.app.NotificationManagerCompat
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.remindbuddy/battery"
@@ -119,6 +121,39 @@ class MainActivity: FlutterActivity() {
                         }
                     } catch (e: Exception) {
                         result.error("APK_ERROR", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // Home Widget Pinning MethodChannel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/widget_pin").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "requestPinNoteChecklistWidget" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        try {
+                            val appWidgetManager = AppWidgetManager.getInstance(context)
+                            val myProvider = ComponentName(context, NoteChecklistWidgetProvider::class.java)
+                            if (appWidgetManager.isRequestPinAppWidgetSupported) {
+                                val success = appWidgetManager.requestPinAppWidget(myProvider, null, null)
+                                result.success(success)
+                            } else {
+                                result.success(false)
+                            }
+                        } catch (e: Exception) {
+                            result.error("PIN_ERROR", e.message, null)
+                        }
+                    } else {
+                        result.success(false)
+                    }
+                }
+                "isPinWidgetSupported" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val appWidgetManager = AppWidgetManager.getInstance(context)
+                        result.success(appWidgetManager.isRequestPinAppWidgetSupported)
+                    } else {
+                        result.success(false)
                     }
                 }
                 else -> result.notImplemented()

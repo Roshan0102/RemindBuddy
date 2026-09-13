@@ -7,6 +7,8 @@ import '../services/storage_service.dart';
 import 'add_task_screen.dart';
 import '../models/calendar_reminder.dart';
 import '../widgets/buddy_widgets.dart';
+import '../widgets/saved_places_sheet.dart';
+import '../services/location_reminder_service.dart';
 
 class RemindersScreen extends StatefulWidget {
   const RemindersScreen({super.key});
@@ -19,6 +21,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   bool _showPastReminders = false;
+  String _reminderTypeFilter = 'all'; // 'all', 'time', 'location'
   final StorageService _storage = StorageService();
   late Stream<List<CalendarReminder>> _remindersStream;
   late Stream<List<Map<String, dynamic>>> _buddyRequestsStream;
@@ -29,6 +32,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
     _selectedDay = _focusedDay;
     _remindersStream = _storage.getAllCalendarRemindersStream();
     _buddyRequestsStream = _storage.getIncomingBuddyRequestsStream();
+    LocationReminderService().checkCurrentLocationNow();
   }
 
   @override
@@ -71,6 +75,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 tooltip: 'Buddy Link Requests',
               );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.bookmarks_outlined),
+            tooltip: 'Saved Places',
+            onPressed: () => SavedPlacesSheet.show(context),
           ),
           IconButton(
             icon: const Icon(Icons.person_add_alt_1_outlined),
@@ -259,6 +268,54 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   ],
                 ),
               ),
+              // Filter Chips: All, Time, Location
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('All'),
+                      selected: _reminderTypeFilter == 'all',
+                      onSelected: (_) => setState(() => _reminderTypeFilter = 'all'),
+                      selectedColor: const Color(0xFF6366F1),
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _reminderTypeFilter == 'all' ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      avatar: Icon(Icons.access_time_rounded, size: 14, color: _reminderTypeFilter == 'time' ? Colors.white : const Color(0xFF6366F1)),
+                      label: const Text('Time-based'),
+                      selected: _reminderTypeFilter == 'time',
+                      onSelected: (_) => setState(() => _reminderTypeFilter = 'time'),
+                      selectedColor: const Color(0xFF6366F1),
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _reminderTypeFilter == 'time' ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      avatar: Icon(Icons.location_on_rounded, size: 14, color: _reminderTypeFilter == 'location' ? Colors.white : const Color(0xFF6366F1)),
+                      label: const Text('Location'),
+                      selected: _reminderTypeFilter == 'location',
+                      onSelected: (_) => setState(() => _reminderTypeFilter = 'location'),
+                      selectedColor: const Color(0xFF6366F1),
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _reminderTypeFilter == 'location' ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              ),
               const Divider(height: 12),
               Expanded(
                 child: _buildReminderList(),
@@ -297,7 +354,12 @@ class _RemindersScreenState extends State<RemindersScreen> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final reminders = snapshot.data ?? [];
+        var reminders = snapshot.data ?? [];
+        if (_reminderTypeFilter == 'time') {
+          reminders = reminders.where((r) => !r.isLocationBased).toList();
+        } else if (_reminderTypeFilter == 'location') {
+          reminders = reminders.where((r) => r.isLocationBased).toList();
+        }
         final groupedReminders = GroupedCalendarReminder.groupList(reminders);
 
         if (groupedReminders.isEmpty) {
@@ -565,28 +627,54 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.blueAccent.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.access_time_rounded, size: 12, color: Colors.blueAccent),
-                        const SizedBox(width: 4),
-                        Text(
-                          grouped.time,
-                          style: const TextStyle(
-                            color: Colors.blueAccent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
+                  if (grouped.primaryReminder.isLocationBased) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.35)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.location_on_rounded, size: 12, color: Color(0xFF6366F1)),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${grouped.primaryReminder.locationName?.isNotEmpty == true ? grouped.primaryReminder.locationName! : "Location"} (${grouped.primaryReminder.radiusMeters.round()}m) • ${grouped.primaryReminder.triggerCondition == "enter" ? "Arrive" : "Leave"}',
+                            style: const TextStyle(
+                              color: Color(0xFF6366F1),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blueAccent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.access_time_rounded, size: 12, color: Colors.blueAccent),
+                          const SizedBox(width: 4),
+                          Text(
+                            grouped.time,
+                            style: const TextStyle(
+                              color: Colors.blueAccent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   ...grouped.recipientUsernames.map((userLabel) => Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(

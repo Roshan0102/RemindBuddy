@@ -4,8 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../services/storage_service.dart';
 import '../models/calendar_reminder.dart';
+import '../models/saved_place.dart';
+import '../services/saved_places_service.dart';
+import '../services/location_reminder_service.dart';
+import '../widgets/location_picker_sheet.dart';
+import '../widgets/saved_places_sheet.dart';
 
 class AddTaskScreen extends StatefulWidget {
   final DateTime? selectedDate;
@@ -34,6 +40,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   int _snoozeIntervalMinutes = 15;
   int _maxSnoozeCount = 3;
 
+  bool _isLocationBased = false;
+  String? _locationName;
+  double? _latitude;
+  double? _longitude;
+  double _radiusMeters = 50.0;
+  String _triggerCondition = 'enter';
+  String? _savedPlaceId;
+  final SavedPlacesService _savedPlacesService = SavedPlacesService();
+
   List<Map<String, dynamic>> _approvedBuddies = [];
   bool _isLoadingBuddies = true;
   StreamSubscription? _buddiesSubscription;
@@ -61,6 +76,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _snoozeEnabled = r.snoozeEnabled;
       _snoozeIntervalMinutes = r.snoozeIntervalMinutes;
       _maxSnoozeCount = r.maxSnoozeCount;
+      _isLocationBased = r.isLocationBased;
+      _locationName = r.locationName;
+      _latitude = r.latitude;
+      _longitude = r.longitude;
+      _radiusMeters = r.radiusMeters;
+      _triggerCondition = r.triggerCondition;
+      _savedPlaceId = r.savedPlaceId;
       if (_occurrencesLimit != null) {
         _occurrencesController.text = _occurrencesLimit.toString();
       }
@@ -75,6 +97,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _snoozeEnabled = false;
       _snoozeIntervalMinutes = 15;
       _maxSnoozeCount = 3;
+      _isLocationBased = false;
+      _radiusMeters = 50.0;
+      _triggerCondition = 'enter';
       if (_myUid != null) {
         _selectedRecipients.add(_myUid!);
       }
@@ -231,11 +256,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       return;
     }
 
+    if (_isLocationBased && (_latitude == null || _longitude == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please choose a target location for this reminder.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
     final now = DateTime.now();
     final isToday = _date.year == now.year && _date.month == now.month && _date.day == now.day;
     final scheduledDateTime = DateTime(_date.year, _date.month, _date.day, _time.hour, _time.minute);
 
-    if (isToday && scheduledDateTime.isBefore(now.add(const Duration(seconds: 30)))) {
+    if (!_isLocationBased && isToday && scheduledDateTime.isBefore(now.add(const Duration(seconds: 30)))) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cannot schedule a reminder for a past time. Please select a future time.'),
@@ -268,6 +303,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             maxSnoozeCount: _maxSnoozeCount,
             currentSnoozeCount: 0,
             taskId: widget.existingReminder!.taskId,
+            isLocationBased: _isLocationBased,
+            locationName: _locationName,
+            latitude: _latitude,
+            longitude: _longitude,
+            radiusMeters: _radiusMeters,
+            triggerCondition: _triggerCondition,
+            savedPlaceId: _savedPlaceId,
+            isLocationTriggered: false,
           );
           await storage.updateCalendarReminder(updated);
         } else {
@@ -296,10 +339,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               snoozeIntervalMinutes: _snoozeIntervalMinutes,
               maxSnoozeCount: _maxSnoozeCount,
               currentSnoozeCount: 0,
+              isLocationBased: _isLocationBased,
+              locationName: _locationName,
+              latitude: _latitude,
+              longitude: _longitude,
+              radiusMeters: _radiusMeters,
+              triggerCondition: _triggerCondition,
+              savedPlaceId: _savedPlaceId,
             );
           }
         }
         
+        if (_isLocationBased) {
+          LocationReminderService().checkCurrentLocationNow();
+        }
+
         if (mounted) {
           Navigator.pop(context, true);
         }
@@ -455,6 +509,33 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+              // Reminder Trigger Type Selector
+              Center(
+                child: SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment<bool>(
+                      value: false,
+                      icon: Icon(Icons.access_time_rounded),
+                      label: Text('⏰ By Time'),
+                    ),
+                    ButtonSegment<bool>(
+                      value: true,
+                      icon: Icon(Icons.location_on_rounded),
+                      label: Text('📍 By Location'),
+                    ),
+                  ],
+                  selected: {_isLocationBased},
+                  onSelectionChanged: (set) {
+                    setState(() {
+                      _isLocationBased = set.first;
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (_isLocationBased) ...[
+                _buildLocationCard(context),
+              ] else ...[
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(8.0),
@@ -720,6 +801,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   ),
                 ),
               ),
+              ],
               const SizedBox(height: 24),
               SizedBox(
                 height: 50,
@@ -737,6 +819,263 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationCard(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textTheme = GoogleFonts.outfit();
+
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Section Title & Saved Places Button
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.location_on_rounded, color: Color(0xFF6366F1), size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Target Location',
+                        style: textTheme.copyWith(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'Trigger notification/alarm when you arrive or leave',
+                        style: textTheme.copyWith(fontSize: 12, color: isDark ? Colors.white60 : Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => SavedPlacesSheet.show(context),
+                  icon: const Icon(Icons.bookmarks_outlined, size: 16),
+                  label: Text('Places', style: textTheme.copyWith(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Quick Saved Places Chips
+            StreamBuilder<List<SavedPlace>>(
+              stream: _savedPlacesService.getSavedPlacesStream(),
+              builder: (context, snapshot) {
+                final places = snapshot.data ?? [];
+                if (places.isEmpty) return const SizedBox.shrink();
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Quick Pick Saved Place:', style: textTheme.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.black54)),
+                    const SizedBox(height: 6),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: places.map((place) {
+                          final isSel = _savedPlaceId == place.id || (_latitude == place.latitude && _longitude == place.longitude);
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(place.name),
+                              selected: isSel,
+                              selectedColor: const Color(0xFF6366F1),
+                              labelStyle: textTheme.copyWith(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isSel ? Colors.white : (isDark ? Colors.white : Colors.black87),
+                              ),
+                              onSelected: (_) {
+                                setState(() {
+                                  _savedPlaceId = place.id;
+                                  _locationName = place.name;
+                                  _latitude = place.latitude;
+                                  _longitude = place.longitude;
+                                  _radiusMeters = place.radiusMeters;
+                                });
+                              },
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                );
+              },
+            ),
+
+            // Location Picker Container
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () async {
+                final result = await LocationPickerSheet.show(
+                  context,
+                  initialName: _locationName,
+                  initialLat: _latitude,
+                  initialLng: _longitude,
+                  initialRadius: _radiusMeters,
+                  initialTrigger: _triggerCondition,
+                  initialSavedPlaceId: _savedPlaceId,
+                );
+                if (result != null) {
+                  setState(() {
+                    _locationName = result.locationName;
+                    _latitude = result.latitude;
+                    _longitude = result.longitude;
+                    _radiusMeters = result.radiusMeters;
+                    _triggerCondition = result.triggerCondition;
+                    _savedPlaceId = result.savedPlaceId;
+                  });
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: (_latitude != null)
+                      ? const Color(0xFF6366F1).withValues(alpha: isDark ? 0.15 : 0.08)
+                      : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC)),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: (_latitude != null)
+                        ? const Color(0xFF6366F1).withValues(alpha: 0.4)
+                        : (isDark ? Colors.white12 : Colors.black12),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _latitude != null ? Icons.pin_drop_rounded : Icons.add_location_alt_rounded,
+                        color: const Color(0xFF6366F1),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _locationName?.isNotEmpty == true ? _locationName! : 'Tap to Choose Location or Map Pin',
+                            style: textTheme.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: _latitude != null ? (isDark ? Colors.white : const Color(0xFF0F172A)) : const Color(0xFF6366F1),
+                            ),
+                          ),
+                          if (_latitude != null) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              'Zone: ${_radiusMeters.round()}m  •  Trigger: ${_triggerCondition == 'enter' ? 'When I Arrive' : 'When I Leave'}',
+                              style: textTheme.copyWith(fontSize: 12, color: isDark ? Colors.white70 : Colors.black54),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Trigger Segmented Selector
+            Row(
+              children: [
+                Text('Trigger When:', style: textTheme.copyWith(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment<String>(
+                        value: 'enter',
+                        icon: Icon(Icons.login_rounded, size: 16),
+                        label: Text('Arrive'),
+                      ),
+                      ButtonSegment<String>(
+                        value: 'exit',
+                        icon: Icon(Icons.logout_rounded, size: 16),
+                        label: Text('Leave'),
+                      ),
+                    ],
+                    selected: {_triggerCondition},
+                    onSelectionChanged: (val) {
+                      setState(() => _triggerCondition = val.first);
+                    },
+                    style: ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                      textStyle: WidgetStateProperty.all(GoogleFonts.outfit(fontSize: 12)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Radius Chips
+            Row(
+              children: [
+                Text('Radius:', style: textTheme.copyWith(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Wrap(
+                    spacing: 6,
+                    children: [50.0, 75.0, 100.0, 200.0].map((r) {
+                      final isSel = _radiusMeters == r;
+                      return ChoiceChip(
+                        label: Text('${r.round()}m${r == 50.0 ? " ⭐" : ""}'),
+                        selected: isSel,
+                        onSelected: (_) => setState(() => _radiusMeters = r),
+                        labelStyle: textTheme.copyWith(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isSel ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                        ),
+                        selectedColor: const Color(0xFF6366F1),
+                        visualDensity: VisualDensity.compact,
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Active Starting Date
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.calendar_today_rounded, size: 20, color: Color(0xFF6366F1)),
+              title: Text('Active from: ${DateFormat('yyyy-MM-dd').format(_date)}', style: textTheme.copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
+              subtitle: Text('Remind me whenever condition is met starting from this date', style: textTheme.copyWith(fontSize: 11, color: Colors.grey)),
+              trailing: const Icon(Icons.edit_calendar_rounded, size: 18),
+              onTap: () => _selectDate(context),
+            ),
+          ],
         ),
       ),
     );

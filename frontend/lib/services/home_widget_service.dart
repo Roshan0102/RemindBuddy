@@ -9,10 +9,13 @@ import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/services.dart';
 import '../models/shift.dart';
+import '../models/note.dart';
 import 'log_service.dart';
 
 class HomeWidgetService {
+  static const MethodChannel _widgetPinChannel = MethodChannel('com.remindbuddy/widget_pin');
   static final HomeWidgetService _instance = HomeWidgetService._internal();
   factory HomeWidgetService() => _instance;
   HomeWidgetService._internal();
@@ -723,5 +726,95 @@ class HomeWidgetService {
     }
 
     textPainter.paint(canvas, Offset(dx, y));
+  }
+
+  // ==================== Note Checklist Widget Methods ====================
+
+  /// Syncs a checklist Note to the Android Note Checklist Widget
+  Future<void> syncNoteChecklistWidget(Note note) async {
+    if (kIsWeb) return;
+    try {
+      await HomeWidget.saveWidgetData<String>('note_widget_id', note.id ?? '');
+      await HomeWidget.saveWidgetData<String>(
+        'note_widget_title',
+        note.title.trim().isNotEmpty ? note.title.trim() : 'Checklist',
+      );
+      await HomeWidget.saveWidgetData<String>(
+        'note_widget_items',
+        jsonEncode(note.checklistItems),
+      );
+      await HomeWidget.saveWidgetData<bool>('note_widget_dirty', false);
+
+      await HomeWidget.updateWidget(
+        name: 'NoteChecklistWidgetProvider',
+        androidName: 'NoteChecklistWidgetProvider',
+      );
+      LogService().log('Synced Note Checklist Widget for note: ${note.title}');
+    } catch (e) {
+      LogService().error('Error syncing note checklist widget', e);
+    }
+  }
+
+  /// Pins the Note Checklist Widget to the Android Home Screen (API 26+)
+  Future<bool> pinNoteChecklistWidget(Note note) async {
+    if (kIsWeb) return false;
+    try {
+      await syncNoteChecklistWidget(note);
+      if (Platform.isAndroid) {
+        final result = await _widgetPinChannel.invokeMethod<bool>('requestPinNoteChecklistWidget');
+        return result ?? false;
+      }
+      return false;
+    } catch (e) {
+      LogService().error('Error requesting pin for note checklist widget', e);
+      return false;
+    }
+  }
+
+  /// Automatically updates the widget if this note matches the currently pinned widget note
+  Future<void> checkAndSyncIfPinnedNote(Note note) async {
+    if (kIsWeb || note.id == null || note.id!.isEmpty) return;
+    try {
+      final currentPinnedId = await HomeWidget.getWidgetData<String>('note_widget_id');
+      if (currentPinnedId == note.id) {
+        await syncNoteChecklistWidget(note);
+      }
+    } catch (e) {
+      LogService().error('Error checking pinned note match', e);
+    }
+  }
+
+  /// Syncs any local toggles/resets made directly from the widget on the home screen back to Firestore
+  Future<void> syncWidgetChangesToFirestore() async {
+    if (kIsWeb) return;
+    try {
+      final isDirty = await HomeWidget.getWidgetData<bool>('note_widget_dirty') ?? false;
+      if (!isDirty) return;
+
+      final noteId = await HomeWidget.getWidgetData<String>('note_widget_id');
+      final itemsJson = await HomeWidget.getWidgetData<String>('note_widget_items');
+      if (noteId == null || noteId.isEmpty || itemsJson == null) return;
+
+      final List<dynamic> decoded = jsonDecode(itemsJson);
+      final List<Map<String, dynamic>> updatedItems =
+          decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('notes')
+          .doc(noteId)
+          .update({
+        'checklistItems': updatedItems,
+      });
+
+      await HomeWidget.saveWidgetData<bool>('note_widget_dirty', false);
+      LogService().log('Successfully synced widget checklist updates to Firestore for note: $noteId');
+    } catch (e) {
+      LogService().error('Error syncing widget changes to Firestore', e);
+    }
   }
 }
