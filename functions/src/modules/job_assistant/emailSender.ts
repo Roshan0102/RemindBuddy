@@ -21,6 +21,13 @@ export const sendJobApplicationEmail = functions.runWith({ timeoutSeconds: 60, m
         }
 
         const userData = userDoc.data() || {};
+        const enabledModules = userData.enabledModules || [];
+        if (!enabledModules.includes("job_assistant")) {
+            throw new functions.https.HttpsError(
+                'permission-denied',
+                'The AI Job Assistant module is disabled for your account.'
+            );
+        }
         const emailConfig = userData.emailConfig || {};
         const userEmail = emailConfig.email;
         const appPassword = emailConfig.appPassword;

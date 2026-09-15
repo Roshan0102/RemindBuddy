@@ -27,6 +27,11 @@ export async function fetchAndStoreWalkInsForUserInternal(
 
     if (userDoc.exists) {
         const data = userDoc.data();
+        const enabledModules = data?.enabledModules || [];
+        if (!enabledModules.includes("walkin") && !enabledModules.includes("walkins")) {
+            console.log(`[WalkinDrives] Skipping user ${uid}: walkin module is disabled.`);
+            return { addedCount: 0, drives: [] };
+        }
         if (data) {
             if (data.walkinRoles && Array.isArray(data.walkinRoles) && data.walkinRoles.length > 0) {
                 roles = [...data.walkinRoles];
@@ -273,13 +278,12 @@ Respond ONLY with a JSON array matching this schema:
         isManual: !triggerNotification
     });
 
-    // Send push notification if automatic scheduling triggered it and new items were added
     if (triggerNotification && newCount > 0 && userDoc.exists) {
         const uData = userDoc.data();
         const enabledModules = uData?.enabledModules || [];
         const notifPrefs = uData?.notificationPreferences || {};
-        
-        if (enabledModules.includes("walkin") && notifPrefs.walkin !== false) {
+        const isWalkinEnabled = enabledModules.includes("walkin") || enabledModules.includes("walkins");
+        if (isWalkinEnabled && notifPrefs.walkin !== false) {
             const usernameDoc = await db.collection("usernames").where("uid", "==", uid).limit(1).get();
             if (!usernameDoc.empty) {
                 const token = usernameDoc.docs[0].data().fcmToken;
@@ -302,7 +306,6 @@ Respond ONLY with a JSON array matching this schema:
             }
 
             // Send email summary if user has configured Gmail and enabled walkin_email
-            const notifPrefs = uData?.notificationPreferences || {};
             const isEmailEnabled = notifPrefs.walkin_email !== false && notifPrefs.walkins_email !== false;
             const emailConfig = uData?.emailConfig || uData?.jobEmailConfig || {};
             if (isEmailEnabled && emailConfig.email && emailConfig.appPassword) {
@@ -408,7 +411,7 @@ export async function internalDailyWalkInsFetcher(): Promise<void> {
             const enabledModules = uData.enabledModules || [];
 
             // 1. Must have module enabled
-            if (!enabledModules.includes("walkin")) {
+            if (!enabledModules.includes("walkin") && !enabledModules.includes("walkins")) {
                 console.log(`[internalDailyWalkInsFetcher] Skipping user ${uid}: 'walkin' module not enabled.`);
                 continue;
             }
@@ -497,7 +500,8 @@ export async function internalCheckInterestedWalkinsNotifications() {
             const enabledModules = uData?.enabledModules || [];
             const notifPrefs = uData?.notificationPreferences || {};
 
-            if (!enabledModules.includes("walkin") || notifPrefs.walkin === false) continue;
+            const isWalkinEnabled = enabledModules.includes("walkin") || enabledModules.includes("walkins");
+            if (!isWalkinEnabled || notifPrefs.walkin === false) continue;
 
             const walkinsSnap = await db.collection('users').doc(uid).collection('walkins')
                 .where('interested', '==', true)

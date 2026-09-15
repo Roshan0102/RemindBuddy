@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:remindbuddy/models/job_application.dart';
 import 'package:remindbuddy/models/networking_lead.dart';
+import 'package:remindbuddy/services/job_assistant_service.dart';
 
 void main() {
   group('JobApplication Caching & JSON Serialization', () {
@@ -109,6 +111,30 @@ void main() {
       expect(restored.emailSent, true);
       expect(restored.fundingStage, 'Series A');
       expect(restored.techStack, ['Node.js', 'Python', 'GCP']);
+    });
+  });
+
+  group('JobAssistantService Settings Clearing', () {
+    test('saveApplicantName with empty string sets explicitly cleared and getApplicantName returns empty', () async {
+      SharedPreferences.setMockInitialValues({
+        'job_assistant_applicant_name': 'Roshan',
+      });
+      final service = JobAssistantService();
+      await service.saveApplicantName('');
+      final name = await service.getApplicantName();
+      expect(name, '');
+    });
+
+    test('saveUserEmailConfig with empty email clears email and does not resurrect fallback', () async {
+      SharedPreferences.setMockInitialValues({
+        'job_assistant_user_email': 'test@example.com',
+        'job_assistant_user_app_password': 'abcd efgh ijkl mnop',
+      });
+      final service = JobAssistantService();
+      await service.saveUserEmailConfig('', '');
+      final config = await service.getUserEmailConfig();
+      expect(config['email'], '');
+      expect(config['appPassword'], '');
     });
   });
 }

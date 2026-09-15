@@ -362,10 +362,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     // 1. FAST LOCAL SYNC: load immediately from SharedPreferences so fields are never blank after app update
     try {
       final prefs = await SharedPreferences.getInstance();
-      final localName = prefs.getString('job_assistant_applicant_name') ?? '';
+      final localNameCleared = prefs.getBool('job_assistant_applicant_name_explicitly_cleared') ?? false;
+      final localName = localNameCleared ? '' : (prefs.getString('job_assistant_applicant_name') ?? '');
       final localRoles = prefs.getString('job_assistant_target_roles') ?? '';
       final localLocs = prefs.getString('job_assistant_locations') ?? '';
-      final localEmail = prefs.getString('job_assistant_user_email') ?? '';
+      final localEmailCleared = prefs.getBool('job_assistant_user_email_explicitly_cleared') ?? false;
+      final localEmail = localEmailCleared ? '' : (prefs.getString('job_assistant_user_email') ?? '');
       final localPass = prefs.getString('job_assistant_user_app_password') ?? '';
       final localResumeFileName = prefs.getString('job_assistant_resume_filename') ?? '';
       final localHasResume = prefs.getBool('job_assistant_has_resume') ?? false;
@@ -379,7 +381,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
       if (mounted) {
         setState(() {
-          if (localName.isNotEmpty && _applicantNameController.text.isEmpty) {
+          if (localNameCleared) {
+            _applicantNameController.text = '';
+          } else if (localName.isNotEmpty && _applicantNameController.text.isEmpty) {
             _applicantNameController.text = localName;
           }
           if (localRoles.isNotEmpty && _targetRolesController.text.isEmpty) {
@@ -388,7 +392,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           if (localLocs.isNotEmpty && _locationsController.text.isEmpty) {
             _locationsController.text = localLocs;
           }
-          if (localEmail.isNotEmpty && _userEmail.isEmpty) {
+          if (localEmailCleared) {
+            _userEmail = '';
+          } else if (localEmail.isNotEmpty && _userEmail.isEmpty) {
             _userEmail = localEmail;
           }
           if (localPass.isNotEmpty && _userAppPassword.isEmpty) {
@@ -428,15 +434,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
     if (mounted) {
       setState(() {
-        if (applicantName.isNotEmpty) {
-          _applicantNameController.text = applicantName;
-        }
-        if ((emailConfig['email'] ?? '').isNotEmpty) {
-          _userEmail = emailConfig['email']!;
-        }
-        if ((emailConfig['appPassword'] ?? '').isNotEmpty) {
-          _userAppPassword = emailConfig['appPassword']!;
-        }
+        _applicantNameController.text = applicantName;
+        _userEmail = emailConfig['email'] ?? '';
+        _userAppPassword = emailConfig['appPassword'] ?? '';
         if ((masterResume['fileName'] ?? '').isNotEmpty) {
           _resumeFileName = masterResume['fileName']!;
         }
@@ -1027,18 +1027,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   final newName = nameController.text.trim();
                   final newEmail = emailController.text.trim();
                   final newPass = passwordController.text.trim();
-                  if (newName.isNotEmpty) {
-                    await _service.saveApplicantName(newName);
-                  }
+                  await _service.saveApplicantName(newName);
                   await _service.saveUserEmailConfig(newEmail, newPass);
                   if (ctx.mounted) {
                     Navigator.pop(ctx);
                   }
                   if (mounted) {
                     setState(() {
-                      if (newName.isNotEmpty) {
-                        _applicantNameController.text = newName;
-                      }
+                      _applicantNameController.text = newName;
                       _userEmail = newEmail;
                       _userAppPassword = newPass;
                     });
@@ -1602,9 +1598,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     setState(() => _isSavingAutoSettings = true);
     try {
       final name = _applicantNameController.text.trim();
-      if (name.isNotEmpty) {
-        await _service.saveApplicantName(name);
-      }
+      await _service.saveApplicantName(name);
       await _service.saveAutoApplySettings(
         enabled: _autoApplyEnabled,
         targetRoles: roles,
@@ -4332,9 +4326,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     });
     try {
       final name = _applicantNameController.text.trim();
-      if (name.isNotEmpty) {
-        await _service.saveApplicantName(name);
-      }
+      await _service.saveApplicantName(name);
 
       var locs = _radarLocations.expand((e) => e.split(',')).map((s) => s.trim()).where((s) => s.isNotEmpty).toSet().toList();
       if (locs.isEmpty && _locationsController.text.trim().isNotEmpty) {
@@ -4772,9 +4764,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                             ),
                             onChanged: (_) {
                               final name = _applicantNameController.text.trim();
-                              if (name.isNotEmpty) {
-                                _service.saveApplicantName(name);
-                              }
+                              _service.saveApplicantName(name);
                             },
                           ),
                           const SizedBox(height: 12),

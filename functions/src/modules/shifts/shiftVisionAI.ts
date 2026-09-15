@@ -14,6 +14,10 @@ export const analyzeRosterImage = functions.runWith({ timeoutSeconds: 180, memor
         const userDoc = await db.collection("users").doc(uid).get();
         if (userDoc.exists) {
             const uData = userDoc.data() || {};
+            const enabledModules = uData.enabledModules || [];
+            if (!enabledModules.includes("shifts")) {
+                throw new functions.https.HttpsError('permission-denied', 'The Shifts module is disabled for your account.');
+            }
             userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();
         }
     } catch (e: any) {

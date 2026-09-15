@@ -16,6 +16,10 @@ exports.analyzeRosterImage = functions.runWith({ timeoutSeconds: 180, memory: "1
         const userDoc = await firebase_1.db.collection("users").doc(uid).get();
         if (userDoc.exists) {
             const uData = userDoc.data() || {};
+            const enabledModules = uData.enabledModules || [];
+            if (!enabledModules.includes("shifts")) {
+                throw new functions.https.HttpsError('permission-denied', 'The Shifts module is disabled for your account.');
+            }
             userGeminiKey = (((_a = uData.userApiKeys) === null || _a === void 0 ? void 0 : _a.geminiApiKey) || uData.geminiApiKey || "").trim();
         }
     }

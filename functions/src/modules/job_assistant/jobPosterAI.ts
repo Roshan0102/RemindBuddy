@@ -9,27 +9,26 @@ export const parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 300, me
 
     try {
         const uid = context.auth.uid;
-        let userGeminiKey = "";
+        const userDoc = await db.collection("users").doc(uid).get();
+        const uData = userDoc.exists ? (userDoc.data() || {}) : {};
+        const enabledModules = uData.enabledModules || [];
+        if (!enabledModules.includes("job_assistant")) {
+            throw new functions.https.HttpsError('permission-denied', 'The AI Job Assistant module is disabled for your account.');
+        }
+
+        let userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();
         const { applicantName } = data;
-        let promptName = (applicantName || "").trim();
-        try {
-            const userDoc = await db.collection("users").doc(uid).get();
-            if (userDoc.exists) {
-                const uData = userDoc.data() || {};
-                userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();
-                if (!promptName) {
-                    promptName = (uData.applicantName || uData.displayName || "").trim();
-                }
-            }
-            if (!promptName) {
+        let promptName = (applicantName || uData.applicantName || uData.displayName || "").trim();
+        if (!promptName) {
+            try {
                 const authUser = await admin.auth().getUser(uid);
                 promptName = (authUser.displayName || "").trim();
                 if (!promptName && authUser.email) {
                     promptName = authUser.email.split("@")[0];
                 }
+            } catch (e: any) {
+                console.warn("[JobPosterAI] User profile lookup:", e.message);
             }
-        } catch (e: any) {
-            console.warn("[JobPosterAI] User profile lookup:", e.message);
         }
         if (!promptName) promptName = "Candidate";
 

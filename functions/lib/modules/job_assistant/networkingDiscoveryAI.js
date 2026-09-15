@@ -208,6 +208,11 @@ async function discoverNetworkingLeadsForUser(uid, options) {
         return { success: false, count: 0, leads: [], message: "User profile not found." };
     }
     const userData = userDoc.data() || {};
+    const enabledModules = userData.enabledModules || [];
+    if (!enabledModules.includes("job_assistant")) {
+        console.log(`[StartupRadar] Skipping user ${uid}: job_assistant module is disabled in enabledModules.`);
+        return { success: false, count: 0, leads: [], message: "AI Job Assistant module is disabled for this account." };
+    }
     // Dynamically resolve candidate name without any hardcoded fallback
     let applicantName = ((options === null || options === void 0 ? void 0 : options.applicantName) || userData.applicantName || userData.displayName || "").trim();
     if (!applicantName) {
@@ -812,6 +817,11 @@ async function internalNetworkingDiscoveryDispatcher() {
         for (const doc of usersSnap.docs) {
             const data = doc.data() || {};
             const uid = doc.id;
+            const enabledModules = data.enabledModules || [];
+            if (!enabledModules.includes("job_assistant")) {
+                console.log(`[internalNetworkingDiscoveryDispatcher] Skipping user ${uid}: job_assistant module is disabled in enabledModules.`);
+                continue;
+            }
             const userApiKeys = data.userApiKeys || {};
             const hasKeys = !!((userApiKeys.tavilyApiKey || data.tavilyApiKey) && (userApiKeys.geminiApiKey || data.geminiApiKey));
             if (!hasKeys)

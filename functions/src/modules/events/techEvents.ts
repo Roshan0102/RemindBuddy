@@ -29,6 +29,11 @@ export async function fetchAndStoreEventsForUserInternal(
 
     if (userDoc.exists) {
         const data = userDoc.data();
+        const enabledModules = data?.enabledModules || [];
+        if (!enabledModules.includes("events")) {
+            console.log(`[TechEvents] Skipping user ${uid}: events module is disabled.`);
+            return { addedCount: 0, events: [] };
+        }
         if (data) {
             if (data.eventInterests && Array.isArray(data.eventInterests) && data.eventInterests.length > 0) {
                 interests = [...data.eventInterests];

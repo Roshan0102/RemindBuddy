@@ -19,6 +19,10 @@ exports.sendJobApplicationEmail = functions.runWith({ timeoutSeconds: 60, memory
             throw new functions.https.HttpsError('not-found', 'User profile not found.');
         }
         const userData = userDoc.data() || {};
+        const enabledModules = userData.enabledModules || [];
+        if (!enabledModules.includes("job_assistant")) {
+            throw new functions.https.HttpsError('permission-denied', 'The AI Job Assistant module is disabled for your account.');
+        }
         const emailConfig = userData.emailConfig || {};
         const userEmail = emailConfig.email;
         const appPassword = emailConfig.appPassword;

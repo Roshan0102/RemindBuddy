@@ -14,8 +14,8 @@ class JobAssistantService {
   factory JobAssistantService() => _instance;
   JobAssistantService._internal();
 
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  FirebaseFirestore get _db => FirebaseFirestore.instance;
+  FirebaseFunctions get _functions => FirebaseFunctions.instance;
 
   static List<JobApplication> _cachedApplications = [];
   static List<NetworkingLead> _cachedLeads = [];
@@ -85,12 +85,22 @@ class JobAssistantService {
     }
   }
 
-  String? get _uid => FirebaseAuth.instance.currentUser?.uid;
+  String? get _uid {
+    try {
+      return FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
 
   DocumentReference? get _userDoc {
-    final uid = _uid;
-    if (uid == null) return null;
-    return _db.collection('users').doc(uid);
+    try {
+      final uid = _uid;
+      if (uid == null) return null;
+      return _db.collection('users').doc(uid);
+    } catch (_) {
+      return null;
+    }
   }
 
   // ============================================================================
@@ -98,58 +108,85 @@ class JobAssistantService {
   // ============================================================================
 
   Future<String> getApplicantName() async {
+    bool isExplicitlyCleared = false;
     String cachedName = '';
     try {
       final prefs = await SharedPreferences.getInstance();
-      cachedName = (prefs.getString('job_assistant_applicant_name') ?? '').trim();
-      if (cachedName.isNotEmpty) return cachedName;
+      isExplicitlyCleared = prefs.getBool('job_assistant_applicant_name_explicitly_cleared') ?? false;
+      if (isExplicitlyCleared) {
+        cachedName = '';
+      } else {
+        cachedName = (prefs.getString('job_assistant_applicant_name') ?? '').trim();
+      }
     } catch (_) {}
 
     final doc = _userDoc;
     if (doc == null) {
-      final authName = (FirebaseAuth.instance.currentUser?.displayName ?? '').trim();
-      return authName.isNotEmpty ? authName : cachedName;
+      if (isExplicitlyCleared) return '';
+      try {
+        final authName = (FirebaseAuth.instance.currentUser?.displayName ?? '').trim();
+        return authName.isNotEmpty ? authName : cachedName;
+      } catch (_) {
+        return cachedName;
+      }
     }
     try {
       final snap = await doc.get();
       if (snap.exists && snap.data() != null) {
         final data = snap.data() as Map<String, dynamic>;
+        final bool clearedInDoc = data['applicantNameCleared'] == true;
+        if (clearedInDoc || (data.containsKey('applicantName') && (data['applicantName'] ?? '').toString().trim().isEmpty)) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove('job_assistant_applicant_name');
+            await prefs.setBool('job_assistant_applicant_name_explicitly_cleared', true);
+          } catch (_) {}
+          return '';
+        }
+
         final name = (data['applicantName'] ?? data['displayName'] ?? data['name'] ?? '').toString().trim();
         if (name.isNotEmpty) {
           try {
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('job_assistant_applicant_name', name);
+            await prefs.remove('job_assistant_applicant_name_explicitly_cleared');
           } catch (_) {}
           return name;
         }
       }
     } catch (_) {}
 
-    final authName = (FirebaseAuth.instance.currentUser?.displayName ?? '').trim();
-    return authName.isNotEmpty ? authName : cachedName;
+    if (isExplicitlyCleared) return '';
+    try {
+      final authName = (FirebaseAuth.instance.currentUser?.displayName ?? '').trim();
+      return authName.isNotEmpty ? authName : cachedName;
+    } catch (_) {
+      return cachedName;
+    }
   }
 
   Future<void> saveApplicantName(String name) async {
     final trimmed = name.trim();
-    if (trimmed.isEmpty) return;
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('job_assistant_applicant_name', trimmed);
+      if (trimmed.isEmpty) {
+        await prefs.remove('job_assistant_applicant_name');
+        await prefs.setBool('job_assistant_applicant_name_explicitly_cleared', true);
+      } else {
+        await prefs.setString('job_assistant_applicant_name', trimmed);
+        await prefs.remove('job_assistant_applicant_name_explicitly_cleared');
+      }
     } catch (_) {}
 
     final doc = _userDoc;
     if (doc != null) {
       await doc.set({
         'applicantName': trimmed,
-        'displayName': trimmed,
+        'applicantNameCleared': trimmed.isEmpty,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     }
-
-    try {
-      await FirebaseAuth.instance.currentUser?.updateDisplayName(trimmed);
-    } catch (_) {}
   }
 
   // ============================================================================
@@ -157,18 +194,20 @@ class JobAssistantService {
   // ============================================================================
 
   Future<Map<String, String>> getUserEmailConfig() async {
+    bool isEmailExplicitlyCleared = false;
     String cachedEmail = '';
     String cachedPass = '';
     try {
       final prefs = await SharedPreferences.getInstance();
-      cachedEmail = (prefs.getString('job_assistant_user_email') ?? '').trim();
+      isEmailExplicitlyCleared = prefs.getBool('job_assistant_user_email_explicitly_cleared') ?? false;
+      cachedEmail = isEmailExplicitlyCleared ? '' : (prefs.getString('job_assistant_user_email') ?? '').trim();
       cachedPass = (prefs.getString('job_assistant_user_app_password') ?? '').trim();
     } catch (_) {}
 
     final doc = _userDoc;
     if (doc == null) {
       return {
-        'email': cachedEmail.isNotEmpty ? cachedEmail : (FirebaseAuth.instance.currentUser?.email ?? ''),
+        'email': cachedEmail,
         'appPassword': cachedPass,
       };
     }
@@ -177,32 +216,55 @@ class JobAssistantService {
       final snap = await doc.get();
       if (snap.exists && snap.data() != null) {
         final data = snap.data() as Map<String, dynamic>;
-        final emailConfig = Map<String, dynamic>.from(
-          data['emailConfig'] ?? data['jobEmailConfig'] ?? data['gmailConfig'] ?? {},
-        );
-        final email = (emailConfig['email'] ?? '').toString().trim();
-        final appPassword = (emailConfig['appPassword'] ?? '').toString().trim();
+        final dynamic rawConfig = data['emailConfig'] ?? data['jobEmailConfig'] ?? data['gmailConfig'];
+        if (rawConfig is Map) {
+          final emailConfig = Map<String, dynamic>.from(rawConfig);
+          final email = (emailConfig['email'] ?? '').toString().trim();
+          final appPassword = (emailConfig['appPassword'] ?? '').toString().trim();
+          final bool cleared = emailConfig['cleared'] == true || (emailConfig.containsKey('email') && email.isEmpty);
 
-        final resolvedEmail = email.isNotEmpty ? email : cachedEmail;
-        final resolvedPass = appPassword.isNotEmpty ? appPassword : cachedPass;
+          if (cleared) {
+            try {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('job_assistant_user_email');
+              await prefs.setBool('job_assistant_user_email_explicitly_cleared', true);
+              if (appPassword.isEmpty) {
+                await prefs.remove('job_assistant_user_app_password');
+              } else {
+                await prefs.setString('job_assistant_user_app_password', appPassword);
+              }
+            } catch (_) {}
+            return {
+              'email': '',
+              'appPassword': appPassword,
+            };
+          }
 
-        if (resolvedEmail.isNotEmpty || resolvedPass.isNotEmpty) {
           try {
             final prefs = await SharedPreferences.getInstance();
-            if (resolvedEmail.isNotEmpty) await prefs.setString('job_assistant_user_email', resolvedEmail);
-            if (resolvedPass.isNotEmpty) await prefs.setString('job_assistant_user_app_password', resolvedPass);
+            if (email.isNotEmpty) {
+              await prefs.setString('job_assistant_user_email', email);
+              await prefs.remove('job_assistant_user_email_explicitly_cleared');
+            } else {
+              await prefs.remove('job_assistant_user_email');
+            }
+            if (appPassword.isNotEmpty) {
+              await prefs.setString('job_assistant_user_app_password', appPassword);
+            } else {
+              await prefs.remove('job_assistant_user_app_password');
+            }
           } catch (_) {}
-        }
 
-        return {
-          'email': resolvedEmail.isNotEmpty ? resolvedEmail : (FirebaseAuth.instance.currentUser?.email ?? ''),
-          'appPassword': resolvedPass,
-        };
+          return {
+            'email': email,
+            'appPassword': appPassword,
+          };
+        }
       }
     } catch (_) {}
 
     return {
-      'email': cachedEmail.isNotEmpty ? cachedEmail : (FirebaseAuth.instance.currentUser?.email ?? ''),
+      'email': cachedEmail,
       'appPassword': cachedPass,
     };
   }
@@ -213,8 +275,18 @@ class JobAssistantService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('job_assistant_user_email', cleanEmail);
-      await prefs.setString('job_assistant_user_app_password', cleanPass);
+      if (cleanEmail.isEmpty) {
+        await prefs.remove('job_assistant_user_email');
+        await prefs.setBool('job_assistant_user_email_explicitly_cleared', true);
+      } else {
+        await prefs.setString('job_assistant_user_email', cleanEmail);
+        await prefs.remove('job_assistant_user_email_explicitly_cleared');
+      }
+      if (cleanPass.isEmpty) {
+        await prefs.remove('job_assistant_user_app_password');
+      } else {
+        await prefs.setString('job_assistant_user_app_password', cleanPass);
+      }
     } catch (_) {}
 
     final doc = _userDoc;
@@ -224,6 +296,7 @@ class JobAssistantService {
       'emailConfig': {
         'email': cleanEmail,
         'appPassword': cleanPass,
+        'cleared': cleanEmail.isEmpty && cleanPass.isEmpty,
         'updatedAt': FieldValue.serverTimestamp(),
       },
       'jobEmailConfig': {

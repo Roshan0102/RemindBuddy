@@ -39,6 +39,11 @@ async function checkUserJobReplies(uid) {
         return { checked: 0, repliesFound: 0 };
     }
     const userData = userDoc.data() || {};
+    const enabledModules = userData.enabledModules || [];
+    if (!enabledModules.includes("job_assistant")) {
+        console.log(`[ReplyTracker] Skipping user ${uid}: job_assistant module is disabled in enabledModules.`);
+        return { checked: 0, repliesFound: 0 };
+    }
     const emailConfig = userData.emailConfig || {};
     const userEmail = emailConfig.email;
     const appPassword = emailConfig.appPassword;
@@ -579,6 +584,10 @@ async function internalCheckAllJobReplies() {
         const usersSnap = await firebase_1.db.collection("users").get();
         for (const doc of usersSnap.docs) {
             const data = doc.data() || {};
+            const enabledModules = data.enabledModules || [];
+            if (!enabledModules.includes("job_assistant")) {
+                continue;
+            }
             const emailConfig = data.emailConfig || {};
             if (emailConfig.email && emailConfig.appPassword) {
                 try {

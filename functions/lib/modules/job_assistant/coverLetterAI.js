@@ -11,23 +11,21 @@ exports.generateManualJobApplicationWithAI = functions.runWith({ timeoutSeconds:
     }
     try {
         const uid = context.auth.uid;
+        const userDoc = await firebase_1.db.collection("users").doc(uid).get();
+        const uData = userDoc.exists ? (userDoc.data() || {}) : {};
+        const enabledModules = uData.enabledModules || [];
+        if (!enabledModules.includes("job_assistant")) {
+            throw new functions.https.HttpsError('permission-denied', 'The AI Job Assistant module is disabled for your account.');
+        }
         const { companyName, jobTitle, companyUrl, recipientEmails, companyNotes, customPrompt, resumeBase64, applicantName } = data;
-        let userGeminiKey = "";
-        let promptName = (applicantName || "").trim();
+        let userGeminiKey = (((_a = uData.userApiKeys) === null || _a === void 0 ? void 0 : _a.geminiApiKey) || uData.geminiApiKey || "").trim();
+        let promptName = (applicantName || uData.applicantName || uData.displayName || "").trim();
         if (!promptName) {
             try {
-                const userDoc = await firebase_1.db.collection("users").doc(uid).get();
-                if (userDoc.exists) {
-                    const uData = userDoc.data() || {};
-                    userGeminiKey = (((_a = uData.userApiKeys) === null || _a === void 0 ? void 0 : _a.geminiApiKey) || uData.geminiApiKey || "").trim();
-                    promptName = (uData.applicantName || uData.displayName || "").trim();
-                }
-                if (!promptName) {
-                    const authUser = await firebase_1.admin.auth().getUser(uid);
-                    promptName = (authUser.displayName || "").trim();
-                    if (!promptName && authUser.email) {
-                        promptName = authUser.email.split("@")[0];
-                    }
+                const authUser = await firebase_1.admin.auth().getUser(uid);
+                promptName = (authUser.displayName || "").trim();
+                if (!promptName && authUser.email) {
+                    promptName = authUser.email.split("@")[0];
                 }
             }
             catch (e) {
@@ -140,27 +138,25 @@ exports.refineCoverLetterWithAI = functions.runWith({ timeoutSeconds: 180, memor
     }
     try {
         const uid = context.auth.uid;
-        let userGeminiKey = "";
-        let promptName = (applicantName || "").trim();
-        try {
-            const userDoc = await firebase_1.db.collection("users").doc(uid).get();
-            if (userDoc.exists) {
-                const uData = userDoc.data() || {};
-                userGeminiKey = (((_a = uData.userApiKeys) === null || _a === void 0 ? void 0 : _a.geminiApiKey) || uData.geminiApiKey || "").trim();
-                if (!promptName) {
-                    promptName = (uData.applicantName || uData.displayName || "").trim();
-                }
-            }
-            if (!promptName) {
+        const userDoc = await firebase_1.db.collection("users").doc(uid).get();
+        const uData = userDoc.exists ? (userDoc.data() || {}) : {};
+        const enabledModules = uData.enabledModules || [];
+        if (!enabledModules.includes("job_assistant")) {
+            throw new functions.https.HttpsError('permission-denied', 'The AI Job Assistant module is disabled for your account.');
+        }
+        let userGeminiKey = (((_a = uData.userApiKeys) === null || _a === void 0 ? void 0 : _a.geminiApiKey) || uData.geminiApiKey || "").trim();
+        let promptName = (applicantName || uData.applicantName || uData.displayName || "").trim();
+        if (!promptName) {
+            try {
                 const authUser = await firebase_1.admin.auth().getUser(uid);
                 promptName = (authUser.displayName || "").trim();
                 if (!promptName && authUser.email) {
                     promptName = authUser.email.split("@")[0];
                 }
             }
-        }
-        catch (e) {
-            console.warn("[CoverLetterAI] User profile lookup:", e.message);
+            catch (e) {
+                console.warn("[CoverLetterAI] User profile lookup:", e.message);
+            }
         }
         if (!promptName)
             promptName = "Candidate";

@@ -25,6 +25,10 @@ export const parseVoiceExpensesWithAI = functions.runWith({ timeoutSeconds: 60, 
         const userDoc = await db.collection("users").doc(uid).get();
         if (userDoc.exists) {
             const uData = userDoc.data() || {};
+            const enabledModules = uData.enabledModules || [];
+            if (!enabledModules.includes("finance")) {
+                throw new functions.https.HttpsError('permission-denied', 'The Finance module is disabled for your account.');
+            }
             userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();
         }
     } catch (e: any) {

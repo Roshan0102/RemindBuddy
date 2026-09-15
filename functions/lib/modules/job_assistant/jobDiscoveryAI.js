@@ -123,6 +123,11 @@ async function discoverAndApplyForUser(uid, options) {
         return { success: false, appliedCount: 0, jobs: [], message: "User not found" };
     }
     const userData = userDoc.data() || {};
+    const enabledModules = userData.enabledModules || [];
+    if (!enabledModules.includes("job_assistant")) {
+        console.log(`[JobDiscovery] Skipping user ${uid}: job_assistant module is disabled in enabledModules.`);
+        return { success: false, appliedCount: 0, jobs: [], message: "AI Job Assistant module is disabled for this account." };
+    }
     const emailConfig = userData.emailConfig || {};
     const userEmail = emailConfig.email;
     const appPassword = emailConfig.appPassword;
@@ -742,7 +747,7 @@ exports.processAutoApplyUserTask = functions.runWith({ timeoutSeconds: 300, memo
  * Twice-Daily Automated Job Discovery & Auto-Apply Dispatcher (10 AM & 10 PM IST)
  */
 async function internalAutoJobDiscoveryAndApply() {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e;
     console.log("[internalAutoJobDiscoveryAndApply] Starting twice-daily automated job discovery & apply dispatcher (10 AM & 10 PM IST)...");
     try {
         const usersSnap = await firebase_1.db.collection("users").get();
@@ -751,14 +756,17 @@ async function internalAutoJobDiscoveryAndApply() {
             const uid = doc.id;
             const data = doc.data() || {};
             const enabledModules = data.enabledModules || [];
-            // 1. Must have job_assistant enabled and autoApply not disabled
-            const isModuleEnabled = enabledModules.includes("job_assistant") || ((_a = data.autoApplySettings) === null || _a === void 0 ? void 0 : _a.enabled) === true;
-            if (!isModuleEnabled || ((_b = data.autoApplySettings) === null || _b === void 0 ? void 0 : _b.enabled) === false) {
-                console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: job_assistant not enabled or autoApply disabled.`);
+            // 1. Must have job_assistant module explicitly enabled by admin in enabledModules
+            if (!enabledModules.includes("job_assistant")) {
+                console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: job_assistant module is disabled in enabledModules.`);
+                continue;
+            }
+            if (((_a = data.autoApplySettings) === null || _a === void 0 ? void 0 : _a.enabled) === false) {
+                console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: autoApply is disabled in user settings.`);
                 continue;
             }
             // 2. Must have uploaded a Master Resume or at least one Resume Profile
-            let hasResume = !!(((_c = data.masterResume) === null || _c === void 0 ? void 0 : _c.base64) || ((_d = data.masterResume) === null || _d === void 0 ? void 0 : _d.base64Data));
+            let hasResume = !!(((_b = data.masterResume) === null || _b === void 0 ? void 0 : _b.base64) || ((_c = data.masterResume) === null || _c === void 0 ? void 0 : _c.base64Data));
             if (!hasResume) {
                 const profilesSnap = await firebase_1.db.collection("users").doc(uid).collection("resume_profiles").limit(1).get();
                 if (!profilesSnap.empty) {
@@ -767,7 +775,7 @@ async function internalAutoJobDiscoveryAndApply() {
             }
             if (!hasResume) {
                 const resumeDoc = await firebase_1.db.collection("users").doc(uid).collection("job_profiles").doc("master_resume").get();
-                hasResume = !!(((_e = resumeDoc.data()) === null || _e === void 0 ? void 0 : _e.base64Data) || ((_f = resumeDoc.data()) === null || _f === void 0 ? void 0 : _f.base64));
+                hasResume = !!(((_d = resumeDoc.data()) === null || _d === void 0 ? void 0 : _d.base64Data) || ((_e = resumeDoc.data()) === null || _e === void 0 ? void 0 : _e.base64));
             }
             if (!hasResume) {
                 console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: Master Resume or Resume Profile PDF not uploaded.`);
