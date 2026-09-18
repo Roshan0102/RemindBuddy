@@ -538,6 +538,14 @@ class NotificationService {
           sound: RawResourceAndroidNotificationSound('alarm_chime'),
           audioAttributesUsage: AudioAttributesUsage.alarm,
         ),
+        AndroidNotificationChannel(
+          'alarm_reminder_channel_custom',
+          'Custom Alarm Reminders',
+          description: 'High priority custom alarm notifications with continuous ringing',
+          importance: Importance.max,
+          playSound: false,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+        ),
       ];
 
       final androidPlugin = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
@@ -679,8 +687,10 @@ class NotificationService {
 
         final isAlarmMode = message.data['isAlarmMode'] == 'true';
         final alarmSound = message.data['alarmSound'] ?? 'digital';
+        final String? customAudioPath = message.data['customAudioPath'];
 
         if (isAlarmMode) {
+          final reminderId = message.data['reminderId'];
           showAlarmNotification(
             id: notification.hashCode,
             title: notification.title ?? 'Reminder Alarm',
@@ -688,7 +698,36 @@ class NotificationService {
             payload: payload ?? '',
             sound: alarmSound,
           );
-          AlarmAudioService().startAlarm(sound: alarmSound, reminderId: message.data['reminderId']);
+
+          if (alarmSound == 'custom' && (customAudioPath == null || customAudioPath.isEmpty)) {
+            final uid = FirebaseAuth.instance.currentUser?.uid ?? message.data['uid'];
+            if (uid != null && reminderId != null) {
+              FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(uid)
+                  .collection('calendar_reminders')
+                  .doc(reminderId)
+                  .get()
+                  .then((doc) {
+                final path = doc.data()?['customAudioPath'] as String?;
+                AlarmAudioService().startAlarm(
+                  sound: alarmSound,
+                  customPath: path,
+                  reminderId: reminderId,
+                );
+              }).catchError((_) {
+                AlarmAudioService().startAlarm(sound: alarmSound, reminderId: reminderId);
+              });
+            } else {
+              AlarmAudioService().startAlarm(sound: alarmSound, reminderId: reminderId);
+            }
+          } else {
+            AlarmAudioService().startAlarm(
+              sound: alarmSound,
+              customPath: customAudioPath,
+              reminderId: reminderId,
+            );
+          }
         } else {
           _localNotifications.show(
             notification.hashCode,
@@ -754,23 +793,26 @@ class NotificationService {
       return;
     }
 
+    final bool isCustom = sound == 'custom';
     String rawSound = 'alarm_digital';
     if (sound == 'siren') rawSound = 'alarm_siren';
     if (sound == 'chime') rawSound = 'alarm_chime';
 
+    final String channelId = isCustom ? 'alarm_reminder_channel_custom' : 'alarm_reminder_channel_$rawSound';
+
     final androidDetails = AndroidNotificationDetails(
-      'alarm_reminder_channel_$rawSound',
-      'Continuous Alarm Reminders ($sound)',
+      channelId,
+      isCustom ? 'Custom Alarm Reminders' : 'Continuous Alarm Reminders ($sound)',
       channelDescription: 'High priority continuous ringing alarms',
       importance: Importance.max,
       priority: Priority.max,
       icon: '@mipmap/ic_launcher',
-      sound: RawResourceAndroidNotificationSound(rawSound),
-      playSound: true,
+      sound: isCustom ? null : RawResourceAndroidNotificationSound(rawSound),
+      playSound: !isCustom,
       audioAttributesUsage: AudioAttributesUsage.alarm,
       category: AndroidNotificationCategory.alarm,
       fullScreenIntent: true,
-      additionalFlags: Int32List.fromList([4]), // FLAG_INSISTENT = 4
+      additionalFlags: isCustom ? null : Int32List.fromList([4]), // FLAG_INSISTENT = 4
       actions: const <AndroidNotificationAction>[
         AndroidNotificationAction(
           'action_alarm_dismiss',

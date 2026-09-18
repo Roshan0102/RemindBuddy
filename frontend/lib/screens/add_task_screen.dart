@@ -1,5 +1,9 @@
 
 import 'dart:async';
+import 'dart:io';
+import 'dart:convert';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
@@ -594,8 +598,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   ),
                 ),
               ),
+              ],
               const SizedBox(height: 16),
               _buildAlarmCard(context),
+              if (!_isLocationBased) ...[
               const SizedBox(height: 16),
               Card(
                 elevation: 1,
@@ -1223,7 +1229,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         ),
                       ),
                       TextButton(
-                        onPressed: _pickCustomAudio,
+                        onPressed: _showRecentCustomAudioSheet,
                         child: Text(_customAudioPath == null ? 'Browse' : 'Change'),
                       ),
                     ],
@@ -1290,8 +1296,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           setState(() {
             _alarmSound = soundKey;
           });
-          if (soundKey == 'custom' && _customAudioPath == null) {
-            _pickCustomAudio();
+          if (soundKey == 'custom') {
+            if (_customAudioPath == null) {
+              _showRecentCustomAudioSheet();
+            }
           } else if (_isPreviewPlaying) {
             _togglePreviewSound();
           }
@@ -1300,22 +1308,254 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     );
   }
 
-  Future<void> _pickCustomAudio() async {
+  Future<List<Map<String, String>>> _getRecentCustomAudios() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final list = sp.getStringList('recent_custom_alarm_sounds') ?? [];
+      final List<Map<String, String>> result = [];
+      for (final item in list) {
+        try {
+          final decoded = jsonDecode(item) as Map<String, dynamic>;
+          final path = decoded['path'] as String?;
+          final name = decoded['name'] as String?;
+          if (path != null && name != null && File(path).existsSync()) {
+            result.add({'name': name, 'path': path});
+          }
+        } catch (_) {}
+      }
+      return result;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveRecentCustomAudio(String name, String path) async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final list = sp.getStringList('recent_custom_alarm_sounds') ?? [];
+      final newList = [jsonEncode({'name': name, 'path': path})];
+      for (final item in list) {
+        try {
+          final decoded = jsonDecode(item) as Map<String, dynamic>;
+          if (decoded['path'] != path) {
+            newList.add(item);
+          }
+        } catch (_) {}
+      }
+      if (newList.length > 10) {
+        newList.removeRange(10, newList.length);
+      }
+      await sp.setStringList('recent_custom_alarm_sounds', newList);
+    } catch (_) {}
+  }
+
+  Future<void> _pickCustomAudioFromFile() async {
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.audio,
         allowMultiple: false,
       );
       if (result != null && result.files.single.path != null) {
+        final originalPath = result.files.single.path!;
+        final name = result.files.single.name;
+
+        // Copy to permanent app documents directory to avoid cache eviction
+        String finalPath = originalPath;
+        try {
+          final appDocDir = await getApplicationDocumentsDirectory();
+          final targetDir = Directory('${appDocDir.path}/custom_alarms');
+          if (!targetDir.existsSync()) {
+            targetDir.createSync(recursive: true);
+          }
+          final permanentFile = File('${targetDir.path}/$name');
+          await File(originalPath).copy(permanentFile.path);
+          finalPath = permanentFile.path;
+        } catch (e) {
+          debugPrint('Error persisting custom audio: $e');
+        }
+
+        await _saveRecentCustomAudio(name, finalPath);
+
         setState(() {
           _alarmSound = 'custom';
-          _customAudioPath = result.files.single.path;
-          _customAudioName = result.files.single.name;
+          _customAudioPath = finalPath;
+          _customAudioName = name;
         });
       }
     } catch (e) {
       debugPrint('Error picking audio: $e');
     }
+  }
+
+  Future<void> _showRecentCustomAudioSheet() async {
+    final recents = await _getRecentCustomAudios();
+    if (!mounted) return;
+
+    if (recents.isEmpty) {
+      await _pickCustomAudioFromFile();
+      return;
+    }
+
+    String? localPreviewingPath;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final isDark = Theme.of(ctx).brightness == Brightness.dark;
+            return Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(ctx).size.height * 0.7,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.music_note_rounded, color: Color(0xFFE11D48)),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Select Custom Alarm Audio',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () {
+                          AlarmAudioService().stopAlarm();
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Recently Used Alarm Sounds:',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: recents.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final item = recents[index];
+                        final name = item['name'] ?? 'Audio File';
+                        final path = item['path'] ?? '';
+                        final isCurrentlySelected = _customAudioPath == path;
+                        final isPreviewingThis = localPreviewingPath == path && _isPreviewPlaying;
+
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          leading: CircleAvatar(
+                            backgroundColor: isCurrentlySelected
+                                ? const Color(0xFFE11D48).withValues(alpha: 0.15)
+                                : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                            child: Icon(
+                              Icons.audiotrack_rounded,
+                              color: isCurrentlySelected ? const Color(0xFFE11D48) : Colors.grey,
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(
+                            name,
+                            style: TextStyle(
+                              fontWeight: isCurrentlySelected ? FontWeight.bold : FontWeight.normal,
+                              color: isCurrentlySelected ? const Color(0xFFE11D48) : null,
+                              fontSize: 14,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: isCurrentlySelected
+                              ? const Text('Currently selected', style: TextStyle(color: Color(0xFFE11D48), fontSize: 11))
+                              : null,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(
+                                  isPreviewingThis ? Icons.stop_circle_rounded : Icons.play_circle_fill_rounded,
+                                  color: const Color(0xFFE11D48),
+                                ),
+                                onPressed: () async {
+                                  if (isPreviewingThis) {
+                                    await AlarmAudioService().stopAlarm();
+                                    setSheetState(() {
+                                      localPreviewingPath = null;
+                                      _isPreviewPlaying = false;
+                                    });
+                                  } else {
+                                    setSheetState(() {
+                                      localPreviewingPath = path;
+                                      _isPreviewPlaying = true;
+                                    });
+                                    await AlarmAudioService().previewSound(
+                                      sound: 'custom',
+                                      customPath: path,
+                                    );
+                                  }
+                                },
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isCurrentlySelected ? Colors.grey.shade400 : const Color(0xFFE11D48),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                ),
+                                onPressed: () {
+                                  AlarmAudioService().stopAlarm();
+                                  setState(() {
+                                    _alarmSound = 'custom';
+                                    _customAudioPath = path;
+                                    _customAudioName = name;
+                                    _isPreviewPlaying = false;
+                                  });
+                                  Navigator.pop(ctx);
+                                },
+                                child: Text(isCurrentlySelected ? 'Selected' : 'Use This'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () async {
+                        AlarmAudioService().stopAlarm();
+                        Navigator.pop(ctx);
+                        await _pickCustomAudioFromFile();
+                      },
+                      icon: const Icon(Icons.file_upload_outlined),
+                      label: const Text('+ Choose New Audio from Phone...'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _togglePreviewSound() async {

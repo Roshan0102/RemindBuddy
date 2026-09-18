@@ -105,6 +105,8 @@ export const processCalendarReminderTask = functions.tasks
                             reminderId: reminderId,
                             isAlarmMode: isAlarmMode ? "true" : "false",
                             alarmSound: alarmSound,
+                            customAudioPath: rData?.customAudioPath || "",
+                            customAudioName: rData?.customAudioName || "",
                             snoozeEnabled: snoozeEnabled ? "true" : "false",
                             snoozeIntervalMinutes: String(rData?.snoozeIntervalMinutes || 15),
                             maxSnoozeCount: String(rData?.maxSnoozeCount || 3),

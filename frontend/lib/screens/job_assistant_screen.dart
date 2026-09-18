@@ -20,6 +20,7 @@ import '../services/url_launcher_helper/url_launcher_helper.dart';
 import 'ai_keys_settings_screen.dart';
 import 'job_replies_screen.dart';
 import 'feature_logs_screen.dart';
+import '../services/notification_service.dart';
 import '../services/web_clipboard_drag/web_clipboard_drag.dart';
 
 class JobAssistantScreen extends StatefulWidget {
@@ -39,6 +40,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   final List<String> _selectedImagesBase64 = [];
   bool _isAnalyzing = false;
   List<JobApplication> _extractedJobs = [];
+  bool _autoSendInBackground = false;
 
   // Screenshot Custom Prompt
   final TextEditingController _customScreenshotPromptController = TextEditingController();
@@ -1271,6 +1273,114 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
+  Future<void> _startAutoApplyInBackground() async {
+    if (_selectedImagesBase64.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least 1 job poster screenshot!')),
+      );
+      return;
+    }
+
+    if (_userEmail.isEmpty || _userAppPassword.isEmpty) {
+      _showEmailConfigDialog();
+      return;
+    }
+
+    final imagesToProcess = List<String>.from(_selectedImagesBase64);
+    final currentUploadMode = _uploadMode;
+    final customPrompt = _customScreenshotPromptController.text.trim();
+    final applicantName = _applicantNameController.text.trim().isNotEmpty ? _applicantNameController.text.trim() : null;
+
+    setState(() {
+      _selectedImageFiles.clear();
+      _selectedImagesBase64.clear();
+      _customScreenshotPromptController.clear();
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🚀 Screenshots submitted! AI is analyzing and sending applications in the background with safe 30s pacing. You can safely close or leave the app.'),
+          duration: Duration(seconds: 6),
+          backgroundColor: Color(0xFF10B981),
+        ),
+      );
+    }
+
+    // Run asynchronous background processing
+    () async {
+      try {
+        final jobs = await _service.parseJobPostersWithAI(
+          imagesToProcess,
+          currentUploadMode,
+          customPrompt: customPrompt.isEmpty ? null : customPrompt,
+          applicantName: applicantName,
+        );
+
+        if (jobs.isEmpty) {
+          await NotificationService().showNotification(
+            id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+            title: '⚠️ No Jobs Detected',
+            body: 'Gemini AI could not find any job openings or recruiter emails in the uploaded screenshots.',
+            payload: 'JOB_ASSISTANT',
+          );
+          return;
+        }
+
+        int sentCount = 0;
+
+        for (int i = 0; i < jobs.length; i++) {
+          final job = jobs[i];
+          final recipient = job.recipientEmail.trim();
+
+          if (recipient.isEmpty) {
+            await NotificationService().showNotification(
+              id: (DateTime.now().millisecondsSinceEpoch ~/ 1000) + i,
+              title: '⚠️ Job Application Missing Email',
+              body: 'Found "${job.jobTitle}" at "${job.companyName}" but no recruiter email was found on the poster.',
+              payload: 'JOB_ASSISTANT',
+            );
+            continue;
+          }
+
+          try {
+            await _service.sendJobApplicationEmail(job);
+            sentCount++;
+          } catch (err) {
+            await NotificationService().showNotification(
+              id: (DateTime.now().millisecondsSinceEpoch ~/ 1000) + i,
+              title: '⚠️ Job Email Delivery Failed',
+              body: 'Could not send application for "${job.jobTitle}" at "${job.companyName}" to $recipient: $err',
+              payload: 'JOB_ASSISTANT',
+            );
+          }
+
+          // Rate limiting delay: 30 seconds between consecutive sends to protect Gmail sender reputation
+          if (i < jobs.length - 1) {
+            await Future.delayed(const Duration(seconds: 30));
+          }
+        }
+
+        if (sentCount > 0) {
+          await NotificationService().showNotification(
+            id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+            title: '✅ Job Applications Sent Successfully',
+            body: 'Auto-applied to $sentCount job(s) from your screenshots! Check Applied History.',
+            payload: 'JOB_ASSISTANT',
+          );
+        }
+      } catch (e) {
+        debugPrint('[JobAssistant] Background auto-apply error: $e');
+        await NotificationService().showNotification(
+          id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          title: '⚠️ Background Auto-Apply Failed',
+          body: 'Error analyzing screenshots: $e',
+          payload: 'JOB_ASSISTANT',
+        );
+      }
+    }();
+  }
+
   Future<void> _generateManualJobApplicationWithAI() async {
     final companyName = _manualCompanyNameController.text.trim();
     final jobTitle = _manualJobTitleController.text.trim();
@@ -1540,6 +1650,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       } catch (e) {
         debugPrint("Error sending email to $recipient: $e");
         failCount++;
+      }
+
+      // Safe pacing: 30 seconds between sends to protect Gmail sender reputation
+      if (i < jobsToProcess.length - 1) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Email ${i + 1} of ${jobsToProcess.length} sent. Pausing 30s to protect Gmail account...'),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        await Future.delayed(const Duration(seconds: 30));
       }
     }
 
@@ -3436,38 +3559,86 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         ),
                         const SizedBox(height: 14),
 
+                        // Direct Auto-Send (Process in Background) Toggle
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: _autoSendInBackground
+                                ? const Color(0xFF10B981).withValues(alpha: 0.1)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _autoSendInBackground
+                                  ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                                  : Colors.grey.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          child: SwitchListTile.adaptive(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              '⚡ Direct Auto-Send (Process in Background)',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            subtitle: const Text(
+                              'Auto-generate & email without manual review. 30s delay protects your Gmail account.',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                            value: _autoSendInBackground,
+                            activeTrackColor: const Color(0xFF10B981),
+                            onChanged: (val) {
+                              setState(() => _autoSendInBackground = val);
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
                         if (_selectedImageFiles.isNotEmpty)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                          Column(
                             children: [
-                              OutlinedButton.icon(
-                                onPressed: _pickJobPosters,
-                                icon: const Icon(Icons.add),
-                                label: const Text('Add File'),
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 10,
+                                runSpacing: 8,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: _pickJobPosters,
+                                    icon: const Icon(Icons.add),
+                                    label: const Text('Add File'),
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: _pasteImageFromClipboard,
+                                    icon: const Icon(Icons.content_paste_rounded),
+                                    label: const Text('Paste (Ctrl+V)'),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              OutlinedButton.icon(
-                                onPressed: _pasteImageFromClipboard,
-                                icon: const Icon(Icons.content_paste_rounded),
-                                label: const Text('Paste (Ctrl+V)'),
-                              ),
-                              const SizedBox(width: 10),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.amber.shade700,
-                                  foregroundColor: Colors.white,
-                                ),
-                                onPressed: _isAnalyzing ? null : _analyzePostersWithAI,
-                                icon: _isAnalyzing
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      )
-                                    : const Icon(Icons.lightbulb_outline, size: 18),
-                                label: Text(
-                                  _isAnalyzing ? 'Analyzing with AI...' : 'Analyze with Gemini AI',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _autoSendInBackground ? const Color(0xFF10B981) : Colors.amber.shade700,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  onPressed: _isAnalyzing
+                                      ? null
+                                      : (_autoSendInBackground ? _startAutoApplyInBackground : _analyzePostersWithAI),
+                                  icon: _isAnalyzing
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                        )
+                                      : Icon(_autoSendInBackground ? Icons.send_rounded : Icons.lightbulb_outline, size: 18),
+                                  label: Text(
+                                    _isAnalyzing
+                                        ? 'Analyzing with AI...'
+                                        : (_autoSendInBackground ? '⚡ Auto-Apply in Background' : 'Analyze with Gemini AI'),
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
                                 ),
                               ),
                             ],

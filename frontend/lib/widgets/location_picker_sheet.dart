@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -73,6 +76,11 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
   final MapController _mapController = MapController();
   final SavedPlacesService _savedPlacesService = SavedPlacesService();
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+
+  List<Map<String, dynamic>> _searchResults = [];
+  bool _isSearching = false;
+  Timer? _searchDebounce;
 
   late double _selectedLat;
   late double _selectedLng;
@@ -107,7 +115,75 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
   @override
   void dispose() {
     _nameController.dispose();
+    _searchController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
+  }
+
+  Future<void> _searchPlaces(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
+      return;
+    }
+
+    setState(() => _isSearching = true);
+
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(trimmed)}&format=json&limit=5&addressdetails=1',
+      );
+      final response = await http.get(url, headers: {
+        'User-Agent': 'RemindBuddyApp/1.0 (com.remindbuddy.remindbuddy)',
+      }).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200 && mounted) {
+        final List<dynamic> data = jsonDecode(response.body);
+        setState(() {
+          _searchResults = data.cast<Map<String, dynamic>>();
+          _isSearching = false;
+        });
+      } else {
+        if (mounted) setState(() => _isSearching = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isSearching = false);
+    }
+  }
+
+  void _onSearchQueryChanged(String query) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 450), () {
+      _searchPlaces(query);
+    });
+  }
+
+  void _selectSearchResult(Map<String, dynamic> result) {
+    final latStr = result['lat'];
+    final lonStr = result['lon'];
+    if (latStr == null || lonStr == null) return;
+
+    final lat = double.tryParse(latStr.toString());
+    final lon = double.tryParse(lonStr.toString());
+    if (lat == null || lon == null) return;
+
+    final displayName = result['display_name'] as String? ?? '';
+    final shortName = displayName.split(',').first.trim();
+
+    setState(() {
+      _selectedLat = lat;
+      _selectedLng = lon;
+      _selectedSavedPlaceId = null;
+      _searchResults = [];
+      _searchController.text = shortName;
+      _nameController.text = shortName;
+    });
+
+    FocusScope.of(context).unfocus();
+    _mapController.move(LatLng(lat, lon), 16.0);
   }
 
   Future<void> _fetchCurrentLocation() async {
@@ -346,9 +422,134 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                   ),
                 ),
 
-                // Radius Badge Overlay
+                // Search Bar Overlay
                 Positioned(
                   top: 10,
+                  left: 12,
+                  right: 12,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.15),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                          border: Border.all(
+                            color: isDark ? Colors.white24 : Colors.grey.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(left: 12, right: 8),
+                              child: Icon(Icons.search_rounded, color: Color(0xFF6366F1), size: 22),
+                            ),
+                            Expanded(
+                              child: TextField(
+                                controller: _searchController,
+                                onChanged: _onSearchQueryChanged,
+                                onSubmitted: _searchPlaces,
+                                decoration: InputDecoration(
+                                  hintText: 'Search city, town, village, or place...',
+                                  hintStyle: GoogleFonts.outfit(
+                                    fontSize: 13,
+                                    color: isDark ? Colors.white54 : Colors.grey.shade600,
+                                  ),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                style: GoogleFonts.outfit(fontSize: 13),
+                              ),
+                            ),
+                            if (_isSearching)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 10),
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                            else if (_searchController.text.isNotEmpty)
+                              IconButton(
+                                icon: const Icon(Icons.clear_rounded, size: 18),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchResults = []);
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (_searchResults.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          constraints: const BoxConstraints(maxHeight: 220),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.2),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                            border: Border.all(
+                              color: isDark ? Colors.white24 : Colors.grey.shade300,
+                            ),
+                          ),
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            itemCount: _searchResults.length,
+                            separatorBuilder: (_, __) => Divider(
+                              height: 1,
+                              color: isDark ? Colors.white12 : Colors.grey.shade200,
+                            ),
+                            itemBuilder: (context, idx) {
+                              final item = _searchResults[idx];
+                              final displayName = item['display_name'] as String? ?? '';
+                              final parts = displayName.split(',');
+                              final mainTitle = parts.first.trim();
+                              final subtitle = parts.length > 1 ? parts.sublist(1).join(',').trim() : '';
+
+                              return ListTile(
+                                dense: true,
+                                leading: const Icon(Icons.location_on_outlined, size: 20, color: Color(0xFF6366F1)),
+                                title: Text(
+                                  mainTitle,
+                                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                subtitle: subtitle.isNotEmpty
+                                    ? Text(
+                                        subtitle,
+                                        style: GoogleFonts.outfit(fontSize: 11, color: isDark ? Colors.white60 : Colors.grey.shade600),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      )
+                                    : null,
+                                onTap: () => _selectSearchResult(item),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                // Radius Badge Overlay (cleanly floating at bottom right)
+                Positioned(
+                  bottom: 14,
                   right: 12,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

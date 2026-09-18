@@ -34,6 +34,7 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
         if (appWidgetIds != null && appWidgetIds.isNotEmpty()) {
             onUpdate(context, appWidgetManager, appWidgetIds)
         }
+        scheduleMidnightUpdate(context)
     }
 
     override fun onUpdate(
@@ -50,9 +51,13 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
                 setTextViewText(R.id.widget_shift_calendar_month, monthTitle)
 
                 // Always generate and display the calendar bitmap
+                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                val imageDate = widgetData?.getString("shift_calendar_image_date", null)
+
                 var bitmap: Bitmap? = null
                 val imagePath = widgetData?.getString("shift_calendar_image_path", null)
-                if (!imagePath.isNullOrEmpty()) {
+                // ONLY use cached image if it was rendered TODAY! If it's a new day, discard and draw dynamically
+                if (imageDate == todayStr && !imagePath.isNullOrEmpty()) {
                     val imgFile = File(imagePath)
                     if (imgFile.exists()) {
                         try {
@@ -66,7 +71,7 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
                     }
                 }
 
-                // If image is missing or cannot be decoded, immediately draw native canvas bitmap
+                // If image is missing or stale (different day), immediately draw native canvas bitmap with today highlighted
                 if (bitmap == null) {
                     try {
                         bitmap = drawCalendarBitmap(context, widgetData)
@@ -95,6 +100,47 @@ class ShiftCalendarWidgetProvider : AppWidgetProvider() {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        }
+        scheduleMidnightUpdate(context)
+    }
+
+    private fun scheduleMidnightUpdate(context: Context) {
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager ?: return
+            val intent = Intent(context, ShiftCalendarWidgetProvider::class.java).apply {
+                action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+            }
+            val pendingIntent = android.app.PendingIntent.getBroadcast(
+                context,
+                1001,
+                intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+
+            // Compute next midnight (00:00:02 of tomorrow)
+            val cal = Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_YEAR, 1)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 2)
+                set(Calendar.MILLISECOND, 0)
+            }
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    android.app.AlarmManager.RTC_WAKEUP,
+                    cal.timeInMillis,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setExact(
+                    android.app.AlarmManager.RTC_WAKEUP,
+                    cal.timeInMillis,
+                    pendingIntent
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

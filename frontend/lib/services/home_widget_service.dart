@@ -487,6 +487,8 @@ class HomeWidgetService {
       final imagePath = await _renderShiftCalendarToPng(shifts: shifts, monthDate: monthDate);
       if (imagePath != null) {
         await HomeWidget.saveWidgetData<String>('shift_calendar_image_path', imagePath);
+        final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        await HomeWidget.saveWidgetData<String>('shift_calendar_image_date', todayStr);
       }
 
       await HomeWidget.updateWidget(

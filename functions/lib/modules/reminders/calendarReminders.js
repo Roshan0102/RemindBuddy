@@ -99,6 +99,8 @@ exports.processCalendarReminderTask = functions.tasks
                         reminderId: reminderId,
                         isAlarmMode: isAlarmMode ? "true" : "false",
                         alarmSound: alarmSound,
+                        customAudioPath: (rData === null || rData === void 0 ? void 0 : rData.customAudioPath) || "",
+                        customAudioName: (rData === null || rData === void 0 ? void 0 : rData.customAudioName) || "",
                         snoozeEnabled: snoozeEnabled ? "true" : "false",
                         snoozeIntervalMinutes: String((rData === null || rData === void 0 ? void 0 : rData.snoozeIntervalMinutes) || 15),
                         maxSnoozeCount: String((rData === null || rData === void 0 ? void 0 : rData.maxSnoozeCount) || 3),

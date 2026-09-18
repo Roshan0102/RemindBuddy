@@ -2,7 +2,7 @@ import * as functions from "firebase-functions";
 import { admin, db } from "../../config/firebase";
 import { callGeminiAPI } from "../../utils/geminiHelper";
 
-export const parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 300, memory: "1GB" }).https.onCall(async (data, context) => {
+export const parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 540, memory: "1GB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
     }

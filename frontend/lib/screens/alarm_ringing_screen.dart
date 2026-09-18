@@ -43,6 +43,17 @@ class _AlarmRingingScreenState extends State<AlarmRingingScreen>
         });
       }
     });
+
+    // Ensure continuous alarm audio is actively playing the reminder's configured sound
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!AlarmAudioService().isPlaying || AlarmAudioService().currentRingingReminderId != widget.reminder.id) {
+        AlarmAudioService().startAlarm(
+          sound: widget.reminder.alarmSound,
+          customPath: widget.reminder.customAudioPath,
+          reminderId: widget.reminder.id,
+        );
+      }
+    });
   }
 
   @override

@@ -67,10 +67,24 @@ class LocationReminderService {
         return;
       }
 
-      const locationSettings = LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 15, // trigger update when moved ~15m
-      );
+      late final LocationSettings locationSettings;
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        locationSettings = AndroidSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 15, // trigger update when moved ~15m
+          intervalDuration: const Duration(seconds: 10),
+          foregroundNotificationConfig: const ForegroundNotificationConfig(
+            notificationTitle: "RemindBuddy Location Monitor",
+            notificationText: "Tracking active location reminders in background",
+            enableWakeLock: true,
+          ),
+        );
+      } else {
+        locationSettings = const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 15,
+        );
+      }
 
       _positionSubscription = Geolocator.getPositionStream(
         locationSettings: locationSettings,
@@ -83,7 +97,7 @@ class LocationReminderService {
           debugPrint('[LocationReminderService] Position stream error: $err');
         },
       );
-      debugPrint('[LocationReminderService] Location monitoring started');
+      debugPrint('[LocationReminderService] Location monitoring started (Foreground: ${!kIsWeb && defaultTargetPlatform == TargetPlatform.android})');
     } catch (e) {
       debugPrint('[LocationReminderService] Could not start monitoring: $e');
     }

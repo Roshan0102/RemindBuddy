@@ -685,6 +685,10 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             if (isDomainValid) {
                 const emailSubject = `${primaryRole} for ${lead.companyName} (${applicantName})`;
                 try {
+                    if (emailsSentCount > 0) {
+                        console.log(`[StartupRadar] Pacing email sending: waiting 30 seconds before sending cold pitch ${emailsSentCount + 1} to avoid spam triggers...`);
+                        await new Promise((res) => setTimeout(res, 30000));
+                    }
                     console.log(`[StartupRadar] Dispatching cold pitch email to ${cleanEmail} (${lead.companyName})...`);
                     const info = await transporter.sendMail({
                         from: `"${applicantName}" <${userEmail}>`,
@@ -848,7 +852,7 @@ async function internalNetworkingDiscoveryDispatcher() {
 /**
  * On-Demand HTTPS Callable for Flutter App
  */
-exports.triggerNetworkingDiscovery = functions.runWith({ timeoutSeconds: 300, memory: "1GB" }).https.onCall(async (data, context) => {
+exports.triggerNetworkingDiscovery = functions.runWith({ timeoutSeconds: 540, memory: "1GB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "User must be authenticated.");
     }

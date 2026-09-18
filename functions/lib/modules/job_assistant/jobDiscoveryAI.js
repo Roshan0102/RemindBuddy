@@ -564,7 +564,12 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         }
     });
     const successfullyAppliedJobs = [];
-    for (const job of validFilteredJobs) {
+    for (let i = 0; i < validFilteredJobs.length; i++) {
+        const job = validFilteredJobs[i];
+        if (i > 0) {
+            console.log(`[JobDiscovery] Pacing email sending: waiting 30 seconds before sending application ${i + 1}/${validFilteredJobs.length} to avoid spam triggers...`);
+            await new Promise((res) => setTimeout(res, 30000));
+        }
         try {
             // Determine best matching resume profile for this specific job role & skills
             const matchedProfile = getBestMatchingResumeProfile(job.jobTitle, job.keySkills, resumeProfiles);
@@ -721,7 +726,7 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
  * Cloud Tasks queue handler for isolated sequential Auto-Apply processing per user.
  * maxConcurrentDispatches: 1 guarantees strictly 1 user at a time.
  */
-exports.processAutoApplyUserTask = functions.runWith({ timeoutSeconds: 300, memory: "1GB" }).tasks
+exports.processAutoApplyUserTask = functions.runWith({ timeoutSeconds: 540, memory: "1GB" }).tasks
     .taskQueue({
     retryConfig: { maxAttempts: 2 },
     rateLimits: { maxConcurrentDispatches: 1 },
@@ -818,7 +823,7 @@ async function internalAutoJobDiscoveryAndApply() {
 /**
  * On-Demand HTTPS Callable Function triggered from Flutter App
  */
-exports.triggerAutoJobDiscoveryAndApply = functions.runWith({ timeoutSeconds: 300, memory: "1GB" }).https.onCall(async (data, context) => {
+exports.triggerAutoJobDiscoveryAndApply = functions.runWith({ timeoutSeconds: 540, memory: "1GB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
     }
