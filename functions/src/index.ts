@@ -92,7 +92,8 @@ export {
 } from "./modules/job_assistant/replyTracker";
 
 export {
-    triggerNetworkingDiscovery
+    triggerNetworkingDiscovery,
+    processNetworkingDiscoveryUserTask
 } from "./modules/job_assistant/networkingDiscoveryAI";
 
 // Finance & Expense Tracking

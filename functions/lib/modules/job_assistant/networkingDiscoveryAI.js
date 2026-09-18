@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.triggerNetworkingDiscovery = void 0;
+exports.triggerNetworkingDiscovery = exports.processNetworkingDiscoveryUserTask = void 0;
 exports.sanitizeConnectionNote = sanitizeConnectionNote;
 exports.resolveUserResumeGroundTruth = resolveUserResumeGroundTruth;
 exports.discoverNetworkingLeadsForUser = discoverNetworkingLeadsForUser;
@@ -9,11 +9,13 @@ const functions = require("firebase-functions");
 const nodemailer = require("nodemailer");
 const dns = require("dns");
 const crypto = require("crypto");
+const moment = require("moment-timezone");
 const firebase_1 = require("../../config/firebase");
 const logger_1 = require("../../utils/logger");
 const featureLogger_1 = require("../../utils/featureLogger");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
+const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
 const IT_SERVICES_MNC_BLACKLIST = [
     "cognizant", "cognizant technology solutions", "cts",
     "tcs", "tata consultancy", "tata consultancy services",
@@ -212,6 +214,24 @@ async function discoverNetworkingLeadsForUser(uid, options) {
     if (!enabledModules.includes("job_assistant")) {
         console.log(`[StartupRadar] Skipping user ${uid}: job_assistant module is disabled in enabledModules.`);
         return { success: false, count: 0, leads: [], message: "AI Job Assistant module is disabled for this account." };
+    }
+    // Guard: Prevent running more than once per day for automated runs
+    const todayStr = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
+    if (!(options === null || options === void 0 ? void 0 : options.isManualTrigger)) {
+        if (userData.networkingLastRanDate === todayStr) {
+            console.log(`[StartupRadar] Skipping user ${uid}: cold outreach has already run today (${todayStr}).`);
+            return {
+                success: true,
+                count: 0,
+                leads: [],
+                message: `Cold outreach has already completed for today (${todayStr}).`
+            };
+        }
+        // Atomically / immediately claim today's run so concurrent or retry attempts cannot proceed
+        await firebase_1.db.collection("users").doc(uid).set({
+            networkingLastRanDate: todayStr,
+            networkingLastRan: firebase_1.admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
     }
     // Dynamically resolve candidate name without any hardcoded fallback
     let applicantName = ((options === null || options === void 0 ? void 0 : options.applicantName) || userData.applicantName || userData.displayName || "").trim();
@@ -810,11 +830,40 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
     };
 }
 /**
- * Scheduled dispatcher called daily from masterHalfHourlyRunner at 11:30 AM IST
+ * Cloud Tasks queue handler for isolated sequential Cold Outreach processing per user.
+ * maxConcurrentDispatches: 1 guarantees strictly 1 user at a time.
+ * maxAttempts: 1 guarantees strictly NO automatic retries if third-party APIs fail.
+ */
+exports.processNetworkingDiscoveryUserTask = functions.runWith({ timeoutSeconds: 540, memory: "1GB" }).tasks
+    .taskQueue({
+    retryConfig: { maxAttempts: 1 },
+    rateLimits: { maxConcurrentDispatches: 1 },
+})
+    .onDispatch(async (rawPayload) => {
+    const payload = (rawPayload && typeof rawPayload === 'object' && rawPayload.data) ? rawPayload.data : rawPayload;
+    const uid = payload === null || payload === void 0 ? void 0 : payload.uid;
+    if (!uid) {
+        console.error("[processNetworkingDiscoveryUserTask] Missing uid in payload:", rawPayload);
+        return;
+    }
+    console.log(`[processNetworkingDiscoveryUserTask] Processing automated cold outreach for user ${uid}`);
+    try {
+        const result = await discoverNetworkingLeadsForUser(uid, { isManualTrigger: false });
+        console.log(`[processNetworkingDiscoveryUserTask] Finished cold outreach for user ${uid}:`, result.message);
+    }
+    catch (err) {
+        console.error(`[processNetworkingDiscoveryUserTask] Error for user ${uid}:`, err.message || err);
+        throw err;
+    }
+});
+/**
+ * Scheduled dispatcher called daily from masterHalfHourlyRunner at 11:30 AM IST.
+ * Dispatches isolated background Cloud Tasks per eligible user and terminates immediately.
  */
 async function internalNetworkingDiscoveryDispatcher() {
     var _a;
-    console.log("[internalNetworkingDiscoveryDispatcher] Starting daily Startup Radar scan...");
+    console.log("[internalNetworkingDiscoveryDispatcher] Starting daily Startup Radar scan at 11:30 AM IST...");
+    const todayStr = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
     try {
         const usersSnap = await firebase_1.db.collection("users").get();
         const eligibleUids = [];
@@ -823,7 +872,11 @@ async function internalNetworkingDiscoveryDispatcher() {
             const uid = doc.id;
             const enabledModules = data.enabledModules || [];
             if (!enabledModules.includes("job_assistant")) {
-                console.log(`[internalNetworkingDiscoveryDispatcher] Skipping user ${uid}: job_assistant module is disabled in enabledModules.`);
+                continue;
+            }
+            // Guard: Skip if user already executed cold outreach today
+            if (data.networkingLastRanDate === todayStr) {
+                console.log(`[internalNetworkingDiscoveryDispatcher] Skipping user ${uid}: already ran today (${todayStr}).`);
                 continue;
             }
             const userApiKeys = data.userApiKeys || {};
@@ -835,14 +888,24 @@ async function internalNetworkingDiscoveryDispatcher() {
             eligibleUids.push(uid);
         }
         console.log(`[internalNetworkingDiscoveryDispatcher] Eligible users for Startup Radar: ${eligibleUids.length}`);
-        for (const uid of eligibleUids) {
-            try {
-                await discoverNetworkingLeadsForUser(uid, { isManualTrigger: false });
+        if (eligibleUids.length === 0)
+            return;
+        const nowUnix = moment().tz('Asia/Kolkata').unix();
+        for (let i = 0; i < eligibleUids.length; i++) {
+            const uid = eligibleUids[i];
+            const etaUnix = nowUnix + (i * 30); // Stagger by 30s
+            const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processNetworkingDiscoveryUserTask", "processNetworkingDiscoveryUserTask", { uid }, etaUnix);
+            // Fallback if Cloud Tasks queue fails: process directly
+            if (!taskId) {
+                console.warn(`[internalNetworkingDiscoveryDispatcher] Cloud Tasks queue unavailable for ${uid}. Running directly with lock...`);
+                try {
+                    await discoverNetworkingLeadsForUser(uid, { isManualTrigger: false });
+                }
+                catch (err) {
+                    console.error(`[internalNetworkingDiscoveryDispatcher] Error for user ${uid}:`, err.message || err);
+                }
+                await new Promise(res => setTimeout(res, 5000));
             }
-            catch (err) {
-                console.error(`[internalNetworkingDiscoveryDispatcher] Error for user ${uid}:`, err.message || err);
-            }
-            await new Promise(res => setTimeout(res, 3000));
         }
     }
     catch (e) {
