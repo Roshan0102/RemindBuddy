@@ -874,10 +874,13 @@ class NotificationService {
     );
   }
 
+  /// Default Firebase Web Push public VAPID key
+  static const String defaultVapidKey = 'BJDetFCcPmoK5omeO9JZMEw-9qR7KgqOgiISB-u3rKdKnJIJrrUgI1js1P5wqEmgiHoDmLEDPs0mfRbalCjr_Q8';
+
   static String? _cachedVapidKey;
 
   /// Fetches the public Web Push VAPID key dynamically from Firestore (system_config/web_push)
-  /// or local SharedPreferences cache.
+  /// or local SharedPreferences cache, falling back to the configured defaultVapidKey.
   static Future<String?> getWebPushVapidKey() async {
     if (!kIsWeb) return null;
     if (_cachedVapidKey != null && _cachedVapidKey!.isNotEmpty) {
@@ -908,7 +911,8 @@ class NotificationService {
     } catch (e) {
       LogService.staticLog("Error fetching VAPID key from Firestore: $e");
     }
-    return null;
+    _cachedVapidKey = defaultVapidKey;
+    return _cachedVapidKey;
   }
 
   /// Sets or overrides the VAPID key locally and in Firestore
