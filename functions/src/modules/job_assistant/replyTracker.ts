@@ -438,6 +438,16 @@ export async function checkUserJobReplies(uid: string): Promise<{ checked: numbe
                                     title: `⚠️ Email Delivery Failed: ${matchedApp.companyName}`,
                                     body: `Address not found for ${matchedApp.companyName}. You can connect on LinkedIn instead.`
                                 },
+                                webpush: {
+                                    notification: {
+                                        title: `⚠️ Email Delivery Failed: ${matchedApp.companyName}`,
+                                        body: `Address not found for ${matchedApp.companyName}. You can connect on LinkedIn instead.`,
+                                        icon: '/icons/Icon-192.png',
+                                        badge: '/icons/Icon-192.png',
+                                        tag: `job_bounce_${matchedApp.id}`
+                                    },
+                                    fcmOptions: { link: '/' }
+                                },
                                 android: {
                                     notification: {
                                         channelId: "job_assistant_channel",
@@ -582,6 +592,16 @@ Return ONLY valid JSON in this exact structure:
                             notification: {
                                 title: notifTitle,
                                 body: notifBody
+                            },
+                            webpush: {
+                                notification: {
+                                    title: notifTitle,
+                                    body: notifBody,
+                                    icon: '/icons/Icon-192.png',
+                                    badge: '/icons/Icon-192.png',
+                                    tag: `job_reply_${matchedApp.id}`
+                                },
+                                fcmOptions: { link: '/' }
                             },
                             android: {
                                 notification: {

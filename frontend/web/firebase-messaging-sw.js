@@ -17,13 +17,39 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  console.log('Received background message ', payload);
-  // Customize notification here
-  const notificationTitle = payload.notification.title || "RemindBuddy Alert";
+  console.log('[RemindBuddy] Received background push message:', payload);
+  const title = (payload.notification && payload.notification.title) || 
+                (payload.data && payload.data.title) || 
+                "RemindBuddy Alert";
+  const body = (payload.notification && payload.notification.body) || 
+               (payload.data && payload.data.body) || 
+               "You have a new update in RemindBuddy.";
+  const tag = (payload.data && payload.data.tag) || `remindbuddy_${Date.now()}`;
+
   const notificationOptions = {
-    body: payload.notification.body || "",
-    icon: '/icons/Icon-192.png'
+    body: body,
+    icon: '/icons/Icon-192.png',
+    badge: '/icons/Icon-192.png',
+    tag: tag,
+    data: payload.data || {}
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  self.registration.showNotification(title, notificationOptions);
+});
+
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      for (let i = 0; i < clientList.length; i++) {
+        let client = clientList[i];
+        if (client.url && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow('/');
+      }
+    })
+  );
 });

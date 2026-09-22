@@ -10,6 +10,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_widget_service.dart';
 import 'web_desktop_notifications/web_desktop_notifications.dart';
 import 'alarm_audio_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -557,26 +558,28 @@ class NotificationService {
     }
 
     // 4. Get Messaging Token and update Firestore
-    // Note: VAPID key is strictly required on Web for push notifications to work.
-    // Replace the placeholder below with your actual Web Push certificate key pair from Firebase Console -> Project Settings -> Cloud Messaging -> Web configuration.
-    const String? vapidKey = kIsWeb ? 'YOUR_PUBLIC_VAPID_KEY_HERE' : null;
-    messaging.getToken(vapidKey: vapidKey).then((token) async {
-      LogService.staticLog("FCM Token: $token");
-      if (token != null) {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          final query = await FirebaseFirestore.instance
-              .collection('usernames')
-              .where('uid', isEqualTo: user.uid)
-              .limit(1)
-              .get();
-          if (query.docs.isNotEmpty) {
-            await query.docs.first.reference.update({'fcmToken': token});
-            LogService.staticLog("FCM Token updated in Firestore for ${user.uid}");
+    if (kIsWeb) {
+      getWebPushVapidKey().then((vapidKey) async {
+        if (vapidKey != null && vapidKey.isNotEmpty) {
+          try {
+            final token = await messaging.getToken(vapidKey: vapidKey);
+            if (token != null) {
+              await saveTokenToFirestore(token);
+              LogService.staticLog("Web FCM Token refreshed: ${token.substring(0, 10)}...");
+            }
+          } catch (e) {
+            LogService.staticLog("Web FCM Token startup check note: $e");
           }
         }
-      }
-    });
+      });
+    } else {
+      messaging.getToken().then((token) async {
+        LogService.staticLog("FCM Token: $token");
+        if (token != null) {
+          await saveTokenToFirestore(token);
+        }
+      });
+    }
 
     // 5. Handle background notifications (When user taps notification while app is in background)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
@@ -869,5 +872,191 @@ class NotificationService {
       ),
       payload: payload,
     );
+  }
+
+  static String? _cachedVapidKey;
+
+  /// Fetches the public Web Push VAPID key dynamically from Firestore (system_config/web_push)
+  /// or local SharedPreferences cache.
+  static Future<String?> getWebPushVapidKey() async {
+    if (!kIsWeb) return null;
+    if (_cachedVapidKey != null && _cachedVapidKey!.isNotEmpty) {
+      return _cachedVapidKey;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final localKey = prefs.getString('web_push_vapid_key');
+      if (localKey != null && localKey.trim().isNotEmpty) {
+        _cachedVapidKey = localKey.trim();
+        return _cachedVapidKey;
+      }
+    } catch (_) {}
+
+    try {
+      final doc = await FirebaseFirestore.instance.collection('system_config').doc('web_push').get();
+      if (doc.exists && doc.data() != null) {
+        final remoteKey = doc.data()!['vapidKey']?.toString().trim();
+        if (remoteKey != null && remoteKey.isNotEmpty) {
+          _cachedVapidKey = remoteKey;
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('web_push_vapid_key', remoteKey);
+          } catch (_) {}
+          return _cachedVapidKey;
+        }
+      }
+    } catch (e) {
+      LogService.staticLog("Error fetching VAPID key from Firestore: $e");
+    }
+    return null;
+  }
+
+  /// Sets or overrides the VAPID key locally and in Firestore
+  static Future<void> setWebPushVapidKey(String key) async {
+    final cleanKey = key.trim();
+    if (cleanKey.isEmpty) return;
+    _cachedVapidKey = cleanKey;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('web_push_vapid_key', cleanKey);
+    } catch (_) {}
+    try {
+      await FirebaseFirestore.instance.collection('system_config').doc('web_push').set({
+        'vapidKey': cleanKey,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
+  /// Saves the FCM token to both `users/{uid}` and `usernames/{username}` in Firestore
+  Future<void> saveTokenToFirestore(String token) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      // 1. Update user document
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'fcmToken': token,
+        'webFcmToken': token,
+        'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
+        'webPushEnabled': true,
+      }, SetOptions(merge: true));
+
+      // 2. Also update username record for backwards compatibility
+      final query = await FirebaseFirestore.instance
+          .collection('usernames')
+          .where('uid', isEqualTo: user.uid)
+          .limit(1)
+          .get();
+      if (query.docs.isNotEmpty) {
+        await query.docs.first.reference.update({'fcmToken': token});
+      }
+      LogService.staticLog("FCM Token saved in Firestore for ${user.uid}: ${token.substring(0, token.length > 10 ? 10 : token.length)}...");
+    } catch (e) {
+      LogService.staticLog("Error saving FCM token to Firestore: $e");
+    }
+  }
+
+  /// Checks if web push is currently enabled for the user
+  Future<bool> isWebPushActive() async {
+    if (!kIsWeb) return false;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return false;
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (doc.exists && doc.data() != null) {
+        return doc.data()!['webPushEnabled'] == true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /// Explicitly requests Web Push permission with a user gesture, fetches the VAPID key,
+  /// retrieves the FCM token, and saves it to Firestore.
+  Future<Map<String, dynamic>> requestWebPushPermission({String? customVapidKey}) async {
+    if (!kIsWeb) {
+      return {'success': false, 'message': 'Web Push is only applicable on web browsers.'};
+    }
+
+    try {
+      if (customVapidKey != null && customVapidKey.trim().isNotEmpty) {
+        await setWebPushVapidKey(customVapidKey);
+      }
+
+      // 1. Check & fetch VAPID key
+      final vapidKey = await getWebPushVapidKey();
+      if (vapidKey == null || vapidKey.isEmpty) {
+        return {
+          'success': false,
+          'needsVapidKey': true,
+          'message': 'Web Push VAPID key is not configured yet in Firestore (system_config/web_push).'
+        };
+      }
+
+      // 2. Prompt for browser permission (User gesture)
+      final NotificationSettings settings = await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        announcement: false,
+        badge: true,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
+        sound: true,
+      );
+
+      if (settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional) {
+        // 3. Retrieve token using the fetched VAPID key
+        final token = await FirebaseMessaging.instance.getToken(vapidKey: vapidKey);
+        if (token != null && token.isNotEmpty) {
+          await saveTokenToFirestore(token);
+          return {
+            'success': true,
+            'token': token,
+            'message': 'Web Push notifications successfully enabled on this device!'
+          };
+        } else {
+          return {
+            'success': false,
+            'message': 'Failed to retrieve FCM Web Push token. Please verify your VAPID key in Firebase Console.'
+          };
+        }
+      } else if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        return {
+          'success': false,
+          'denied': true,
+          'message': 'Notification permission was denied in your browser settings. Please allow notifications in site settings.'
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Notification permission was not granted.'
+        };
+      }
+    } catch (e) {
+      LogService.staticLog("Exception in requestWebPushPermission: $e");
+      return {'success': false, 'error': e.toString(), 'message': 'Error: $e'};
+    }
+  }
+
+  /// Disables Web Push notifications for the current session/device
+  Future<void> disableWebPush() async {
+    if (!kIsWeb) return;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'webPushEnabled': false,
+          'notificationPreferences': {
+            'desktop_notifications': false,
+          }
+        }, SetOptions(merge: true));
+      }
+      try {
+        await FirebaseMessaging.instance.deleteToken();
+      } catch (_) {}
+      LogService.staticLog("Web Push disabled for current device");
+    } catch (e) {
+      LogService.staticLog("Error disabling Web Push: $e");
+    }
   }
 }

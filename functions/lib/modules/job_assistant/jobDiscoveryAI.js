@@ -251,7 +251,7 @@ async function discoverAndApplyForUser(uid, options) {
     }
     const minExp = (options === null || options === void 0 ? void 0 : options.minExpYears) !== undefined ? Number(options.minExpYears) : Number((_d = autoApplySettings.minExpYears) !== null && _d !== void 0 ? _d : 0);
     const maxExp = (options === null || options === void 0 ? void 0 : options.maxExpYears) !== undefined ? Number(options.maxExpYears) : Number((_e = autoApplySettings.maxExpYears) !== null && _e !== void 0 ? _e : 3);
-    const maxApplyLimit = (options === null || options === void 0 ? void 0 : options.maxApplications) || autoApplySettings.maxPerRun || 6;
+    const maxApplyLimit = Math.min(Math.max(1, (options === null || options === void 0 ? void 0 : options.maxApplications) || autoApplySettings.maxPerRun || 6), 10);
     // Fetch previously applied emails/companies to avoid duplicate applications
     const existingAppsSnap = await firebase_1.db.collection("users").doc(uid).collection("job_applications").get();
     const appliedEmails = new Set();
@@ -289,7 +289,6 @@ async function discoverAndApplyForUser(uid, options) {
     const formattedRolesList = targetRoles.map((role, idx) => `   ${idx + 1}. "${role}"`).join("\n");
     const locQuery = targetLocations.map(l => `"${l}"`).join(" OR ");
     const todayStr = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
-    const currentYear = moment().tz("Asia/Kolkata").format("YYYY");
     const isFresherCandidate = (minExp === 0 && maxExp === 0);
     const expTargetStr = isFresherCandidate
         ? "Seeking FRESHER / ENTRY-LEVEL / 0 YEARS EXPERIENCE roles ONLY."
@@ -297,6 +296,27 @@ async function discoverAndApplyForUser(uid, options) {
     const expMandateStr = isFresherCandidate
         ? "3. EXPERIENCE REQUIREMENT (FRESHERS / 0 YEARS ONLY): ONLY include openings explicitly accepting Freshers, Entry-Level candidates, Trainees, or 0 Years Experience. STRICTLY EXCLUDE any roles requiring > 0 years prior work experience."
         : `3. EXPERIENCE REQUIREMENT (${minExp} TO ${maxExp} YEARS ONLY): ONLY include roles requiring between ${minExp} and ${maxExp} years experience (or Freshers/Entry-level if min is 0). EXCLUDE any roles requiring > ${maxExp} years experience (e.g. Senior, Lead, Staff, Principal).`;
+    // Aggregator portals to exclude so that search results prioritize direct recruiter posts,
+    // social hiring calls, and direct employer outreach instead of portal listings that hide emails.
+    // NOTE: linkedin.com is intentionally KEPT included so LinkedIn recruiter posts and shares can be discovered.
+    const AGGREGATOR_DOMAINS_TO_EXCLUDE = [
+        "naukri.com",
+        "indeed.com",
+        "glassdoor.com",
+        "glassdoor.co.in",
+        "shine.com",
+        "expertini.com",
+        "internshala.com",
+        "foundit.in",
+        "ownyourcareer.in",
+        "quikr.com",
+        "freshersworld.com",
+        "unstop.com",
+        "timesjobs.com",
+        "apna.co",
+        "ambitionbox.com",
+        "jobleads.com"
+    ];
     // 1. Perform intelligent multi-query web search via Tavily for each target role
     const allTavilyResults = [];
     const seenUrls = new Set();
@@ -306,15 +326,18 @@ async function discoverAndApplyForUser(uid, options) {
             const expQuery = isFresherCandidate
                 ? '("fresher" OR "entry level" OR "trainee" OR "0 years")'
                 : (minExp === 0
-                    ? `("0-${maxExp} years" OR "fresher" OR "junior")`
+                    ? `("0-${maxExp} years" OR "fresher" OR "junior" OR "entry level")`
                     : `("${minExp}-${maxExp} years")`);
-            const query = `"${role}" ${expQuery} ("send resume to" OR "share your resume at" OR "email CV to" OR "send CV to" OR "mail your resume") "@" (${locQuery}) ${currentYear} -site:facebook.com/groups`;
+            const recruiterPhrases = '("hiring" OR "we are hiring") ("send resume" OR "share resume" OR "email resume" OR "drop your resume" OR "mail your resume" OR "email CV" OR "send CV" OR "email us at")';
+            const query = `"${role}" ${expQuery} ${recruiterPhrases} "@" (${locQuery}) -site:facebook.com/groups`;
             console.log(`[JobDiscovery] Querying Tavily for user ${uid} (Role: "${role}")...`);
             const tavilyResp = await (0, tavilyHelper_1.searchTavily)({
                 apiKey: userTavilyKey,
                 query,
                 searchDepth: "advanced",
-                maxResults: 5
+                maxResults: 6,
+                days: 30,
+                excludeDomains: AGGREGATOR_DOMAINS_TO_EXCLUDE
             });
             for (const item of tavilyResp.results) {
                 if (item.url && !seenUrls.has(item.url)) {
@@ -504,6 +527,13 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             console.log(`[JobDiscovery] ⚠️ Skipping '${email}' for '${job.companyName}': Email is globally blacklisted due to previous delivery bounce/failure.`);
             continue;
         }
+        // Strict guard against dummy/placeholder domains
+        const emailDomain = (emailLower.split('@')[1] || '').trim();
+        const placeholderDomains = ['example.com', 'domain.com', 'company.com', 'yoursite.com', 'email.com', 'test.com'];
+        if (placeholderDomains.includes(emailDomain)) {
+            console.log(`[JobDiscovery] ⚠️ Rejecting '${email}' for '${job.companyName}': Email uses a dummy/placeholder domain.`);
+            continue;
+        }
         // Verbatim Snippet Verification (Zero Hallucination Guard)
         // Ensure recipientEmail was literally present in the search results returned by Tavily
         const isVerbatimInSnippet = allTavilyResults.some(r => {
@@ -567,8 +597,9 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
     for (let i = 0; i < validFilteredJobs.length; i++) {
         const job = validFilteredJobs[i];
         if (i > 0) {
-            console.log(`[JobDiscovery] Pacing email sending: waiting 30 seconds before sending application ${i + 1}/${validFilteredJobs.length} to avoid spam triggers...`);
-            await new Promise((res) => setTimeout(res, 30000));
+            const delayMs = 30000 + Math.floor(Math.random() * 15000);
+            console.log(`[JobDiscovery] Pacing email sending: waiting ${Math.round(delayMs / 1000)} seconds before sending application ${i + 1}/${validFilteredJobs.length} to avoid spam triggers...`);
+            await new Promise((res) => setTimeout(res, delayMs));
         }
         try {
             // Determine best matching resume profile for this specific job role & skills
@@ -642,6 +673,18 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
                         notification: {
                             title: notifTitle,
                             body: notifBody
+                        },
+                        webpush: {
+                            notification: {
+                                title: notifTitle,
+                                body: notifBody,
+                                icon: '/icons/Icon-192.png',
+                                badge: '/icons/Icon-192.png',
+                                tag: `job_assistant_${Date.now()}`
+                            },
+                            fcmOptions: {
+                                link: '/'
+                            }
                         },
                         android: {
                             notification: {

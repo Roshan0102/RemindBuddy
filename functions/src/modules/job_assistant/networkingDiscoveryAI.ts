@@ -821,8 +821,9 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
                 const emailSubject = `${primaryRole} for ${lead.companyName} (${applicantName})`;
                 try {
                     if (emailsSentCount > 0) {
-                        console.log(`[StartupRadar] Pacing email sending: waiting 30 seconds before sending cold pitch ${emailsSentCount + 1} to avoid spam triggers...`);
-                        await new Promise((res) => setTimeout(res, 30000));
+                        const delayMs = 30000 + Math.floor(Math.random() * 15000);
+                        console.log(`[StartupRadar] Pacing email sending: waiting ${Math.round(delayMs / 1000)} seconds before sending cold pitch ${emailsSentCount + 1} to avoid spam triggers...`);
+                        await new Promise((res) => setTimeout(res, delayMs));
                     }
                     console.log(`[StartupRadar] Dispatching cold pitch email to ${cleanEmail} (${lead.companyName})...`);
                     const info = await transporter.sendMail({

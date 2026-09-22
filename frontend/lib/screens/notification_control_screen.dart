@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/log_service.dart';
-import '../services/web_desktop_notifications/web_desktop_notifications.dart';
+import '../services/notification_service.dart';
 
 class NotificationControlScreen extends StatefulWidget {
   const NotificationControlScreen({super.key});
@@ -106,6 +106,86 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
     }
   }
 
+  Future<void> _showVapidKeySetupDialog() async {
+    final controller = TextEditingController();
+    final messenger = ScaffoldMessenger.of(context);
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.vpn_key_rounded, color: Color(0xFF6366F1)),
+            SizedBox(width: 8),
+            Text('Web Push VAPID Key', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter your Firebase Web Push public certificate (VAPID key) to activate push notifications on Web, iPhone PWA & Android:',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: 'Paste Public VAPID Key (starts with B...)',
+                hintStyle: const TextStyle(fontSize: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Found in Firebase Console > Project Settings > Cloud Messaging > Web Push certificates.',
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              final key = controller.text.trim();
+              if (key.isEmpty) return;
+              Navigator.pop(ctx);
+              final res = await NotificationService().requestWebPushPermission(customVapidKey: key);
+              if (!mounted) return;
+              if (res['success'] == true) {
+                await _saveNotificationPreference('desktop_notifications', true);
+                if (!mounted) return;
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('🚀 Web Push notifications successfully activated!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } else {
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(res['message'] ?? 'Failed to activate Web Push.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text('Save & Enable'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -132,7 +212,7 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Desktop / Web Notifications Master Switch
+                  // Web Push Notifications (Mobile PWA & Desktop) Master Switch
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -147,43 +227,93 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                     color: Theme.of(context).brightness == Brightness.dark
                         ? const Color(0xFF1E293B)
                         : const Color(0xFFEEF2FF),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
-                      child: SwitchListTile(
-                        secondary: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
+                          child: SwitchListTile(
+                            secondary: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.notifications_active_rounded, color: Color(0xFF6366F1), size: 22),
+                            ),
+                            title: const Text(
+                              'Web Push Notifications',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            ),
+                            subtitle: const Text(
+                              'Receive push alerts on your phone (iPhone PWA & Android) or PC even when RemindBuddy is closed',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            value: _notifPrefs['desktop_notifications'] ?? true,
+                            activeThumbColor: const Color(0xFF6366F1),
+                            onChanged: (val) async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              if (val && kIsWeb) {
+                                final res = await NotificationService().requestWebPushPermission();
+                                if (!mounted) return;
+                                if (res['needsVapidKey'] == true) {
+                                  await _showVapidKeySetupDialog();
+                                  return;
+                                } else if (res['denied'] == true) {
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Notifications are blocked by your browser settings. Please allow notifications in your browser address bar or site settings.'),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                  return;
+                                } else if (res['success'] == true) {
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text('🚀 Web Push notifications active on this device!'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                }
+                              } else if (!val && kIsWeb) {
+                                await NotificationService().disableWebPush();
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Web Push notifications disabled for this device.'),
+                                  ),
+                                );
+                              }
+                              await _saveNotificationPreference('desktop_notifications', val);
+                            },
                           ),
-                          child: const Icon(Icons.desktop_windows_rounded, color: Color(0xFF6366F1), size: 22),
                         ),
-                        title: const Text(
-                          'Desktop Notifications (Web)',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
-                        subtitle: const Text(
-                          'Display native OS desktop alerts when RemindBuddy is open in your browser tab',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        value: _notifPrefs['desktop_notifications'] ?? true,
-                        activeThumbColor: const Color(0xFF6366F1),
-                        onChanged: (val) async {
-                          final messenger = ScaffoldMessenger.of(context);
-                          if (val && kIsWeb) {
-                            final perm = await WebDesktopNotificationService.requestPermission();
-                            if (perm == 'denied') {
-                              messenger.showSnackBar(
-                                const SnackBar(
-                                  content: Text('Notifications are blocked by your browser settings. Please allow notifications in your browser address bar.'),
-                                  backgroundColor: Colors.orange,
+                        if (kIsWeb) ...[
+                          const Divider(height: 1),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.phone_iphone_rounded, size: 15, color: Colors.indigo.shade400),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Mobile Web Push Setup Tips:',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo.shade400),
+                                    ),
+                                  ],
                                 ),
-                              );
-                            }
-                          }
-                          await _saveNotificationPreference('desktop_notifications', val);
-                        },
-                      ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  '• iPhone: Apple requires adding RemindBuddy to your Home Screen (Safari Share ➔ Add to Home Screen) to receive push alerts.\n• Android: Native push works in Chrome, Edge, and Samsung Internet.',
+                                  style: TextStyle(fontSize: 11, color: Colors.grey, height: 1.35),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),

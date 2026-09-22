@@ -6,6 +6,12 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
+    // System configuration (e.g. public Web Push VAPID key)
+    match /system_config/{configId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
     // User-specific data
     match /users/{userId} {
       allow read, write: if request.auth != null;

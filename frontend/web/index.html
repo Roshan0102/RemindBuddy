@@ -82,13 +82,25 @@
   </div>
   <script>
     window.addEventListener('load', function(ev) {
-      // 1. Unregister all old service workers
+      // 1. Unregister obsolete service workers while preserving firebase-messaging-sw.js
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(registrations) {
           for (let registration of registrations) {
-            registration.unregister();
+            const scriptUrl = registration.active ? registration.active.scriptURL : '';
+            if (scriptUrl && !scriptUrl.includes('firebase-messaging-sw.js')) {
+              registration.unregister();
+            }
           }
         });
+
+        // Ensure firebase-messaging-sw.js is explicitly registered for Web Push
+        navigator.serviceWorker.register('/firebase-messaging-sw.js')
+          .then(function(reg) {
+            console.log('[RemindBuddy] Web Push Service Worker registered with scope:', reg.scope);
+          })
+          .catch(function(err) {
+            console.warn('[RemindBuddy] Web Push Service Worker registration note:', err);
+          });
       }
       // 2. Clear CacheStorage cache entries
       if ('caches' in window) {
