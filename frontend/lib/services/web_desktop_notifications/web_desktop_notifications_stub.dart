@@ -8,4 +8,5 @@ class WebDesktopNotifications {
     String? tag,
     String? payload,
   }) {}
+  static void initServiceWorkerListener() {}
 }

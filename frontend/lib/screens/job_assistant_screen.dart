@@ -364,61 +364,58 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     // 1. FAST LOCAL SYNC: load immediately from SharedPreferences so fields are never blank after app update
     try {
       final prefs = await SharedPreferences.getInstance();
-      final localNameCleared = prefs.getBool('job_assistant_applicant_name_explicitly_cleared') ?? false;
-      final localName = localNameCleared ? '' : (prefs.getString('job_assistant_applicant_name') ?? '');
-      final localRoles = prefs.getString('job_assistant_target_roles') ?? '';
-      final localLocs = prefs.getString('job_assistant_locations') ?? '';
-      final localEmailCleared = prefs.getBool('job_assistant_user_email_explicitly_cleared') ?? false;
-      final localEmail = localEmailCleared ? '' : (prefs.getString('job_assistant_user_email') ?? '');
-      final localPass = prefs.getString('job_assistant_user_app_password') ?? '';
-      final localResumeFileName = prefs.getString('job_assistant_resume_filename') ?? '';
-      final localHasResume = prefs.getBool('job_assistant_has_resume') ?? false;
-      final localEnabled = prefs.getBool('job_assistant_enabled') ?? true;
-      final localMinE = prefs.getInt('job_assistant_min_exp') ?? 0;
-      final localMaxE = prefs.getInt('job_assistant_max_exp') ?? 3;
-      final localIsFresher = prefs.getBool('job_assistant_is_fresher') ?? (localMinE == 0 && localMaxE == 0);
-      final localExcluded = prefs.getStringList('job_assistant_excluded_companies') ?? [];
-      final localRadarLocs = prefs.getStringList('job_assistant_radar_locations') ?? [];
-      final localRadarTechs = prefs.getStringList('job_assistant_radar_domains') ?? [];
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      String userKey(String key) => uid != null ? '${uid}_$key' : key;
+
+      final localNameCleared = prefs.getBool(userKey('job_assistant_applicant_name_explicitly_cleared')) ?? false;
+      final localName = localNameCleared ? '' : (prefs.getString(userKey('job_assistant_applicant_name')) ?? '');
+      final localRoles = prefs.getString(userKey('job_assistant_target_roles')) ?? '';
+      final localLocs = prefs.getString(userKey('job_assistant_locations')) ?? '';
+      final localEmailCleared = prefs.getBool(userKey('job_assistant_user_email_explicitly_cleared')) ?? false;
+      final localEmail = localEmailCleared ? '' : (prefs.getString(userKey('job_assistant_user_email')) ?? '');
+      final localPass = prefs.getString(userKey('job_assistant_user_app_password')) ?? '';
+      final localResumeFileName = prefs.getString(userKey('job_assistant_resume_filename')) ?? '';
+      final localHasResume = prefs.getBool(userKey('job_assistant_has_resume')) ?? false;
+      final localEnabled = prefs.getBool(userKey('job_assistant_enabled')) ?? true;
+      final localMinE = prefs.getInt(userKey('job_assistant_min_exp')) ?? 0;
+      final localMaxE = prefs.getInt(userKey('job_assistant_max_exp')) ?? 3;
+      final localIsFresher = prefs.getBool(userKey('job_assistant_is_fresher')) ?? (localMinE == 0 && localMaxE == 0);
+      final localExcluded = prefs.getStringList(userKey('job_assistant_excluded_companies')) ?? [];
+      final localRadarLocs = prefs.getStringList(userKey('job_assistant_radar_locations')) ?? [];
+      final localRadarTechs = prefs.getStringList(userKey('job_assistant_radar_domains')) ?? [];
 
       if (mounted) {
         setState(() {
           if (localNameCleared) {
             _applicantNameController.text = '';
-          } else if (localName.isNotEmpty && _applicantNameController.text.isEmpty) {
+          } else if (localName.isNotEmpty) {
             _applicantNameController.text = localName;
           }
-          if (localRoles.isNotEmpty && _targetRolesController.text.isEmpty) {
+          if (localRoles.isNotEmpty) {
             _targetRolesController.text = localRoles;
           }
-          if (localLocs.isNotEmpty && _locationsController.text.isEmpty) {
+          if (localLocs.isNotEmpty) {
             _locationsController.text = localLocs;
           }
           if (localEmailCleared) {
             _userEmail = '';
-          } else if (localEmail.isNotEmpty && _userEmail.isEmpty) {
+          } else if (localEmail.isNotEmpty) {
             _userEmail = localEmail;
           }
-          if (localPass.isNotEmpty && _userAppPassword.isEmpty) {
-            _userAppPassword = localPass;
-          }
-          if (localResumeFileName.isNotEmpty && _resumeFileName.isEmpty) {
-            _resumeFileName = localResumeFileName;
-          }
-          if (localHasResume) {
-            _hasResume = true;
-          }
+          _userAppPassword = localPass;
+          _resumeFileName = localResumeFileName;
+          _hasResume = localHasResume && localResumeFileName.isNotEmpty;
           _autoApplyEnabled = localEnabled;
           _isFresher = localIsFresher;
           _minExpController.text = localMinE.toString();
           _maxExpController.text = localMaxE.toString();
-          if (localExcluded.isNotEmpty && _excludedCompanies.isEmpty) {
+          if (localExcluded.isNotEmpty) {
             _excludedCompanies = localExcluded;
           }
-          if (localRadarLocs.isNotEmpty && _radarLocations.isEmpty) {
+          if (localRadarLocs.isNotEmpty) {
             _radarLocations = localRadarLocs;
           }
-          if (localRadarTechs.isNotEmpty && _radarTechDomains.isEmpty) {
+          if (localRadarTechs.isNotEmpty) {
             _radarTechDomains = localRadarTechs;
           }
         });
@@ -439,11 +436,17 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         _applicantNameController.text = applicantName;
         _userEmail = emailConfig['email'] ?? '';
         _userAppPassword = emailConfig['appPassword'] ?? '';
-        if ((masterResume['fileName'] ?? '').isNotEmpty) {
-          _resumeFileName = masterResume['fileName']!;
-        }
-        if ((masterResume['base64'] ?? '').isNotEmpty || _resumeProfiles.isNotEmpty || _resumeFileName.isNotEmpty) {
+        final resumeFile = masterResume['fileName'] ?? '';
+        final hasResumeContent = (masterResume['base64'] ?? '').isNotEmpty;
+        if (hasResumeContent && resumeFile.isNotEmpty) {
+          _resumeFileName = resumeFile;
           _hasResume = true;
+        } else if (_resumeProfiles.isNotEmpty) {
+          _resumeFileName = _resumeProfiles.first.fileName;
+          _hasResume = true;
+        } else {
+          _resumeFileName = '';
+          _hasResume = false;
         }
         _autoApplyEnabled = autoSettings['enabled'] ?? _autoApplyEnabled;
         if (excluded.isNotEmpty) {
@@ -960,6 +963,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     const SizedBox(height: 12),
                     TextField(
                       controller: emailController,
+                      enableSuggestions: false,
+                      autocorrect: false,
                       decoration: InputDecoration(
                         labelText: 'Your Gmail Address',
                         prefixIcon: const Icon(Icons.email_outlined),
@@ -972,6 +977,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     TextField(
                       controller: passwordController,
                       obscureText: true,
+                      enableSuggestions: false,
+                      autocorrect: false,
                       decoration: InputDecoration(
                         labelText: 'Gmail App Password (16 characters)',
                         prefixIcon: const Icon(Icons.key_outlined),
@@ -1217,6 +1224,328 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
 
+  JobApplication? _findExistingApplication(String recipientEmail, String jobTitle, [String? companyName]) {
+    final cleanEmail = recipientEmail.toLowerCase().trim();
+    final cleanRole = jobTitle.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final cleanComp = (companyName ?? '').toLowerCase().trim();
+    if (cleanEmail.isEmpty && cleanComp.isEmpty) return null;
+
+    final allApps = _service.cachedApplications;
+    for (final app in allApps) {
+      final appEmail = app.recipientEmail.toLowerCase().trim();
+      final appRole = app.jobTitle.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+      final appComp = app.companyName.toLowerCase().trim();
+
+      // Check if email and role match
+      if (cleanEmail.isNotEmpty && appEmail.isNotEmpty && cleanEmail == appEmail && cleanRole.isNotEmpty && cleanRole == appRole) {
+        return app;
+      }
+      // Check if company and role match
+      if (cleanComp.isNotEmpty && appComp.isNotEmpty && cleanComp == appComp && cleanRole.isNotEmpty && cleanRole == appRole) {
+        return app;
+      }
+    }
+    return null;
+  }
+
+  void _showEnlargedImageDialog(int initialIndex) {
+    if (initialIndex < 0 || initialIndex >= _selectedImagesBase64.length) return;
+    int currentIndex = initialIndex;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final b64 = _selectedImagesBase64[currentIndex];
+          final imageBytes = base64Decode(b64);
+          final fileName = _selectedImageFiles[currentIndex].name;
+          final totalCount = _selectedImagesBase64.length;
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  constraints: BoxConstraints(
+                    maxWidth: 720,
+                    maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.94),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Header
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Poster ${currentIndex + 1} of $totalCount: $fileName',
+                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.white),
+                              onPressed: () => Navigator.pop(ctx),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // Interactive Zoomable Image
+                      Flexible(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: InteractiveViewer(
+                            panEnabled: true,
+                            minScale: 0.8,
+                            maxScale: 4.0,
+                            child: Image.memory(
+                              imageBytes,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Previous / Next Navigation if multiple images
+                      if (totalCount > 1)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white, size: 20),
+                              onPressed: currentIndex > 0
+                                  ? () => setDialogState(() => currentIndex--)
+                                  : null,
+                            ),
+                            const SizedBox(width: 16),
+                            Text(
+                              '${currentIndex + 1} / $totalCount',
+                              style: const TextStyle(color: Colors.white70, fontSize: 13),
+                            ),
+                            const SizedBox(width: 16),
+                            IconButton(
+                              icon: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 20),
+                              onPressed: currentIndex < totalCount - 1
+                                  ? () => setDialogState(() => currentIndex++)
+                                  : null,
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSelectedImagesPreview() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final count = _selectedImageFiles.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.image_rounded, size: 18, color: Color(0xFF6366F1)),
+                const SizedBox(width: 8),
+                Text(
+                  '$count Poster Screenshot${count > 1 ? 's' : ''} Attached',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                ),
+              ],
+            ),
+            TextButton.icon(
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                foregroundColor: Colors.redAccent,
+              ),
+              onPressed: () {
+                setState(() {
+                  _selectedImageFiles.clear();
+                  _selectedImagesBase64.clear();
+                });
+              },
+              icon: const Icon(Icons.delete_outline, size: 16),
+              label: const Text('Clear All', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 230,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: count,
+            itemBuilder: (context, idx) {
+              final file = _selectedImageFiles[idx];
+              final b64 = _selectedImagesBase64[idx];
+              final imageBytes = base64Decode(b64);
+
+              return Container(
+                width: 190,
+                margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isDark ? Colors.white12 : Colors.grey.shade300,
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(13),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Full poster image with tap to enlarge
+                      GestureDetector(
+                        onTap: () => _showEnlargedImageDialog(idx),
+                        child: Container(
+                          color: isDark ? Colors.black26 : Colors.white,
+                          padding: const EdgeInsets.all(4),
+                          child: Image.memory(
+                            imageBytes,
+                            fit: BoxFit.contain,
+                            errorBuilder: (ctx, err, stack) => const Center(
+                              child: Icon(Icons.broken_image, size: 36, color: Colors.grey),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Top Delete Button
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Material(
+                          color: Colors.black54,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () {
+                              setState(() {
+                                _selectedImageFiles.removeAt(idx);
+                                _selectedImagesBase64.removeAt(idx);
+                              });
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.all(5.0),
+                              child: Icon(Icons.close_rounded, size: 16, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Tap to zoom hint badge
+                      Positioned(
+                        top: 6,
+                        left: 6,
+                        child: GestureDetector(
+                          onTap: () => _showEnlargedImageDialog(idx),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.zoom_in_rounded, size: 12, color: Colors.white70),
+                                SizedBox(width: 3),
+                                Text(
+                                  'Tap to view',
+                                  style: TextStyle(color: Colors.white70, fontSize: 10),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Bottom Label with Poster # and Filename
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [Colors.black87, Colors.transparent],
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF6366F1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '#${idx + 1}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  file.name,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _analyzePostersWithAI() async {
     if (_selectedImagesBase64.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1338,6 +1667,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               id: (DateTime.now().millisecondsSinceEpoch ~/ 1000) + i,
               title: '⚠️ Job Application Missing Email',
               body: 'Found "${job.jobTitle}" at "${job.companyName}" but no recruiter email was found on the poster.',
+              payload: 'JOB_ASSISTANT',
+            );
+            continue;
+          }
+
+          // Unified Duplicate Check across Manual Scan and Auto-Apply
+          final duplicate = _findExistingApplication(recipient, job.jobTitle, job.companyName);
+          if (duplicate != null) {
+            debugPrint('[JobAssistant] Skipping duplicate job: "${job.jobTitle}" at "${job.companyName}" to $recipient (applied on ${duplicate.appliedAt})');
+            await NotificationService().showNotification(
+              id: (DateTime.now().millisecondsSinceEpoch ~/ 1000) + i,
+              title: 'ℹ️ Skipped Duplicate Application',
+              body: 'Role "${job.jobTitle}" at "${job.companyName}" was already applied to on ${DateFormat("MMM d").format(duplicate.appliedAt)}.',
               payload: 'JOB_ASSISTANT',
             );
             continue;
@@ -1538,6 +1880,43 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       errorMessage: originalApp.errorMessage,
     );
 
+    final duplicate = _findExistingApplication(recipient, originalApp.jobTitle, originalApp.companyName);
+    if (duplicate != null) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.history_rounded, color: Colors.amber, size: 24),
+              SizedBox(width: 8),
+              Text('Already Applied', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Text(
+            'You previously applied for the role "${originalApp.jobTitle}" at "${originalApp.companyName}" ($recipient) on ${_formatRelativeTimestamp(duplicate.appliedAt)} (${duplicate.isAutoApplied ? "Auto-Apply" : "Manual"}).\n\nAre you sure you want to send another application email for this same role?',
+            style: const TextStyle(fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber.shade700,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Send Anyway'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+
+    if (!mounted) return;
+
     try {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sending application email in background...')),
@@ -1618,6 +1997,71 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     );
 
     final jobsToProcess = List<JobApplication>.from(_extractedJobs);
+
+    // Detect duplicate applications in the extracted list
+    final duplicateIndexes = <int>{};
+    for (int i = 0; i < jobsToProcess.length; i++) {
+      final j = jobsToProcess[i];
+      final rec = (_emailControllers[i]?.text ?? j.recipientEmail).trim();
+      if (_findExistingApplication(rec, j.jobTitle, j.companyName) != null) {
+        duplicateIndexes.add(i);
+      }
+    }
+
+    if (duplicateIndexes.isNotEmpty) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.history_rounded, color: Colors.amber, size: 22),
+              SizedBox(width: 8),
+              Text('Duplicate Roles Found', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Text(
+            '${duplicateIndexes.length} of ${jobsToProcess.length} jobs were already applied to previously for the same role.\n\nWould you like to skip duplicates and only send new applications, or send all anyway?',
+            style: const TextStyle(fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'cancel'),
+              child: const Text('Cancel'),
+            ),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, 'send_all'),
+              child: const Text('Send All Anyway'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(ctx, 'skip_duplicates'),
+              child: const Text('Skip Duplicates'),
+            ),
+          ],
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (choice == null || choice == 'cancel') {
+        setState(() => _isSendingAll = false);
+        return;
+      }
+
+      if (choice == 'skip_duplicates') {
+        final filteredList = <JobApplication>[];
+        for (int i = 0; i < jobsToProcess.length; i++) {
+          if (!duplicateIndexes.contains(i)) {
+            filteredList.add(jobsToProcess[i]);
+          }
+        }
+        jobsToProcess.clear();
+        jobsToProcess.addAll(filteredList);
+      }
+    }
 
     for (int i = 0; i < jobsToProcess.length; i++) {
       final originalApp = jobsToProcess[i];
@@ -1754,7 +2198,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   Future<void> _runAutoApplyNow() async {
-    final bool hasAnyResume = _hasResume || _resumeProfiles.isNotEmpty || _resumeFileName.isNotEmpty;
+    final bool hasAnyResume = _hasResume || _resumeProfiles.isNotEmpty;
     if (!hasAnyResume) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please upload your Resume PDF first in Settings (top right icon).')),
@@ -2120,11 +2564,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           ),
           IconButton(
             icon: StreamBuilder<List<JobApplication>>(
-              initialData: _service.cachedApplications.isNotEmpty ? _service.cachedApplications : null,
+              initialData: _service.cachedApplications,
               stream: _applicationsStream,
               builder: (context, appSnap) {
                 return StreamBuilder<List<NetworkingLead>>(
-                  initialData: _service.cachedLeads.isNotEmpty ? _service.cachedLeads : null,
+                  initialData: _service.cachedLeads,
                   stream: _networkingLeadsStream,
                   builder: (context, leadSnap) {
                     final appReplies = (appSnap.data ?? [])
@@ -2414,7 +2858,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   // Health checklist: Resume & Gmail
                   Builder(
                     builder: (context) {
-                      final bool hasResumeActive = _hasResume || _resumeProfiles.isNotEmpty || _resumeFileName.isNotEmpty;
+                      final bool hasResumeActive = _hasResume || _resumeProfiles.isNotEmpty;
                       final String displayResumeName = _resumeFileName.isNotEmpty
                           ? _resumeFileName
                           : (_resumeProfiles.isNotEmpty ? _resumeProfiles.first.fileName : 'Active');
@@ -3007,7 +3451,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             const SizedBox(height: 10),
 
             StreamBuilder<List<JobApplication>>(
-              initialData: _service.cachedApplications.isNotEmpty ? _service.cachedApplications : null,
+              initialData: _service.cachedApplications,
               stream: _applicationsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
@@ -3515,35 +3959,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                             ],
                           ),
                         ] else ...[
-                        Text('${_selectedImageFiles.length} Screenshot(s) Selected',
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _selectedImageFiles
-                              .map(
-                                (file) => Chip(
-                                  label: Text(
-                                    file.name,
-                                    style: const TextStyle(fontSize: 11),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  deleteIcon: const Icon(Icons.close, size: 14),
-                                  onDeleted: () {
-                                    setState(() {
-                                      final idx = _selectedImageFiles.indexOf(file);
-                                      if (idx != -1) {
-                                        _selectedImageFiles.removeAt(idx);
-                                        _selectedImagesBase64.removeAt(idx);
-                                      }
-                                    });
-                                  },
-                                ),
-                              )
-                              .toList(),
-                        ),
-                        const SizedBox(height: 12),
+                        _buildSelectedImagesPreview(),
+                        const SizedBox(height: 14),
 
                         // Optional Custom AI Prompt for Screenshots
                         TextFormField(
@@ -3893,6 +4310,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     final refineCtrl = _getController(_refinePromptControllers, index, '');
     final isRefining = _refiningMap[index] ?? false;
 
+    final currentEmail = emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : app.recipientEmail;
+    final duplicateApp = _findExistingApplication(currentEmail, app.jobTitle, app.companyName);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       color: cardBg,
@@ -3935,6 +4355,34 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 ),
               ],
             ),
+            if (duplicateApp != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.history_rounded, size: 16, color: Colors.amber.shade800),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Previously applied for this role on ${_formatRelativeTimestamp(duplicateApp.appliedAt)} (${duplicateApp.isAutoApplied ? "Auto-Apply" : "Manual"})',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.amber.shade300 : Colors.amber.shade900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const Divider(height: 24),
 
             // HR Email Field
@@ -4089,7 +4537,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     final subtextColor = isDark ? Colors.white70 : Colors.black54;
 
     return StreamBuilder<List<JobApplication>>(
-      initialData: _service.cachedApplications.isNotEmpty ? _service.cachedApplications : null,
+      initialData: _service.cachedApplications,
       stream: _applicationsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
@@ -5065,7 +5513,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
             // Startup Leads Stream
             StreamBuilder<List<NetworkingLead>>(
-              initialData: _service.cachedLeads.isNotEmpty ? _service.cachedLeads : null,
+              initialData: _service.cachedLeads,
               stream: _networkingLeadsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {

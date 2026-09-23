@@ -8,6 +8,8 @@ import 'notification_control_screen.dart';
 import 'email_notification_control_screen.dart';
 import 'ai_keys_settings_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/update_service.dart';
 import '../services/auth_service.dart';
 
@@ -443,13 +445,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             child: Column(
               children: [
+                _buildModernTile(
+                  icon: Icons.language_rounded,
+                  iconGradient: const [Color(0xFF0EA5E9), Color(0xFF0284C7)],
+                  title: 'RemindBuddy Web App',
+                  subtitle: 'https://remindbuddy-b68f9.web.app',
+                  badgeText: 'Open',
+                  badgeColor: const Color(0xFF0EA5E9),
+                  isFirst: true,
+                  isLast: false,
+                  textColor: textColor,
+                  subtextColor: subtextColor,
+                  onTap: () async {
+                    HapticFeedback.selectionClick();
+                    final uri = Uri.parse('https://remindbuddy-b68f9.web.app');
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  },
+                ),
+                Divider(height: 1, indent: 64, color: cardBorder),
+                _buildModernTile(
+                  icon: Icons.share_rounded,
+                  iconGradient: const [Color(0xFF10B981), Color(0xFF059669)],
+                  title: 'Share RemindBuddy',
+                  subtitle: 'Share web app URL on WhatsApp or other apps',
+                  badgeText: 'Share',
+                  badgeColor: const Color(0xFF10B981),
+                  isFirst: false,
+                  isLast: false,
+                  textColor: textColor,
+                  subtextColor: subtextColor,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    Share.share(
+                      'Check out RemindBuddy - Your all-in-one AI daily life, reminders, and career assistant: https://remindbuddy-b68f9.web.app',
+                      subject: 'RemindBuddy Web App',
+                    );
+                  },
+                ),
+                Divider(height: 1, indent: 64, color: cardBorder),
                 if (!kIsWeb) ...[
                   _buildModernTile(
                     icon: Icons.system_update_alt_rounded,
                     iconGradient: const [Color(0xFF6366F1), Color(0xFF4338CA)],
                     title: 'Check for Updates',
                     subtitle: 'Check for the latest stable version of RemindBuddy',
-                    isFirst: true,
+                    isFirst: false,
                     isLast: false,
                     textColor: textColor,
                     subtextColor: subtextColor,
@@ -459,15 +499,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
                   Divider(height: 1, indent: 64, color: cardBorder),
+                  _buildModernTile(
+                    icon: Icons.cleaning_services_rounded,
+                    iconGradient: const [Color(0xFFF59E0B), Color(0xFFD97706)],
+                    title: 'Clean Storage & Cache',
+                    subtitle: 'Remove old update files and reclaim device storage',
+                    badgeText: 'Clean',
+                    badgeColor: const Color(0xFFF59E0B),
+                    isFirst: false,
+                    isLast: false,
+                    textColor: textColor,
+                    subtextColor: subtextColor,
+                    onTap: () async {
+                      HapticFeedback.selectionClick();
+                      final bytes = await UpdateService.cleanOldApksAndCaches();
+                      if (context.mounted) {
+                        final mb = (bytes / (1024 * 1024)).toStringAsFixed(1);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(bytes > 0
+                                ? 'Cleaned $mb MB of old update files & cache!'
+                                : 'Storage is already optimized! No old files found.'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                  Divider(height: 1, indent: 64, color: cardBorder),
                 ],
                 _buildModernTile(
                   icon: Icons.verified_rounded,
-                  iconGradient: const [Color(0xFF10B981), Color(0xFF059669)],
+                  iconGradient: const [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
                   title: 'RemindBuddy Engine',
                   subtitle: 'All-in-One AI Daily Life & Assistant Platform',
-                  badgeText: 'v1.10.24',
-                  badgeColor: const Color(0xFF10B981),
-                  isFirst: kIsWeb,
+                  badgeText: 'v1.10.35',
+                  badgeColor: const Color(0xFF8B5CF6),
+                  isFirst: false,
                   isLast: true,
                   textColor: textColor,
                   subtextColor: subtextColor,

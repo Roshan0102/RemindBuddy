@@ -19,6 +19,7 @@ class TechEventsScreen extends StatefulWidget {
 class _TechEventsScreenState extends State<TechEventsScreen> {
   bool _showPastEvents = false;
   bool _isFetchingEvents = false;
+  DateTime? _lastFetchEventsTime;
   List<String> _eventInterests = [];
   String _eventLocation = '';
   String _eventMode = 'In-Person'; // 'In-Person', 'Online', 'Both'
@@ -217,6 +218,24 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
   }
 
   Future<void> _triggerFetchEvents() async {
+    if (_isFetchingEvents) return;
+
+    if (_lastFetchEventsTime != null) {
+      final elapsed = DateTime.now().difference(_lastFetchEventsTime!).inSeconds;
+      if (elapsed < 15) {
+        final remaining = 15 - elapsed;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⏳ Please wait $remaining second${remaining == 1 ? '' : 's'} before fetching tech events again.'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.amber.shade900,
+          ),
+        );
+        return;
+      }
+    }
+
+    _lastFetchEventsTime = DateTime.now();
     setState(() => _isFetchingEvents = true);
     try {
       final HttpsCallable callable =
@@ -753,9 +772,11 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
                               Text('No tech events found for your filters.', style: TextStyle(color: subtextColor)),
                               const SizedBox(height: 12),
                               ElevatedButton.icon(
-                                onPressed: _triggerFetchEvents,
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Fetch Events'),
+                                onPressed: _isFetchingEvents ? null : _triggerFetchEvents,
+                                icon: _isFetchingEvents
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.refresh),
+                                label: Text(_isFetchingEvents ? 'Fetching...' : 'Fetch Events'),
                               ),
                             ],
                           ),

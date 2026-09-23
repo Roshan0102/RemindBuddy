@@ -367,11 +367,18 @@ Respond ONLY with a JSON array matching this schema:
     }
     return { success: true, count: newCount };
 }
+const lastFetchTechEventsMap = new Map();
 exports.fetchUserTechEvents = functions.runWith({ timeoutSeconds: 120, memory: "256MB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
     }
     const uid = context.auth.uid;
+    const now = Date.now();
+    const lastFetch = lastFetchTechEventsMap.get(uid) || 0;
+    if (now - lastFetch < 10000) {
+        return { success: true, count: 0, message: "Request throttled. Please wait a few seconds before fetching again." };
+    }
+    lastFetchTechEventsMap.set(uid, now);
     try {
         const customPrefs = {
             interests: (data === null || data === void 0 ? void 0 : data.interests) && Array.isArray(data.interests) ? data.interests : undefined,

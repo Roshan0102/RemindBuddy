@@ -47,6 +47,15 @@ async function verifyEmailDomainMx(email) {
     }
 }
 /**
+ * Normalizes job title strings for robust duplicate matching across features
+ */
+function normalizeJobRole(role) {
+    return (role || "").toLowerCase()
+        .replace(/[^a-z0-9]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+/**
  * Intelligently matches a discovered job role & skills to the best candidate resume profile.
  * Defaults to isDefault profile if no specific match is found.
  */
@@ -252,17 +261,20 @@ async function discoverAndApplyForUser(uid, options) {
     const minExp = (options === null || options === void 0 ? void 0 : options.minExpYears) !== undefined ? Number(options.minExpYears) : Number((_d = autoApplySettings.minExpYears) !== null && _d !== void 0 ? _d : 0);
     const maxExp = (options === null || options === void 0 ? void 0 : options.maxExpYears) !== undefined ? Number(options.maxExpYears) : Number((_e = autoApplySettings.maxExpYears) !== null && _e !== void 0 ? _e : 3);
     const maxApplyLimit = Math.min(Math.max(1, (options === null || options === void 0 ? void 0 : options.maxApplications) || autoApplySettings.maxPerRun || 6), 10);
-    // Fetch previously applied emails/companies to avoid duplicate applications
+    // Fetch previously applied emails/companies/roles to avoid duplicate applications across all features
     const existingAppsSnap = await firebase_1.db.collection("users").doc(uid).collection("job_applications").get();
-    const appliedEmails = new Set();
+    const appliedEmailRoles = new Set();
     const appliedCompanyRoles = new Set();
     existingAppsSnap.forEach((doc) => {
         const d = doc.data();
-        if (d.recipientEmail) {
-            appliedEmails.add(d.recipientEmail.toLowerCase().trim());
+        const email = (d.recipientEmail || "").toLowerCase().trim();
+        const role = normalizeJobRole(d.jobTitle || "");
+        const comp = (d.companyName || "").toLowerCase().trim();
+        if (email && role) {
+            appliedEmailRoles.add(`${email}|${role}`);
         }
-        if (d.companyName && d.jobTitle) {
-            appliedCompanyRoles.add(`${d.companyName.toLowerCase().trim()}|${d.jobTitle.toLowerCase().trim()}`);
+        if (comp && role) {
+            appliedCompanyRoles.add(`${comp}|${role}`);
         }
     });
     // Fetch User BYOK API Keys from user document
@@ -389,6 +401,8 @@ CRITICAL VERIFICATION & EXTRACTION MANDATES:
 3. HUMAN-WRITTEN, HIGH-CONVERTING APPLICATION EMAIL:
    - For each matching job, write a highly authentic, natural, and engaging cover letter tailored specifically to that job title and company.
    - Read the candidate's attached Resume PDF to extract concrete accomplishments, technical skills, programming languages, frameworks, and domain expertise directly from the resume, and align them specifically with the company's requirements.
+   - EXPERIENCE GAP & SKILL-VALUE BRIDGING:
+     If the job opening seeks more years of experience than the candidate has on their resume (e.g., asking for 2+ or 3+ years, but candidate's resume shows 1-2 years), proactively, diplomatically, and creatively bridge this gap. Confidently acknowledge the expectation and pivot decisively to the candidate's hands-on mastery of the exact required tools, architectures, and real-world project deliveries, demonstrating that they will add immediate, high-impact value from Day 1 without requiring extensive ramp-up.
    - Structure:
      a) Enthusiastic opening identifying the specific role and company.
      b) Value Proposition: Clear explanation of what direct value and expertise the candidate brings based on real resume highlights.
@@ -517,9 +531,11 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             continue;
         }
         const emailLower = email.toLowerCase();
-        const compRoleKey = `${(job.companyName || '').toLowerCase().trim()}|${(job.jobTitle || '').toLowerCase().trim()}`;
-        if (appliedEmails.has(emailLower) || appliedCompanyRoles.has(compRoleKey)) {
-            console.log(`[JobDiscovery] Skipping duplicate application to ${emailLower} (${job.companyName})`);
+        const normRole = normalizeJobRole(job.jobTitle || "");
+        const emailRoleKey = `${emailLower}|${normRole}`;
+        const compRoleKey = `${(job.companyName || '').toLowerCase().trim()}|${normRole}`;
+        if (appliedEmailRoles.has(emailRoleKey) || appliedCompanyRoles.has(compRoleKey)) {
+            console.log(`[JobDiscovery] Skipping duplicate application: already applied to '${job.jobTitle}' at ${job.companyName} (${emailLower})`);
             continue;
         }
         // Check global bounce blacklist
@@ -643,7 +659,10 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
                 resumeProfileName: matchedProfile.title
             };
             const appDocRef = await firebase_1.db.collection("users").doc(uid).collection("job_applications").add(applicationRecord);
-            appliedEmails.add(job.recipientEmail.toLowerCase().trim());
+            const appliedEmailKey = `${job.recipientEmail.toLowerCase().trim()}|${normalizeJobRole(job.jobTitle || "")}`;
+            const appliedCompKey = `${(job.companyName || '').toLowerCase().trim()}|${normalizeJobRole(job.jobTitle || "")}`;
+            appliedEmailRoles.add(appliedEmailKey);
+            appliedCompanyRoles.add(appliedCompKey);
             successfullyAppliedJobs.push(Object.assign({ id: appDocRef.id }, applicationRecord));
         }
         catch (mailErr) {

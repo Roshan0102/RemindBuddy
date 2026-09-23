@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -7,11 +8,65 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:ota_update/ota_update.dart';
+import 'package:path_provider/path_provider.dart';
 
 class UpdateService {
+  /// Cleans up any leftover downloaded APKs and temporary install files to reclaim storage.
+  static Future<int> cleanOldApksAndCaches() async {
+    if (kIsWeb) return 0;
+    int bytesFreed = 0;
+    try {
+      final List<Directory> dirsToCheck = [];
+      try {
+        final tempDir = await getTemporaryDirectory();
+        dirsToCheck.add(tempDir);
+      } catch (_) {}
+      try {
+        final docDir = await getApplicationDocumentsDirectory();
+        dirsToCheck.add(docDir);
+      } catch (_) {}
+      try {
+        final extDirs = await getExternalCacheDirectories();
+        if (extDirs != null) dirsToCheck.addAll(extDirs);
+      } catch (_) {}
+      try {
+        final extStorage = await getExternalStorageDirectories();
+        if (extStorage != null) dirsToCheck.addAll(extStorage);
+      } catch (_) {}
+
+      for (final dir in dirsToCheck) {
+        if (!await dir.exists()) continue;
+        try {
+          await for (final entity in dir.list(recursive: true, followLinks: false)) {
+            if (entity is File) {
+              final path = entity.path.toLowerCase();
+              final isApk = path.endsWith('.apk') || path.contains('remindbuddy');
+              if (isApk) {
+                try {
+                  final length = await entity.length();
+                  await entity.delete();
+                  bytesFreed += length;
+                  debugPrint('Cleaned up old APK file: ${entity.path} ($length bytes)');
+                } catch (e) {
+                  debugPrint('Could not delete APK file ${entity.path}: $e');
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('Error cleaning old APKs and caches: $e');
+    }
+    return bytesFreed;
+  }
+
   /// Checks for updates. If a new version is available, it pops up an update dialog.
   static Future<void> checkForUpdates(BuildContext context, {bool showNoUpdateMsg = false}) async {
     if (kIsWeb) return; // Never show APK updates on the web
+
+    // Clean up old update APKs in background so storage never balloons
+    cleanOldApksAndCaches();
 
     try {
       // 1. Get current version of the app
@@ -173,16 +228,19 @@ class _OtaUpdateDialogState extends State<OtaUpdateDialog> {
     super.dispose();
   }
 
-  void _startDownload() {
+  void _startDownload() async {
     setState(() {
       _isDownloading = true;
-      _statusMessage = 'Downloading update...';
+      _statusMessage = 'Optimizing storage & preparing update...';
     });
+
+    // Remove old downloaded APKs before starting new download
+    await UpdateService.cleanOldApksAndCaches();
 
     try {
       _otaSubscription = OtaUpdate().execute(
         widget.downloadUrl,
-        destinationFilename: 'remindbuddy_${widget.newVersion}.apk',
+        destinationFilename: 'remindbuddy_update.apk',
       ).listen(
         (OtaEvent event) {
           switch (event.status) {

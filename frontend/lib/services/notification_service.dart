@@ -273,6 +273,7 @@ class NotificationService {
     if (kIsWeb) {
       LogService.staticLog("Initializing Web Desktop Notifications.");
       _initWebNotifications();
+      WebDesktopNotificationService.initServiceWorkerListener();
       return;
     }
     FirebaseMessaging messaging = FirebaseMessaging.instance;

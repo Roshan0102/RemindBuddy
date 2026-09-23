@@ -90,6 +90,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _setupHomeWidgetLaunchListener();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkPendingNotification();
+      _checkWebNotificationLaunch();
     });
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
       _loadPreferences();
@@ -250,6 +251,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
+  void _checkWebNotificationLaunch() {
+    if (!kIsWeb) return;
+    try {
+      final uri = Uri.base;
+      final feature = uri.queryParameters['feature'] ?? uri.queryParameters['type'];
+      if (feature != null && feature.isNotEmpty) {
+        LogService.staticLog("MainScreen web launch with feature: $feature");
+        _handleNotificationEvent(feature);
+      }
+    } catch (e) {
+      debugPrint("Error checking web notification launch query param: $e");
+    }
+  }
+
   Future<void> _handleNotificationEvent(String type) async {
     LogService.staticLog("MainScreen handling notification event: $type");
     if (!mounted) return;
@@ -302,6 +317,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       case 'events_reminder':
       case 'event_interest_reminder':
       case 'tech_events':
+      case 'TECH_EVENTS':
       case 'events':
       case 'events_walkins':
         _selectTabOrPush('events');
@@ -310,6 +326,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       case 'walkin_reminder':
       case 'walkin_interest_reminder':
       case 'walkin_drives':
+      case 'WALKIN_DRIVES':
       case 'walkins':
       case 'walkin':
         _selectTabOrPush('walkins');
@@ -318,6 +335,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       case 'JOB_ASSISTANT':
       case 'job_assistant':
       case 'job_discovery':
+      case 'JOB_ASSISTANT_REPLY':
         _selectTabOrPush('job_assistant');
         break;
 
@@ -901,11 +919,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       id = 'finance';
     } else if (id == 'gold_price' || id == 'gold_rates' || id == 'gold_chit') {
       id = 'gold';
-    } else if (id == 'events_walkins' || id == 'tech_events' || id == 'events_reminder' || id == 'event_interest_reminder') {
+    } else if (id == 'events_walkins' || id == 'tech_events' || id == 'events_reminder' || id == 'event_interest_reminder' || id == 'TECH_EVENTS') {
       id = 'events';
-    } else if (id == 'walkin' || id == 'walkin_drives' || id == 'walkins' || id == 'walkin_reminder' || id == 'walkin_interest_reminder') {
+    } else if (id == 'walkin' || id == 'walkin_drives' || id == 'walkins' || id == 'walkin_reminder' || id == 'walkin_interest_reminder' || id == 'WALKIN_DRIVES') {
       id = 'walkins';
-    } else if (id == 'job_discovery' || id == 'job_assistant' || id == 'JOB_ASSISTANT') {
+    } else if (id == 'job_discovery' || id == 'job_assistant' || id == 'JOB_ASSISTANT' || id == 'JOB_ASSISTANT_REPLY') {
       id = 'job_assistant';
     } else if (id == 'quick_notes' || id == 'notes' || id == 'note' || id == 'collaboration_request') {
       id = 'notes';
@@ -1693,7 +1711,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'RemindBuddy v1.10.24',
+                  'RemindBuddy v1.10.35',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

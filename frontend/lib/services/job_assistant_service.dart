@@ -28,17 +28,29 @@ class JobAssistantService {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _leadsFirestoreSub;
   String? _listeningUid;
 
+  bool _hasInitializedLeads = false;
+  bool get hasInitializedLeads => _hasInitializedLeads;
+  bool _hasInitializedApps = false;
+  bool get hasInitializedApps => _hasInitializedApps;
+
+  String _userKey(String base) {
+    final uid = _uid;
+    return uid != null ? '${uid}_$base' : base;
+  }
+
   List<JobApplication> get cachedApplications => List.unmodifiable(_cachedApplications);
   List<NetworkingLead> get cachedLeads => List.unmodifiable(_cachedLeads);
 
   Future<void> initLocalCache() async {
-    if (_cacheInitialized && _cachedApplications.isNotEmpty && _cachedLeads.isNotEmpty) {
+    final uid = _uid;
+    if (_cacheInitialized && _listeningUid == uid && _cachedApplications.isNotEmpty && _cachedLeads.isNotEmpty) {
       return;
     }
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      final appsJson = prefs.getString('job_assistant_cached_applications');
+      final appsKey = uid != null ? '${uid}_job_assistant_cached_applications' : 'job_assistant_cached_applications';
+      final appsJson = prefs.getString(appsKey);
       if (appsJson != null && appsJson.isNotEmpty) {
         final List<dynamic> decoded = jsonDecode(appsJson);
         _cachedApplications = decoded
@@ -48,8 +60,10 @@ class JobAssistantService {
           _appsStreamController.add(List.unmodifiable(_cachedApplications));
         }
       }
+      _hasInitializedApps = true;
 
-      final leadsJson = prefs.getString('job_assistant_cached_leads');
+      final leadsKey = uid != null ? '${uid}_job_assistant_cached_leads' : 'job_assistant_cached_leads';
+      final leadsJson = prefs.getString(leadsKey);
       if (leadsJson != null && leadsJson.isNotEmpty) {
         final List<dynamic> decoded = jsonDecode(leadsJson);
         _cachedLeads = decoded
@@ -59,9 +73,12 @@ class JobAssistantService {
           _leadsStreamController.add(List.unmodifiable(_cachedLeads));
         }
       }
+      _hasInitializedLeads = true;
       _cacheInitialized = true;
     } catch (e) {
       debugPrint('Error initializing local job assistant cache: $e');
+      _hasInitializedLeads = true;
+      _hasInitializedApps = true;
     }
   }
 
@@ -69,7 +86,7 @@ class JobAssistantService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final jsonStr = jsonEncode(apps.map((a) => a.toJson()).toList());
-      await prefs.setString('job_assistant_cached_applications', jsonStr);
+      await prefs.setString(_userKey('job_assistant_cached_applications'), jsonStr);
     } catch (e) {
       debugPrint('Error saving cached applications: $e');
     }
@@ -79,7 +96,7 @@ class JobAssistantService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final jsonStr = jsonEncode(leads.map((l) => l.toJson()).toList());
-      await prefs.setString('job_assistant_cached_leads', jsonStr);
+      await prefs.setString(_userKey('job_assistant_cached_leads'), jsonStr);
     } catch (e) {
       debugPrint('Error saving cached leads: $e');
     }
@@ -195,13 +212,16 @@ class JobAssistantService {
 
   Future<Map<String, String>> getUserEmailConfig() async {
     bool isEmailExplicitlyCleared = false;
+    final uid = _uid;
     String cachedEmail = '';
     String cachedPass = '';
     try {
       final prefs = await SharedPreferences.getInstance();
-      isEmailExplicitlyCleared = prefs.getBool('job_assistant_user_email_explicitly_cleared') ?? false;
-      cachedEmail = isEmailExplicitlyCleared ? '' : (prefs.getString('job_assistant_user_email') ?? '').trim();
-      cachedPass = (prefs.getString('job_assistant_user_app_password') ?? '').trim();
+      if (uid != null) {
+        isEmailExplicitlyCleared = prefs.getBool(_userKey('job_assistant_user_email_explicitly_cleared')) ?? false;
+        cachedEmail = isEmailExplicitlyCleared ? '' : (prefs.getString(_userKey('job_assistant_user_email')) ?? '').trim();
+        cachedPass = (prefs.getString(_userKey('job_assistant_user_app_password')) ?? '').trim();
+      }
     } catch (_) {}
 
     final doc = _userDoc;
@@ -226,12 +246,14 @@ class JobAssistantService {
           if (cleared) {
             try {
               final prefs = await SharedPreferences.getInstance();
-              await prefs.remove('job_assistant_user_email');
-              await prefs.setBool('job_assistant_user_email_explicitly_cleared', true);
-              if (appPassword.isEmpty) {
-                await prefs.remove('job_assistant_user_app_password');
-              } else {
-                await prefs.setString('job_assistant_user_app_password', appPassword);
+              if (uid != null) {
+                await prefs.remove(_userKey('job_assistant_user_email'));
+                await prefs.setBool(_userKey('job_assistant_user_email_explicitly_cleared'), true);
+                if (appPassword.isEmpty) {
+                  await prefs.remove(_userKey('job_assistant_user_app_password'));
+                } else {
+                  await prefs.setString(_userKey('job_assistant_user_app_password'), appPassword);
+                }
               }
             } catch (_) {}
             return {
@@ -242,16 +264,18 @@ class JobAssistantService {
 
           try {
             final prefs = await SharedPreferences.getInstance();
-            if (email.isNotEmpty) {
-              await prefs.setString('job_assistant_user_email', email);
-              await prefs.remove('job_assistant_user_email_explicitly_cleared');
-            } else {
-              await prefs.remove('job_assistant_user_email');
-            }
-            if (appPassword.isNotEmpty) {
-              await prefs.setString('job_assistant_user_app_password', appPassword);
-            } else {
-              await prefs.remove('job_assistant_user_app_password');
+            if (uid != null) {
+              if (email.isNotEmpty) {
+                await prefs.setString(_userKey('job_assistant_user_email'), email);
+                await prefs.remove(_userKey('job_assistant_user_email_explicitly_cleared'));
+              } else {
+                await prefs.remove(_userKey('job_assistant_user_email'));
+              }
+              if (appPassword.isNotEmpty) {
+                await prefs.setString(_userKey('job_assistant_user_app_password'), appPassword);
+              } else {
+                await prefs.remove(_userKey('job_assistant_user_app_password'));
+              }
             }
           } catch (_) {}
 
@@ -276,16 +300,16 @@ class JobAssistantService {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (cleanEmail.isEmpty) {
-        await prefs.remove('job_assistant_user_email');
-        await prefs.setBool('job_assistant_user_email_explicitly_cleared', true);
+        await prefs.remove(_userKey('job_assistant_user_email'));
+        await prefs.setBool(_userKey('job_assistant_user_email_explicitly_cleared'), true);
       } else {
-        await prefs.setString('job_assistant_user_email', cleanEmail);
-        await prefs.remove('job_assistant_user_email_explicitly_cleared');
+        await prefs.setString(_userKey('job_assistant_user_email'), cleanEmail);
+        await prefs.remove(_userKey('job_assistant_user_email_explicitly_cleared'));
       }
       if (cleanPass.isEmpty) {
-        await prefs.remove('job_assistant_user_app_password');
+        await prefs.remove(_userKey('job_assistant_user_app_password'));
       } else {
-        await prefs.setString('job_assistant_user_app_password', cleanPass);
+        await prefs.setString(_userKey('job_assistant_user_app_password'), cleanPass);
       }
     } catch (_) {}
 
@@ -307,17 +331,21 @@ class JobAssistantService {
   }
 
   Future<Map<String, String>> getMasterResume() async {
+    final uid = _uid;
     String cachedFileName = '';
     String cachedBase64 = '';
     try {
       final prefs = await SharedPreferences.getInstance();
-      cachedFileName = (prefs.getString('job_assistant_resume_filename') ?? '').trim();
-      cachedBase64 = (prefs.getString('job_assistant_resume_base64') ?? '').trim();
+      if (uid != null) {
+        cachedFileName = (prefs.getString(_userKey('job_assistant_resume_filename')) ?? '').trim();
+        cachedBase64 = (prefs.getString(_userKey('job_assistant_resume_base64')) ?? '').trim();
+      }
     } catch (_) {}
 
     final doc = _userDoc;
     if (doc == null) {
-      return {'base64': cachedBase64, 'fileName': cachedFileName.isNotEmpty ? cachedFileName : 'Resume.pdf'};
+      final bool hasValidCached = cachedBase64.isNotEmpty;
+      return {'base64': cachedBase64, 'fileName': hasValidCached ? cachedFileName : ''};
     }
 
     try {
@@ -339,14 +367,25 @@ class JobAssistantService {
         }
 
         final resolvedB64 = b64.isNotEmpty ? b64 : cachedBase64;
-        final resolvedName = fName.isNotEmpty ? fName : (cachedFileName.isNotEmpty ? cachedFileName : 'Resume.pdf');
+        final resolvedName = resolvedB64.isNotEmpty ? (fName.isNotEmpty ? fName : (cachedFileName.isNotEmpty ? cachedFileName : 'Resume.pdf')) : '';
 
-        if (resolvedName.isNotEmpty || resolvedB64.isNotEmpty) {
+        if (resolvedName.isNotEmpty && resolvedB64.isNotEmpty) {
           try {
             final prefs = await SharedPreferences.getInstance();
-            if (resolvedName.isNotEmpty) await prefs.setString('job_assistant_resume_filename', resolvedName);
-            if (resolvedB64.isNotEmpty) await prefs.setString('job_assistant_resume_base64', resolvedB64);
-            await prefs.setBool('job_assistant_has_resume', resolvedB64.isNotEmpty || resolvedName.isNotEmpty);
+            if (uid != null) {
+              await prefs.setString(_userKey('job_assistant_resume_filename'), resolvedName);
+              await prefs.setString(_userKey('job_assistant_resume_base64'), resolvedB64);
+              await prefs.setBool(_userKey('job_assistant_has_resume'), true);
+            }
+          } catch (_) {}
+        } else {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            if (uid != null) {
+              await prefs.remove(_userKey('job_assistant_resume_filename'));
+              await prefs.remove(_userKey('job_assistant_resume_base64'));
+              await prefs.setBool(_userKey('job_assistant_has_resume'), false);
+            }
           } catch (_) {}
         }
 
@@ -357,15 +396,25 @@ class JobAssistantService {
       }
     } catch (_) {}
 
-    return {'base64': cachedBase64, 'fileName': cachedFileName.isNotEmpty ? cachedFileName : 'Resume.pdf'};
+    final bool hasValidCached = cachedBase64.isNotEmpty;
+    return {'base64': cachedBase64, 'fileName': hasValidCached ? cachedFileName : ''};
   }
 
   Future<void> saveMasterResume(String base64Content, String fileName) async {
+    final uid = _uid;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('job_assistant_resume_filename', fileName);
-      await prefs.setString('job_assistant_resume_base64', base64Content);
-      await prefs.setBool('job_assistant_has_resume', true);
+      if (uid != null) {
+        if (base64Content.isNotEmpty) {
+          await prefs.setString(_userKey('job_assistant_resume_filename'), fileName);
+          await prefs.setString(_userKey('job_assistant_resume_base64'), base64Content);
+          await prefs.setBool(_userKey('job_assistant_has_resume'), true);
+        } else {
+          await prefs.remove(_userKey('job_assistant_resume_filename'));
+          await prefs.remove(_userKey('job_assistant_resume_base64'));
+          await prefs.setBool(_userKey('job_assistant_has_resume'), false);
+        }
+      }
     } catch (_) {}
 
     final doc = _userDoc;
@@ -681,9 +730,14 @@ class JobAssistantService {
     }
 
     FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user == null || user.uid != _listeningUid) {
+        _cachedApplications = [];
+        _hasInitializedApps = false;
+      }
       if (user == null) {
         _appsFirestoreSub?.cancel();
         _appsFirestoreSub = null;
+        _listeningUid = null;
         return;
       }
       if (_appsFirestoreSub == null || _listeningUid != user.uid) {
@@ -705,6 +759,7 @@ class JobAssistantService {
       (snap) {
         final apps = snap.docs.map((d) => JobApplication.fromMap(d.data(), d.id)).toList();
         _cachedApplications = apps;
+        _hasInitializedApps = true;
         _saveCachedApplications(apps);
         if (!_appsStreamController.isClosed) {
           _appsStreamController.add(List.unmodifiable(apps));
@@ -712,6 +767,10 @@ class JobAssistantService {
       },
       onError: (err) {
         debugPrint('Error in job applications firestore snapshot: $err');
+        _hasInitializedApps = true;
+        if (!_appsStreamController.isClosed) {
+          _appsStreamController.add(List.unmodifiable(_cachedApplications));
+        }
       },
     );
   }
@@ -724,13 +783,11 @@ class JobAssistantService {
 
     controller = StreamController<List<JobApplication>>.broadcast(
       onListen: () {
-        if (_cachedApplications.isNotEmpty) {
-          scheduleMicrotask(() {
-            if (controller != null && !controller.isClosed) {
-              controller.add(List.unmodifiable(_cachedApplications));
-            }
-          });
-        }
+        scheduleMicrotask(() {
+          if (controller != null && !controller.isClosed) {
+            controller.add(List.unmodifiable(_cachedApplications));
+          }
+        });
         pipeSub = _appsStreamController.stream.listen(
           (data) {
             if (controller != null && !controller.isClosed) {
@@ -1008,9 +1065,14 @@ class JobAssistantService {
     }
 
     FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user == null || user.uid != _listeningUid) {
+        _cachedLeads = [];
+        _hasInitializedLeads = false;
+      }
       if (user == null) {
         _leadsFirestoreSub?.cancel();
         _leadsFirestoreSub = null;
+        _listeningUid = null;
         return;
       }
       if (_leadsFirestoreSub == null || _listeningUid != user.uid) {
@@ -1032,6 +1094,7 @@ class JobAssistantService {
       (snap) {
         final leads = snap.docs.map((d) => NetworkingLead.fromMap(d.data(), d.id)).toList();
         _cachedLeads = leads;
+        _hasInitializedLeads = true;
         _saveCachedLeads(leads);
         if (!_leadsStreamController.isClosed) {
           _leadsStreamController.add(List.unmodifiable(leads));
@@ -1039,6 +1102,10 @@ class JobAssistantService {
       },
       onError: (err) {
         debugPrint('Error in networking leads firestore snapshot: $err');
+        _hasInitializedLeads = true;
+        if (!_leadsStreamController.isClosed) {
+          _leadsStreamController.add(List.unmodifiable(_cachedLeads));
+        }
       },
     );
   }
@@ -1051,13 +1118,11 @@ class JobAssistantService {
 
     controller = StreamController<List<NetworkingLead>>.broadcast(
       onListen: () {
-        if (_cachedLeads.isNotEmpty) {
-          scheduleMicrotask(() {
-            if (controller != null && !controller.isClosed) {
-              controller.add(List.unmodifiable(_cachedLeads));
-            }
-          });
-        }
+        scheduleMicrotask(() {
+          if (controller != null && !controller.isClosed) {
+            controller.add(List.unmodifiable(_cachedLeads));
+          }
+        });
         pipeSub = _leadsStreamController.stream.listen(
           (data) {
             if (controller != null && !controller.isClosed) {

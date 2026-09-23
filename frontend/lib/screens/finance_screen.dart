@@ -5112,6 +5112,7 @@ class GroupEventDetailScreen extends StatefulWidget {
 
 class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
   final FinanceService _financeService = FinanceService();
+  List<GroupExpense> _latestExpenses = [];
 
   @override
   Widget build(BuildContext context) {
@@ -5142,7 +5143,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
             ],
           ),
           floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _showAddExpenseDialog(context, currentGroup),
+            onPressed: () => _showAddExpenseDialog(context, currentGroup, null, _latestExpenses),
             icon: const Icon(Icons.receipt),
             label: const Text('Add Expense'),
           ),
@@ -5154,7 +5155,16 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
               }
 
               final expenses = snapshot.data ?? [];
+              _latestExpenses = expenses;
               final settlements = _financeService.calculateGroupBalances(currentGroup.members, expenses);
+              final double totalSettlementAmount = settlements.fold(0.0, (prev, s) => prev + s.amount);
+
+              final Map<String, double> memberTotalPaid = {
+                for (final m in currentGroup.members) m: 0.0,
+              };
+              for (final exp in expenses) {
+                memberTotalPaid[exp.payerName] = (memberTotalPaid[exp.payerName] ?? 0.0) + exp.amount;
+              }
 
               return ListView(
                 padding: const EdgeInsets.all(16),
@@ -5410,11 +5420,54 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      ...currentGroup.members.map((m) => Chip(
-                            avatar: CircleAvatar(child: Text(m[0].toUpperCase())),
-                            label: Text(m),
-                          )),
+                      ...currentGroup.members.map((m) {
+                        final spent = memberTotalPaid[m] ?? 0.0;
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: spent > 0
+                                  ? Colors.teal.withValues(alpha: 0.45)
+                                  : (isDark ? Colors.white12 : Colors.grey.shade300),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircleAvatar(
+                                radius: 12,
+                                backgroundColor: spent > 0 ? Colors.teal : (isDark ? Colors.grey.shade800 : Colors.grey.shade400),
+                                child: Text(
+                                  m.isNotEmpty ? m[0].toUpperCase() : '?',
+                                  style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(m, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white : Colors.black87)),
+                                  Text(
+                                    'Spent: ₹${NumberFormat('#,##,##0.00').format(spent)}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: spent > 0
+                                          ? (isDark ? Colors.tealAccent : Colors.teal.shade800)
+                                          : (isDark ? Colors.white54 : Colors.black45),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -5435,17 +5488,54 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Icon(Icons.swap_horiz, color: Colors.orange),
-                              const SizedBox(width: 8),
-                              Text('Settlement Matrix (Who Owes Whom)',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: isDark ? Colors.orange.shade200 : Colors.black87,
-                                  )),
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.swap_horiz, color: Colors.orange),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text('Settlement Matrix',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                            color: isDark ? Colors.orange.shade200 : Colors.black87,
+                                          )),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (settlements.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withValues(alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.orange.withValues(alpha: 0.5)),
+                                  ),
+                                  child: Text(
+                                    'Total: ₹${NumberFormat('#,##,##0.00').format(totalSettlementAmount)}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                      color: isDark ? Colors.orange.shade200 : Colors.orange.shade900,
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
+                          if (settlements.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Total net pending settlement: ₹${NumberFormat('#,##,##0.00').format(totalSettlementAmount)} across ${settlements.length} transfer${settlements.length == 1 ? '' : 's'}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: isDark ? Colors.white70 : Colors.black54,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 12),
                           if (settlements.isEmpty)
                             Text(
@@ -5588,7 +5678,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                                 IconButton(
                                   icon: const Icon(Icons.edit_outlined, color: Colors.blueAccent, size: 20),
                                   tooltip: 'Edit Expense',
-                                  onPressed: () => _showAddExpenseDialog(context, currentGroup, exp),
+                                  onPressed: () => _showAddExpenseDialog(context, currentGroup, exp, _latestExpenses),
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline, color: Colors.grey, size: 20),
@@ -5719,7 +5809,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
     );
   }
 
-  void _showAddExpenseDialog(BuildContext context, [GroupEvent? liveGroup, GroupExpense? existingExpense]) {
+  void _showAddExpenseDialog(BuildContext context, [GroupEvent? liveGroup, GroupExpense? existingExpense, List<GroupExpense>? currentExpenses]) {
     final activeGroup = liveGroup ?? widget.group;
     final isEditing = existingExpense != null;
     final descCtrl = TextEditingController(text: existingExpense?.description ?? '');
@@ -5729,6 +5819,15 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
           : '',
     );
     String payer = existingExpense?.payerName ?? (activeGroup.members.isNotEmpty ? activeGroup.members.first : 'You');
+    final Map<String, double> memberSpentSoFar = {
+      for (final m in activeGroup.members) m: 0.0,
+    };
+    if (currentExpenses != null) {
+      for (final e in currentExpenses) {
+        if (existingExpense != null && e.id == existingExpense.id) continue;
+        memberSpentSoFar[e.payerName] = (memberSpentSoFar[e.payerName] ?? 0.0) + e.amount;
+      }
+    }
     final Set<String> selectedInvolved = existingExpense != null
         ? Set.from(existingExpense.involvedMembers)
         : Set.from(activeGroup.members);
@@ -5869,11 +5968,40 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       initialValue: payer,
-                      decoration: const InputDecoration(labelText: 'Paid By', isDense: true),
+                      decoration: InputDecoration(
+                        labelText: 'Paid By',
+                        isDense: true,
+                        helperText: 'Spent so far by $payer: ₹${NumberFormat('#,##,##0.00').format(memberSpentSoFar[payer] ?? 0)}',
+                        helperStyle: const TextStyle(fontWeight: FontWeight.w600, color: Colors.blueAccent),
+                      ),
                       items: activeGroup.members
-                          .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                          .map((m) {
+                            final spent = memberSpentSoFar[m] ?? 0.0;
+                            return DropdownMenuItem(
+                              value: m,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(m, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                  Text(
+                                    'Paid: ₹${NumberFormat('#,##,##0.00').format(spent)}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark ? Colors.white60 : Colors.black54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          })
                           .toList(),
-                      onChanged: (val) => payer = val!,
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDialogState(() {
+                            payer = val;
+                          });
+                        }
+                      },
                     ),
                     const SizedBox(height: 16),
                     Row(

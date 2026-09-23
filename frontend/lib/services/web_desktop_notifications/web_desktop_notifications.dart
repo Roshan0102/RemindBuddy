@@ -21,4 +21,8 @@ class WebDesktopNotificationService {
       payload: payload,
     );
   }
+
+  static void initServiceWorkerListener() {
+    impl.WebDesktopNotifications.initServiceWorkerListener();
+  }
 }

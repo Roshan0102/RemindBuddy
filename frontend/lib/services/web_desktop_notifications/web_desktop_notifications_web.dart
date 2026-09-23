@@ -75,4 +75,29 @@ class WebDesktopNotifications {
       debugPrint('Error showing HTML5 desktop notification: $e');
     }
   }
+
+  static bool _swListenerInitialized = false;
+
+  /// Listens for messages dispatched from the service worker on notification clicks
+  static void initServiceWorkerListener() {
+    if (!isSupported || _swListenerInitialized) return;
+    _swListenerInitialized = true;
+    try {
+      html.window.navigator.serviceWorker?.addEventListener('message', (html.Event event) {
+        if (event is html.MessageEvent) {
+          final data = event.data;
+          if (data is Map) {
+            final action = data['action'];
+            final feature = data['feature'] ?? data['type'];
+            if (action == 'NAVIGATE_FEATURE' && feature != null && feature.toString().isNotEmpty) {
+              debugPrint('[RemindBuddy Web] Received NAVIGATE_FEATURE from Service Worker: $feature');
+              NotificationService().handleNotificationPayload(feature.toString());
+            }
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('Error setting up SW message listener: $e');
+    }
+  }
 }

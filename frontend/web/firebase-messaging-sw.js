@@ -31,7 +31,10 @@ messaging.onBackgroundMessage((payload) => {
     icon: '/icons/Icon-192.png',
     badge: '/icons/Icon-192.png',
     tag: tag,
-    data: payload.data || {}
+    data: Object.assign({}, payload.data || {}, {
+      fcmOptions: payload.fcmOptions || {},
+      notification: payload.notification || {}
+    })
   };
 
   self.registration.showNotification(title, notificationOptions);
@@ -39,16 +42,35 @@ messaging.onBackgroundMessage((payload) => {
 
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
+  const notifData = (event.notification && event.notification.data) || {};
+  const featureType = notifData.type || notifData.feature || notifData.click_action || '';
+  
+  let targetUrl = '/';
+  if (notifData.fcmOptions && notifData.fcmOptions.link) {
+    targetUrl = notifData.fcmOptions.link;
+  } else if (featureType) {
+    targetUrl = '/?feature=' + encodeURIComponent(featureType);
+  }
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
       for (let i = 0; i < clientList.length; i++) {
         let client = clientList[i];
         if (client.url && 'focus' in client) {
-          return client.focus();
+          client.focus();
+          if (featureType) {
+            client.postMessage({
+              action: 'NAVIGATE_FEATURE',
+              feature: featureType,
+              type: featureType,
+              data: notifData
+            });
+          }
+          return;
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow('/');
+        return clients.openWindow(targetUrl);
       }
     })
   );

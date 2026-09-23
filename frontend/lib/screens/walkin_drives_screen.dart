@@ -19,6 +19,7 @@ class WalkInDrivesScreen extends StatefulWidget {
 class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
   bool _showPastWalkIns = false;
   bool _isFetchingWalkIns = false;
+  DateTime? _lastFetchWalkInsTime;
   List<String> _walkinRoles = [];
   String _walkinLocation = '';
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
@@ -214,6 +215,24 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
   }
 
   Future<void> _triggerFetchWalkIns() async {
+    if (_isFetchingWalkIns) return;
+
+    if (_lastFetchWalkInsTime != null) {
+      final elapsed = DateTime.now().difference(_lastFetchWalkInsTime!).inSeconds;
+      if (elapsed < 15) {
+        final remaining = 15 - elapsed;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⏳ Please wait $remaining second${remaining == 1 ? '' : 's'} before fetching walk-in drives again.'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.amber.shade900,
+          ),
+        );
+        return;
+      }
+    }
+
+    _lastFetchWalkInsTime = DateTime.now();
     setState(() => _isFetchingWalkIns = true);
     try {
       dynamic result;
@@ -672,9 +691,11 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
                               Text('No walk-in drives found for your preferences.', style: TextStyle(color: subtextColor)),
                               const SizedBox(height: 12),
                               ElevatedButton.icon(
-                                onPressed: _triggerFetchWalkIns,
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Fetch Walk-Ins'),
+                                onPressed: _isFetchingWalkIns ? null : _triggerFetchWalkIns,
+                                icon: _isFetchingWalkIns
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.refresh),
+                                label: Text(_isFetchingWalkIns ? 'Fetching...' : 'Fetch Walk-Ins'),
                               ),
                             ],
                           ),

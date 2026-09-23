@@ -348,11 +348,19 @@ Respond ONLY with a JSON array matching this schema:
     return { success: true, count: newCount };
 }
 
+const lastFetchWalkInsMap = new Map<string, number>();
+
 export const fetchUserWalkIns = functions.runWith({ timeoutSeconds: 120, memory: "256MB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
     }
     const uid = context.auth.uid;
+    const now = Date.now();
+    const lastFetch = lastFetchWalkInsMap.get(uid) || 0;
+    if (now - lastFetch < 10000) {
+        return { success: true, count: 0, message: "Request throttled. Please wait a few seconds before fetching again." };
+    }
+    lastFetchWalkInsMap.set(uid, now);
     try {
         const customPrefs: UserWalkInPreferences = {
             roles: data?.roles && Array.isArray(data.roles) ? data.roles : undefined,

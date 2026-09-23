@@ -8,6 +8,7 @@ import 'screens/auth_screen.dart';
 import 'services/notification_service.dart';
 import 'services/job_assistant_service.dart';
 import 'services/location_reminder_service.dart';
+import 'services/update_service.dart';
 import 'firebase_options.dart';
 import 'services/web_plugin_init/web_plugin_init.dart';
 
@@ -48,6 +49,12 @@ void main() async {
     await JobAssistantService().initLocalCache();
   } catch (e) {
     debugPrint('Error pre-loading job assistant cache: $e');
+  }
+
+  try {
+    UpdateService.cleanOldApksAndCaches();
+  } catch (e) {
+    debugPrint('Error cleaning old update APKs: $e');
   }
   
   runApp(const RemindBuddyApp());

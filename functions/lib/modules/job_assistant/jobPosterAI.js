@@ -48,9 +48,16 @@ CRITICAL INSTRUCTIONS FOR COVER LETTER & SUBJECT:
 1. Candidate's Full Name is: "${promptName}".
 2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, framework proficiencies, work history, and key projects.
 3. Compare candidate's actual resume experience against the job poster requirements. Write a highly personalized, compelling, professional cover letter that directly maps candidate's specific accomplishments, certifications, and skills from their resume to the exact requirements of the job posting.
-4. The cover letter MUST sound authentically human-written (not robotic, generic, or boilerplate AI output).
-5. Format the generated subject as: "${promptName} - [Job Title]" or "[Job Title] - ${promptName}".
-6. Sign off the cover letter with:
+4. EXPERIENCE GAP & SKILL-VALUE BRIDGING (MANDATORY):
+   - Carefully compare the candidate's years of experience stated in their attached Resume against the required experience in the job poster.
+   - If the job poster seeks more experience than the candidate currently has on their resume (e.g. posting asks for 2+ or 3+ years, but resume shows 1-2 years):
+     You MUST proactively, diplomatically, and creatively bridge this gap in the cover letter.
+     Do NOT apologize or sound underqualified. Instead, confidently acknowledge the experience expectation while decisively pivoting to the candidate's deep, hands-on mastery of the exact required tools, frameworks, and architectures (e.g., Docker, Kubernetes, AWS/Cloud, CI/CD, Terraform, etc.).
+     Explicitly highlight that while their formal tenure may be fewer years, their intense project-based experience, rapid problem-solving ability, and proven track record of delivering reliable systems enable them to hit the ground running and create immediate high-impact value from Day 1.
+   - If the candidate's experience matches or exceeds the poster's requirements, highlight their battle-tested depth and proven results.
+5. The cover letter MUST sound authentically human-written (not robotic, generic, or boilerplate AI output).
+6. Format the generated subject as: "${promptName} - [Job Title]" or "[Job Title] - ${promptName}".
+7. Sign off the cover letter with:
 "Sincerely,
 ${promptName}"
 NEVER leave generic placeholders like "[Your Name]", "[Applicant Name]", or "[Name]".
@@ -75,9 +82,16 @@ CRITICAL INSTRUCTIONS FOR COVER LETTER & SUBJECT:
 1. Candidate's Full Name is: "${promptName}".
 2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, certifications, work history, and key projects.
 3. Compare candidate's actual resume experience against each job poster's requirements. Write a highly personalized, compelling, professional cover letter for EACH job posting that directly maps candidate's specific accomplishments from their resume to that job.
-4. The cover letter MUST sound authentically human-written (not robotic, generic, or boilerplate AI output).
-5. Format the generated subject as: "${promptName} - [Job Title]" or "[Job Title] - ${promptName}".
-6. Sign off the cover letter with:
+4. EXPERIENCE GAP & SKILL-VALUE BRIDGING (MANDATORY):
+   - Carefully compare the candidate's years of experience stated in their attached Resume against the required experience in each job poster.
+   - If a job poster seeks more experience than the candidate currently has on their resume (e.g. posting asks for 2+ or 3+ years, but resume shows 1-2 years):
+     You MUST proactively, diplomatically, and creatively bridge this gap in the cover letter.
+     Do NOT apologize or sound underqualified. Instead, confidently acknowledge the experience expectation while decisively pivoting to the candidate's deep, hands-on mastery of the exact required tools, frameworks, and architectures (e.g., Docker, Kubernetes, AWS/Cloud, CI/CD, Terraform, etc.).
+     Explicitly highlight that while their formal tenure may be fewer years, their intense project-based experience, rapid problem-solving ability, and proven track record of delivering reliable systems enable them to hit the ground running and create immediate high-impact value from Day 1.
+   - If the candidate's experience matches or exceeds the poster's requirements, highlight their battle-tested depth and proven results.
+5. The cover letter MUST sound authentically human-written (not robotic, generic, or boilerplate AI output).
+6. Format the generated subject as: "${promptName} - [Job Title]" or "[Job Title] - ${promptName}".
+7. Sign off the cover letter with:
 "Sincerely,
 ${promptName}"
 NEVER leave generic placeholders like "[Your Name]", "[Applicant Name]", or "[Name]".

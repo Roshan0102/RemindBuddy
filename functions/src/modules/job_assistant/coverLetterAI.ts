@@ -48,7 +48,10 @@ CRITICAL INSTRUCTIONS:
 2. Structure:
    a) Engaging Opening: Express enthusiasm for "${jobTitle}" at "${companyName}".
    b) Concrete Value: Highlighting 2-3 specific achievements or competencies from the candidate's resume that make them an outstanding fit.
-   c) Strategic Alignment: How the candidate can solve challenges or create value for ${companyName}.
+   c) Strategic Alignment & Experience Gap Bridging:
+      - Compare the candidate's years of experience on their resume with the requirements in the job details/company notes.
+      - If the job seeks more experience than the candidate has on their resume (e.g. asking for 2+ or 3+ years, but resume shows 1-2 years), proactively and creatively bridge this gap: do not apologize; instead, confidently acknowledge the requirement and pivot decisively to the candidate's hands-on mastery of the exact required tools, architectures, and real-world project deliveries, demonstrating that they will add immediate, high-impact value from Day 1.
+      - If experience matches or exceeds requirements, highlight their depth and proven results.
    d) Clear, professional closing and Call to Action proposing a brief discussion.
 3. Sign-off MUST be:
 "Sincerely,
