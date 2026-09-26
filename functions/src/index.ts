@@ -96,6 +96,15 @@ export {
     processNetworkingDiscoveryUserTask
 } from "./modules/job_assistant/networkingDiscoveryAI";
 
+export {
+    runLinkedInAutoApplyNow
+} from "./modules/job_assistant/linkedinAutoApply";
+
+export {
+    triggerCareerPortalDiscovery,
+    processCareerPortalDiscoveryTask
+} from "./modules/job_assistant/careerPortalATS";
+
 // Finance & Expense Tracking
 export {
     triggerNightlyExpenseNotifier

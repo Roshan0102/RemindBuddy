@@ -73,8 +73,11 @@ export async function fetchAndStoreWalkInsForUserInternal(
     }
 
     const today = moment().tz('Asia/Kolkata');
-    const startDateStr = today.clone().add(1, 'day').format('YYYY-MM-DD');
+    const startDateStr = today.clone().startOf('month').format('YYYY-MM-DD');
     const endDateStr = today.clone().add(60, 'days').format('YYYY-MM-DD');
+    const currentMonthName = today.format("MMMM"); // e.g. September
+    const currentYear = today.format("YYYY"); // e.g. 2026
+    const nextMonthName = today.clone().add(1, 'month').format("MMMM"); // e.g. October
 
     // Run targeted Tavily search query per role
     const allTavilyResults: TavilySearchResult[] = [];
@@ -83,13 +86,14 @@ export async function fetchAndStoreWalkInsForUserInternal(
 
     for (const role of roles.slice(0, 4)) {
         try {
-            const query = `${role} (walk-in drive OR walk-in interview OR "walk in drive" OR "hiring drive") ${location} ${today.format("YYYY")}`;
-            console.log(`[WalkinDrives] Querying Tavily for user ${uid} (Role: "${role}")...`);
+            // Advanced search with month & year focus for fresh walk-ins
+            const query = `"${role}" (walk-in drive OR "walk in interview" OR "walkin drive" OR "hiring drive") "${location}" ("${currentMonthName}" OR "${nextMonthName}" OR "${currentYear}")`;
+            console.log(`[WalkinDrives] Querying Tavily (advanced) for user ${uid} (Role: "${role}")...`);
             const tavilyResp = await searchTavily({
                 apiKey: userTavilyKey,
                 query,
-                searchDepth: "basic",
-                maxResults: 4
+                searchDepth: "advanced",
+                maxResults: 5
             });
 
             for (const item of tavilyResp.results) {
@@ -101,6 +105,29 @@ export async function fetchAndStoreWalkInsForUserInternal(
         } catch (tavilyErr: any) {
             console.warn(`[WalkinDrives] Tavily search error for role "${role}":`, tavilyErr.message);
             lastTavilyError = tavilyErr.message || String(tavilyErr);
+        }
+    }
+
+    // Fallback: If no results found with strict quotes, try a broader search for the top role
+    if (allTavilyResults.length === 0 && roles.length > 0) {
+        try {
+            const fallbackRole = roles[0];
+            const fallbackQuery = `${fallbackRole} walk in drive ${location} ${currentMonthName} ${currentYear}`;
+            console.log(`[WalkinDrives] Trying fallback Tavily query: "${fallbackQuery}"...`);
+            const fallbackResp = await searchTavily({
+                apiKey: userTavilyKey,
+                query: fallbackQuery,
+                searchDepth: "basic",
+                maxResults: 5
+            });
+            for (const item of fallbackResp.results) {
+                if (item.url && !seenUrls.has(item.url)) {
+                    seenUrls.add(item.url);
+                    allTavilyResults.push(item);
+                }
+            }
+        } catch (fbErr: any) {
+            console.warn(`[WalkinDrives] Fallback Tavily query error:`, fbErr.message);
         }
     }
 
@@ -124,15 +151,24 @@ export async function fetchAndStoreWalkInsForUserInternal(
         `[Walk-In Search Result ${i + 1}]\nTitle: ${r.title}\nSource: ${r.url}\nDetails: ${r.content}`
     ).join("\n\n");
 
-    const prompt = `You are an expert career and walk-in drive coordinator. Below are real-time search results for upcoming walk-in interviews and hiring drives:
+    const prompt = `You are an expert career and walk-in drive coordinator. Below are real-time search results for walk-in interviews and hiring drives:
 
 ${searchResultsSummary}
 
 Target Roles: ${roles.join(', ')}
 Target Location: ${location}
-Target Date Range: between ${startDateStr} and ${endDateStr}.
+Target Date Range: between ${startDateStr} (start of ${currentMonthName} ${currentYear}) and ${endDateStr}. Include all active, recent, or upcoming walk-in drives and interviews in ${currentMonthName} or ${nextMonthName} ${currentYear}.
 
 Provide a clean JSON list of walk-in drives. Extract the company name, exact interview date, reporting timings, venue location/address, required experience, and direct source link.
+
+CRITICAL FORMAT RULES:
+1. "date": MUST be strictly in "YYYY-MM-DD" format using current year ${currentYear} (e.g. "${currentYear}-09-28"). If a date range or multiple days are mentioned (e.g. 26th to 28th Sep), choose the upcoming or latest date in that range.
+2. "title": Must include the role and drive type (e.g. "Software Engineer Walk-In Drive").
+3. "company": Company or organization hosting the drive.
+4. "timings": Time range (e.g. "9:30 AM - 1:00 PM" or "10:00 AM onwards").
+5. "location": Specific venue address or location in or near ${location}.
+6. "experience": Experience requirements (e.g. "0-2 years", "Freshers", "3+ years", or "N/A").
+7. "registrationLink": Direct URL link to where this walk-in info was found.
 
 If no walk-in drives or interviews match the criteria, respond ONLY with an empty JSON array: []. Do not include any conversational explanation, preamble, or notes.
 Respond ONLY with a JSON array matching this schema:
@@ -204,11 +240,32 @@ Respond ONLY with a JSON array matching this schema:
         }
     }
 
-    // Deduplicate walk-ins by date and normalized title
+    // Deduplicate walk-ins by date and normalized title, and normalize dates to YYYY-MM-DD
     const seen = new Set<string>();
     const uniqueWalkIns: any[] = [];
     for (const walkin of parsedWalkIns) {
-        if (!walkin.title || !walkin.date) continue;
+        if (!walkin.title) continue;
+
+        // Clean & normalize date to strict YYYY-MM-DD format
+        let rawDate = (walkin.date ? String(walkin.date).trim() : "");
+        let normalizedDate = today.format('YYYY-MM-DD');
+        if (rawDate) {
+            const parsed = moment(rawDate, [
+                'YYYY-MM-DD', 'YYYY/MM/DD', 'DD-MM-YYYY', 'DD/MM/YYYY',
+                'MMMM D, YYYY', 'D MMMM YYYY', 'MMM D, YYYY', 'D MMM YYYY',
+                'MM/DD/YYYY', 'YYYY-M-D', 'YYYY.MM.DD'
+            ]);
+            if (parsed.isValid()) {
+                normalizedDate = parsed.format('YYYY-MM-DD');
+            } else {
+                const m = rawDate.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+                if (m) {
+                    normalizedDate = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+                }
+            }
+        }
+        walkin.date = normalizedDate;
+
         const normTitle = walkin.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
         const key = `${walkin.date}_${normTitle}`;
         if (!seen.has(key)) {
@@ -424,14 +481,7 @@ export async function internalDailyWalkInsFetcher(): Promise<void> {
                 continue;
             }
 
-            // 2. Must have valid preferences (roles and location) entered
-            const roles = uData.walkinRoles;
-            const location = uData.walkinLocation;
-            if (!Array.isArray(roles) || roles.length === 0 || !location || typeof location !== 'string' || location.trim().length === 0) {
-                console.log(`[internalDailyWalkInsFetcher] Skipping user ${uid}: missing walkinRoles or walkinLocation.`);
-                continue;
-            }
-
+            // 2. Add user to eligible list for walk-in fetching
             eligibleUids.push(uid);
         }
 
@@ -448,8 +498,12 @@ export async function internalDailyWalkInsFetcher(): Promise<void> {
             const uData = userSnap.data() || {};
             const userRoles = (Array.isArray(uData.walkinRoles) && uData.walkinRoles.length > 0)
                 ? uData.walkinRoles
-                : (uData.autoApplySettings?.targetRoles || []);
-            const userLocation = (typeof uData.walkinLocation === 'string') ? uData.walkinLocation.trim() : "";
+                : (Array.isArray(uData.autoApplySettings?.targetRoles) && uData.autoApplySettings.targetRoles.length > 0)
+                    ? uData.autoApplySettings.targetRoles
+                    : ["Software Engineer", "Developer"];
+            const userLocation = (typeof uData.walkinLocation === 'string' && uData.walkinLocation.trim().length > 0)
+                ? uData.walkinLocation.trim()
+                : "Bengaluru";
 
             const etaUnix = nowUnix + (i * 25); // Stagger by 25s for safe RPM rate limits
             const taskId = await enqueueUserCloudTask(

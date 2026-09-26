@@ -12,6 +12,7 @@ import { internalDailyUntaggedExpenseNotifier } from "../modules/finance/nightly
 import { internalAutoJobDiscoveryAndApply } from "../modules/job_assistant/jobDiscoveryAI";
 import { internalCheckAllJobReplies } from "../modules/job_assistant/replyTracker";
 import { internalNetworkingDiscoveryDispatcher } from "../modules/job_assistant/networkingDiscoveryAI";
+import { internalLinkedInPostAutoApplyDispatcher } from "../modules/job_assistant/linkedinAutoApply";
 
 // --- CONSOLIDATED MASTER SCHEDULERS (2 Schedulers total for 100% Free GCP Tier) ---
 
@@ -194,6 +195,16 @@ export const masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, m
         
         // Check if running near the half hour (:30)
         if (minute >= 15 && minute < 45) {
+            // 10:30 AM IST (Hour 10, Minute 30): Morning LinkedIn Real-Time Recruiter Post Scraper & Auto-Apply
+            if (hour === 10) {
+                console.log("[masterHalfHourlyRunner] Executing 10:30 AM tasks: LinkedIn Recruiter Posts Scraper & Auto-Apply...");
+                try {
+                    await internalLinkedInPostAutoApplyDispatcher();
+                } catch (err) {
+                    console.error("Error in internalLinkedInPostAutoApplyDispatcher at 10:30 inside masterHalfHourlyRunner:", err);
+                }
+            }
+
             // 11:30 AM IST (Hour 11, Minute 30): Daily Cold Outreach & Leadership Networking Discovery
             if (hour === 11) {
                 console.log("[masterHalfHourlyRunner] Executing 11:30 AM tasks: Cold Outreach & Leadership Discovery...");
@@ -201,6 +212,16 @@ export const masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, m
                     await internalNetworkingDiscoveryDispatcher();
                 } catch (err) {
                     console.error("Error in internalNetworkingDiscoveryDispatcher inside masterHalfHourlyRunner:", err);
+                }
+            }
+
+            // 08:30 PM IST (Hour 20, Minute 30): Evening LinkedIn Real-Time Recruiter Post Scraper & Auto-Apply
+            if (hour === 20) {
+                console.log("[masterHalfHourlyRunner] Executing 08:30 PM tasks: Evening LinkedIn Recruiter Posts Scraper & Auto-Apply...");
+                try {
+                    await internalLinkedInPostAutoApplyDispatcher();
+                } catch (err) {
+                    console.error("Error in internalLinkedInPostAutoApplyDispatcher at 20:30 inside masterHalfHourlyRunner:", err);
                 }
             }
 

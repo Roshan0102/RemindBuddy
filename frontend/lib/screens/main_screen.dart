@@ -99,9 +99,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       if (user != null) {
         HomeWidgetService().startFinanceWidgetLiveSync();
         HomeWidgetService().startShiftWidgetLiveSync();
+        HomeWidgetService().startNoteChecklistLiveSync();
       } else {
         HomeWidgetService().stopFinanceWidgetLiveSync();
         HomeWidgetService().stopShiftWidgetLiveSync();
+        HomeWidgetService().stopNoteChecklistLiveSync();
       }
     });
   }
@@ -110,6 +112,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     HomeWidgetService().syncFinanceWidget();
     HomeWidgetService().syncShiftWidgets();
+    HomeWidgetService().syncWidgetChangesToFirestore();
     if (state == AppLifecycleState.resumed ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
@@ -1711,7 +1714,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'RemindBuddy v1.10.35',
+                  'RemindBuddy v1.10.36',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

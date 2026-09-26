@@ -85,6 +85,12 @@ class _AdminScreenState extends State<AdminScreen> {
       'color': const Color(0xFF6366F1),
     },
     {
+      'id': 'linkedin_auto_apply',
+      'label': 'LinkedIn Auto-Apply',
+      'icon': Icons.bolt_rounded,
+      'color': const Color(0xFF0A66C2),
+    },
+    {
       'id': 'finance',
       'label': 'Finance & Split Expenses',
       'icon': Icons.account_balance_wallet_rounded,

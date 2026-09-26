@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/job_application.dart';
 import '../models/networking_lead.dart';
 import '../models/resume_profile.dart';
+import '../models/career_portal_job.dart';
 
 class JobAssistantService {
   static final JobAssistantService _instance = JobAssistantService._internal();
@@ -842,6 +843,10 @@ class JobAssistantService {
       replyBodyPreview: app.replyBodyPreview,
       actionRequired: app.actionRequired,
       resumeProfileName: app.resumeProfileName,
+      sourceUrl: app.sourceUrl,
+      source: app.source,
+      authorName: app.authorName,
+      postExcerpt: app.postExcerpt,
     );
 
     final existingIndex = _cachedApplications.indexWhere((a) => a.id == newApp.id);
@@ -1389,4 +1394,92 @@ class JobAssistantService {
       'techDomains': cachedDomains,
     };
   }
+
+  Future<Map<String, dynamic>> runLinkedInAutoApplyNow({
+    List<String>? roles,
+    int? minExpYears,
+    int? maxExpYears,
+    int? maxApplications,
+  }) async {
+    final callable = _functions.httpsCallable(
+      'runLinkedInAutoApplyNow',
+      options: HttpsCallableOptions(timeout: const Duration(seconds: 300)),
+    );
+    final response = await callable.call<Map<String, dynamic>>({
+      if (roles != null) 'roles': roles,
+      if (minExpYears != null) 'minExpYears': minExpYears,
+      if (maxExpYears != null) 'maxExpYears': maxExpYears,
+      if (maxApplications != null) 'maxApplications': maxApplications,
+    });
+    return Map<String, dynamic>.from(response.data);
+  }
+
+  Future<void> saveLinkedInAutoApplySettings(Map<String, dynamic> settings) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+    await doc.set({
+      'linkedinAutoApplySettings': settings,
+    }, SetOptions(merge: true));
+  }
+
+  Future<Map<String, dynamic>> getLinkedInAutoApplySettings() async {
+    final doc = _userDoc;
+    if (doc == null) return {};
+    try {
+      final snap = await doc.get();
+      if (snap.exists && snap.data() != null) {
+        final data = snap.data() as Map<String, dynamic>;
+        return Map<String, dynamic>.from(data['linkedinAutoApplySettings'] ?? {});
+      }
+    } catch (e) {
+      debugPrint('Error getting linkedinAutoApplySettings: $e');
+    }
+    return {};
+  }
+
+  // ============================================================================
+  // CAREER PORTALS & ATS MATCHER (<48h)
+  // ============================================================================
+
+  Stream<List<CareerPortalJob>> streamCareerPortalJobs() {
+    final uid = _uid;
+    if (uid == null) return const Stream.empty();
+    return _db
+        .collection('users')
+        .doc(uid)
+        .collection('career_portal_jobs')
+        .orderBy('discoveredAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => CareerPortalJob.fromFirestore(doc)).toList());
+  }
+
+  Future<Map<String, dynamic>> triggerCareerPortalDiscovery({
+    bool forceRefresh = false,
+    String? customRole,
+  }) async {
+    final callable = _functions.httpsCallable(
+      'triggerCareerPortalDiscovery',
+      options: HttpsCallableOptions(timeout: const Duration(seconds: 300)),
+    );
+    final response = await callable.call<Map<String, dynamic>>({
+      'forceRefresh': forceRefresh,
+      if (customRole != null) 'customRole': customRole,
+    });
+    return Map<String, dynamic>.from(response.data);
+  }
+
+  Future<void> updateCareerPortalJobStatus(String jobId, String status) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('career_portal_jobs')
+        .doc(jobId)
+        .update({
+      'status': status,
+      if (status == 'applied') 'appliedAt': FieldValue.serverTimestamp(),
+    });
+  }
 }
+

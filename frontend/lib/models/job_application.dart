@@ -28,6 +28,10 @@ class JobApplication {
   final bool isReplyDismissed;
   final bool isBounced;
   final bool replyDeleted;
+  final String? sourceUrl;
+  final String? source;
+  final String? authorName;
+  final String? postExcerpt;
 
   JobApplication({
     required this.id,
@@ -57,6 +61,10 @@ class JobApplication {
     this.isReplyDismissed = false,
     this.isBounced = false,
     this.replyDeleted = false,
+    this.sourceUrl,
+    this.source,
+    this.authorName,
+    this.postExcerpt,
   });
 
   Map<String, dynamic> toMap() {
@@ -91,6 +99,10 @@ class JobApplication {
       'replyDismissed': isReplyDismissed,
       'isBounced': isBounced,
       'replyDeleted': replyDeleted,
+      'sourceUrl': sourceUrl,
+      'source': source,
+      'authorName': authorName,
+      'postExcerpt': postExcerpt,
     };
   }
 
@@ -172,6 +184,10 @@ class JobApplication {
       replyDeleted: map['replyDeleted'] == true || map['isReplyDeleted'] == true || map['isDeleted'] == true || map['status'] == 'reply_deleted' || map['status'] == 'bounced_dismissed',
       isBounced: (map['isBounced'] == true || map['emailBounced'] == true || map['responseType'] == 'bounced' || map['status'] == 'bounced') &&
           !(map['replyDeleted'] == true || map['isReplyDeleted'] == true || map['isDeleted'] == true || map['status'] == 'reply_deleted' || map['status'] == 'bounced_dismissed'),
+      sourceUrl: map['sourceUrl'] as String?,
+      source: map['source'] as String?,
+      authorName: map['authorName'] as String?,
+      postExcerpt: (map['postExcerpt'] ?? map['postContentExcerpt']) as String?,
     );
   }
 }

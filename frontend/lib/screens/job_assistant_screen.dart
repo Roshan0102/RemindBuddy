@@ -1,7 +1,7 @@
+import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'package:google_fonts/google_fonts.dart';
@@ -11,9 +11,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/job_application.dart';
 import '../models/networking_lead.dart';
 import '../models/resume_profile.dart';
+import '../models/career_portal_job.dart';
 import '../services/job_assistant_service.dart';
 import '../services/app_file_picker/app_file_picker.dart';
 import '../services/url_launcher_helper/url_launcher_helper.dart';
@@ -24,7 +27,10 @@ import '../services/notification_service.dart';
 import '../services/web_clipboard_drag/web_clipboard_drag.dart';
 
 class JobAssistantScreen extends StatefulWidget {
-  const JobAssistantScreen({super.key});
+  final int? initialFeatureIndex;
+  static final ValueNotifier<int?> selectedFeatureIndexNotifier = ValueNotifier<int?>(null);
+
+  const JobAssistantScreen({super.key, this.initialFeatureIndex});
 
   @override
   State<JobAssistantScreen> createState() => _JobAssistantScreenState();
@@ -33,6 +39,15 @@ class JobAssistantScreen extends StatefulWidget {
 class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final JobAssistantService _service = JobAssistantService();
+
+  int? _selectedFeatureIndex;
+
+  // Career Portals State (<48h)
+  bool _isDiscoveringPortals = false;
+  String _portalFilter = 'all';
+  String _portalSearchQuery = '';
+  final TextEditingController _portalRoleController = TextEditingController();
+  final TextEditingController _portalSearchController = TextEditingController();
 
   // State
   String _uploadMode = 'single_job'; // 'single_job' or 'multiple_jobs'
@@ -129,19 +144,48 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   final TextEditingController _newRadarDomainController = TextEditingController();
   bool _isSavingRadarSettings = false;
 
+  // LinkedIn Auto-Apply (Apify Real-Time Recruiter Posts) State
+  bool _isLinkedInAutoApplyModuleEnabled = false;
+  bool _isRunningLinkedInAutoApply = false;
+  String _linkedInAutoApplyStatusMessage = '';
+  DateTime? _linkedInLastRan;
+  DateTime? _linkedInLastApplied;
+  DateTime _linkedInMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  int _linkedInPage = 1;
+  final ScrollController _linkedInScrollController = ScrollController();
+  final TextEditingController _apifyToken1Controller = TextEditingController();
+  final TextEditingController _apifyToken2Controller = TextEditingController();
+  final TextEditingController _apifyToken3Controller = TextEditingController();
+  final TextEditingController _linkedInRolesController = TextEditingController(text: 'DevOps Engineer, Cloud Engineer, Site Reliability Engineer');
+  final TextEditingController _linkedInMinExpController = TextEditingController(text: '1');
+  final TextEditingController _linkedInMaxExpController = TextEditingController(text: '3');
+  bool _linkedInAutoApplyEnabled = true;
+
   @override
   void initState() {
     super.initState();
+    _selectedFeatureIndex = widget.initialFeatureIndex ?? JobAssistantScreen.selectedFeatureIndexNotifier.value;
+    JobAssistantScreen.selectedFeatureIndexNotifier.addListener(_onFeatureIndexNotified);
     _service.initLocalCache().then((_) {
       if (mounted) setState(() {});
     });
     _applicationsStream = _service.getJobApplicationsStream();
     _networkingLeadsStream = _service.getNetworkingLeadsStream();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _loadUserConfig();
     _setupTimestampsListeners();
     _setupResumeProfilesListener();
     _setupPasteAndDropListener();
+  }
+
+  void _onFeatureIndexNotified() {
+    final newIdx = JobAssistantScreen.selectedFeatureIndexNotifier.value;
+    if (newIdx != null && mounted) {
+      setState(() {
+        _selectedFeatureIndex = newIdx;
+      });
+      JobAssistantScreen.selectedFeatureIndexNotifier.value = null;
+    }
   }
 
   void _setupResumeProfilesListener() {
@@ -261,6 +305,39 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             if (autoSettings.containsKey('enabled')) {
               _autoApplyEnabled = autoSettings['enabled'] == true;
             }
+
+            final enabledMods = List<String>.from(data['enabledModules'] ?? []);
+            _isLinkedInAutoApplyModuleEnabled = enabledMods.contains('linkedin_auto_apply');
+
+            final lRan = data['linkedinAutoApplyLastRan'];
+            if (lRan is Timestamp) {
+              _linkedInLastRan = lRan.toDate();
+            } else if (lRan is String) {
+              _linkedInLastRan = DateTime.tryParse(lRan);
+            }
+
+            final lApplied = data['linkedinAutoApplyLastApplied'];
+            if (lApplied is Timestamp) {
+              _linkedInLastApplied = lApplied.toDate();
+            } else if (lApplied is String) {
+              _linkedInLastApplied = DateTime.tryParse(lApplied);
+            }
+
+            final lSettings = Map<String, dynamic>.from(data['linkedinAutoApplySettings'] ?? {});
+            if (lSettings.isNotEmpty) {
+              if (_apifyToken1Controller.text.isEmpty && lSettings['apifyToken1'] != null) {
+                _apifyToken1Controller.text = lSettings['apifyToken1'];
+              }
+              if (_apifyToken2Controller.text.isEmpty && lSettings['apifyToken2'] != null) {
+                _apifyToken2Controller.text = lSettings['apifyToken2'];
+              }
+              if (_apifyToken3Controller.text.isEmpty && lSettings['apifyToken3'] != null) {
+                _apifyToken3Controller.text = lSettings['apifyToken3'];
+              }
+              if (lSettings['enabled'] != null) {
+                _linkedInAutoApplyEnabled = lSettings['enabled'] == true;
+              }
+            }
           });
         }
       });
@@ -286,6 +363,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
   @override
   void dispose() {
+    JobAssistantScreen.selectedFeatureIndexNotifier.removeListener(_onFeatureIndexNotified);
+    _portalRoleController.dispose();
+    _portalSearchController.dispose();
     _userDocSub?.cancel();
     _appsSub?.cancel();
     _tabController.dispose();
@@ -309,6 +389,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     _manualRecipientEmailsController.dispose();
     _manualCompanyNotesController.dispose();
     _manualCustomPromptController.dispose();
+    _linkedInScrollController.dispose();
+    _apifyToken1Controller.dispose();
+    _apifyToken2Controller.dispose();
+    _apifyToken3Controller.dispose();
+    _linkedInRolesController.dispose();
+    _linkedInMinExpController.dispose();
+    _linkedInMaxExpController.dispose();
     for (var c in _emailControllers.values) { c.dispose(); }
     for (var c in _subjectControllers.values) { c.dispose(); }
     for (var c in _bodyControllers.values) { c.dispose(); }
@@ -335,7 +422,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           ),
         );
       },
-      isActive: () => mounted && _tabController.index == 2,
+      isActive: () => mounted && _tabController.index == 3,
     );
   }
 
@@ -479,6 +566,34 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             _radarTechDomains = radarTechs;
           } else if (_radarTechDomains.isEmpty && targetRoles.isNotEmpty) {
             _radarTechDomains = List.from(targetRoles);
+          }
+        });
+      }
+
+      final linkedInSettings = await _service.getLinkedInAutoApplySettings();
+      if (mounted && linkedInSettings.isNotEmpty) {
+        setState(() {
+          if (linkedInSettings['apifyToken1'] != null && _apifyToken1Controller.text.isEmpty) {
+            _apifyToken1Controller.text = linkedInSettings['apifyToken1'];
+          }
+          if (linkedInSettings['apifyToken2'] != null && _apifyToken2Controller.text.isEmpty) {
+            _apifyToken2Controller.text = linkedInSettings['apifyToken2'];
+          }
+          if (linkedInSettings['apifyToken3'] != null && _apifyToken3Controller.text.isEmpty) {
+            _apifyToken3Controller.text = linkedInSettings['apifyToken3'];
+          }
+          final lRoles = List<String>.from(linkedInSettings['targetRoles'] ?? []);
+          if (lRoles.isNotEmpty) {
+            _linkedInRolesController.text = lRoles.join(', ');
+          }
+          if (linkedInSettings['minExpYears'] != null) {
+            _linkedInMinExpController.text = linkedInSettings['minExpYears'].toString();
+          }
+          if (linkedInSettings['maxExpYears'] != null) {
+            _linkedInMaxExpController.text = linkedInSettings['maxExpYears'].toString();
+          }
+          if (linkedInSettings['enabled'] != null) {
+            _linkedInAutoApplyEnabled = linkedInSettings['enabled'] == true;
           }
         });
       }
@@ -2523,98 +2638,947 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   }
 
   // ============================================================================
+  // HUB MENU & FEATURE NAVIGATION (Finance-style Card Grid)
+  // ============================================================================
+
+  Widget _getFeatureTitle(int index) {
+    switch (index) {
+      case 0:
+        return const Text('Auto-Apply Agent ⚡', style: TextStyle(fontWeight: FontWeight.bold));
+      case 1:
+        return const Text('Career Portals & ATS Matcher 🏢', style: TextStyle(fontWeight: FontWeight.bold));
+      case 2:
+        return const Text('LinkedIn Hiring Posts 💼', style: TextStyle(fontWeight: FontWeight.bold));
+      case 3:
+        return const Text('Cold Outreach 👥', style: TextStyle(fontWeight: FontWeight.bold));
+      case 4:
+        return const Text('Manual Scan & Apply 📸', style: TextStyle(fontWeight: FontWeight.bold));
+      case 5:
+        return const Text('Applied Job History 📜', style: TextStyle(fontWeight: FontWeight.bold));
+      default:
+        return const Text('AI Job Applicant 💼', style: TextStyle(fontWeight: FontWeight.bold));
+    }
+  }
+
+  Widget _buildApplicantHubGrid() {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final Color subtextColor = isDark ? Colors.white70 : Colors.black54;
+    final Color cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+
+    final List<Map<String, dynamic>> features = [
+      {
+        'index': 0,
+        'title': 'Auto-Apply Agent ⚡',
+        'subtitle': 'Autonomous recruiter search & personalized email applications via Tavily',
+        'icon': Icons.bolt_rounded,
+        'gradient': [const Color(0xFF3B82F6), const Color(0xFF1D4ED8)],
+      },
+      {
+        'index': 1,
+        'title': 'Career Portals & ATS Matcher 🏢',
+        'subtitle': 'Direct Greenhouse, Lever & Ashby openings (<48h) + 1-Click Tailored PDF Resume',
+        'isNew': true,
+        'icon': Icons.apartment_rounded,
+        'gradient': [const Color(0xFF10B981), const Color(0xFF047857)],
+      },
+      {
+        'index': 2,
+        'title': 'LinkedIn Hiring Posts 💼',
+        'subtitle': 'Real-time hiring posts from creators & recruiters with direct email apply',
+        'icon': Icons.dynamic_feed_rounded,
+        'gradient': [const Color(0xFF0EA5E9), const Color(0xFF0284C7)],
+      },
+      {
+        'index': 3,
+        'title': 'Cold Outreach 👥',
+        'subtitle': 'Targeted founder & hiring manager networking and personalized outreach',
+        'icon': Icons.people_alt_rounded,
+        'gradient': [const Color(0xFFA855F7), const Color(0xFF7E22CE)],
+      },
+      {
+        'index': 4,
+        'title': 'Manual Scan & Apply 📸',
+        'subtitle': 'Upload job screenshots, hiring flyers or paste JDs to analyze & apply',
+        'icon': Icons.add_photo_alternate_rounded,
+        'gradient': [const Color(0xFFF59E0B), const Color(0xFFB45309)],
+      },
+      {
+        'index': 5,
+        'title': 'Applied Job History 📜',
+        'subtitle': 'Unified application tracker, recruiter replies, follow-ups & sent logs',
+        'icon': Icons.history_rounded,
+        'gradient': [const Color(0xFF64748B), const Color(0xFF334155)],
+      },
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isWide = constraints.maxWidth > 700;
+
+        Widget buildCard(Map<String, dynamic> feat) {
+          final gradient = feat['gradient'] as List<Color>;
+          return Card(
+            elevation: isDark ? 4 : 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            color: cardBg,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () {
+                setState(() {
+                  _selectedFeatureIndex = feat['index'] as int;
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  color: cardBg,
+                  border: Border.all(color: gradient.first.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: gradient),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(feat['icon'] as IconData, color: Colors.white, size: 26),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  feat['title'] as String,
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: textColor,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (feat['isNew'] == true) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: const Color(0xFF10B981), width: 0.8),
+                                  ),
+                                  child: const Text(
+                                    'NEW',
+                                    style: TextStyle(
+                                      color: Color(0xFF10B981),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            feat['subtitle'] as String,
+                            style: TextStyle(color: subtextColor, fontSize: 12, height: 1.3),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(Icons.arrow_forward_ios_rounded, color: subtextColor, size: 16),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.work_rounded, color: Colors.blueAccent, size: 28),
+                ),
+                const SizedBox(width: 14),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'AI Job Applicant Hub 💼',
+                      style: GoogleFonts.outfit(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
+                      ),
+                    ),
+                    Text(
+                      'Select a module to discover, tailor & apply to jobs',
+                      style: TextStyle(color: subtextColor, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            if (isWide)
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 2.8,
+                ),
+                itemCount: features.length,
+                itemBuilder: (context, idx) => buildCard(features[idx]),
+              )
+            else
+              ...features.map((feat) => Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: buildCard(feat),
+                  )),
+          ],
+        );
+      },
+    );
+  }
+
+  // ============================================================================
   // BUILD METHOD
   // ============================================================================
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'AI Job Applicant 💼',
-          style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
-        ),
-        elevation: 2,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.amber,
-          indicatorWeight: 3.0,
-          tabs: const [
-            Tab(icon: Icon(Icons.bolt_rounded), text: 'Auto-Apply Agent'),
-            Tab(icon: Icon(Icons.people_alt_rounded), text: 'Cold Outreach'),
-            Tab(icon: Icon(Icons.add_photo_alternate_rounded), text: 'Manual & Scan'),
-            Tab(icon: Icon(Icons.history_rounded), text: 'Applied History'),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.receipt_long_rounded),
-            tooltip: 'Automation Run Logs',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const FeatureLogsScreen(
-                    title: 'AI Applicant Logs',
-                    allowedFeatures: ['auto_apply', 'cold_outreach'],
-                  ),
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: StreamBuilder<List<JobApplication>>(
-              initialData: _service.cachedApplications,
-              stream: _applicationsStream,
-              builder: (context, appSnap) {
-                return StreamBuilder<List<NetworkingLead>>(
-                  initialData: _service.cachedLeads,
-                  stream: _networkingLeadsStream,
-                  builder: (context, leadSnap) {
-                    final appReplies = (appSnap.data ?? [])
-                        .where((a) => (a.status == 'reply_received' || a.isBounced) && !a.isReplyDismissed)
-                        .length;
-                    final leadReplies = (leadSnap.data ?? [])
-                        .where((l) => (l.status == 'replied' || l.isBounced) && !l.isReplyDismissed)
-                        .length;
-                    final totalReplies = appReplies + leadReplies;
-
-                    if (totalReplies > 0) {
-                      return Badge(
-                        label: Text('$totalReplies'),
-                        backgroundColor: Colors.amber,
-                        textColor: Colors.black,
-                        child: const Icon(Icons.mark_email_unread_rounded),
-                      );
-                    }
-                    return const Icon(Icons.mark_email_read_rounded);
+    return PopScope(
+      canPop: _selectedFeatureIndex == null,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _selectedFeatureIndex != null) {
+          setState(() {
+            _selectedFeatureIndex = null;
+          });
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: _selectedFeatureIndex != null
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: 'Back to Hub Menu',
+                  onPressed: () {
+                    setState(() {
+                      _selectedFeatureIndex = null;
+                    });
                   },
+                )
+              : null,
+          title: _selectedFeatureIndex == null
+              ? Text(
+                  'AI Job Applicant 💼',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+                )
+              : _getFeatureTitle(_selectedFeatureIndex!),
+          elevation: 2,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.receipt_long_rounded),
+              tooltip: 'Automation Run Logs',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const FeatureLogsScreen(
+                      title: 'AI Applicant Logs',
+                      allowedFeatures: ['auto_apply', 'cold_outreach', 'linkedin_auto_apply', 'career_portals'],
+                    ),
+                  ),
                 );
               },
             ),
-            tooltip: 'Recruiter & Founder Replies Hub',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const JobRepliesScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Job Assistant Settings',
-            onPressed: _showJobAssistantSettingsDialog,
-          ),
-        ],
+            IconButton(
+              icon: StreamBuilder<List<JobApplication>>(
+                initialData: _service.cachedApplications,
+                stream: _applicationsStream,
+                builder: (context, appSnap) {
+                  return StreamBuilder<List<NetworkingLead>>(
+                    initialData: _service.cachedLeads,
+                    stream: _networkingLeadsStream,
+                    builder: (context, leadSnap) {
+                      final appReplies = (appSnap.data ?? [])
+                          .where((a) => (a.status == 'reply_received' || a.isBounced) && !a.isReplyDismissed)
+                          .length;
+                      final leadReplies = (leadSnap.data ?? [])
+                          .where((l) => (l.status == 'replied' || l.isBounced) && !l.isReplyDismissed)
+                          .length;
+                      final totalReplies = appReplies + leadReplies;
+
+                      if (totalReplies > 0) {
+                        return Badge(
+                          label: Text('$totalReplies'),
+                          backgroundColor: Colors.amber,
+                          textColor: Colors.black,
+                          child: const Icon(Icons.mark_email_unread_rounded),
+                        );
+                      }
+                      return const Icon(Icons.mark_email_read_rounded);
+                    },
+                  );
+                },
+              ),
+              tooltip: 'Recruiter & Founder Replies Hub',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const JobRepliesScreen()),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.settings),
+              tooltip: 'Job Assistant Settings',
+              onPressed: _showJobAssistantSettingsDialog,
+            ),
+          ],
+        ),
+        body: _selectedFeatureIndex == null
+            ? _buildApplicantHubGrid()
+            : IndexedStack(
+                index: _selectedFeatureIndex!,
+                children: [
+                  _KeepAliveTabWrapper(child: _buildAutoApplyTab()),
+                  _KeepAliveTabWrapper(child: _buildCareerPortalsTab()),
+                  _KeepAliveTabWrapper(child: _buildLinkedInPostsTab()),
+                  _KeepAliveTabWrapper(child: _buildNetworkingTab()),
+                  _KeepAliveTabWrapper(child: _buildNewApplicationTab()),
+                  _KeepAliveTabWrapper(child: _buildHistoryTab()),
+                ],
+              ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _KeepAliveTabWrapper(child: _buildAutoApplyTab()),
-          _KeepAliveTabWrapper(child: _buildNetworkingTab()),
-          _KeepAliveTabWrapper(child: _buildNewApplicationTab()),
-          _KeepAliveTabWrapper(child: _buildHistoryTab()),
-        ],
+    );
+  }
+
+  // ============================================================================
+  // CAREER PORTALS & ATS MATCHER TAB (< 48h)
+  // ============================================================================
+
+  String _formatTimeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 60) {
+      return '${diff.inMinutes <= 0 ? 1 : diff.inMinutes}m ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours}h ago';
+    } else {
+      return '${diff.inDays}d ago';
+    }
+  }
+
+  Future<void> _discoverCareerPortals({bool force = false}) async {
+    if (_isDiscoveringPortals) return;
+    setState(() => _isDiscoveringPortals = true);
+    try {
+      final res = await _service.triggerCareerPortalDiscovery(
+        forceRefresh: force,
+        customRole: _portalRoleController.text.trim().isNotEmpty ? _portalRoleController.text.trim() : null,
+      );
+      final msg = res['message']?.toString() ?? 'Career portal discovery complete.';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Career portal discovery failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isDiscoveringPortals = false);
+    }
+  }
+
+  Future<void> _downloadTailoredPdf(CareerPortalJob job) async {
+    try {
+      final b64 = job.tailoredResumePdfBase64;
+      if (b64 != null && b64.isNotEmpty) {
+        final cleanB64 = b64.replaceFirst(RegExp(r'^data:application\/pdf;base64,'), '');
+        final bytes = base64Decode(cleanB64);
+        final safeCompany = job.companyName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+        final safeRole = job.jobTitle.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+        final fileName = '${safeCompany}_${safeRole}_Tailored_Resume.pdf';
+
+        if (kIsWeb) {
+          final dataUrl = 'data:application/pdf;base64,$cleanB64';
+          await launchUrl(Uri.parse(dataUrl));
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Downloading tailored resume for ${job.companyName}...'),
+                backgroundColor: const Color(0xFF10B981),
+              ),
+            );
+          }
+          return;
+        }
+
+        final tempDir = await getTemporaryDirectory();
+        final filePath = '${tempDir.path}/$fileName';
+        final file = File(filePath);
+        await file.writeAsBytes(bytes);
+
+        await Share.shareXFiles(
+          [XFile(filePath, mimeType: 'application/pdf', name: fileName)],
+          text: 'Tailored ATS Resume for ${job.jobTitle} at ${job.companyName}',
+          subject: fileName,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Tailored PDF ready for ${job.companyName}! Attach it on the portal.'),
+              backgroundColor: const Color(0xFF10B981),
+            ),
+          );
+        }
+      } else if (job.tailoredResumePdfUrl != null && job.tailoredResumePdfUrl!.isNotEmpty) {
+        await launchUrl(Uri.parse(job.tailoredResumePdfUrl!), mode: LaunchMode.externalApplication);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Resume PDF is still generating. Please tap Discover Portals to refresh.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error downloading tailored resume: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openPortalAndApply(CareerPortalJob job) async {
+    try {
+      final uri = Uri.tryParse(job.portalUrl);
+      if (uri != null) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        await _service.updateCareerPortalJobStatus(job.id, 'applied');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Opening ${job.companyName} portal • Marked as Applied ✓'),
+              backgroundColor: const Color(0xFF10B981),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening portal: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildCareerPortalsTab() {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final Color cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+
+    return StreamBuilder<List<CareerPortalJob>>(
+      stream: _service.streamCareerPortalJobs(),
+      builder: (context, snapshot) {
+        final allJobs = snapshot.data ?? [];
+
+        // Apply portal filter
+        final filteredJobs = allJobs.where((j) {
+          if (_portalFilter == 'greenhouse' && j.portalType != 'greenhouse') return false;
+          if (_portalFilter == 'lever' && j.portalType != 'lever') return false;
+          if (_portalFilter == 'ashby' && j.portalType != 'ashby') return false;
+          if (_portalFilter == 'high_match' && j.atsScore < 80) return false;
+          if (_portalFilter == 'applied' && j.status != 'applied') return false;
+
+          if (_portalSearchQuery.trim().isNotEmpty) {
+            final q = _portalSearchQuery.toLowerCase();
+            final matchesSearch = j.companyName.toLowerCase().contains(q) ||
+                j.jobTitle.toLowerCase().contains(q) ||
+                j.location.toLowerCase().contains(q) ||
+                j.matchedSkills.any((s) => s.toLowerCase().contains(q));
+            if (!matchesSearch) return false;
+          }
+          return true;
+        }).toList();
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // Top Hero Card
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF065F46), Color(0xFF047857), Color(0xFF0F766E)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF047857).withValues(alpha: 0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.apartment_rounded, color: Colors.white, size: 28),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Direct ATS Career Portals (< 48h) 🏢',
+                              style: GoogleFonts.outfit(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Official Greenhouse, Lever & Ashby jobs verified < 48 hours with 1-click tailored resume PDF ready to attach.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white.withValues(alpha: 0.9),
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _isDiscoveringPortals ? null : () => _discoverCareerPortals(force: true),
+                          icon: _isDiscoveringPortals
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF065F46)),
+                                )
+                              : const Icon(Icons.radar_rounded, size: 18),
+                          label: Text(
+                            _isDiscoveringPortals ? 'Discovering & Tailoring...' : 'Discover Portals (< 48h)',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF065F46),
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Search Bar
+            Container(
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isDark ? Colors.blueGrey.shade800 : Colors.grey.shade300,
+                ),
+              ),
+              child: TextField(
+                controller: _portalSearchController,
+                onChanged: (val) => setState(() => _portalSearchQuery = val),
+                decoration: InputDecoration(
+                  hintText: 'Search by role, company or skill...',
+                  hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 13),
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _portalSearchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _portalSearchController.clear();
+                            setState(() => _portalSearchQuery = '');
+                          },
+                        )
+                      : null,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Filter Chips
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildPortalFilterChip('all', 'All (<48h)'),
+                  const SizedBox(width: 8),
+                  _buildPortalFilterChip('greenhouse', 'Greenhouse 🟢'),
+                  const SizedBox(width: 8),
+                  _buildPortalFilterChip('lever', 'Lever 🔵'),
+                  const SizedBox(width: 8),
+                  _buildPortalFilterChip('ashby', 'Ashby 🟣'),
+                  const SizedBox(width: 8),
+                  _buildPortalFilterChip('high_match', 'High Match (≥80%) ⭐'),
+                  const SizedBox(width: 8),
+                  _buildPortalFilterChip('applied', 'Applied ✓'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Job Cards List
+            if (filteredJobs.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(32),
+                margin: const EdgeInsets.only(top: 20),
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isDark ? Colors.blueGrey.shade800 : Colors.grey.shade300,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.apartment_rounded,
+                      size: 48,
+                      color: isDark ? Colors.white30 : Colors.black26,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No Career Portal Openings Found',
+                      style: GoogleFonts.outfit(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Tap "Discover Portals" above to fetch fresh openings from Greenhouse, Lever, and Ashby verified within the last 48 hours.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white60 : Colors.black54,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ...filteredJobs.map((job) => _buildCareerPortalJobCard(job, isDark, cardBg, textColor)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPortalFilterChip(String key, String label) {
+    final bool isSelected = _portalFilter == key;
+    return FilterChip(
+      selected: isSelected,
+      label: Text(label, style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+      onSelected: (_) => setState(() => _portalFilter = key),
+      selectedColor: const Color(0xFF10B981).withValues(alpha: 0.2),
+      checkmarkColor: const Color(0xFF10B981),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    );
+  }
+
+  Widget _buildCareerPortalJobCard(CareerPortalJob job, bool isDark, Color cardBg, Color textColor) {
+    Color portalColor = const Color(0xFF10B981); // default green
+    String portalLabel = 'Greenhouse';
+    if (job.portalType == 'lever') {
+      portalColor = const Color(0xFF3B82F6);
+      portalLabel = 'Lever';
+    } else if (job.portalType == 'ashby') {
+      portalColor = const Color(0xFFA855F7);
+      portalLabel = 'Ashby';
+    } else if (job.portalType == 'workday') {
+      portalColor = const Color(0xFFF59E0B);
+      portalLabel = 'Workday';
+    }
+
+    final bool isApplied = job.status == 'applied';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: isDark ? 4 : 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      color: cardBg,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top Row: Company, Title, Portal Badge
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: portalColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: portalColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Center(
+                    child: Text(
+                      job.companyName.isNotEmpty ? job.companyName.substring(0, 1).toUpperCase() : 'C',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: portalColor),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              job.companyName,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white70 : Colors.black87,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: portalColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: portalColor.withValues(alpha: 0.4)),
+                            ),
+                            child: Text(
+                              portalLabel,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: portalColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        job.jobTitle,
+                        style: GoogleFonts.outfit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(Icons.location_on_outlined, size: 12, color: isDark ? Colors.white54 : Colors.black45),
+                          const SizedBox(width: 3),
+                          Text(
+                            job.location,
+                            style: TextStyle(fontSize: 11, color: isDark ? Colors.white54 : Colors.black45),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFF10B981)),
+                          const SizedBox(width: 3),
+                          Text(
+                            _formatTimeAgo(job.postedAt),
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // ATS Score & Match Reasoning Box
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isDark ? Colors.blueGrey.shade900 : Colors.grey.shade200,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '⭐ ${job.atsScore}% ATS Match',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF10B981),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Verified < 48 Hours',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white60 : Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (job.matchReasoning.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      job.matchReasoning,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // Skills & Injected Keywords
+            if (job.matchedSkills.isNotEmpty || job.injectedKeywords.isNotEmpty)
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  ...job.matchedSkills.take(4).map(
+                        (s) => Chip(
+                          label: Text(s, style: const TextStyle(fontSize: 10)),
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          backgroundColor: Colors.blue.withValues(alpha: 0.1),
+                          side: BorderSide(color: Colors.blue.withValues(alpha: 0.3)),
+                        ),
+                      ),
+                  ...job.injectedKeywords.take(3).map(
+                        (k) => Chip(
+                          label: Text('+ $k', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
+                          side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                        ),
+                      ),
+                ],
+              ),
+            const SizedBox(height: 14),
+
+            // Action Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _downloadTailoredPdf(job),
+                    icon: const Icon(Icons.picture_as_pdf_rounded, size: 16, color: Color(0xFFEF4444)),
+                    label: const Text(
+                      'Download PDF',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      side: BorderSide(color: isDark ? Colors.blueGrey.shade700 : Colors.grey.shade400),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _openPortalAndApply(job),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                    label: Text(
+                      isApplied ? 'Applied ✓' : 'Apply on Portal',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isApplied ? Colors.grey.shade700 : const Color(0xFF10B981),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3744,6 +4708,990 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ============================================================================
+  // TAB: LINKEDIN POSTS AUTO-APPLY (APIFY REAL-TIME RECRUITER POSTS)
+  // ============================================================================
+
+  Future<void> _triggerLinkedInAutoApplyNow() async {
+    if (_isRunningLinkedInAutoApply) return;
+    setState(() {
+      _isRunningLinkedInAutoApply = true;
+      _linkedInAutoApplyStatusMessage = 'Scraping real-time LinkedIn recruiter posts via Apify...';
+    });
+
+    try {
+      final roles = _linkedInRolesController.text
+          .split(',')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      final minExp = int.tryParse(_linkedInMinExpController.text.trim()) ?? 1;
+      final maxExp = int.tryParse(_linkedInMaxExpController.text.trim()) ?? 3;
+
+      final res = await _service.runLinkedInAutoApplyNow(
+        roles: roles.isNotEmpty ? roles : null,
+        minExpYears: minExp,
+        maxExpYears: maxExp,
+      );
+
+      final success = res['success'] == true;
+      final count = res['appliedCount'] ?? 0;
+      final msg = res['message'] ?? 'Run completed.';
+
+      if (mounted) {
+        setState(() {
+          _isRunningLinkedInAutoApply = false;
+          _linkedInAutoApplyStatusMessage = msg;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? '⚡ $msg' : '⚠️ $msg'),
+            backgroundColor: success ? (count > 0 ? Colors.green : Colors.blueGrey) : Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isRunningLinkedInAutoApply = false;
+          _linkedInAutoApplyStatusMessage = 'Error: $e';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to run LinkedIn Auto-Apply: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showLinkedInSettingsDialog() {
+    bool obscureT1 = true;
+    bool obscureT2 = true;
+    bool obscureT3 = true;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (context, setDlgState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0A66C2).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.settings_suggest_rounded, color: Color(0xFF0A66C2)),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'LinkedIn Auto-Apply Settings',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 17),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 520,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0A66C2).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF0A66C2).withValues(alpha: 0.2)),
+                      ),
+                      child: const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.info_outline_rounded, color: Color(0xFF0A66C2), size: 18),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Configure up to 3 Apify API Tokens. The system cycles across accounts to prevent exhausting free tier quotas, without retrying failed tokens to preserve credits.',
+                              style: TextStyle(fontSize: 12, height: 1.4),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('Apify API Tokens', style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 8),
+                    // Token 1
+                    TextField(
+                      controller: _apifyToken1Controller,
+                      obscureText: obscureT1,
+                      decoration: InputDecoration(
+                        labelText: 'Token 1 (Primary) *',
+                        hintText: 'apify_api_...',
+                        prefixIcon: const Icon(Icons.key_rounded, size: 18),
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(obscureT1 ? Icons.visibility_off : Icons.visibility, size: 18),
+                              onPressed: () => setDlgState(() => obscureT1 = !obscureT1),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.paste_rounded, size: 18),
+                              tooltip: 'Paste from clipboard',
+                              onPressed: () async {
+                                final data = await Clipboard.getData('text/plain');
+                                if (data?.text != null) {
+                                  _apifyToken1Controller.text = data!.text!.trim();
+                                  setDlgState(() {});
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Token 2
+                    TextField(
+                      controller: _apifyToken2Controller,
+                      obscureText: obscureT2,
+                      decoration: InputDecoration(
+                        labelText: 'Token 2 (Backup)',
+                        hintText: 'apify_api_... (optional)',
+                        prefixIcon: const Icon(Icons.key_rounded, size: 18),
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(obscureT2 ? Icons.visibility_off : Icons.visibility, size: 18),
+                              onPressed: () => setDlgState(() => obscureT2 = !obscureT2),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.paste_rounded, size: 18),
+                              tooltip: 'Paste from clipboard',
+                              onPressed: () async {
+                                final data = await Clipboard.getData('text/plain');
+                                if (data?.text != null) {
+                                  _apifyToken2Controller.text = data!.text!.trim();
+                                  setDlgState(() {});
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Token 3
+                    TextField(
+                      controller: _apifyToken3Controller,
+                      obscureText: obscureT3,
+                      decoration: InputDecoration(
+                        labelText: 'Token 3 (Backup)',
+                        hintText: 'apify_api_... (optional)',
+                        prefixIcon: const Icon(Icons.key_rounded, size: 18),
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(obscureT3 ? Icons.visibility_off : Icons.visibility, size: 18),
+                              onPressed: () => setDlgState(() => obscureT3 = !obscureT3),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.paste_rounded, size: 18),
+                              tooltip: 'Paste from clipboard',
+                              onPressed: () async {
+                                final data = await Clipboard.getData('text/plain');
+                                if (data?.text != null) {
+                                  _apifyToken3Controller.text = data!.text!.trim();
+                                  setDlgState(() {});
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('Target Job Roles (comma-separated)', style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _linkedInRolesController,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. DevOps Engineer, Cloud Engineer, Site Reliability Engineer',
+                        prefixIcon: const Icon(Icons.work_outline_rounded, size: 18),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('Experience Range (Years)', style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _linkedInMinExpController,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: 'Min Years',
+                              prefixIcon: const Icon(Icons.timer_outlined, size: 18),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _linkedInMaxExpController,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: 'Max Years',
+                              prefixIcon: const Icon(Icons.timer_rounded, size: 18),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dlgCtx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: isSaving ? null : () async {
+                  setDlgState(() => isSaving = true);
+                  final roles = _linkedInRolesController.text
+                      .split(',')
+                      .map((s) => s.trim())
+                      .where((s) => s.isNotEmpty)
+                      .toList();
+                  final minExp = int.tryParse(_linkedInMinExpController.text.trim()) ?? 1;
+                  final maxExp = int.tryParse(_linkedInMaxExpController.text.trim()) ?? 3;
+
+                  final tokens = [
+                    _apifyToken1Controller.text.trim(),
+                    _apifyToken2Controller.text.trim(),
+                    _apifyToken3Controller.text.trim(),
+                  ].where((t) => t.isNotEmpty).toList();
+
+                  await _service.saveLinkedInAutoApplySettings({
+                    'apifyToken1': _apifyToken1Controller.text.trim(),
+                    'apifyToken2': _apifyToken2Controller.text.trim(),
+                    'apifyToken3': _apifyToken3Controller.text.trim(),
+                    'apifyTokens': tokens,
+                    'targetRoles': roles,
+                    'minExpYears': minExp,
+                    'maxExpYears': maxExp,
+                    'enabled': _linkedInAutoApplyEnabled,
+                    'updatedAt': FieldValue.serverTimestamp(),
+                  });
+
+                  if (context.mounted) {
+                    Navigator.pop(dlgCtx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('LinkedIn Auto-Apply settings saved successfully!'),
+                        backgroundColor: Colors.green,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                    setState(() {});
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0A66C2),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: isSaving
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Save Settings'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildLinkedInPostsTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+
+    // 1. Admin Module Control: If disabled by admin, display locked banner
+    if (!_isLinkedInAutoApplyModuleEnabled) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.amber.withValues(alpha: 0.3), width: 2),
+                ),
+                child: const Icon(Icons.lock_person_rounded, size: 54, color: Colors.amber),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'LinkedIn Auto-Apply Disabled',
+                style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'This module is currently disabled by the administrator for your account.\n\nTo activate real-time LinkedIn recruiter post scraping & auto-apply, please request your administrator to enable "LinkedIn Auto-Apply" for your username in the Admin Panel.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.grey[400] : Colors.grey[700],
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Contact your administrator to enable LinkedIn Auto-Apply in the Admin Console.'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.info_outline_rounded, size: 18),
+                label: const Text('Admin Activation Required'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.amber,
+                  side: const BorderSide(color: Colors.amber),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Count configured tokens
+    final configuredTokensCount = [
+      _apifyToken1Controller.text.trim(),
+      _apifyToken2Controller.text.trim(),
+      _apifyToken3Controller.text.trim(),
+    ].where((t) => t.isNotEmpty).length;
+
+    return Scrollbar(
+      controller: _linkedInScrollController,
+      child: SingleChildScrollView(
+        controller: _linkedInScrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status Banner: LinkedIn Scraper & Schedule health
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: isDark
+                      ? [const Color(0xFF0F1E36), const Color(0xFF1E293B)]
+                      : [const Color(0xFFE8F3FF), const Color(0xFFD0E7FF)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFF0A66C2).withValues(alpha: 0.35),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0A66C2).withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.dynamic_feed_rounded, color: Color(0xFF0A66C2), size: 22),
+                          ),
+                          const SizedBox(width: 10),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'LinkedIn Recruiter Post Scraper',
+                                style: GoogleFonts.outfit(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                ),
+                              ),
+                              const Text(
+                                'Runs every day at 10:30 AM & 8:30 PM IST (Asia/Kolkata)',
+                                style: TextStyle(fontSize: 11, color: Color(0xFF0A66C2), fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      Switch.adaptive(
+                        value: _linkedInAutoApplyEnabled,
+                        activeTrackColor: const Color(0xFF0A66C2),
+                        onChanged: (val) {
+                          setState(() => _linkedInAutoApplyEnabled = val);
+                          _service.saveLinkedInAutoApplySettings({
+                            'enabled': val,
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Directly extracts real-time hiring posts published in the past 24h with recruiter emails via residential Apify scrapers. Deduplicates against your Unified Applied Job History, validates experience with Gemini, and auto-applies via Gmail.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.grey[300] : const Color(0xFF334155),
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  // Health checklist: Resume, Gmail & Apify Tokens
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      // Resume status
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _hasResume ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+                            size: 16,
+                            color: _hasResume ? Colors.green : Colors.amber,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _hasResume ? 'Resume PDF Ready' : 'No Resume Uploaded',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _hasResume ? Colors.green : Colors.amber,
+                            ),
+                          ),
+                        ],
+                      ),
+                      // Gmail config
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _userEmail.isNotEmpty && _userAppPassword.isNotEmpty
+                                ? Icons.check_circle_rounded
+                                : Icons.warning_amber_rounded,
+                            size: 16,
+                            color: _userEmail.isNotEmpty && _userAppPassword.isNotEmpty ? Colors.green : Colors.amber,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _userEmail.isNotEmpty && _userAppPassword.isNotEmpty
+                                ? 'Gmail Connected ($_userEmail)'
+                                : 'Gmail App Password Missing',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _userEmail.isNotEmpty && _userAppPassword.isNotEmpty ? Colors.green : Colors.amber,
+                            ),
+                          ),
+                        ],
+                      ),
+                      // Apify Tokens
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            configuredTokensCount > 0 ? Icons.key_rounded : Icons.vpn_key_off_rounded,
+                            size: 16,
+                            color: configuredTokensCount > 0 ? const Color(0xFF0A66C2) : Colors.amber,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            configuredTokensCount > 0
+                                ? '$configuredTokensCount/3 Apify Tokens Active'
+                                : 'Default Token Active (Add yours in Settings)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: configuredTokensCount > 0 ? const Color(0xFF0A66C2) : Colors.amber,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  if (_linkedInLastRan != null || _linkedInLastApplied != null) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        if (_linkedInLastRan != null)
+                          Text(
+                            'Last scan: ${DateFormat('dd MMM, hh:mm a').format(_linkedInLastRan!)}',
+                            style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                          ),
+                        if (_linkedInLastRan != null && _linkedInLastApplied != null)
+                          Text(' • ', style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[500] : Colors.grey[400])),
+                        if (_linkedInLastApplied != null)
+                          Text(
+                            'Last applied: ${DateFormat('dd MMM, hh:mm a').format(_linkedInLastApplied!)}',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
+                          ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  // Action buttons
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _isRunningLinkedInAutoApply ? null : _triggerLinkedInAutoApplyNow,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0A66C2),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        ),
+                        icon: _isRunningLinkedInAutoApply
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.bolt_rounded, size: 18),
+                        label: Text(
+                          _isRunningLinkedInAutoApply ? 'Scraping & Applying...' : 'Run Search & Apply Now',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      OutlinedButton.icon(
+                        onPressed: _showLinkedInSettingsDialog,
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        ),
+                        icon: const Icon(Icons.tune_rounded, size: 18),
+                        label: const Text('Settings & 3 Tokens'),
+                      ),
+                    ],
+                  ),
+                  if (_isRunningLinkedInAutoApply || _linkedInAutoApplyStatusMessage.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    if (_isRunningLinkedInAutoApply)
+                      const LinearProgressIndicator(
+                        backgroundColor: Colors.transparent,
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0A66C2)),
+                      ),
+                    if (_linkedInAutoApplyStatusMessage.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          _linkedInAutoApplyStatusMessage,
+                          style: TextStyle(fontSize: 11.5, color: isDark ? Colors.blue[200] : const Color(0xFF0A66C2), fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Month Selector
+            _buildMonthSelector(
+              selectedMonth: _linkedInMonth,
+              onMonthChanged: (newMonth) {
+                setState(() {
+                  _linkedInMonth = newMonth;
+                  _linkedInPage = 1;
+                });
+              },
+              isDark: isDark,
+            ),
+
+            const SizedBox(height: 12),
+
+            // Real-Time Applications List from Unified job_applications collection
+            StreamBuilder<List<JobApplication>>(
+              initialData: _service.cachedApplications,
+              stream: _applicationsStream,
+              builder: (context, snapshot) {
+                final allApps = snapshot.data ?? [];
+                // Filter for LinkedIn Posts from Apify
+                final linkedInApps = allApps.where((a) {
+                  final isLinkedIn = a.sourcePlatform?.contains('LinkedIn Post') == true ||
+                      a.sourcePlatform?.contains('Apify') == true ||
+                      a.source == 'linkedin_post_apify';
+                  final matchesMonth = a.appliedAt.year == _linkedInMonth.year && a.appliedAt.month == _linkedInMonth.month;
+                  return isLinkedIn && matchesMonth;
+                }).toList();
+
+                if (linkedInApps.isEmpty) {
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(32),
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0A66C2).withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.mark_email_read_outlined, size: 40, color: Color(0xFF0A66C2)),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No LinkedIn Post Applications Sent for ${DateFormat('MMMM yyyy').format(_linkedInMonth)}',
+                          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Click "Run Search & Apply Now" above or wait for the scheduled morning (10:30 AM IST) & evening (8:30 PM IST) runs.',
+                          style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                // Numbered pagination: 10 per page
+                const pageSize = 10;
+                final totalPages = (linkedInApps.length / pageSize).ceil();
+                final safePage = _linkedInPage.clamp(1, totalPages > 0 ? totalPages : 1);
+                final startIndex = (safePage - 1) * pageSize;
+                final endIndex = (startIndex + pageSize) > linkedInApps.length ? linkedInApps.length : (startIndex + pageSize);
+                final pagedApps = linkedInApps.sublist(startIndex, endIndex);
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${linkedInApps.length} LinkedIn Post Application${linkedInApps.length > 1 ? 's' : ''} in ${DateFormat('MMMM yyyy').format(_linkedInMonth)}',
+                          style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                        if (totalPages > 1)
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.chevron_left_rounded),
+                                onPressed: safePage > 1 ? () => setState(() => _linkedInPage = safePage - 1) : null,
+                              ),
+                              Text('Page $safePage of $totalPages', style: const TextStyle(fontSize: 12)),
+                              IconButton(
+                                icon: const Icon(Icons.chevron_right_rounded),
+                                onPressed: safePage < totalPages ? () => setState(() => _linkedInPage = safePage + 1) : null,
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    ...pagedApps.map((app) => _buildLinkedInApplicationCard(app, isDark)),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLinkedInApplicationCard(JobApplication app, bool isDark) {
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF0A66C2).withValues(alpha: 0.25)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0A66C2).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.dynamic_feed_rounded, color: Color(0xFF0A66C2), size: 24),
+          ),
+          title: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      app.jobTitle,
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      app.companyName,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.blue[200] : const Color(0xFF0A66C2),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_rounded, size: 12, color: Colors.green),
+                    SizedBox(width: 4),
+                    Text(
+                      'Sent via Apify',
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.green),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                // Recruiter email
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.email_outlined, size: 13, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(
+                      app.recipientEmail,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(width: 4),
+                    InkWell(
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: app.recipientEmail));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Copied ${app.recipientEmail} to clipboard!'),
+                            duration: const Duration(seconds: 2),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      },
+                      child: const Icon(Icons.copy_rounded, size: 13, color: Colors.grey),
+                    ),
+                  ],
+                ),
+                // Applied time
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.access_time_rounded, size: 13, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(
+                      DateFormat('dd MMM, hh:mm a').format(app.appliedAt),
+                      style: const TextStyle(fontSize: 11.5, color: Colors.grey),
+                    ),
+                  ],
+                ),
+                // Resume profile name
+                if (app.resumeProfileName != null && app.resumeProfileName!.isNotEmpty)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.picture_as_pdf_rounded, size: 13, color: Color(0xFF10B981)),
+                      const SizedBox(width: 4),
+                      Text(
+                        app.resumeProfileName!,
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+          children: [
+            const Divider(height: 16),
+            if (app.authorName != null && app.authorName!.isNotEmpty) ...[
+              Row(
+                children: [
+                  const Icon(Icons.person_outline_rounded, size: 15, color: Colors.grey),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Post Author: ${app.authorName}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  const Spacer(),
+                  if (app.sourceUrl != null && app.sourceUrl!.isNotEmpty)
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 13, color: Color(0xFF0A66C2)),
+                      label: const Text('View LinkedIn Post', style: TextStyle(fontSize: 11, color: Color(0xFF0A66C2))),
+                      onPressed: () => UrlLauncherHelper.openInNewTabOrExternal(app.sourceUrl!),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (app.postExcerpt != null && app.postExcerpt!.isNotEmpty) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.black26 : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: isDark ? Colors.white12 : Colors.grey[300]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('LinkedIn Post Excerpt:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                    const SizedBox(height: 4),
+                    Text(
+                      app.postExcerpt!,
+                      style: const TextStyle(fontSize: 11.5, height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            // Cover Letter
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Tailored Application Email Sent:',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  icon: const Icon(Icons.copy_rounded, size: 13),
+                  label: const Text('Copy Email', style: TextStyle(fontSize: 11)),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: 'Subject: ${app.generatedSubject}\n\n${app.generatedCoverLetter}'));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Email copied to clipboard!'),
+                        duration: Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Subject: ${app.generatedSubject}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    app.generatedCoverLetter,
+                    style: const TextStyle(fontSize: 12, height: 1.45),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

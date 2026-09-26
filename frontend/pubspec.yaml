@@ -2,7 +2,7 @@ name: remindbuddy
 description: "A comprehensive family management, reminder and finance tracking app."
 publish_to: 'none'
 
-version: 1.10.35+414
+version: 1.10.36+415
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -57,8 +57,20 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    background_color: "#0F172A"
+    theme_color: "#0F172A"
 
 flutter:
   uses-material-design: true
   assets:
     - assets/sounds/
+    - assets/icon/

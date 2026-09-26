@@ -25,6 +25,7 @@ class HomeWidgetService {
   StreamSubscription? _manualTxSub;
   StreamSubscription? _shiftMonthSub;
   StreamSubscription? _dailyShiftsSub;
+  StreamSubscription? _noteChecklistSub;
 
   /// Starts real-time Firestore listeners on accounts & transactions so the
   /// Home Widget updates immediately whenever bank balance or transactions change.
@@ -116,6 +117,31 @@ class HomeWidgetService {
   void stopShiftWidgetLiveSync() {
     _shiftMonthSub?.cancel();
     _dailyShiftsSub?.cancel();
+  }
+
+  /// Starts real-time Firestore listeners on user's notes so the Note Checklist
+  /// Home Screen Widget updates immediately whenever the pinned or active checklist note changes.
+  void startNoteChecklistLiveSync() {
+    if (kIsWeb) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _noteChecklistSub?.cancel();
+    _noteChecklistSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('notes')
+        .snapshots()
+        .listen((_) {
+      syncNoteChecklistWidgetAuto(user.uid);
+    }, onError: (e) {
+      LogService().error('Error in notes collection stream for widget', e);
+    });
+  }
+
+  void stopNoteChecklistLiveSync() {
+    _noteChecklistSub?.cancel();
+    _noteChecklistSub = null;
   }
 
   /// Updates the Gold Rates Home Screen Widget (22K Per Gram & 22K 8g Sovereign)
@@ -464,6 +490,13 @@ class HomeWidgetService {
     } catch (e) {
       LogService().error('Error syncing Shift Widgets in syncAllWidgets', e);
     }
+
+    // 4. Sync Note Checklist Widget
+    try {
+      await syncNoteChecklistWidgetAuto();
+    } catch (e) {
+      LogService().error('Error syncing Note Checklist Widget in syncAllWidgets', e);
+    }
   }
 
   /// Updates the full Monthly Shift Calendar Home Screen Widget
@@ -737,13 +770,40 @@ class HomeWidgetService {
     if (kIsWeb) return;
     try {
       await HomeWidget.saveWidgetData<String>('note_widget_id', note.id ?? '');
+      final noteTitle = note.title.trim().isNotEmpty ? note.title.trim() : 'Office Checklist';
       await HomeWidget.saveWidgetData<String>(
         'note_widget_title',
-        note.title.trim().isNotEmpty ? note.title.trim() : 'Checklist',
+        noteTitle,
       );
+
+      List<Map<String, dynamic>> items = List<Map<String, dynamic>>.from(note.checklistItems);
+      // Fallback: If checklistItems is empty but content contains checklist markdown:
+      if (items.isEmpty && note.content.isNotEmpty) {
+        final lines = note.content.split('\n');
+        for (final line in lines) {
+          final trimmed = line.trim();
+          if (trimmed.startsWith('- [ ]') || trimmed.startsWith('[ ]')) {
+            final text = trimmed.replaceFirst(RegExp(r'^(-\s*)?\[\s*\]\s*'), '').trim();
+            if (text.isNotEmpty) items.add({'text': text, 'isChecked': false});
+          } else if (trimmed.startsWith('- [x]') || trimmed.startsWith('[x]') || trimmed.startsWith('- [X]') || trimmed.startsWith('[X]')) {
+            final text = trimmed.replaceFirst(RegExp(r'^(-\s*)?\[[xX]\]\s*'), '').trim();
+            if (text.isNotEmpty) items.add({'text': text, 'isChecked': true});
+          }
+        }
+      }
+
+      // Filter out empty items and ensure uniform shape
+      final cleanItems = items
+          .where((it) => (it['text'] ?? it['title'] ?? it['content'] ?? '').toString().trim().isNotEmpty)
+          .map((it) => {
+                'text': (it['text'] ?? it['title'] ?? it['content'] ?? '').toString().trim(),
+                'isChecked': it['isChecked'] == true || it['checked'] == true || it['completed'] == true,
+              })
+          .toList();
+
       await HomeWidget.saveWidgetData<String>(
         'note_widget_items',
-        jsonEncode(note.checklistItems),
+        jsonEncode(cleanItems),
       );
       await HomeWidget.saveWidgetData<bool>('note_widget_dirty', false);
 
@@ -751,9 +811,103 @@ class HomeWidgetService {
         name: 'NoteChecklistWidgetProvider',
         androidName: 'NoteChecklistWidgetProvider',
       );
-      LogService().log('Synced Note Checklist Widget for note: ${note.title}');
+      LogService().log('Synced Note Checklist Widget for note: $noteTitle (${cleanItems.length} items)');
     } catch (e) {
       LogService().error('Error syncing note checklist widget', e);
+    }
+  }
+
+  /// Automatically finds the user's pinned note or active checklist ("Office Checklist" / latest checklist note)
+  /// and updates the home widget so it never displays an empty state when checklist items exist.
+  Future<void> syncNoteChecklistWidgetAuto([String? targetUid]) async {
+    if (kIsWeb) return;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final uid = targetUid ?? user?.uid;
+      if (uid == null) return;
+
+      final notesCol = FirebaseFirestore.instance.collection('users').doc(uid).collection('notes');
+
+      // 1. Check if user already has a pinned note ID stored in HomeWidget
+      final pinnedNoteId = await HomeWidget.getWidgetData<String>('note_widget_id');
+      if (pinnedNoteId != null && pinnedNoteId.isNotEmpty) {
+        final doc = await notesCol.doc(pinnedNoteId).get();
+        if (doc.exists && doc.data() != null) {
+          final note = Note.fromMap(doc.data()!, doc.id);
+          await syncNoteChecklistWidget(note);
+          return;
+        }
+      }
+
+      // 2. Not pinned or pinned note deleted: search for "Office Checklist" note
+      final notesSnap = await notesCol.get();
+      if (notesSnap.docs.isEmpty) {
+        return;
+      }
+
+      final notes = notesSnap.docs.map((d) => Note.fromMap(d.data(), d.id)).toList();
+
+      // Find exact or case-insensitive match for "Office Checklist"
+      Note? chosenNote;
+      for (final n in notes) {
+        final t = n.title.trim().toLowerCase();
+        if (t == 'office checklist') {
+          chosenNote = n;
+          break;
+        }
+      }
+
+      // If not exact, find any note title containing "office" and "checklist"
+      if (chosenNote == null) {
+        for (final n in notes) {
+          final t = n.title.trim().toLowerCase();
+          if (t.contains('office') && t.contains('checklist')) {
+            chosenNote = n;
+            break;
+          }
+        }
+      }
+
+      // If still not found, find any note titled "checklist"
+      if (chosenNote == null) {
+        for (final n in notes) {
+          final t = n.title.trim().toLowerCase();
+          if (t.contains('checklist') && (n.checklistItems.isNotEmpty || n.content.contains('['))) {
+            chosenNote = n;
+            break;
+          }
+        }
+      }
+
+      // If still not found, pick the most recent note with isChecklist == true and items
+      if (chosenNote == null) {
+        final checklistNotes = notes.where((n) => n.isChecklist && n.checklistItems.isNotEmpty).toList();
+        if (checklistNotes.isNotEmpty) {
+          chosenNote = checklistNotes.first;
+        }
+      }
+
+      // If still not found, check if any note has checklistItems
+      if (chosenNote == null) {
+        final anyChecklist = notes.where((n) => n.checklistItems.isNotEmpty).toList();
+        if (anyChecklist.isNotEmpty) {
+          chosenNote = anyChecklist.first;
+        }
+      }
+
+      // If still not found, check if any note has markdown checkboxes in content
+      if (chosenNote == null) {
+        final anyMarkdownChecklist = notes.where((n) => n.content.contains('[-]') || n.content.contains('[ ]') || n.content.contains('[x]')).toList();
+        if (anyMarkdownChecklist.isNotEmpty) {
+          chosenNote = anyMarkdownChecklist.first;
+        }
+      }
+
+      if (chosenNote != null) {
+        await syncNoteChecklistWidget(chosenNote);
+      }
+    } catch (e) {
+      LogService().error('Error in syncNoteChecklistWidgetAuto', e);
     }
   }
 

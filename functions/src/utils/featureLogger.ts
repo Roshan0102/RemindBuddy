@@ -1,6 +1,6 @@
 import { admin, db } from "../config/firebase";
 
-export type FeatureLogType = 'auto_apply' | 'cold_outreach' | 'tech_events' | 'walkin_drives';
+export type FeatureLogType = 'auto_apply' | 'cold_outreach' | 'tech_events' | 'walkin_drives' | 'linkedin_auto_apply' | 'career_portals';
 export type FeatureLogStatus = 'success' | 'no_results' | 'skipped' | 'error';
 
 export interface FeatureLogParams {

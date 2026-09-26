@@ -42,12 +42,27 @@ class NoteChecklistRemoteViewsFactory(
         items.clear()
         try {
             val widgetData = HomeWidgetPlugin.getData(context)
-            val itemsJson = widgetData.getString("note_widget_items", "[]") ?: "[]"
+            val itemsJson = widgetData?.getString("note_widget_items", "[]") ?: "[]"
             val jsonArray = JSONArray(itemsJson)
             for (i in 0 until jsonArray.length()) {
-                val obj = jsonArray.getJSONObject(i)
-                val text = obj.optString("text", "")
-                val isChecked = obj.optBoolean("isChecked", false)
+                val obj = jsonArray.optJSONObject(i) ?: continue
+                val text = when {
+                    obj.has("text") -> obj.optString("text", "")
+                    obj.has("title") -> obj.optString("title", "")
+                    obj.has("content") -> obj.optString("content", "")
+                    obj.has("item") -> obj.optString("item", "")
+                    else -> ""
+                }.trim()
+
+                if (text.isEmpty()) continue
+
+                val isChecked = when {
+                    obj.has("isChecked") -> obj.optBoolean("isChecked", false)
+                    obj.has("checked") -> obj.optBoolean("checked", false)
+                    obj.has("completed") -> obj.optBoolean("completed", false)
+                    obj.has("isCompleted") -> obj.optBoolean("isCompleted", false)
+                    else -> false
+                }
                 items.add(ChecklistItemData(text, isChecked))
             }
         } catch (e: Exception) {

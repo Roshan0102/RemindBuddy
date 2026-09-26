@@ -17,7 +17,7 @@ class WalkInDrivesScreen extends StatefulWidget {
 }
 
 class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
-  bool _showPastWalkIns = false;
+  bool _showPastWalkIns = true;
   bool _isFetchingWalkIns = false;
   DateTime? _lastFetchWalkInsTime;
   List<String> _walkinRoles = [];
@@ -147,21 +147,44 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
     final itemLoc = itemLocation.toLowerCase().trim();
     final target = targetLocation.toLowerCase().trim();
     if (target.isEmpty || target == 'all' || target == 'any') return true;
-
-    if (target.contains('bengaluru') || target.contains('bangalore') || target.contains('blr')) {
-      return itemLoc.contains('bengaluru') ||
-          itemLoc.contains('bangalore') ||
-          itemLoc.contains('blr') ||
-          itemLoc.contains('electronic city') ||
-          itemLoc.contains('hsr') ||
-          itemLoc.contains('koramangala') ||
-          itemLoc.contains('indiranagar') ||
-          itemLoc.contains('manyata') ||
-          itemLoc.contains('whitefield') ||
-          itemLoc.contains('marathahalli');
+    if (itemLoc.isEmpty || itemLoc == 'all' || itemLoc == 'any' || itemLoc == 'india' || itemLoc == 'pan india' || itemLoc == 'remote' || itemLoc == 'virtual' || itemLoc == 'multiple locations') {
+      return true;
     }
 
-    return itemLoc.contains(target);
+    final targetTokens = target.split(RegExp(r'[,/|-]')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    for (final token in targetTokens) {
+      if (itemLoc.contains(token) || token.contains(itemLoc)) return true;
+      if (token == 'bengaluru' || token == 'bangalore' || token == 'blr') {
+        if (itemLoc.contains('bengaluru') || itemLoc.contains('bangalore') || itemLoc.contains('blr') ||
+            itemLoc.contains('electronic city') || itemLoc.contains('hsr') || itemLoc.contains('koramangala') ||
+            itemLoc.contains('indiranagar') || itemLoc.contains('manyata') || itemLoc.contains('whitefield') ||
+            itemLoc.contains('marathahalli') || itemLoc.contains('bellandur')) {
+          return true;
+        }
+      }
+      if (token == 'chennai' || token == 'madras') {
+        if (itemLoc.contains('chennai') || itemLoc.contains('madras') || itemLoc.contains('omr') || itemLoc.contains('guindy') || itemLoc.contains('tidel') || itemLoc.contains('sholinganallur') || itemLoc.contains('siruseri')) {
+          return true;
+        }
+      }
+      if (token == 'hyderabad' || token == 'hyd') {
+        if (itemLoc.contains('hyderabad') || itemLoc.contains('hitec') || itemLoc.contains('gachibowli') || itemLoc.contains('madhapur') || itemLoc.contains('kondapur')) {
+          return true;
+        }
+      }
+      if (token == 'pune') {
+        if (itemLoc.contains('pune') || itemLoc.contains('hinjewadi') || itemLoc.contains('magarpatta') || itemLoc.contains('kharadi')) {
+          return true;
+        }
+      }
+      if (token == 'delhi' || token == 'noida' || token == 'gurgaon' || token == 'gurugram' || token == 'ncr') {
+        if (itemLoc.contains('delhi') || itemLoc.contains('noida') || itemLoc.contains('gurgaon') || itemLoc.contains('gurugram') || itemLoc.contains('ncr')) {
+          return true;
+        }
+      }
+    }
+
+    return itemLoc.contains(target) || target.contains(itemLoc);
   }
 
   void _listenToUserAndWalkins() {
@@ -663,6 +686,8 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
                       final docs = snapshot.data?.docs ?? [];
                       final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
                       final selectedMonthPrefix = DateFormat('yyyy-MM').format(_selectedMonth);
+                      final isSelectedMonthInPast = _selectedMonth.year < DateTime.now().year ||
+                          (_selectedMonth.year == DateTime.now().year && _selectedMonth.month < DateTime.now().month);
 
                       final filteredDocs = docs.where((doc) {
                         final data = doc.data() as Map<String, dynamic>;
@@ -670,10 +695,19 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
                         if (notInterested) return false;
 
                         final dateStr = (data['date'] ?? '').toString().trim();
-                        if (!dateStr.startsWith(selectedMonthPrefix)) return false;
+                        final parsedDate = DateTime.tryParse(dateStr);
+                        if (parsedDate != null) {
+                          if (parsedDate.year != _selectedMonth.year || parsedDate.month != _selectedMonth.month) {
+                            return false;
+                          }
+                        } else {
+                          if (!dateStr.startsWith(selectedMonthPrefix) && !dateStr.toLowerCase().contains(DateFormat('MMM').format(_selectedMonth).toLowerCase())) {
+                            return false;
+                          }
+                        }
 
                         final isPast = dateStr.isNotEmpty && dateStr.compareTo(todayStr) < 0;
-                        if (isPast && !_showPastWalkIns) return false;
+                        if (isPast && !_showPastWalkIns && !isSelectedMonthInPast) return false;
 
                         final loc = (data['location'] ?? '').toString();
                         if (!_isLocationMatch(loc, _walkinLocation)) return false;
@@ -775,6 +809,22 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
                                           ],
                                         ],
                                       ),
+                                      if (dateStr.isNotEmpty && dateStr.compareTo(DateFormat('yyyy-MM-dd').format(DateTime.now())) < 0)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: isDark ? Colors.white10 : Colors.grey.shade200,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            'Past Drive',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color: isDark ? Colors.white60 : Colors.grey.shade700,
+                                            ),
+                                          ),
+                                        ),
                                       if (_buildShiftBadge(dateStr, isDark) != null)
                                         _buildShiftBadge(dateStr, isDark)!,
                                     ],
