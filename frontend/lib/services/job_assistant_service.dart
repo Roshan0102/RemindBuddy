@@ -130,11 +130,11 @@ class JobAssistantService {
     String cachedName = '';
     try {
       final prefs = await SharedPreferences.getInstance();
-      isExplicitlyCleared = prefs.getBool('job_assistant_applicant_name_explicitly_cleared') ?? false;
+      isExplicitlyCleared = prefs.getBool(_userKey('job_assistant_applicant_name_explicitly_cleared')) ?? false;
       if (isExplicitlyCleared) {
         cachedName = '';
       } else {
-        cachedName = (prefs.getString('job_assistant_applicant_name') ?? '').trim();
+        cachedName = (prefs.getString(_userKey('job_assistant_applicant_name')) ?? '').trim();
       }
     } catch (_) {}
 
@@ -156,8 +156,8 @@ class JobAssistantService {
         if (clearedInDoc || (data.containsKey('applicantName') && (data['applicantName'] ?? '').toString().trim().isEmpty)) {
           try {
             final prefs = await SharedPreferences.getInstance();
-            await prefs.remove('job_assistant_applicant_name');
-            await prefs.setBool('job_assistant_applicant_name_explicitly_cleared', true);
+            await prefs.remove(_userKey('job_assistant_applicant_name'));
+            await prefs.setBool(_userKey('job_assistant_applicant_name_explicitly_cleared'), true);
           } catch (_) {}
           return '';
         }
@@ -166,8 +166,8 @@ class JobAssistantService {
         if (name.isNotEmpty) {
           try {
             final prefs = await SharedPreferences.getInstance();
-            await prefs.setString('job_assistant_applicant_name', name);
-            await prefs.remove('job_assistant_applicant_name_explicitly_cleared');
+            await prefs.setString(_userKey('job_assistant_applicant_name'), name);
+            await prefs.remove(_userKey('job_assistant_applicant_name_explicitly_cleared'));
           } catch (_) {}
           return name;
         }
@@ -189,11 +189,11 @@ class JobAssistantService {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (trimmed.isEmpty) {
-        await prefs.remove('job_assistant_applicant_name');
-        await prefs.setBool('job_assistant_applicant_name_explicitly_cleared', true);
+        await prefs.remove(_userKey('job_assistant_applicant_name'));
+        await prefs.setBool(_userKey('job_assistant_applicant_name_explicitly_cleared'), true);
       } else {
-        await prefs.setString('job_assistant_applicant_name', trimmed);
-        await prefs.remove('job_assistant_applicant_name_explicitly_cleared');
+        await prefs.setString(_userKey('job_assistant_applicant_name'), trimmed);
+        await prefs.remove(_userKey('job_assistant_applicant_name_explicitly_cleared'));
       }
     } catch (_) {}
 
@@ -516,19 +516,19 @@ class JobAssistantService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final rolesStr = prefs.getString('job_assistant_target_roles') ?? '';
+      final rolesStr = prefs.getString(_userKey('job_assistant_target_roles')) ?? '';
       if (rolesStr.isNotEmpty) {
         cachedRoles = rolesStr.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
       }
-      final locsStr = prefs.getString('job_assistant_locations') ?? '';
+      final locsStr = prefs.getString(_userKey('job_assistant_locations')) ?? '';
       if (locsStr.isNotEmpty) {
         cachedLocs = locsStr.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
       }
-      cachedExcluded = prefs.getStringList('job_assistant_excluded_companies') ?? [];
-      cachedMinExp = prefs.getInt('job_assistant_min_exp') ?? 0;
-      cachedMaxExp = prefs.getInt('job_assistant_max_exp') ?? 3;
-      cachedFresher = prefs.getBool('job_assistant_is_fresher') ?? (cachedMinExp == 0 && cachedMaxExp == 0);
-      cachedEnabled = prefs.getBool('job_assistant_enabled') ?? true;
+      cachedExcluded = prefs.getStringList(_userKey('job_assistant_excluded_companies')) ?? [];
+      cachedMinExp = prefs.getInt(_userKey('job_assistant_min_exp')) ?? 0;
+      cachedMaxExp = prefs.getInt(_userKey('job_assistant_max_exp')) ?? 3;
+      cachedFresher = prefs.getBool(_userKey('job_assistant_is_fresher')) ?? (cachedMinExp == 0 && cachedMaxExp == 0);
+      cachedEnabled = prefs.getBool(_userKey('job_assistant_enabled')) ?? true;
     } catch (_) {}
 
     final doc = _userDoc;
@@ -536,7 +536,7 @@ class JobAssistantService {
       return {
         'enabled': cachedEnabled,
         'targetRoles': cachedRoles,
-        'locations': cachedLocs.isNotEmpty ? cachedLocs : ['Bengaluru', 'India', 'Remote'],
+        'locations': cachedLocs,
         'excludedCompanies': cachedExcluded,
         'minExpYears': cachedMinExp,
         'maxExpYears': cachedMaxExp,
@@ -572,9 +572,6 @@ class JobAssistantService {
         if (locations.isEmpty && cachedLocs.isNotEmpty) {
           locations = cachedLocs;
         }
-        if (locations.isEmpty) {
-          locations = ['Bengaluru', 'India', 'Remote'];
-        }
 
         List<String> excludedCompanies = [];
         final rawExcluded = settings['excludedCompanies'] ?? data['excludedCompanies'];
@@ -595,13 +592,13 @@ class JobAssistantService {
         // Sync to SharedPreferences
         try {
           final prefs = await SharedPreferences.getInstance();
-          if (targetRoles.isNotEmpty) await prefs.setString('job_assistant_target_roles', targetRoles.join(', '));
-          if (locations.isNotEmpty) await prefs.setString('job_assistant_locations', locations.join(', '));
-          await prefs.setStringList('job_assistant_excluded_companies', excludedCompanies);
-          await prefs.setInt('job_assistant_min_exp', minE is int ? minE : (int.tryParse(minE.toString()) ?? 0));
-          await prefs.setInt('job_assistant_max_exp', maxE is int ? maxE : (int.tryParse(maxE.toString()) ?? 3));
-          await prefs.setBool('job_assistant_is_fresher', isFr == true);
-          await prefs.setBool('job_assistant_enabled', en == true);
+          if (targetRoles.isNotEmpty) await prefs.setString(_userKey('job_assistant_target_roles'), targetRoles.join(', '));
+          if (locations.isNotEmpty) await prefs.setString(_userKey('job_assistant_locations'), locations.join(', '));
+          await prefs.setStringList(_userKey('job_assistant_excluded_companies'), excludedCompanies);
+          await prefs.setInt(_userKey('job_assistant_min_exp'), minE is int ? minE : (int.tryParse(minE.toString()) ?? 0));
+          await prefs.setInt(_userKey('job_assistant_max_exp'), maxE is int ? maxE : (int.tryParse(maxE.toString()) ?? 3));
+          await prefs.setBool(_userKey('job_assistant_is_fresher'), isFr == true);
+          await prefs.setBool(_userKey('job_assistant_enabled'), en == true);
         } catch (_) {}
 
         return {
@@ -620,7 +617,7 @@ class JobAssistantService {
     return {
       'enabled': cachedEnabled,
       'targetRoles': cachedRoles,
-      'locations': cachedLocs.isNotEmpty ? cachedLocs : ['Bengaluru', 'India', 'Remote'],
+      'locations': cachedLocs,
       'excludedCompanies': cachedExcluded,
       'minExpYears': cachedMinExp,
       'maxExpYears': cachedMaxExp,
@@ -641,13 +638,13 @@ class JobAssistantService {
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('job_assistant_target_roles', targetRoles.join(', '));
-      await prefs.setString('job_assistant_locations', locations.join(', '));
-      await prefs.setStringList('job_assistant_excluded_companies', excludedCompanies);
-      await prefs.setInt('job_assistant_min_exp', minExpYears);
-      await prefs.setInt('job_assistant_max_exp', maxExpYears);
-      await prefs.setBool('job_assistant_is_fresher', isFresher);
-      await prefs.setBool('job_assistant_enabled', enabled);
+      await prefs.setString(_userKey('job_assistant_target_roles'), targetRoles.join(', '));
+      await prefs.setString(_userKey('job_assistant_locations'), locations.join(', '));
+      await prefs.setStringList(_userKey('job_assistant_excluded_companies'), excludedCompanies);
+      await prefs.setInt(_userKey('job_assistant_min_exp'), minExpYears);
+      await prefs.setInt(_userKey('job_assistant_max_exp'), maxExpYears);
+      await prefs.setBool(_userKey('job_assistant_is_fresher'), isFresher);
+      await prefs.setBool(_userKey('job_assistant_enabled'), enabled);
     } catch (_) {}
 
     final doc = _userDoc;
@@ -671,7 +668,7 @@ class JobAssistantService {
   Future<void> setAutoApplyEnabled(bool enabled) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('job_assistant_enabled', enabled);
+      await prefs.setBool(_userKey('job_assistant_enabled'), enabled);
     } catch (_) {}
 
     final doc = _userDoc;
@@ -1311,8 +1308,8 @@ class JobAssistantService {
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList('job_assistant_radar_locations', locations);
-      await prefs.setStringList('job_assistant_radar_domains', techDomains);
+      await prefs.setStringList(_userKey('job_assistant_radar_locations'), locations);
+      await prefs.setStringList(_userKey('job_assistant_radar_domains'), techDomains);
     } catch (_) {}
 
     final doc = _userDoc;
@@ -1332,8 +1329,8 @@ class JobAssistantService {
     List<String> cachedDomains = [];
     try {
       final prefs = await SharedPreferences.getInstance();
-      cachedLocs = prefs.getStringList('job_assistant_radar_locations') ?? [];
-      cachedDomains = prefs.getStringList('job_assistant_radar_domains') ?? [];
+      cachedLocs = prefs.getStringList(_userKey('job_assistant_radar_locations')) ?? [];
+      cachedDomains = prefs.getStringList(_userKey('job_assistant_radar_domains')) ?? [];
     } catch (_) {}
 
     final doc = _userDoc;
@@ -1378,8 +1375,8 @@ class JobAssistantService {
         // Cache to SharedPreferences
         try {
           final prefs = await SharedPreferences.getInstance();
-          if (locs.isNotEmpty) await prefs.setStringList('job_assistant_radar_locations', locs);
-          if (domains.isNotEmpty) await prefs.setStringList('job_assistant_radar_domains', domains);
+          if (locs.isNotEmpty) await prefs.setStringList(_userKey('job_assistant_radar_locations'), locs);
+          if (domains.isNotEmpty) await prefs.setStringList(_userKey('job_assistant_radar_domains'), domains);
         } catch (_) {}
 
         return {

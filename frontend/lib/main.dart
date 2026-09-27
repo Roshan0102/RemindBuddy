@@ -73,7 +73,7 @@ class RemindBuddyApp extends StatelessWidget {
             valueListenable: themeNotifier,
             builder: (_, ThemeMode currentMode, __) {
               return MaterialApp(
-                title: 'RemindBuddy',
+                title: 'SmartBuddy',
                 debugShowCheckedModeBanner: false,
                 themeMode: currentMode,
                 theme: ThemeData(
@@ -98,7 +98,7 @@ class RemindBuddyApp extends StatelessWidget {
           valueListenable: themeNotifier,
           builder: (_, ThemeMode currentMode, __) {
             return MaterialApp(
-              title: 'RemindBuddy',
+              title: 'SmartBuddy',
               debugShowCheckedModeBanner: false,
               navigatorKey: navigatorKey,
               themeMode: currentMode,

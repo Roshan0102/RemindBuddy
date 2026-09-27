@@ -100,8 +100,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   bool _autoApplyEnabled = true;
   final TextEditingController _targetRolesController = TextEditingController();
   final TextEditingController _locationsController = TextEditingController();
-  final TextEditingController _minExpController = TextEditingController(text: '0');
-  final TextEditingController _maxExpController = TextEditingController(text: '3');
+  final TextEditingController _minExpController = TextEditingController();
+  final TextEditingController _maxExpController = TextEditingController();
   bool _isFresher = false;
   List<String> _excludedCompanies = [];
   final TextEditingController _excludeCompanyController = TextEditingController();
@@ -156,10 +156,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   final TextEditingController _apifyToken1Controller = TextEditingController();
   final TextEditingController _apifyToken2Controller = TextEditingController();
   final TextEditingController _apifyToken3Controller = TextEditingController();
-  final TextEditingController _linkedInRolesController = TextEditingController(text: 'DevOps Engineer, Cloud Engineer, Site Reliability Engineer');
-  final TextEditingController _linkedInMinExpController = TextEditingController(text: '1');
-  final TextEditingController _linkedInMaxExpController = TextEditingController(text: '3');
+  final TextEditingController _linkedInRolesController = TextEditingController();
+  final TextEditingController _linkedInMinExpController = TextEditingController();
+  final TextEditingController _linkedInMaxExpController = TextEditingController();
   bool _linkedInAutoApplyEnabled = true;
+  Map<String, dynamic>? _jobAssistantSubPermissions;
 
   @override
   void initState() {
@@ -181,9 +182,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   void _onFeatureIndexNotified() {
     final newIdx = JobAssistantScreen.selectedFeatureIndexNotifier.value;
     if (newIdx != null && mounted) {
-      setState(() {
-        _selectedFeatureIndex = newIdx;
-      });
+      if (_isSubFeatureEnabled(_getKeyForIndex(newIdx))) {
+        setState(() {
+          _selectedFeatureIndex = newIdx;
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Access to this sub-feature has been restricted by your administrator.')),
+        );
+      }
       JobAssistantScreen.selectedFeatureIndexNotifier.value = null;
     }
   }
@@ -306,8 +313,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               _autoApplyEnabled = autoSettings['enabled'] == true;
             }
 
+            final rawSubPerms = data['jobAssistantSubPermissions'];
+            if (rawSubPerms is Map) {
+              _jobAssistantSubPermissions = Map<String, dynamic>.from(rawSubPerms);
+            }
+
             final enabledMods = List<String>.from(data['enabledModules'] ?? []);
-            _isLinkedInAutoApplyModuleEnabled = enabledMods.contains('linkedin_auto_apply');
+            if (_jobAssistantSubPermissions != null && _jobAssistantSubPermissions!.containsKey('linkedin_auto_apply')) {
+              _isLinkedInAutoApplyModuleEnabled = _jobAssistantSubPermissions!['linkedin_auto_apply'] == true;
+            } else {
+              _isLinkedInAutoApplyModuleEnabled = enabledMods.contains('linkedin_auto_apply');
+            }
+
+            if (liveRoles.isNotEmpty && _linkedInRolesController.text.trim().isEmpty) {
+              _linkedInRolesController.text = liveRoles.join(', ');
+            }
 
             final lRan = data['linkedinAutoApplyLastRan'];
             if (lRan is Timestamp) {
@@ -422,25 +442,39 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           ),
         );
       },
-      isActive: () => mounted && _tabController.index == 3,
+      isActive: () => mounted && _selectedFeatureIndex == 4,
     );
   }
 
   Future<void> _pasteImageFromClipboard() async {
-    if (kIsWeb) {
+    try {
+      final result = await WebClipboardDrag.readImageFromClipboard();
+      if (result != null && mounted) {
+        final bytes = result['bytes'] as Uint8List;
+        final name = result['name'] as String;
+        final b64 = base64Encode(bytes);
+        setState(() {
+          _selectedImageFiles.add(XFile.fromData(bytes, name: name));
+          _selectedImagesBase64.add(b64);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📸 Pasted image: $name (${(bytes.length / 1024).toStringAsFixed(1)} KB)'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.indigo,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+    } catch (_) {}
+
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('📋 Right-click any image in LinkedIn -> "Copy Image" and press Ctrl+V (or drop here)!'),
           duration: Duration(seconds: 4),
           backgroundColor: Colors.indigo,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Clipboard paste active. Copy an image and press Ctrl+V.'),
-          duration: Duration(seconds: 3),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -464,9 +498,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       final localResumeFileName = prefs.getString(userKey('job_assistant_resume_filename')) ?? '';
       final localHasResume = prefs.getBool(userKey('job_assistant_has_resume')) ?? false;
       final localEnabled = prefs.getBool(userKey('job_assistant_enabled')) ?? true;
-      final localMinE = prefs.getInt(userKey('job_assistant_min_exp')) ?? 0;
-      final localMaxE = prefs.getInt(userKey('job_assistant_max_exp')) ?? 3;
-      final localIsFresher = prefs.getBool(userKey('job_assistant_is_fresher')) ?? (localMinE == 0 && localMaxE == 0);
+      final localMinE = prefs.getInt(userKey('job_assistant_min_exp'));
+      final localMaxE = prefs.getInt(userKey('job_assistant_max_exp'));
+      final localIsFresher = prefs.getBool(userKey('job_assistant_is_fresher')) ?? false;
       final localExcluded = prefs.getStringList(userKey('job_assistant_excluded_companies')) ?? [];
       final localRadarLocs = prefs.getStringList(userKey('job_assistant_radar_locations')) ?? [];
       final localRadarTechs = prefs.getStringList(userKey('job_assistant_radar_domains')) ?? [];
@@ -494,8 +528,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           _hasResume = localHasResume && localResumeFileName.isNotEmpty;
           _autoApplyEnabled = localEnabled;
           _isFresher = localIsFresher;
-          _minExpController.text = localMinE.toString();
-          _maxExpController.text = localMaxE.toString();
+          if (localMinE != null) {
+            _minExpController.text = localMinE.toString();
+          }
+          if (localMaxE != null) {
+            _maxExpController.text = localMaxE.toString();
+          }
           if (localExcluded.isNotEmpty) {
             _excludedCompanies = localExcluded;
           }
@@ -539,11 +577,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         if (excluded.isNotEmpty) {
           _excludedCompanies = excluded;
         }
-        final minE = autoSettings['minExpYears'] ?? 0;
-        final maxE = autoSettings['maxExpYears'] ?? 3;
+        final minE = autoSettings['minExpYears'];
+        final maxE = autoSettings['maxExpYears'];
         _isFresher = autoSettings['isFresher'] == true || (minE == 0 && maxE == 0);
-        _minExpController.text = minE.toString();
-        _maxExpController.text = maxE.toString();
+        if (minE != null) {
+          _minExpController.text = minE.toString();
+        }
+        if (maxE != null) {
+          _maxExpController.text = maxE.toString();
+        }
         if (targetRoles.isNotEmpty) {
           _targetRolesController.text = targetRoles.join(', ');
         }
@@ -585,12 +627,18 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           final lRoles = List<String>.from(linkedInSettings['targetRoles'] ?? []);
           if (lRoles.isNotEmpty) {
             _linkedInRolesController.text = lRoles.join(', ');
+          } else if (targetRoles.isNotEmpty) {
+            _linkedInRolesController.text = targetRoles.join(', ');
           }
           if (linkedInSettings['minExpYears'] != null) {
             _linkedInMinExpController.text = linkedInSettings['minExpYears'].toString();
+          } else {
+            _linkedInMinExpController.text = _minExpController.text;
           }
           if (linkedInSettings['maxExpYears'] != null) {
             _linkedInMaxExpController.text = linkedInSettings['maxExpYears'].toString();
+          } else {
+            _linkedInMaxExpController.text = _maxExpController.text;
           }
           if (linkedInSettings['enabled'] != null) {
             _linkedInAutoApplyEnabled = linkedInSettings['enabled'] == true;
@@ -814,8 +862,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
   void _showJobAssistantSettingsDialog() {
     final nameController = TextEditingController(text: _applicantNameController.text);
+    final rolesController = TextEditingController(text: _targetRolesController.text);
+    final locationsController = TextEditingController(text: _locationsController.text);
+    final minExpController = TextEditingController(text: _isFresher ? '0' : _minExpController.text);
+    final maxExpController = TextEditingController(text: _isFresher ? '0' : _maxExpController.text);
+    bool isFresherVal = _isFresher;
+    final List<String> excludedList = List.from(_excludedCompanies);
+    final newExcludeController = TextEditingController();
     final emailController = TextEditingController(text: _userEmail);
     final passwordController = TextEditingController(text: _userAppPassword);
+    bool isSaving = false;
 
     showDialog(
       context: context,
@@ -831,7 +887,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               ],
             ),
             content: SizedBox(
-              width: double.maxFinite,
+              width: 580,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -852,7 +908,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                       controller: nameController,
                       decoration: InputDecoration(
                         labelText: 'Your Full Name (Candidate Name)',
-                        hintText: 'e.g. Roshan J or Dhanush',
+                        hintText: 'e.g. Alex Morgan or Sarah Connor',
                         prefixIcon: const Icon(Icons.person_outline_rounded),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         isDense: true,
@@ -862,7 +918,183 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     const Divider(),
                     const SizedBox(height: 12),
 
-                    // Section 1: Multi-Resume Profiles (DevOps vs Flutter vs Cloud)
+                    // Section 1: Unified Job Search Preferences (Shared across all features)
+                    Text(
+                      '🎯 Unified Job Search Preferences',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Target roles, locations, and experience applied across all AI Job Assistant modules (Auto-Apply, LinkedIn, Portals, and Outreach).',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: rolesController,
+                      decoration: InputDecoration(
+                        labelText: 'Target Job Roles (comma-separated)',
+                        hintText: 'e.g. Flutter Developer, Software Engineer, Full Stack',
+                        prefixIcon: const Icon(Icons.work_outline_rounded),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: locationsController,
+                      decoration: InputDecoration(
+                        labelText: 'Target Locations (comma-separated)',
+                        hintText: 'e.g. Bengaluru, Remote, Hyderabad, Chennai',
+                        prefixIcon: const Icon(Icons.location_on_outlined),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isFresherVal ? Colors.blue.withValues(alpha: 0.08) : Colors.grey.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isFresherVal ? Colors.blueAccent.withValues(alpha: 0.3) : Colors.grey.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: const Text('I am a Fresher / Recent Graduate (0 Yrs)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                        subtitle: const Text('Sets experience to 0 and targets entry-level openings', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        value: isFresherVal,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            isFresherVal = val;
+                            if (val) {
+                              minExpController.text = '0';
+                              maxExpController.text = '0';
+                            } else {
+                              if (minExpController.text == '0' && maxExpController.text == '0') {
+                                minExpController.text = '0';
+                                maxExpController.text = '3';
+                              }
+                            }
+                          });
+                        },
+                      ),
+                    ),
+                    if (!isFresherVal) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: minExpController,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                labelText: 'Min Exp (Years)',
+                                hintText: 'e.g. 0',
+                                prefixIcon: const Icon(Icons.timer_outlined, size: 18),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: maxExpController,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                labelText: 'Max Exp (Years)',
+                                hintText: 'e.g. 3',
+                                prefixIcon: const Icon(Icons.timer_rounded, size: 18),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Text(
+                      '🚫 Excluded Companies (${excludedList.length})',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: newExcludeController,
+                            decoration: InputDecoration(
+                              hintText: 'e.g. Current Employer, Consultancy...',
+                              hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                              prefixIcon: const Icon(Icons.domain_disabled_rounded, size: 18),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            ),
+                            onSubmitted: (val) {
+                              final c = val.trim();
+                              if (c.isNotEmpty && !excludedList.contains(c)) {
+                                setDialogState(() {
+                                  excludedList.add(c);
+                                  newExcludeController.clear();
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: () {
+                            final c = newExcludeController.text.trim();
+                            if (c.isNotEmpty && !excludedList.contains(c)) {
+                              setDialogState(() {
+                                excludedList.add(c);
+                                newExcludeController.clear();
+                              });
+                            }
+                          },
+                          child: const Text('+ Add', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    if (excludedList.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: excludedList.map((comp) {
+                          return Chip(
+                            backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
+                            side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.3)),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            avatar: const Icon(Icons.block, size: 14, color: Colors.redAccent),
+                            label: Text(comp, style: const TextStyle(fontSize: 11, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                            deleteIcon: const Icon(Icons.close_rounded, size: 14, color: Colors.redAccent),
+                            onDeleted: () {
+                              setDialogState(() {
+                                excludedList.remove(comp);
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 12),
+
+                    // Section 2: Multi-Resume Profiles (DevOps vs Flutter vs Cloud)
                     Row(
                       children: [
                         Text(
@@ -1147,27 +1379,84 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-                onPressed: () async {
-                  final newName = nameController.text.trim();
-                  final newEmail = emailController.text.trim();
-                  final newPass = passwordController.text.trim();
-                  await _service.saveApplicantName(newName);
-                  await _service.saveUserEmailConfig(newEmail, newPass);
-                  if (ctx.mounted) {
-                    Navigator.pop(ctx);
-                  }
-                  if (mounted) {
-                    setState(() {
-                      _applicantNameController.text = newName;
-                      _userEmail = newEmail;
-                      _userAppPassword = newPass;
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Job Assistant settings saved successfully!'), backgroundColor: Colors.green),
-                    );
-                  }
-                },
-                child: const Text('Save Settings', style: TextStyle(color: Colors.white)),
+                onPressed: isSaving
+                    ? null
+                    : () async {
+                        setDialogState(() => isSaving = true);
+                        final newName = nameController.text.trim();
+                        final newEmail = emailController.text.trim();
+                        final newPass = passwordController.text.trim();
+                        final rolesList = rolesController.text
+                            .split(',')
+                            .map((s) => s.trim())
+                            .where((s) => s.isNotEmpty)
+                            .toList();
+                        final locsList = locationsController.text
+                            .split(',')
+                            .map((s) => s.trim())
+                            .where((s) => s.isNotEmpty)
+                            .toList();
+                        final minExp = isFresherVal ? 0 : (int.tryParse(minExpController.text.trim()) ?? 0);
+                        final maxExp = isFresherVal ? 0 : (int.tryParse(maxExpController.text.trim()) ?? 3);
+
+                        await _service.saveApplicantName(newName);
+                        await _service.saveUserEmailConfig(newEmail, newPass);
+
+                        await _service.saveAutoApplySettings(
+                          enabled: _autoApplyEnabled,
+                          targetRoles: rolesList,
+                          locations: locsList,
+                          minExpYears: minExp,
+                          maxExpYears: maxExp,
+                          isFresher: isFresherVal,
+                          excludedCompanies: excludedList,
+                        );
+
+                        await _service.saveStartupRadarSettings(
+                          locations: locsList,
+                          techDomains: rolesList,
+                        );
+
+                        await _service.saveLinkedInAutoApplySettings({
+                          'targetRoles': rolesList,
+                          'minExpYears': minExp,
+                          'maxExpYears': maxExp,
+                          'isFresher': isFresherVal,
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        });
+
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                        }
+                        if (mounted) {
+                          setState(() {
+                            _applicantNameController.text = newName;
+                            _userEmail = newEmail;
+                            _userAppPassword = newPass;
+                            _targetRolesController.text = rolesController.text.trim();
+                            _locationsController.text = locationsController.text.trim();
+                            _minExpController.text = minExp.toString();
+                            _maxExpController.text = maxExp.toString();
+                            _isFresher = isFresherVal;
+                            _excludedCompanies = excludedList;
+                            _radarLocations = locsList;
+                            _radarTechDomains = rolesList;
+                            _linkedInRolesController.text = rolesController.text.trim();
+                            _linkedInMinExpController.text = minExp.toString();
+                            _linkedInMaxExpController.text = maxExp.toString();
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Job Assistant settings saved successfully!'),
+                              backgroundColor: Colors.green,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                child: isSaving
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Save Settings', style: TextStyle(color: Colors.white)),
               ),
             ],
           );
@@ -2660,14 +2949,84 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
+  bool _isSubFeatureEnabled(String subKey) {
+    if (subKey == 'history') return true;
+    if (_jobAssistantSubPermissions == null) {
+      return true;
+    }
+    return _jobAssistantSubPermissions![subKey] != false;
+  }
+
+  String _getKeyForIndex(int index) {
+    switch (index) {
+      case 0:
+        return 'auto_apply';
+      case 1:
+        return 'career_portals';
+      case 2:
+        return 'linkedin_auto_apply';
+      case 3:
+        return 'cold_outreach';
+      case 4:
+        return 'manual_apply';
+      case 5:
+        return 'history';
+      default:
+        return '';
+    }
+  }
+
+  Widget _buildFeatureLockedView(String title) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.lock_person_rounded, size: 48, color: Colors.amber),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '$title is Restricted',
+              style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'This sub-feature has not been granted for your account by your administrator.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _selectedFeatureIndex = null;
+                });
+              },
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Back to Hub Menu'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildApplicantHubGrid() {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final Color subtextColor = isDark ? Colors.white70 : Colors.black54;
     final Color cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
 
-    final List<Map<String, dynamic>> features = [
+    final List<Map<String, dynamic>> allFeatures = [
       {
+        'key': 'auto_apply',
         'index': 0,
         'title': 'Auto-Apply Agent ⚡',
         'subtitle': 'Autonomous recruiter search & personalized email applications via Tavily',
@@ -2675,6 +3034,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         'gradient': [const Color(0xFF3B82F6), const Color(0xFF1D4ED8)],
       },
       {
+        'key': 'career_portals',
         'index': 1,
         'title': 'Career Portals & ATS Matcher 🏢',
         'subtitle': 'Direct Greenhouse, Lever & Ashby openings (<48h) + 1-Click Tailored PDF Resume',
@@ -2683,6 +3043,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         'gradient': [const Color(0xFF10B981), const Color(0xFF047857)],
       },
       {
+        'key': 'linkedin_auto_apply',
         'index': 2,
         'title': 'LinkedIn Hiring Posts 💼',
         'subtitle': 'Real-time hiring posts from creators & recruiters with direct email apply',
@@ -2690,6 +3051,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         'gradient': [const Color(0xFF0EA5E9), const Color(0xFF0284C7)],
       },
       {
+        'key': 'cold_outreach',
         'index': 3,
         'title': 'Cold Outreach 👥',
         'subtitle': 'Targeted founder & hiring manager networking and personalized outreach',
@@ -2697,6 +3059,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         'gradient': [const Color(0xFFA855F7), const Color(0xFF7E22CE)],
       },
       {
+        'key': 'manual_apply',
         'index': 4,
         'title': 'Manual Scan & Apply 📸',
         'subtitle': 'Upload job screenshots, hiring flyers or paste JDs to analyze & apply',
@@ -2704,6 +3067,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         'gradient': [const Color(0xFFF59E0B), const Color(0xFFB45309)],
       },
       {
+        'key': 'history',
         'index': 5,
         'title': 'Applied Job History 📜',
         'subtitle': 'Unified application tracker, recruiter replies, follow-ups & sent logs',
@@ -2712,44 +3076,51 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       },
     ];
 
+    final features = allFeatures.where((f) => _isSubFeatureEnabled(f['key'] as String)).toList();
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final bool isWide = constraints.maxWidth > 700;
+        final double width = constraints.maxWidth;
+        final bool isDesktop = width >= 1050;
+        final bool isTablet = width >= 650 && !isDesktop;
 
         Widget buildCard(Map<String, dynamic> feat) {
           final gradient = feat['gradient'] as List<Color>;
           return Card(
-            elevation: isDark ? 4 : 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            elevation: isDark ? 2 : 1,
+            margin: EdgeInsets.zero,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             color: cardBg,
             child: InkWell(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
               onTap: () {
                 setState(() {
                   _selectedFeatureIndex = feat['index'] as int;
                 });
               },
               child: Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(16),
                   color: cardBg,
-                  border: Border.all(color: gradient.first.withValues(alpha: 0.35)),
+                  border: Border.all(color: gradient.first.withValues(alpha: 0.25)),
                 ),
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(14),
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(colors: gradient),
-                        shape: BoxShape.circle,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(feat['icon'] as IconData, color: Colors.white, size: 26),
+                      child: Icon(feat['icon'] as IconData, color: Colors.white, size: 22),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Row(
                             children: [
@@ -2757,7 +3128,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                 child: Text(
                                   feat['title'] as String,
                                   style: GoogleFonts.outfit(
-                                    fontSize: 16,
+                                    fontSize: 14.5,
                                     fontWeight: FontWeight.bold,
                                     color: textColor,
                                   ),
@@ -2765,19 +3136,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                 ),
                               ),
                               if (feat['isNew'] == true) ...[
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 6),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: const Color(0xFF10B981), width: 0.8),
+                                    color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: const Color(0xFF10B981), width: 0.7),
                                   ),
                                   child: const Text(
                                     'NEW',
                                     style: TextStyle(
                                       color: Color(0xFF10B981),
-                                      fontSize: 10,
+                                      fontSize: 9,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -2785,16 +3156,18 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               ],
                             ],
                           ),
-                          const SizedBox(height: 5),
+                          const SizedBox(height: 3),
                           Text(
                             feat['subtitle'] as String,
-                            style: TextStyle(color: subtextColor, fontSize: 12, height: 1.3),
+                            style: TextStyle(color: subtextColor, fontSize: 11.5, height: 1.25),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Icon(Icons.arrow_forward_ios_rounded, color: subtextColor, size: 16),
+                    const SizedBox(width: 6),
+                    Icon(Icons.arrow_forward_ios_rounded, color: subtextColor.withValues(alpha: 0.5), size: 14),
                   ],
                 ),
               ),
@@ -2803,55 +3176,82 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         }
 
         return ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           children: [
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
+                    color: Colors.blue.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.work_rounded, color: Colors.blueAccent, size: 28),
+                  child: const Icon(Icons.work_rounded, color: Colors.blueAccent, size: 24),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'AI Job Applicant Hub 💼',
                       style: GoogleFonts.outfit(
-                        fontSize: 22,
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
                     ),
                     Text(
                       'Select a module to discover, tailor & apply to jobs',
-                      style: TextStyle(color: subtextColor, fontSize: 13),
+                      style: TextStyle(color: subtextColor, fontSize: 12.5),
                     ),
                   ],
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-            if (isWide)
+            const SizedBox(height: 16),
+            if (features.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(32),
+                alignment: Alignment.center,
+                child: Column(
+                  children: [
+                    const Icon(Icons.lock_clock_rounded, size: 48, color: Colors.grey),
+                    const SizedBox(height: 12),
+                    Text('No Modules Enabled', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 6),
+                    const Text('Please contact your administrator to enable AI Job Assistant permissions.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ),
+              )
+            else if (isDesktop)
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 14,
+                  mainAxisExtent: 96,
+                ),
+                itemCount: features.length,
+                itemBuilder: (context, idx) => buildCard(features[idx]),
+              )
+            else if (isTablet)
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 2.8,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 14,
+                  mainAxisExtent: 96,
                 ),
                 itemCount: features.length,
                 itemBuilder: (context, idx) => buildCard(features[idx]),
               )
             else
               ...features.map((feat) => Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.only(bottom: 12),
                     child: buildCard(feat),
                   )),
           ],
@@ -2961,11 +3361,31 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             : IndexedStack(
                 index: _selectedFeatureIndex!,
                 children: [
-                  _KeepAliveTabWrapper(child: _buildAutoApplyTab()),
-                  _KeepAliveTabWrapper(child: _buildCareerPortalsTab()),
-                  _KeepAliveTabWrapper(child: _buildLinkedInPostsTab()),
-                  _KeepAliveTabWrapper(child: _buildNetworkingTab()),
-                  _KeepAliveTabWrapper(child: _buildNewApplicationTab()),
+                  _KeepAliveTabWrapper(
+                    child: _isSubFeatureEnabled('auto_apply')
+                        ? _buildAutoApplyTab()
+                        : _buildFeatureLockedView('Auto-Apply Agent ⚡'),
+                  ),
+                  _KeepAliveTabWrapper(
+                    child: _isSubFeatureEnabled('career_portals')
+                        ? _buildCareerPortalsTab()
+                        : _buildFeatureLockedView('Career Portals & ATS Matcher 🏢'),
+                  ),
+                  _KeepAliveTabWrapper(
+                    child: _isSubFeatureEnabled('linkedin_auto_apply')
+                        ? _buildLinkedInPostsTab()
+                        : _buildFeatureLockedView('LinkedIn Hiring Posts 💼'),
+                  ),
+                  _KeepAliveTabWrapper(
+                    child: _isSubFeatureEnabled('cold_outreach')
+                        ? _buildNetworkingTab()
+                        : _buildFeatureLockedView('Cold Outreach 👥'),
+                  ),
+                  _KeepAliveTabWrapper(
+                    child: _isSubFeatureEnabled('manual_apply')
+                        ? _buildNewApplicationTab()
+                        : _buildFeatureLockedView('Manual Scan & Apply 📸'),
+                  ),
                   _KeepAliveTabWrapper(child: _buildHistoryTab()),
                 ],
               ),
@@ -4021,7 +4441,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                       controller: _applicantNameController,
                       decoration: InputDecoration(
                         labelText: 'Your Full Name (used in applications & emails)',
-                        hintText: 'e.g. Roshan J or Dhanush',
+                        hintText: 'e.g. Alex Morgan or Sarah Connor',
                         prefixIcon: const Icon(Icons.person_outline_rounded),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         isDense: true,
@@ -4932,49 +5352,87 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         isDense: true,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Text('Target Job Roles (comma-separated)', style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 14)),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _linkedInRolesController,
-                      decoration: InputDecoration(
-                        hintText: 'e.g. DevOps Engineer, Cloud Engineer, Site Reliability Engineer',
-                        prefixIcon: const Icon(Icons.work_outline_rounded, size: 18),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        isDense: true,
+                    const SizedBox(height: 18),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? const Color(0xFF1E293B)
+                            : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white12
+                              : Colors.grey.shade300,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text('Experience Range (Years)', style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 14)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _linkedInMinExpController,
-                            keyboardType: TextInputType.number,
-                            decoration: InputDecoration(
-                              labelText: 'Min Years',
-                              prefixIcon: const Icon(Icons.timer_outlined, size: 18),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                              isDense: true,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.tune_rounded, size: 18, color: Colors.blueAccent),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Unified Job Preferences',
+                                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              const Spacer(),
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                icon: const Icon(Icons.edit_outlined, size: 14),
+                                label: const Text('Edit Preferences', style: TextStyle(fontSize: 12)),
+                                onPressed: () {
+                                  Navigator.pop(dlgCtx);
+                                  _showJobAssistantSettingsDialog();
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '🎯 Roles: ${_targetRolesController.text.trim().isNotEmpty ? _targetRolesController.text.trim() : (_linkedInRolesController.text.trim().isNotEmpty ? _linkedInRolesController.text.trim() : "All matching tech roles")}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black87,
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _linkedInMaxExpController,
-                            keyboardType: TextInputType.number,
-                            decoration: InputDecoration(
-                              labelText: 'Max Years',
-                              prefixIcon: const Icon(Icons.timer_rounded, size: 18),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                              isDense: true,
+                          const SizedBox(height: 4),
+                          Text(
+                            '⏳ Experience: ${_isFresher ? "Fresher (0 Yrs)" : "${_minExpController.text.trim().isNotEmpty ? _minExpController.text.trim() : '0'}-${_maxExpController.text.trim().isNotEmpty ? _maxExpController.text.trim() : '3'} Years"}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black87,
                             ),
                           ),
-                        ),
-                      ],
+                          if (_locationsController.text.trim().isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '📍 Locations: ${_locationsController.text.trim()}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black87,
+                              ),
+                            ),
+                          ],
+                          if (_excludedCompanies.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '🚫 Excluded: ${_excludedCompanies.join(', ')}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.redAccent.shade200,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -4988,13 +5446,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               ElevatedButton(
                 onPressed: isSaving ? null : () async {
                   setDlgState(() => isSaving = true);
-                  final roles = _linkedInRolesController.text
-                      .split(',')
-                      .map((s) => s.trim())
-                      .where((s) => s.isNotEmpty)
-                      .toList();
-                  final minExp = int.tryParse(_linkedInMinExpController.text.trim()) ?? 1;
-                  final maxExp = int.tryParse(_linkedInMaxExpController.text.trim()) ?? 3;
+                  final roles = _targetRolesController.text.trim().isNotEmpty
+                      ? _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+                      : _linkedInRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+                  final minExp = _isFresher
+                      ? 0
+                      : (int.tryParse(_minExpController.text.trim().isNotEmpty
+                              ? _minExpController.text.trim()
+                              : _linkedInMinExpController.text.trim()) ??
+                          0);
+                  final maxExp = _isFresher
+                      ? 0
+                      : (int.tryParse(_maxExpController.text.trim().isNotEmpty
+                              ? _maxExpController.text.trim()
+                              : _linkedInMaxExpController.text.trim()) ??
+                          3);
 
                   final tokens = [
                     _apifyToken1Controller.text.trim(),
@@ -5010,6 +5476,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     'targetRoles': roles,
                     'minExpYears': minExp,
                     'maxExpYears': maxExp,
+                    'isFresher': _isFresher,
                     'enabled': _linkedInAutoApplyEnabled,
                     'updatedAt': FieldValue.serverTimestamp(),
                   });
@@ -7324,7 +7791,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                             controller: _applicantNameController,
                             decoration: InputDecoration(
                               labelText: 'Your Full Name (used in cold outreach & pitch sign-off)',
-                              hintText: 'e.g. Roshan J or Dhanush',
+                              hintText: 'e.g. Alex Morgan or Sarah Connor',
                               prefixIcon: const Icon(Icons.person_outline_rounded),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                               isDense: true,

@@ -4,6 +4,7 @@ exports.sendJobApplicationEmail = void 0;
 const functions = require("firebase-functions");
 const nodemailer = require("nodemailer");
 const firebase_1 = require("../../config/firebase");
+const emailFormatter_1 = require("../../utils/emailFormatter");
 exports.sendJobApplicationEmail = functions.runWith({ timeoutSeconds: 60, memory: "512MB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
@@ -46,11 +47,13 @@ exports.sendJobApplicationEmail = functions.runWith({ timeoutSeconds: 60, memory
                 contentType: 'application/pdf'
             });
         }
+        const formatted = (0, emailFormatter_1.formatEmailContent)(body);
         const mailOptions = {
-            from: `"${userData.displayName || 'Job Applicant'}" <${userEmail}>`,
+            from: `"${userData.displayName || userData.applicantName || 'Job Applicant'}" <${userEmail}>`,
             to: recipientEmail,
             subject: subject,
-            text: body,
+            text: formatted.text,
+            html: formatted.html,
             attachments: attachments
         };
         const info = await transporter.sendMail(mailOptions);

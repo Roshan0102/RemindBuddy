@@ -206,12 +206,12 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white30, width: 2),
                         ),
-                        child: const Icon(Icons.alarm_add, color: Colors.white, size: 36),
+                        child: const Icon(Icons.smart_toy_rounded, color: Colors.white, size: 36),
                       ),
                       const SizedBox(width: 16),
                       Text(
-                        'RemindBuddy',
-                        style: GoogleFonts.pacifico(
+                        'SmartBuddy',
+                        style: GoogleFonts.outfit(
                           fontSize: 38,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -310,7 +310,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Sign in to access your RemindBuddy workspace',
+                            'Sign in to access your SmartBuddy workspace',
                             style: GoogleFonts.outfit(
                               fontSize: 13,
                               color: Colors.grey,
@@ -545,8 +545,8 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                   const SizedBox(height: 30),
                   
                   Text(
-                    'RemindBuddy',
-                    style: GoogleFonts.poppins(
+                    'SmartBuddy',
+                    style: GoogleFonts.outfit(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,

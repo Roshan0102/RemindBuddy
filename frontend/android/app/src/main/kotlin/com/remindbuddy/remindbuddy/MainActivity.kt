@@ -136,7 +136,29 @@ class MainActivity: FlutterActivity() {
                             val appWidgetManager = AppWidgetManager.getInstance(context)
                             val myProvider = ComponentName(context, NoteChecklistWidgetProvider::class.java)
                             if (appWidgetManager.isRequestPinAppWidgetSupported) {
-                                val success = appWidgetManager.requestPinAppWidget(myProvider, null, null)
+                                val noteId = call.argument<String>("noteId") ?: ""
+                                val title = call.argument<String>("title") ?: "Office Checklist"
+                                val items = call.argument<String>("items") ?: "[]"
+
+                                val callbackIntent = Intent(context, NoteChecklistWidgetProvider::class.java).apply {
+                                    action = NoteChecklistWidgetProvider.ACTION_WIDGET_PINNED_CALLBACK
+                                    putExtra(NoteChecklistWidgetProvider.EXTRA_NOTE_ID, noteId)
+                                    putExtra(NoteChecklistWidgetProvider.EXTRA_NOTE_TITLE, title)
+                                    putExtra(NoteChecklistWidgetProvider.EXTRA_NOTE_ITEMS, items)
+                                }
+                                val callbackFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                                } else {
+                                    PendingIntent.FLAG_UPDATE_CURRENT
+                                }
+                                val successCallback = PendingIntent.getBroadcast(
+                                    context,
+                                    (System.currentTimeMillis() % 100000).toInt(),
+                                    callbackIntent,
+                                    callbackFlags
+                                )
+
+                                val success = appWidgetManager.requestPinAppWidget(myProvider, null, successCallback)
                                 result.success(success)
                             } else {
                                 result.success(false)
@@ -146,6 +168,70 @@ class MainActivity: FlutterActivity() {
                         }
                     } else {
                         result.success(false)
+                    }
+                }
+                "getNoteWidgetInstances" -> {
+                    try {
+                        val appWidgetManager = AppWidgetManager.getInstance(context)
+                        val myProvider = ComponentName(context, NoteChecklistWidgetProvider::class.java)
+                        val appWidgetIds = appWidgetManager.getAppWidgetIds(myProvider)
+                        val widgetData = es.antonborri.home_widget.HomeWidgetPlugin.getData(context)
+                        val list = mutableListOf<Map<String, Any>>()
+                        for (id in appWidgetIds) {
+                            val noteId = widgetData?.getString("note_widget_id_$id", null)
+                                ?: widgetData?.getString("note_widget_id", "") ?: ""
+                            val isDirty = widgetData?.getBoolean("note_widget_dirty_$id", false) ?: false
+                            val itemsJson = widgetData?.getString("note_widget_items_$id", null)
+                                ?: widgetData?.getString("note_widget_items", "[]") ?: "[]"
+                            list.add(mapOf(
+                                "appWidgetId" to id,
+                                "noteId" to noteId,
+                                "isDirty" to isDirty,
+                                "items" to itemsJson
+                            ))
+                        }
+                        result.success(list)
+                    } catch (e: Exception) {
+                        result.error("GET_INSTANCES_ERROR", e.message, null)
+                    }
+                }
+                "updateNoteWidgetInstance" -> {
+                    try {
+                        val appWidgetId = call.argument<Int>("appWidgetId") ?: AppWidgetManager.INVALID_APPWIDGET_ID
+                        val noteId = call.argument<String>("noteId") ?: ""
+                        val title = call.argument<String>("title") ?: ""
+                        val items = call.argument<String>("items") ?: "[]"
+                        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                            val widgetData = es.antonborri.home_widget.HomeWidgetPlugin.getData(context)
+                            widgetData?.edit()?.apply {
+                                putString("note_widget_id_$appWidgetId", noteId)
+                                putString("note_widget_title_$appWidgetId", title)
+                                putString("note_widget_items_$appWidgetId", items)
+                                putBoolean("note_widget_dirty_$appWidgetId", false)
+                                apply()
+                            }
+                            val appWidgetManager = AppWidgetManager.getInstance(context)
+                            NoteChecklistWidgetProvider().onUpdate(context, appWidgetManager, intArrayOf(appWidgetId))
+                            result.success(true)
+                        } else {
+                            result.success(false)
+                        }
+                    } catch (e: Exception) {
+                        result.error("UPDATE_INSTANCE_ERROR", e.message, null)
+                    }
+                }
+                "clearWidgetDirtyState" -> {
+                    try {
+                        val appWidgetId = call.argument<Int>("appWidgetId") ?: AppWidgetManager.INVALID_APPWIDGET_ID
+                        val widgetData = es.antonborri.home_widget.HomeWidgetPlugin.getData(context)
+                        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                            widgetData?.edit()?.putBoolean("note_widget_dirty_$appWidgetId", false)?.apply()
+                        } else {
+                            widgetData?.edit()?.putBoolean("note_widget_dirty", false)?.apply()
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("CLEAR_DIRTY_ERROR", e.message, null)
                     }
                 }
                 "isPinWidgetSupported" -> {

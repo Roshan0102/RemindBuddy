@@ -138,9 +138,13 @@ export const adminUpdateUserModules = functions.runWith({ timeoutSeconds: 60, me
     }
     
     try {
-        await db.collection('users').doc(targetUid).set({
+        const updateData: any = {
             enabledModules: enabledModules
-        }, { merge: true });
+        };
+        if (data.jobAssistantSubPermissions && typeof data.jobAssistantSubPermissions === 'object') {
+            updateData.jobAssistantSubPermissions = data.jobAssistantSubPermissions;
+        }
+        await db.collection('users').doc(targetUid).set(updateData, { merge: true });
         
         return { success: true };
     } catch (error: any) {

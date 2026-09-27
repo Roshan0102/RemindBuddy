@@ -63,7 +63,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Sign Out', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        content: const Text('Are you sure you want to sign out of RemindBuddy?'),
+        content: const Text('Are you sure you want to sign out of SmartBuddy?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -193,7 +193,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            user != null ? (_username ?? 'RemindBuddy User') : 'Guest Mode',
+                            user != null ? (_username ?? 'SmartBuddy User') : 'Guest Mode',
                             style: GoogleFonts.outfit(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -448,7 +448,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildModernTile(
                   icon: Icons.language_rounded,
                   iconGradient: const [Color(0xFF0EA5E9), Color(0xFF0284C7)],
-                  title: 'RemindBuddy Web App',
+                  title: 'SmartBuddy Web App',
                   subtitle: 'https://remindbuddy-b68f9.web.app',
                   badgeText: 'Open',
                   badgeColor: const Color(0xFF0EA5E9),
@@ -466,7 +466,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildModernTile(
                   icon: Icons.share_rounded,
                   iconGradient: const [Color(0xFF10B981), Color(0xFF059669)],
-                  title: 'Share RemindBuddy',
+                  title: 'Share SmartBuddy',
                   subtitle: 'Share web app URL on WhatsApp or other apps',
                   badgeText: 'Share',
                   badgeColor: const Color(0xFF10B981),
@@ -477,8 +477,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: () {
                     HapticFeedback.selectionClick();
                     Share.share(
-                      'Check out RemindBuddy - Your all-in-one AI daily life, reminders, and career assistant: https://remindbuddy-b68f9.web.app',
-                      subject: 'RemindBuddy Web App',
+                      'Check out SmartBuddy - Your all-in-one AI daily life, reminders, and career assistant: https://remindbuddy-b68f9.web.app',
+                      subject: 'SmartBuddy Web App',
                     );
                   },
                 ),
@@ -488,7 +488,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     icon: Icons.system_update_alt_rounded,
                     iconGradient: const [Color(0xFF6366F1), Color(0xFF4338CA)],
                     title: 'Check for Updates',
-                    subtitle: 'Check for the latest stable version of RemindBuddy',
+                    subtitle: 'Check for the latest stable version of SmartBuddy',
                     isFirst: false,
                     isLast: false,
                     textColor: textColor,
@@ -531,9 +531,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildModernTile(
                   icon: Icons.verified_rounded,
                   iconGradient: const [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
-                  title: 'RemindBuddy Engine',
+                  title: 'SmartBuddy Engine',
                   subtitle: 'All-in-One AI Daily Life & Assistant Platform',
-                  badgeText: 'v1.10.36',
+                  badgeText: 'v1.10.37',
                   badgeColor: const Color(0xFF8B5CF6),
                   isFirst: false,
                   isLast: true,

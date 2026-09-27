@@ -765,6 +765,32 @@ class HomeWidgetService {
 
   // ==================== Note Checklist Widget Methods ====================
 
+  List<Map<String, dynamic>> _extractCleanChecklistItems(Note note) {
+    List<Map<String, dynamic>> items = List<Map<String, dynamic>>.from(note.checklistItems);
+    // Fallback: If checklistItems is empty but content contains checklist markdown:
+    if (items.isEmpty && note.content.isNotEmpty) {
+      final lines = note.content.split('\n');
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.startsWith('- [ ]') || trimmed.startsWith('[ ]')) {
+          final text = trimmed.replaceFirst(RegExp(r'^(-\s*)?\[\s*\]\s*'), '').trim();
+          if (text.isNotEmpty) items.add({'text': text, 'isChecked': false});
+        } else if (trimmed.startsWith('- [x]') || trimmed.startsWith('[x]') || trimmed.startsWith('- [X]') || trimmed.startsWith('[X]')) {
+          final text = trimmed.replaceFirst(RegExp(r'^(-\s*)?\[[xX]\]\s*'), '').trim();
+          if (text.isNotEmpty) items.add({'text': text, 'isChecked': true});
+        }
+      }
+    }
+
+    return items
+        .where((it) => (it['text'] ?? it['title'] ?? it['content'] ?? '').toString().trim().isNotEmpty)
+        .map((it) => {
+              'text': (it['text'] ?? it['title'] ?? it['content'] ?? '').toString().trim(),
+              'isChecked': it['isChecked'] == true || it['checked'] == true || it['completed'] == true,
+            })
+        .toList();
+  }
+
   /// Syncs a checklist Note to the Android Note Checklist Widget
   Future<void> syncNoteChecklistWidget(Note note) async {
     if (kIsWeb) return;
@@ -776,30 +802,7 @@ class HomeWidgetService {
         noteTitle,
       );
 
-      List<Map<String, dynamic>> items = List<Map<String, dynamic>>.from(note.checklistItems);
-      // Fallback: If checklistItems is empty but content contains checklist markdown:
-      if (items.isEmpty && note.content.isNotEmpty) {
-        final lines = note.content.split('\n');
-        for (final line in lines) {
-          final trimmed = line.trim();
-          if (trimmed.startsWith('- [ ]') || trimmed.startsWith('[ ]')) {
-            final text = trimmed.replaceFirst(RegExp(r'^(-\s*)?\[\s*\]\s*'), '').trim();
-            if (text.isNotEmpty) items.add({'text': text, 'isChecked': false});
-          } else if (trimmed.startsWith('- [x]') || trimmed.startsWith('[x]') || trimmed.startsWith('- [X]') || trimmed.startsWith('[X]')) {
-            final text = trimmed.replaceFirst(RegExp(r'^(-\s*)?\[[xX]\]\s*'), '').trim();
-            if (text.isNotEmpty) items.add({'text': text, 'isChecked': true});
-          }
-        }
-      }
-
-      // Filter out empty items and ensure uniform shape
-      final cleanItems = items
-          .where((it) => (it['text'] ?? it['title'] ?? it['content'] ?? '').toString().trim().isNotEmpty)
-          .map((it) => {
-                'text': (it['text'] ?? it['title'] ?? it['content'] ?? '').toString().trim(),
-                'isChecked': it['isChecked'] == true || it['checked'] == true || it['completed'] == true,
-              })
-          .toList();
+      final cleanItems = _extractCleanChecklistItems(note);
 
       await HomeWidget.saveWidgetData<String>(
         'note_widget_items',
@@ -917,7 +920,16 @@ class HomeWidgetService {
     try {
       await syncNoteChecklistWidget(note);
       if (Platform.isAndroid) {
-        final result = await _widgetPinChannel.invokeMethod<bool>('requestPinNoteChecklistWidget');
+        final noteTitle = note.title.trim().isNotEmpty ? note.title.trim() : 'Office Checklist';
+        final cleanItems = _extractCleanChecklistItems(note);
+        final result = await _widgetPinChannel.invokeMethod<bool>(
+          'requestPinNoteChecklistWidget',
+          {
+            'noteId': note.id ?? '',
+            'title': noteTitle,
+            'items': jsonEncode(cleanItems),
+          },
+        );
         return result ?? false;
       }
       return false;
@@ -927,10 +939,39 @@ class HomeWidgetService {
     }
   }
 
-  /// Automatically updates the widget if this note matches the currently pinned widget note
+  /// Automatically updates all widgets displaying this note
   Future<void> checkAndSyncIfPinnedNote(Note note) async {
     if (kIsWeb || note.id == null || note.id!.isEmpty) return;
     try {
+      if (Platform.isAndroid) {
+        final rawInstances = await _widgetPinChannel.invokeListMethod('getNoteWidgetInstances');
+        if (rawInstances != null && rawInstances.isNotEmpty) {
+          final noteTitle = note.title.trim().isNotEmpty ? note.title.trim() : 'Office Checklist';
+          final cleanItems = _extractCleanChecklistItems(note);
+          final itemsJson = jsonEncode(cleanItems);
+          bool matchedAnyInstance = false;
+
+          for (final raw in rawInstances) {
+            if (raw is Map) {
+              final instNoteId = raw['noteId']?.toString() ?? '';
+              final appWidgetId = raw['appWidgetId'] as int?;
+              if (instNoteId == note.id && appWidgetId != null) {
+                matchedAnyInstance = true;
+                await _widgetPinChannel.invokeMethod('updateNoteWidgetInstance', {
+                  'appWidgetId': appWidgetId,
+                  'noteId': note.id,
+                  'title': noteTitle,
+                  'items': itemsJson,
+                });
+                LogService().log('Updated active widget $appWidgetId for note: $noteTitle');
+              }
+            }
+          }
+
+          if (matchedAnyInstance) return;
+        }
+      }
+
       final currentPinnedId = await HomeWidget.getWidgetData<String>('note_widget_id');
       if (currentPinnedId == note.id) {
         await syncNoteChecklistWidget(note);
@@ -944,6 +985,44 @@ class HomeWidgetService {
   Future<void> syncWidgetChangesToFirestore() async {
     if (kIsWeb) return;
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      if (Platform.isAndroid) {
+        final rawInstances = await _widgetPinChannel.invokeListMethod('getNoteWidgetInstances');
+        if (rawInstances != null && rawInstances.isNotEmpty) {
+          for (final raw in rawInstances) {
+            if (raw is Map) {
+              final bool isDirty = raw['isDirty'] == true;
+              final String noteId = raw['noteId']?.toString() ?? '';
+              final int? appWidgetId = raw['appWidgetId'] as int?;
+              final String itemsJson = raw['items']?.toString() ?? '';
+
+              if (isDirty && noteId.isNotEmpty && itemsJson.isNotEmpty && appWidgetId != null) {
+                try {
+                  final List<dynamic> decoded = jsonDecode(itemsJson);
+                  final List<Map<String, dynamic>> updatedItems =
+                      decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .collection('notes')
+                      .doc(noteId)
+                      .update({'checklistItems': updatedItems});
+
+                  await _widgetPinChannel.invokeMethod('clearWidgetDirtyState', {'appWidgetId': appWidgetId});
+                  LogService().log('Successfully synced widget $appWidgetId updates to Firestore for note: $noteId');
+                } catch (err) {
+                  LogService().error('Error syncing widget $appWidgetId changes to Firestore', err);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Fallback for global dirty flag (backwards compatibility)
       final isDirty = await HomeWidget.getWidgetData<bool>('note_widget_dirty') ?? false;
       if (!isDirty) return;
 
@@ -955,9 +1034,6 @@ class HomeWidgetService {
       final List<Map<String, dynamic>> updatedItems =
           decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -968,7 +1044,7 @@ class HomeWidgetService {
       });
 
       await HomeWidget.saveWidgetData<bool>('note_widget_dirty', false);
-      LogService().log('Successfully synced widget checklist updates to Firestore for note: $noteId');
+      LogService().log('Successfully synced global widget checklist updates to Firestore for note: $noteId');
     } catch (e) {
       LogService().error('Error syncing widget changes to Firestore', e);
     }

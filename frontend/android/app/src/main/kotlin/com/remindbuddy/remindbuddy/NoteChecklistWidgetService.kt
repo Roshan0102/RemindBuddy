@@ -30,6 +30,8 @@ class NoteChecklistRemoteViewsFactory(
 
     private val items = mutableListOf<ChecklistItemData>()
 
+    private val appWidgetId = intent.getIntExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID)
+
     override fun onCreate() {
         loadData()
     }
@@ -42,7 +44,12 @@ class NoteChecklistRemoteViewsFactory(
         items.clear()
         try {
             val widgetData = HomeWidgetPlugin.getData(context)
-            val itemsJson = widgetData?.getString("note_widget_items", "[]") ?: "[]"
+            val key = if (appWidgetId != android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID && widgetData?.contains("note_widget_items_$appWidgetId") == true) {
+                "note_widget_items_$appWidgetId"
+            } else {
+                "note_widget_items"
+            }
+            val itemsJson = widgetData?.getString(key, "[]") ?: "[]"
             val jsonArray = JSONArray(itemsJson)
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.optJSONObject(i) ?: continue
@@ -96,9 +103,10 @@ class NoteChecklistRemoteViewsFactory(
             views.setTextColor(R.id.widget_item_text, Color.parseColor("#F1F5F9"))
         }
 
-        // Fill-in intent for item tap to toggle
+        // Fill-in intent for item tap to toggle with appWidgetId
         val fillInIntent = Intent().apply {
             putExtra(NoteChecklistWidgetProvider.EXTRA_ITEM_INDEX, position)
+            putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         }
         views.setOnClickFillInIntent(R.id.widget_item_container, fillInIntent)
 

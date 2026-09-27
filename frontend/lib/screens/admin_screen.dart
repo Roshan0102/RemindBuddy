@@ -85,12 +85,6 @@ class _AdminScreenState extends State<AdminScreen> {
       'color': const Color(0xFF6366F1),
     },
     {
-      'id': 'linkedin_auto_apply',
-      'label': 'LinkedIn Auto-Apply',
-      'icon': Icons.bolt_rounded,
-      'color': const Color(0xFF0A66C2),
-    },
-    {
       'id': 'finance',
       'label': 'Finance & Split Expenses',
       'icon': Icons.account_balance_wallet_rounded,
@@ -434,9 +428,16 @@ class _AdminScreenState extends State<AdminScreen> {
       if (!newModules.contains(moduleId)) newModules.add(moduleId);
     } else {
       newModules.remove(moduleId);
+      if (moduleId == 'job_assistant') {
+        newModules.remove('linkedin_auto_apply');
+      }
     }
 
     try {
+      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+        'enabledModules': newModules,
+      }, SetOptions(merge: true));
+
       await FirebaseFunctions.instance
           .httpsCallable('adminUpdateUserModules')
           .call({
@@ -449,6 +450,99 @@ class _AdminScreenState extends State<AdminScreen> {
           SnackBar(
             content: Text(
               'Error updating user permissions: ${e.toString().replaceAll("Exception:", "")}',
+              style: GoogleFonts.outfit(),
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleJobAssistantSubPermission(
+    String userId,
+    String subKey,
+    bool enable,
+    Map<String, dynamic> currentSubPermissions,
+    List<String> enabledModules,
+  ) async {
+    final updated = Map<String, dynamic>.from(currentSubPermissions);
+    updated[subKey] = enable;
+
+    final newModules = List<String>.from(enabledModules);
+    if (!newModules.contains('job_assistant')) {
+      newModules.add('job_assistant');
+    }
+    if (subKey == 'linkedin_auto_apply') {
+      if (enable && !newModules.contains('linkedin_auto_apply')) {
+        newModules.add('linkedin_auto_apply');
+      } else if (!enable) {
+        newModules.remove('linkedin_auto_apply');
+      }
+    }
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+        'jobAssistantSubPermissions': updated,
+        'enabledModules': newModules,
+      }, SetOptions(merge: true));
+
+      await FirebaseFunctions.instance
+          .httpsCallable('adminUpdateUserModules')
+          .call({
+            'userId': userId,
+            'enabledModules': newModules,
+            'jobAssistantSubPermissions': updated,
+          });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error updating sub-permission: ${e.toString().replaceAll("Exception:", "")}',
+              style: GoogleFonts.outfit(),
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _setAllJobAssistantSubPermissions(
+    String userId,
+    Map<String, bool> newPerms,
+    List<String> enabledModules,
+  ) async {
+    final newModules = List<String>.from(enabledModules);
+    if (!newModules.contains('job_assistant')) {
+      newModules.add('job_assistant');
+    }
+    if (newPerms['linkedin_auto_apply'] == true) {
+      if (!newModules.contains('linkedin_auto_apply')) newModules.add('linkedin_auto_apply');
+    } else {
+      newModules.remove('linkedin_auto_apply');
+    }
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+        'jobAssistantSubPermissions': newPerms,
+        'enabledModules': newModules,
+      }, SetOptions(merge: true));
+
+      await FirebaseFunctions.instance
+          .httpsCallable('adminUpdateUserModules')
+          .call({
+            'userId': userId,
+            'enabledModules': newModules,
+            'jobAssistantSubPermissions': newPerms,
+          });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error updating sub-permissions: ${e.toString().replaceAll("Exception:", "")}',
               style: GoogleFonts.outfit(),
             ),
             backgroundColor: Colors.redAccent,
@@ -955,8 +1049,8 @@ class _AdminScreenState extends State<AdminScreen> {
                 mimeType: 'application/vnd.android.package-archive',
               ),
             ],
-            text: '📥 RemindBuddy App APK (v$version)',
-            subject: 'RemindBuddy App APK (v$version)',
+            text: '📥 SmartBuddy App APK (v$version)',
+            subject: 'SmartBuddy App APK (v$version)',
           );
           return;
         }
@@ -967,13 +1061,13 @@ class _AdminScreenState extends State<AdminScreen> {
           'https://firebasestorage.googleapis.com/v0/b/remindbuddy-b68f9.firebasestorage.app/o/releases%2Flatest-release.apk?alt=media';
       final shareText =
           '''
-📱 *RemindBuddy App (v${packageInfo.version})*
+📱 *SmartBuddy App (v${packageInfo.version})*
 Download latest release APK:
 $firebaseApkUrl
 '''
               .trim();
 
-      await Share.share(shareText, subject: 'Download RemindBuddy App APK');
+      await Share.share(shareText, subject: 'Download SmartBuddy App APK');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1175,7 +1269,7 @@ $firebaseApkUrl
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text(
-          'RemindBuddy Console',
+          'SmartBuddy Console',
           style: GoogleFonts.outfit(
             fontWeight: FontWeight.bold,
             color: textColor,
@@ -2647,6 +2741,23 @@ $firebaseApkUrl
                               'daily_reminders',
                             ],
                           );
+                          final rawSubPermissions = userData?['jobAssistantSubPermissions'];
+                          final Map<String, dynamic> jobSubPerms = rawSubPermissions is Map
+                              ? Map<String, dynamic>.from(rawSubPermissions)
+                              : {
+                                  'auto_apply': true,
+                                  'career_portals': true,
+                                  'linkedin_auto_apply': true,
+                                  'cold_outreach': true,
+                                  'manual_apply': true,
+                                };
+                          final int activeSubCount = [
+                            'auto_apply',
+                            'career_portals',
+                            'linkedin_auto_apply',
+                            'cold_outreach',
+                            'manual_apply'
+                          ].where((k) => jobSubPerms[k] != false).length;
 
                           return Container(
                             margin: const EdgeInsets.symmetric(vertical: 7),
@@ -2772,7 +2883,7 @@ $firebaseApkUrl
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          'Feature Permissions (16 Modules)',
+                                          'Feature Permissions (${_availableModules.length} Modules)',
                                           style: GoogleFonts.outfit(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 13.5,
@@ -2919,7 +3030,250 @@ $firebaseApkUrl
                                     ),
                                   ),
 
-                                  const SizedBox(height: 12),
+                                    // Granular Sub-feature Permissions for AI Job Assistant
+                                    if (enabledModules.contains('job_assistant')) ...[
+                                      const SizedBox(height: 10),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF6366F1).withValues(alpha: isDark ? 0.08 : 0.04),
+                                            borderRadius: BorderRadius.circular(16),
+                                            border: Border.all(
+                                              color: const Color(0xFF6366F1).withValues(alpha: isDark ? 0.3 : 0.22),
+                                            ),
+                                          ),
+                                          child: Theme(
+                                            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                                            child: ExpansionTile(
+                                              initiallyExpanded: true,
+                                              tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                                              childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                                              leading: Container(
+                                                padding: const EdgeInsets.all(7),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(
+                                                  Icons.tune_rounded,
+                                                  size: 18,
+                                                  color: Color(0xFF6366F1),
+                                                ),
+                                              ),
+                                              title: Text(
+                                                'AI Job Assistant Permissions',
+                                                style: GoogleFonts.outfit(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13.5,
+                                                  color: const Color(0xFF6366F1),
+                                                ),
+                                              ),
+                                              subtitle: Text(
+                                                '$activeSubCount of 5 Sub-features Active',
+                                                style: TextStyle(
+                                                  fontSize: 11.5,
+                                                  color: subtextColor,
+                                                ),
+                                              ),
+                                              children: [
+                                                // Quick Actions: Only LinkedIn, Enable All, Clear All
+                                                Row(
+                                                  children: [
+                                                    TextButton.icon(
+                                                      style: TextButton.styleFrom(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                        minimumSize: Size.zero,
+                                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                      ),
+                                                      icon: const Icon(Icons.bolt_rounded, size: 14, color: Color(0xFF0A66C2)),
+                                                      label: Text(
+                                                        'Only LinkedIn',
+                                                        style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, color: const Color(0xFF0A66C2)),
+                                                      ),
+                                                      onPressed: () => _setAllJobAssistantSubPermissions(
+                                                        userId,
+                                                        {
+                                                          'auto_apply': false,
+                                                          'career_portals': false,
+                                                          'linkedin_auto_apply': true,
+                                                          'cold_outreach': false,
+                                                          'manual_apply': false,
+                                                        },
+                                                        enabledModules,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    TextButton.icon(
+                                                      style: TextButton.styleFrom(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                        minimumSize: Size.zero,
+                                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                      ),
+                                                      icon: const Icon(Icons.select_all_rounded, size: 14, color: Color(0xFF10B981)),
+                                                      label: Text(
+                                                        'Enable All',
+                                                        style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, color: const Color(0xFF10B981)),
+                                                      ),
+                                                      onPressed: () => _setAllJobAssistantSubPermissions(
+                                                        userId,
+                                                        {
+                                                          'auto_apply': true,
+                                                          'career_portals': true,
+                                                          'linkedin_auto_apply': true,
+                                                          'cold_outreach': true,
+                                                          'manual_apply': true,
+                                                        },
+                                                        enabledModules,
+                                                      ),
+                                                    ),
+                                                    const Spacer(),
+                                                    TextButton.icon(
+                                                      style: TextButton.styleFrom(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                        minimumSize: Size.zero,
+                                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                      ),
+                                                      icon: const Icon(Icons.clear_rounded, size: 14, color: Colors.grey),
+                                                      label: Text(
+                                                        'Clear All',
+                                                        style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
+                                                      ),
+                                                      onPressed: () => _setAllJobAssistantSubPermissions(
+                                                        userId,
+                                                        {
+                                                          'auto_apply': false,
+                                                          'career_portals': false,
+                                                          'linkedin_auto_apply': false,
+                                                          'cold_outreach': false,
+                                                          'manual_apply': false,
+                                                        },
+                                                        enabledModules,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 6),
+                                                ...[
+                                                  {
+                                                    'key': 'auto_apply',
+                                                    'title': 'Auto-Apply Agent ⚡',
+                                                    'subtitle': 'Autonomous recruiter search & personalized email applications',
+                                                    'icon': Icons.bolt_rounded,
+                                                    'color': const Color(0xFF3B82F6),
+                                                  },
+                                                  {
+                                                    'key': 'linkedin_auto_apply',
+                                                    'title': 'LinkedIn Auto-Apply 💼',
+                                                    'subtitle': 'Real-time hiring posts scraping (Apify) & instant auto-apply',
+                                                    'icon': Icons.dynamic_feed_rounded,
+                                                    'color': const Color(0xFF0EA5E9),
+                                                  },
+                                                  {
+                                                    'key': 'career_portals',
+                                                    'title': 'Career Portals & ATS Matcher 🏢',
+                                                    'subtitle': 'Direct ATS jobs (<48h) + 1-Click Tailored PDF Resumes',
+                                                    'icon': Icons.apartment_rounded,
+                                                    'color': const Color(0xFF10B981),
+                                                  },
+                                                  {
+                                                    'key': 'cold_outreach',
+                                                    'title': 'Cold Outreach & Networking 👥',
+                                                    'subtitle': 'Startup founder & hiring manager lead discovery & pitch email',
+                                                    'icon': Icons.people_alt_rounded,
+                                                    'color': const Color(0xFFA855F7),
+                                                  },
+                                                  {
+                                                    'key': 'manual_apply',
+                                                    'title': 'Manual Scan & Apply 📸',
+                                                    'subtitle': 'Upload flyers, screenshots or paste JD for AI extraction',
+                                                    'icon': Icons.add_photo_alternate_rounded,
+                                                    'color': const Color(0xFFF59E0B),
+                                                  },
+                                                ].map((sub) {
+                                                  final subKey = sub['key'] as String;
+                                                  final subTitle = sub['title'] as String;
+                                                  final subSubtitle = sub['subtitle'] as String;
+                                                  final subIcon = sub['icon'] as IconData;
+                                                  final subColor = sub['color'] as Color;
+                                                  final isSubEnabled = jobSubPerms[subKey] != false;
+
+                                                  return Container(
+                                                    margin: const EdgeInsets.only(bottom: 6),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                    decoration: BoxDecoration(
+                                                      color: isSubEnabled
+                                                          ? subColor.withValues(alpha: isDark ? 0.12 : 0.07)
+                                                          : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC)),
+                                                      borderRadius: BorderRadius.circular(10),
+                                                      border: Border.all(
+                                                        color: isSubEnabled
+                                                            ? subColor.withValues(alpha: 0.3)
+                                                            : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
+                                                      ),
+                                                    ),
+                                                    child: Row(
+                                                      children: [
+                                                        Container(
+                                                          padding: const EdgeInsets.all(6),
+                                                          decoration: BoxDecoration(
+                                                            color: subColor.withValues(alpha: 0.15),
+                                                            shape: BoxShape.circle,
+                                                          ),
+                                                          child: Icon(subIcon, size: 15, color: subColor),
+                                                        ),
+                                                        const SizedBox(width: 8),
+                                                        Expanded(
+                                                          child: Column(
+                                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                                            children: [
+                                                              Text(
+                                                                subTitle,
+                                                                style: GoogleFonts.outfit(
+                                                                  fontSize: 12.5,
+                                                                  fontWeight: isSubEnabled ? FontWeight.bold : FontWeight.w500,
+                                                                  color: isSubEnabled ? textColor : subtextColor,
+                                                                ),
+                                                              ),
+                                                              Text(
+                                                                subSubtitle,
+                                                                style: TextStyle(
+                                                                  fontSize: 10.5,
+                                                                  color: subtextColor,
+                                                                ),
+                                                                maxLines: 1,
+                                                                overflow: TextOverflow.ellipsis,
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        Transform.scale(
+                                                          scale: 0.75,
+                                                          child: Switch(
+                                                            value: isSubEnabled,
+                                                            activeThumbColor: subColor,
+                                                            activeTrackColor: subColor.withValues(alpha: 0.4),
+                                                            onChanged: (val) => _toggleJobAssistantSubPermission(
+                                                              userId,
+                                                              subKey,
+                                                              val,
+                                                              jobSubPerms,
+                                                              enabledModules,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  );
+                                                }),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+
+                                    const SizedBox(height: 12),
                                   Divider(
                                     height: 1,
                                     color: isDark

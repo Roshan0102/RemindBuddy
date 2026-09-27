@@ -20,7 +20,11 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_TOGGLE_CHECKLIST_ITEM = "com.remindbuddy.remindbuddy.ACTION_TOGGLE_CHECKLIST_ITEM"
         const val ACTION_RESET_CHECKLIST = "com.remindbuddy.remindbuddy.ACTION_RESET_CHECKLIST"
+        const val ACTION_WIDGET_PINNED_CALLBACK = "com.remindbuddy.remindbuddy.ACTION_WIDGET_PINNED_CALLBACK"
         const val EXTRA_ITEM_INDEX = "com.remindbuddy.remindbuddy.EXTRA_ITEM_INDEX"
+        const val EXTRA_NOTE_ID = "extra_note_id"
+        const val EXTRA_NOTE_TITLE = "extra_note_title"
+        const val EXTRA_NOTE_ITEMS = "extra_note_items"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -30,18 +34,43 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
         val appWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget)
 
         when (intent.action) {
+            ACTION_WIDGET_PINNED_CALLBACK -> {
+                val newWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+                val noteId = intent.getStringExtra(EXTRA_NOTE_ID) ?: ""
+                val title = intent.getStringExtra(EXTRA_NOTE_TITLE) ?: "Office Checklist"
+                val items = intent.getStringExtra(EXTRA_NOTE_ITEMS) ?: "[]"
+
+                if (newWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                    val widgetData = HomeWidgetPlugin.getData(context)
+                    widgetData?.edit()?.apply {
+                        putString("note_widget_id_$newWidgetId", noteId)
+                        putString("note_widget_title_$newWidgetId", title)
+                        putString("note_widget_items_$newWidgetId", items)
+                        putBoolean("note_widget_dirty_$newWidgetId", false)
+                        apply()
+                    }
+                    onUpdate(context, appWidgetManager, intArrayOf(newWidgetId))
+                    Log.d("NoteChecklistWidget", "Pinned callback configured widget $newWidgetId for note $noteId")
+                }
+            }
             ACTION_TOGGLE_CHECKLIST_ITEM -> {
                 val itemIndex = intent.getIntExtra(EXTRA_ITEM_INDEX, -1)
+                val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
                 if (itemIndex >= 0) {
-                    toggleItem(context, itemIndex)
-                    if (appWidgetIds != null && appWidgetIds.isNotEmpty()) {
+                    toggleItem(context, appWidgetId, itemIndex)
+                    if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                        appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_checklist_list)
+                    } else if (appWidgetIds != null && appWidgetIds.isNotEmpty()) {
                         appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_checklist_list)
                     }
                 }
             }
             ACTION_RESET_CHECKLIST -> {
-                resetChecklist(context)
-                if (appWidgetIds != null && appWidgetIds.isNotEmpty()) {
+                val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+                resetChecklist(context, appWidgetId)
+                if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                    appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_checklist_list)
+                } else if (appWidgetIds != null && appWidgetIds.isNotEmpty()) {
                     appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_checklist_list)
                 }
             }
@@ -53,6 +82,23 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        try {
+            val widgetData = HomeWidgetPlugin.getData(context) ?: return
+            val editor = widgetData.edit()
+            for (id in appWidgetIds) {
+                editor.remove("note_widget_id_$id")
+                editor.remove("note_widget_title_$id")
+                editor.remove("note_widget_items_$id")
+                editor.remove("note_widget_dirty_$id")
+            }
+            editor.apply()
+        } catch (e: Exception) {
+            Log.e("NoteChecklistWidget", "Error cleaning up deleted widgets: $e")
+        }
+    }
+
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
@@ -61,14 +107,18 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
         val widgetData = HomeWidgetPlugin.getData(context)
 
         for (appWidgetId in appWidgetIds) {
-            val title = widgetData?.getString("note_widget_title", null) ?: "Office Checklist"
-            val noteId = widgetData?.getString("note_widget_id", null) ?: ""
+            val title = widgetData?.getString("note_widget_title_$appWidgetId", null)
+                ?: widgetData?.getString("note_widget_title", null)
+                ?: "Office Checklist"
+            val noteId = widgetData?.getString("note_widget_id_$appWidgetId", null)
+                ?: widgetData?.getString("note_widget_id", null)
+                ?: ""
 
             val views = RemoteViews(context.packageName, R.layout.note_checklist_widget_layout).apply {
                 setTextViewText(R.id.widget_note_title, title)
                 setEmptyView(R.id.widget_checklist_list, R.id.widget_checklist_empty)
 
-                // 1. Bind RemoteViewsService to ListView
+                // 1. Bind RemoteViewsService to ListView with widget-specific intent URI
                 val serviceIntent = Intent(context, NoteChecklistWidgetService::class.java).apply {
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                     data = Uri.parse("content://com.remindbuddy.remindbuddy/note_checklist_widget/$appWidgetId")
@@ -87,7 +137,7 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
                 }
                 val togglePendingIntent = PendingIntent.getBroadcast(
                     context,
-                    200,
+                    2000 + appWidgetId,
                     toggleIntent,
                     toggleFlags
                 )
@@ -105,13 +155,13 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
                 }
                 val resetPendingIntent = PendingIntent.getBroadcast(
                     context,
-                    201,
+                    3000 + appWidgetId,
                     resetIntent,
                     resetFlags
                 )
                 setOnClickPendingIntent(R.id.widget_note_reset_btn, resetPendingIntent)
 
-                // 4. Header Click (Open note in app)
+                // 4. Header Click (Open specific note in app)
                 val targetUri = if (noteId.isNotEmpty()) {
                     Uri.parse("remindbuddy://feature/notes?noteId=$noteId")
                 } else {
@@ -131,10 +181,15 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun toggleItem(context: Context, index: Int) {
+    private fun toggleItem(context: Context, appWidgetId: Int, index: Int) {
         try {
             val widgetData = HomeWidgetPlugin.getData(context) ?: return
-            val jsonStr = widgetData.getString("note_widget_items", "[]") ?: "[]"
+            val key = if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID && widgetData.contains("note_widget_items_$appWidgetId")) {
+                "note_widget_items_$appWidgetId"
+            } else {
+                "note_widget_items"
+            }
+            val jsonStr = widgetData.getString(key, "[]") ?: "[]"
             val jsonArray = JSONArray(jsonStr)
 
             if (index in 0 until jsonArray.length()) {
@@ -143,20 +198,28 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
                 item.put("isChecked", !current)
                 jsonArray.put(index, item)
 
-                widgetData.edit().putString("note_widget_items", jsonArray.toString()).apply()
-                // Mark that widget has modified data to be synced when Flutter opens/checks
-                widgetData.edit().putBoolean("note_widget_dirty", true).apply()
-                Log.d("NoteChecklistWidget", "Toggled item $index to ${!current}")
+                val editor = widgetData.edit().putString(key, jsonArray.toString())
+                if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                    editor.putBoolean("note_widget_dirty_$appWidgetId", true)
+                }
+                editor.putBoolean("note_widget_dirty", true)
+                editor.apply()
+                Log.d("NoteChecklistWidget", "Toggled item $index in $key to ${!current}")
             }
         } catch (e: Exception) {
             Log.e("NoteChecklistWidget", "Error toggling item: $e")
         }
     }
 
-    private fun resetChecklist(context: Context) {
+    private fun resetChecklist(context: Context, appWidgetId: Int) {
         try {
             val widgetData = HomeWidgetPlugin.getData(context) ?: return
-            val jsonStr = widgetData.getString("note_widget_items", "[]") ?: "[]"
+            val key = if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID && widgetData.contains("note_widget_items_$appWidgetId")) {
+                "note_widget_items_$appWidgetId"
+            } else {
+                "note_widget_items"
+            }
+            val jsonStr = widgetData.getString(key, "[]") ?: "[]"
             val jsonArray = JSONArray(jsonStr)
 
             for (i in 0 until jsonArray.length()) {
@@ -165,9 +228,13 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
                 jsonArray.put(i, item)
             }
 
-            widgetData.edit().putString("note_widget_items", jsonArray.toString()).apply()
-            widgetData.edit().putBoolean("note_widget_dirty", true).apply()
-            Log.d("NoteChecklistWidget", "Reset all items to unchecked")
+            val editor = widgetData.edit().putString(key, jsonArray.toString())
+            if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                editor.putBoolean("note_widget_dirty_$appWidgetId", true)
+            }
+            editor.putBoolean("note_widget_dirty", true)
+            editor.apply()
+            Log.d("NoteChecklistWidget", "Reset checklist for $key")
         } catch (e: Exception) {
             Log.e("NoteChecklistWidget", "Error resetting checklist: $e")
         }

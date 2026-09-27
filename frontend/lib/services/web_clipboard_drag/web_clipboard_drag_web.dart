@@ -18,10 +18,27 @@ class WebClipboardDragService {
     _pasteSub = html.document.onPaste.listen((html.ClipboardEvent event) {
       if (!isActive()) return;
 
+      // Check event.clipboardData.files first
+      final files = event.clipboardData?.files;
+      if (files != null && files.isNotEmpty) {
+        for (int i = 0; i < files.length; i++) {
+          final file = files[i];
+          final type = file.type.toLowerCase();
+          if (type.startsWith('image/')) {
+            _readFile(file, (bytes, name) {
+              onImageReceived(bytes, name);
+            });
+            event.preventDefault();
+            return;
+          }
+        }
+      }
+
+      // Check event.clipboardData.items
       final items = event.clipboardData?.items;
       if (items == null) return;
 
-      final count = items.length ?? 0;
+      final int count = items.length ?? 0;
       for (int i = 0; i < count; i++) {
         final item = items[i];
         if (item.type != null && item.type!.startsWith('image/')) {
@@ -103,8 +120,40 @@ class WebClipboardDragService {
     _dropSub = null;
   }
 
-  static Future<Uint8List?> readImageFromClipboard() async {
-    // Note: Browser security policies generally require user gesture or native onPaste event
+  static Future<Map<String, dynamic>?> readImageFromClipboard() async {
+    try {
+      final clipboard = html.window.navigator.clipboard;
+      if (clipboard != null) {
+        final items = await (clipboard as dynamic).read();
+        if (items != null) {
+          for (final item in items) {
+            final types = (item.types as List<dynamic>?) ?? [];
+            for (final type in types) {
+              final typeStr = type.toString().toLowerCase();
+              if (typeStr.startsWith('image/')) {
+                final blob = await item.getType(typeStr);
+                final reader = html.FileReader();
+                final completer = Completer<Uint8List?>();
+                reader.readAsArrayBuffer(blob);
+                reader.onLoadEnd.listen((_) {
+                  if (reader.result != null) {
+                    completer.complete(Uint8List.fromList(reader.result as List<int>));
+                  } else {
+                    completer.complete(null);
+                  }
+                });
+                final bytes = await completer.future;
+                if (bytes != null && bytes.isNotEmpty) {
+                  final ext = typeStr.split('/').last.split('+').first;
+                  final fileName = 'clipboard_${DateTime.now().millisecondsSinceEpoch}.$ext';
+                  return {'bytes': bytes, 'name': fileName};
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {}
     return null;
   }
 }

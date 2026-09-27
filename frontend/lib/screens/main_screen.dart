@@ -1451,12 +1451,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             child: Row(
               children: [
-                Icon(Icons.alarm_add, color: activeColor, size: 32),
+                Icon(Icons.smart_toy_rounded, color: activeColor, size: 30),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'RemindBuddy',
-                    style: GoogleFonts.pacifico(
+                    'SmartBuddy',
+                    style: GoogleFonts.outfit(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                       color: activeColor,
@@ -1714,7 +1714,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'RemindBuddy v1.10.36',
+                  'SmartBuddy v1.10.37',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],
@@ -1802,9 +1802,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'RemindBuddy',
-          style: GoogleFonts.pacifico( // Creative Font
-            fontSize: 28,
+          'SmartBuddy',
+          style: GoogleFonts.outfit(
+            fontSize: 24,
             fontWeight: FontWeight.bold,
             color: Theme.of(context).colorScheme.primary,
           ),
@@ -1836,18 +1836,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  const Icon(Icons.alarm_add, size: 48, color: Colors.white),
+                  const Icon(Icons.smart_toy_rounded, size: 48, color: Colors.white),
                   const SizedBox(height: 8),
                   Text(
-                    'RemindBuddy',
-                    style: GoogleFonts.pacifico(
+                    'SmartBuddy',
+                    style: GoogleFonts.outfit(
                       fontSize: 24,
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   Text(
-                    'Your Daily Companion',
+                    'Your Intelligent Companion',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.9),
                       fontSize: 14,
@@ -1912,11 +1912,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 if (context.mounted) {
                   showAboutDialog(
                     context: context,
-                    applicationName: 'RemindBuddy',
+                    applicationName: 'SmartBuddy',
                     applicationVersion: '${packageInfo.version}+${packageInfo.buildNumber}',
-                    applicationIcon: const Icon(Icons.alarm_add, size: 48),
+                    applicationIcon: const Icon(Icons.smart_toy_rounded, size: 48, color: Colors.blueAccent),
                     children: [
-                      const Text('Your friendly daily reminder companion!'),
+                      const Text('Your friendly intelligent AI companion & life assistant!'),
                       const SizedBox(height: 8),
                       const Text('Features:'),
                       const Text('• Calendar-based reminders'),
@@ -1949,7 +1949,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                         Text('Log Out', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
                       ],
                     ),
-                    content: const Text('Are you sure you want to log out of RemindBuddy?'),
+                    content: const Text('Are you sure you want to log out of SmartBuddy?'),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(ctx, false),

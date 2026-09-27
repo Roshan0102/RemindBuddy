@@ -1,8 +1,7 @@
-import 'dart:typed_data';
-
 import 'web_clipboard_drag_stub.dart'
     if (dart.library.html) 'web_clipboard_drag_web.dart'
     if (dart.library.io) 'web_clipboard_drag_io.dart';
+import 'dart:typed_data';
 
 class WebClipboardDrag {
   /// Initializes clipboard paste (Ctrl+V or Right-Click -> Paste) and drag-and-drop listeners on web.
@@ -23,7 +22,7 @@ class WebClipboardDrag {
   }
 
   /// Attempts to read image directly from clipboard if supported.
-  static Future<Uint8List?> readImageFromClipboard() {
+  static Future<Map<String, dynamic>?> readImageFromClipboard() {
     return WebClipboardDragService.readImageFromClipboard();
   }
 }

@@ -6,6 +6,7 @@ import { searchLinkedInPostsViaApify, LinkedInPostItem } from "./apifyLinkedInPo
 import { callGeminiAPI } from "../../utils/geminiHelper";
 import { logFeatureExecution } from "../../utils/featureLogger";
 import { logNotification } from "../../utils/logger";
+import { formatEmailContent } from "../../utils/emailFormatter";
 
 function normalizeJobRole(role: string): string {
     return (role || "").toLowerCase()
@@ -384,11 +385,13 @@ Respond ONLY with valid JSON:
 
             // Send via Nodemailer
             try {
+                const formatted = formatEmailContent(finalBody);
                 const info = await transporter.sendMail({
                     from: `"${applicantName}" <${userEmail}>`,
                     to: recipientEmail,
                     subject: finalSubject,
-                    text: finalBody,
+                    text: formatted.text,
+                    html: formatted.html,
                     attachments
                 });
 

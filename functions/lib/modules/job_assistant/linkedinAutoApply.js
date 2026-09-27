@@ -11,6 +11,7 @@ const apifyLinkedInPosts_1 = require("./apifyLinkedInPosts");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const featureLogger_1 = require("../../utils/featureLogger");
 const logger_1 = require("../../utils/logger");
+const emailFormatter_1 = require("../../utils/emailFormatter");
 function normalizeJobRole(role) {
     return (role || "").toLowerCase()
         .replace(/[^a-z0-9]/g, ' ')
@@ -342,11 +343,13 @@ Respond ONLY with valid JSON:
                 }] : [];
             // Send via Nodemailer
             try {
+                const formatted = (0, emailFormatter_1.formatEmailContent)(finalBody);
                 const info = await transporter.sendMail({
                     from: `"${applicantName}" <${userEmail}>`,
                     to: recipientEmail,
                     subject: finalSubject,
-                    text: finalBody,
+                    text: formatted.text,
+                    html: formatted.html,
                     attachments
                 });
                 console.log(`[LinkedInAutoApply] Application email sent to ${recipientEmail} (${finalCompany}): ${info.messageId}`);

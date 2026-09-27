@@ -14,6 +14,7 @@ const featureLogger_1 = require("../../utils/featureLogger");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
+const emailFormatter_1 = require("../../utils/emailFormatter");
 /**
  * Helper to validate email strings
  */
@@ -629,11 +630,13 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
                     contentType: 'application/pdf'
                 }
             ] : [];
+            const formatted = (0, emailFormatter_1.formatEmailContent)(job.generatedCoverLetter);
             const mailOptions = {
                 from: `"${applicantName}" <${userEmail}>`,
                 to: job.recipientEmail.trim(),
                 subject: job.generatedSubject || `Application for ${job.jobTitle} - ${applicantName}`,
-                text: job.generatedCoverLetter,
+                text: formatted.text,
+                html: formatted.html,
                 attachments: jobAttachments
             };
             const info = await transporter.sendMail(mailOptions);
@@ -730,16 +733,16 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             try {
                 const mailSummaryList = successfullyAppliedJobs.map(j => `<li style="margin-bottom: 10px;"><strong>${j.jobTitle}</strong> at <strong>${j.companyName}</strong> (${j.recipientEmail})<br><span style="color: #4F46E5; font-size: 12px; font-weight: bold;">📄 Attached Resume: ${j.resumeProfileName || 'Master Resume'}</span><br><span style="color: #6B7280; font-size: 12px;">Subject: ${j.generatedSubject || j.subject}</span></li>`).join('');
                 await transporter.sendMail({
-                    from: `"RemindBuddy Auto Apply" <${userEmail}>`,
+                    from: `"SmartBuddy Auto Apply" <${userEmail}>`,
                     to: userEmail,
-                    subject: `🚀 [RemindBuddy] Auto-Applied to ${successfullyAppliedJobs.length} Job(s) (${moment().tz('Asia/Kolkata').format('hh:mm A, DD MMM')})`,
+                    subject: `🚀 [SmartBuddy] Auto-Applied to ${successfullyAppliedJobs.length} Job(s) (${moment().tz('Asia/Kolkata').format('hh:mm A, DD MMM')})`,
                     html: `
                         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
                             <h2 style="color: #4F46E5; margin-top: 0;">Automated Job Application Summary</h2>
                             <p>Hello <strong>${applicantName}</strong>,</p>
-                            <p>RemindBuddy AI Auto-Apply Agent has applied to <strong>${successfullyAppliedJobs.length}</strong> new job opening(s) with your tailored resume and cover letter:</p>
+                            <p>SmartBuddy AI Auto-Apply Agent has applied to <strong>${successfullyAppliedJobs.length}</strong> new job opening(s) with your tailored resume and cover letter:</p>
                             <ul style="padding-left: 20px;">${mailSummaryList}</ul>
-                            <p style="color: #6B7280; font-size: 13px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">Executed automatically via RemindBuddy scheduled Job Agent.</p>
+                            <p style="color: #6B7280; font-size: 13px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">Executed automatically via SmartBuddy scheduled Job Agent.</p>
                         </div>
                     `
                 });

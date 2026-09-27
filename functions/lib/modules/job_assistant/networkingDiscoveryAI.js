@@ -16,6 +16,7 @@ const featureLogger_1 = require("../../utils/featureLogger");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
+const emailFormatter_1 = require("../../utils/emailFormatter");
 const IT_SERVICES_MNC_BLACKLIST = [
     "cognizant", "cognizant technology solutions", "cts",
     "tcs", "tata consultancy", "tata consultancy services",
@@ -711,11 +712,13 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
                         await new Promise((res) => setTimeout(res, delayMs));
                     }
                     console.log(`[StartupRadar] Dispatching cold pitch email to ${cleanEmail} (${lead.companyName})...`);
+                    const formatted = (0, emailFormatter_1.formatEmailContent)(lead.fullPitch);
                     const info = await transporter.sendMail({
                         from: `"${applicantName}" <${userEmail}>`,
                         to: cleanEmail,
                         subject: emailSubject,
-                        text: lead.fullPitch,
+                        text: formatted.text,
+                        html: formatted.html,
                         attachments: [
                             {
                                 filename: resumeFileName,
@@ -788,9 +791,9 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
                     </div>
                 </li>`).join('');
             await transporter.sendMail({
-                from: `"RemindBuddy Startup Radar" <${userEmail}>`,
+                from: `"SmartBuddy Startup Radar" <${userEmail}>`,
                 to: userEmail,
-                subject: `🚀 [RemindBuddy] Discovered 5 Startup Leaders in ${targetLocations[0] || 'Target Locations'}`,
+                subject: `🚀 [SmartBuddy] Discovered 5 Startup Leaders in ${targetLocations[0] || 'Target Locations'}`,
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
                         <h2 style="color: #0284C7; margin-top: 0;">🚀 Startup Radar Discovery (${primaryRole})</h2>
@@ -798,7 +801,7 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
                         <p>Your Startup Radar ran a new outreach discovery pass for <strong>${targetLocations.join(', ')}</strong> and generated tailored pitches for <strong>${qualifiedLeads.length} startup leaders</strong>:</p>
                         <ul style="padding-left: 20px; list-style-type: none;">${leadsHtml}</ul>
                         <p style="color: #6B7280; font-size: 13px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">
-                            Pitches and 200-char LinkedIn connection notes are also ready in your RemindBuddy Cold Outreach dashboard.
+                            Pitches and 200-char LinkedIn connection notes are also ready in your SmartBuddy Cold Outreach dashboard.
                         </p>
                     </div>
                 `

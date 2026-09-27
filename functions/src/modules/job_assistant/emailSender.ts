@@ -1,6 +1,7 @@
 import * as functions from "firebase-functions";
 import * as nodemailer from "nodemailer";
 import { db } from "../../config/firebase";
+import { formatEmailContent } from "../../utils/emailFormatter";
 
 export const sendJobApplicationEmail = functions.runWith({ timeoutSeconds: 60, memory: "512MB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
@@ -59,11 +60,14 @@ export const sendJobApplicationEmail = functions.runWith({ timeoutSeconds: 60, m
             });
         }
 
+        const formatted = formatEmailContent(body);
+
         const mailOptions = {
-            from: `"${userData.displayName || 'Job Applicant'}" <${userEmail}>`,
+            from: `"${userData.displayName || userData.applicantName || 'Job Applicant'}" <${userEmail}>`,
             to: recipientEmail,
             subject: subject,
-            text: body,
+            text: formatted.text,
+            html: formatted.html,
             attachments: attachments
         };
 

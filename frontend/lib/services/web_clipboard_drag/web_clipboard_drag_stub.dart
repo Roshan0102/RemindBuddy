@@ -12,7 +12,7 @@ class WebClipboardDragService {
     // No-op on stub
   }
 
-  static Future<Uint8List?> readImageFromClipboard() async {
+  static Future<Map<String, dynamic>?> readImageFromClipboard() async {
     return null;
   }
 }

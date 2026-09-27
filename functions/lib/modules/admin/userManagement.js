@@ -121,9 +121,13 @@ exports.adminUpdateUserModules = functions.runWith({ timeoutSeconds: 60, memory:
         throw new functions.https.HttpsError('invalid-argument', 'userId and enabledModules array are required.');
     }
     try {
-        await firebase_1.db.collection('users').doc(targetUid).set({
+        const updateData = {
             enabledModules: enabledModules
-        }, { merge: true });
+        };
+        if (data.jobAssistantSubPermissions && typeof data.jobAssistantSubPermissions === 'object') {
+            updateData.jobAssistantSubPermissions = data.jobAssistantSubPermissions;
+        }
+        await firebase_1.db.collection('users').doc(targetUid).set(updateData, { merge: true });
         return { success: true };
     }
     catch (error) {
