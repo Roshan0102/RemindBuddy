@@ -34,7 +34,6 @@ export async function searchLinkedInPostsViaApify(
         apiToken,
         apiTokens,
         roles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"],
-        experienceFilter = "1-3 years",
         datePosted = "past-24h",
         maxPosts = 15
     } = options;
@@ -54,12 +53,9 @@ export async function searchLinkedInPostsViaApify(
         throw new Error("At least one Apify API Token is required.");
     }
 
-    // Construct highly targeted recruiter search queries with boolean logic
+    // Construct natural, high-yield recruiter hiring queries
     const searchQueries = roles.map(role => {
-        const expStr = experienceFilter 
-            ? `("${experienceFilter}" OR "junior" OR "associate" OR "2+ years")` 
-            : `("email" OR "send resume")`;
-        return `"${role}" ${expStr} ("email" OR "send resume" OR "share CV" OR "mail your resume") -senior -lead -principal -staff`;
+        return `hiring "${role}" (email OR "send resume" OR "share CV" OR "mail your resume" OR CV)`;
     });
 
     console.log(`[ApifyLinkedIn] Executing multi-role post search for ${roles.length} roles with ${tokensToTry.length} available token(s)...`);
@@ -102,7 +98,34 @@ export async function searchLinkedInPostsViaApify(
         throw new Error(`Apify post search failed across all ${tokensToTry.length} token(s): ${lastError?.message || "Unknown error"}`);
     }
 
-    const rawPosts = Array.isArray(response.data) ? response.data : [];
+    let rawPosts = Array.isArray(response.data) ? response.data : [];
+
+    // If 0 posts in past-24h, automatically widen window to past-week
+    if (rawPosts.length === 0 && datePosted === "past-24h") {
+        console.log(`[ApifyLinkedIn] 0 posts found in past-24h. Widening search window to past-week...`);
+        try {
+            const currentToken = tokensToTry[usedTokenIndex] || tokensToTry[0];
+            const endpoint = `https://api.apify.com/v2/acts/harvestapi~linkedin-post-search/run-sync-get-dataset-items?token=${encodeURIComponent(currentToken)}`;
+            const fallbackResp = await axios.post(endpoint, {
+                searchQueries,
+                sortBy: "date",
+                datePosted: "past-week",
+                maxPosts,
+                scrapeReactions: false,
+                scrapeComments: false
+            }, {
+                headers: { "Content-Type": "application/json" },
+                timeout: 60000
+            });
+            if (Array.isArray(fallbackResp.data) && fallbackResp.data.length > 0) {
+                rawPosts = fallbackResp.data;
+                console.log(`[ApifyLinkedIn] Fallback past-week found ${rawPosts.length} posts.`);
+            }
+        } catch (fErr: any) {
+            console.warn(`[ApifyLinkedIn] Fallback past-week attempt note: ${fErr.message}`);
+        }
+    }
+
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
     const posts: LinkedInPostItem[] = [];

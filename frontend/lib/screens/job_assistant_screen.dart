@@ -3037,7 +3037,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         'key': 'career_portals',
         'index': 1,
         'title': 'Career Portals & ATS Matcher 🏢',
-        'subtitle': 'Direct Greenhouse, Lever & Ashby openings (<48h) + 1-Click Tailored PDF Resume',
+        'subtitle': 'Direct Greenhouse, Lever & Ashby openings (<72h) + 1-Click Tailored PDF Resume',
         'isNew': true,
         'icon': Icons.apartment_rounded,
         'gradient': [const Color(0xFF10B981), const Color(0xFF047857)],
@@ -3596,7 +3596,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Direct ATS Career Portals (< 48h) 🏢',
+                              'Direct ATS Career Portals (< 72h) 🏢',
                               style: GoogleFonts.outfit(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -3605,7 +3605,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Official Greenhouse, Lever & Ashby jobs verified < 48 hours with 1-click tailored resume PDF ready to attach.',
+                              'Official Greenhouse, Lever & Ashby jobs verified < 72 hours with 1-click tailored resume PDF ready to attach.',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.white.withValues(alpha: 0.9),
@@ -3631,7 +3631,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                 )
                               : const Icon(Icons.radar_rounded, size: 18),
                           label: Text(
-                            _isDiscoveringPortals ? 'Discovering & Tailoring...' : 'Discover Portals (< 48h)',
+                            _isDiscoveringPortals ? 'Discovering & Tailoring...' : 'Discover Portals (< 72h)',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           style: ElevatedButton.styleFrom(
@@ -3687,7 +3687,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _buildPortalFilterChip('all', 'All (<48h)'),
+                  _buildPortalFilterChip('all', 'All (<72h)'),
                   const SizedBox(width: 8),
                   _buildPortalFilterChip('greenhouse', 'Greenhouse 🟢'),
                   const SizedBox(width: 8),

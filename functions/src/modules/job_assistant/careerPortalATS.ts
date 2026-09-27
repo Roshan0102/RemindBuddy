@@ -23,8 +23,8 @@ export interface CareerPortalJobRecord {
     injectedKeywords: string[];
     matchReasoning: string;
     jobDescriptionSnippet: string;
-    tailoredResumePdfBase64?: string;
-    tailoredResumePdfUrl?: string;
+    tailoredResumePdfBase64?: string | null;
+    tailoredResumePdfUrl?: string | null;
     tailoredSummary?: string;
     status: "discovered" | "applied" | "dismissed";
     appliedAt?: admin.firestore.Timestamp | null;
@@ -277,7 +277,7 @@ async function fetchAshbyJobs(
 }
 
 /**
- * Searches Tavily targeting major ATS portals with days: 2 (last 48 hours).
+ * Searches Tavily targeting major ATS portals with days: 3 (last 72 hours).
  */
 async function fetchTavilyCareerPortals(
     apiKey: string,
@@ -289,8 +289,8 @@ async function fetchTavilyCareerPortals(
     const locQuery = locations.map(l => `"${l}"`).join(" OR ") || '"India" OR "Remote"';
 
     const queries = [
-        `("${primaryRole}" OR "Cloud Engineer") (${locQuery}) ("1-3 years" OR "2+ years")`,
-        `("Site Reliability Engineer" OR "Infrastructure Engineer") (${locQuery})`
+        `("${primaryRole}" OR "Cloud Engineer") (${locQuery})`,
+        `("Site Reliability Engineer" OR "Infrastructure Engineer" OR "AWS Cloud Engineer") (${locQuery})`
     ];
 
     for (const q of queries) {
@@ -299,8 +299,8 @@ async function fetchTavilyCareerPortals(
                 apiKey,
                 query: q,
                 searchDepth: "advanced",
-                maxResults: 6,
-                days: 2, // Last 48 hours strictly
+                maxResults: 10,
+                days: 3, // Last 72 hours
                 includeDomains: [
                     "boards.greenhouse.io",
                     "jobs.lever.co",
@@ -400,9 +400,9 @@ export async function executeCareerPortalDiscovery(
 
     const cleanResumeB64 = resumePdfBase64.replace(/^data:application\/pdf;base64,/, "");
 
-    // 3. Strict 48-Hour Threshold (2 days ago)
+    // 3. Strict 72-Hour Threshold (3 days ago)
     const nowMs = Date.now();
-    const cutoff48h = nowMs - (48 * 60 * 60 * 1000);
+    const cutoff72h = nowMs - (72 * 60 * 60 * 1000);
 
     // 4. Fetch from All 3 Strategies
     const rawDiscovered: Array<{
@@ -417,7 +417,7 @@ export async function executeCareerPortalDiscovery(
 
     // A. Greenhouse Public API
     try {
-        const ghJobs = await fetchGreenhouseJobs(targetRoleKeywords, targetLocations, cutoff48h);
+        const ghJobs = await fetchGreenhouseJobs(targetRoleKeywords, targetLocations, cutoff72h);
         rawDiscovered.push(...ghJobs);
         console.log(`[CareerPortalATS] Greenhouse API returned ${ghJobs.length} fresh matching jobs.`);
     } catch (e: any) {
@@ -426,7 +426,7 @@ export async function executeCareerPortalDiscovery(
 
     // B. Lever Public API
     try {
-        const leverJobs = await fetchLeverJobs(targetRoleKeywords, targetLocations, cutoff48h);
+        const leverJobs = await fetchLeverJobs(targetRoleKeywords, targetLocations, cutoff72h);
         rawDiscovered.push(...leverJobs);
         console.log(`[CareerPortalATS] Lever API returned ${leverJobs.length} fresh matching jobs.`);
     } catch (e: any) {
@@ -435,13 +435,13 @@ export async function executeCareerPortalDiscovery(
 
     // C. Ashby Public API
     try {
-        const ashbyJobs = await fetchAshbyJobs(targetRoleKeywords, targetLocations, cutoff48h);
+        const ashbyJobs = await fetchAshbyJobs(targetRoleKeywords, targetLocations, cutoff72h);
         rawDiscovered.push(...ashbyJobs);
     } catch (e: any) {
         console.warn(`[CareerPortalATS] Ashby API fetch failed: ${e.message}`);
     }
 
-    // D. Tavily Search (days: 2)
+    // D. Tavily Search (days: 3)
     if (tavilyKey) {
         try {
             const tavilyResults = await fetchTavilyCareerPortals(tavilyKey, targetRoles, targetLocations);
@@ -673,8 +673,8 @@ OUTPUT STRICT JSON FORMAT:
                 injectedKeywords,
                 matchReasoning,
                 jobDescriptionSnippet: job.jd.slice(0, 400),
-                tailoredResumePdfBase64: pdfBase64 ? `data:application/pdf;base64,${pdfBase64}` : undefined,
-                tailoredResumePdfUrl: storageUrl || undefined,
+                tailoredResumePdfBase64: pdfBase64 ? `data:application/pdf;base64,${pdfBase64}` : null,
+                tailoredResumePdfUrl: storageUrl || null,
                 tailoredSummary,
                 status: "discovered"
             };

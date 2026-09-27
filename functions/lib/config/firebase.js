@@ -8,5 +8,6 @@ if (!admin.apps.length) {
     admin.initializeApp();
 }
 exports.db = admin.firestore();
+exports.db.settings({ ignoreUndefinedProperties: true });
 exports.tasksClient = new tasks_1.CloudTasksClient();
 //# sourceMappingURL=firebase.js.map
