@@ -17,14 +17,14 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  console.log('[RemindBuddy] Received background push message:', payload);
+  console.log('[SmartBuddy] Received background push message:', payload);
   const title = (payload.notification && payload.notification.title) || 
                 (payload.data && payload.data.title) || 
-                "RemindBuddy Alert";
+                "SmartBuddy Alert";
   const body = (payload.notification && payload.notification.body) || 
                (payload.data && payload.data.body) || 
-               "You have a new update in RemindBuddy.";
-  const tag = (payload.data && payload.data.tag) || `remindbuddy_${Date.now()}`;
+               "You have a new update in SmartBuddy.";
+  const tag = (payload.data && payload.data.tag) || `smartbuddy_${Date.now()}`;
 
   const notificationOptions = {
     body: body,

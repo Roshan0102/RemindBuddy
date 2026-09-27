@@ -57,11 +57,11 @@ void main() async {
     debugPrint('Error cleaning old update APKs: $e');
   }
   
-  runApp(const RemindBuddyApp());
+  runApp(const SmartBuddyApp());
 }
 
-class RemindBuddyApp extends StatelessWidget {
-  const RemindBuddyApp({super.key});
+class SmartBuddyApp extends StatelessWidget {
+  const SmartBuddyApp({super.key});
   
   @override
   Widget build(BuildContext context) {

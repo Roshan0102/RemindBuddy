@@ -252,7 +252,7 @@ class _EmailNotificationControlScreenState
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Especially useful for Web app users! RemindBuddy sends automated daily summary digests directly to your email for auto-applied jobs, startup outreach pitches, tech events, and walk-in drives.',
+                              'Especially useful for Web app users! SmartBuddy sends automated daily summary digests directly to your email for auto-applied jobs, startup outreach pitches, tech events, and walk-in drives.',
                               style: TextStyle(
                                 fontSize: 12.5,
                                 height: 1.4,
@@ -308,7 +308,7 @@ class _EmailNotificationControlScreenState
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Your Gmail ID and Google App Password allow RemindBuddy to dispatch digests and job applications securely on your behalf.',
+                        'Your Gmail ID and Google App Password allow SmartBuddy to dispatch digests and job applications securely on your behalf.',
                         style: TextStyle(
                           fontSize: 12,
                           color: isDark ? Colors.white60 : Colors.grey.shade600,

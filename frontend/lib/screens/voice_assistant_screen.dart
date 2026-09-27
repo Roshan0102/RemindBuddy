@@ -34,7 +34,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
   final List<Map<String, String>> _messages = [
     {
       "sender": "assistant",
-      "text": "Hello! I am RemindBuddy. How can I help you today? You can ask me about your schedule, gold rates, notes, or checklists, or create reminders!"
+      "text": "Hello! I am SmartBuddy. How can I help you today? You can ask me about your schedule, gold rates, notes, or checklists, or create reminders!"
     }
   ];
 
@@ -307,7 +307,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
                       onPressed: () => Navigator.pop(context),
                     ),
                     Text(
-                      "RemindBuddy Voice AI",
+                      "SmartBuddy Voice AI",
                       style: GoogleFonts.outfit(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -538,7 +538,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
                               controller: _textController,
                               style: GoogleFonts.outfit(color: isDark ? Colors.white : Colors.black87),
                               decoration: InputDecoration(
-                                hintText: "Ask RemindBuddy...",
+                                hintText: "Ask SmartBuddy...",
                                 hintStyle: GoogleFonts.outfit(color: Colors.grey),
                                 filled: true,
                                 fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,

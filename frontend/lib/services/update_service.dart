@@ -309,7 +309,7 @@ class _OtaUpdateDialogState extends State<OtaUpdateDialog> {
           children: [
             if (!_isDownloading) ...[
               Text(
-                'A new version (v${widget.newVersion}) of RemindBuddy is ready to install.',
+                'A new version (v${widget.newVersion}) of SmartBuddy is ready to install.',
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),

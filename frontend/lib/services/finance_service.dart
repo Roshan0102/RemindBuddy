@@ -951,7 +951,7 @@ class FinanceService {
                 'sampleId': sampleId,
                 'userId': user.uid,
                 'userEmail': user.email ?? 'Unknown Email',
-                'userName': user.displayName ?? 'RemindBuddy User',
+                'userName': user.displayName ?? 'SmartBuddy User',
                 'sender': sender,
                 'body': body,
                 'timestamp': timestamp,

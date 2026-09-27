@@ -425,7 +425,7 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'When a company or startup replies to your Auto-Apply email or Cold Outreach pitch, RemindBuddy will analyze their response and showcase it here.',
+                          'When a company or startup replies to your Auto-Apply email or Cold Outreach pitch, SmartBuddy will analyze their response and showcase it here.',
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.4),
                         ),

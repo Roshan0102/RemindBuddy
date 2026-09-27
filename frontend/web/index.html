@@ -78,7 +78,7 @@
 <body>
   <div id="loading" class="loading-container">
     <div class="spinner"></div>
-    <div class="loading-text">Loading RemindBuddy...</div>
+    <div class="loading-text">Loading SmartBuddy...</div>
   </div>
   <script>
     window.addEventListener('load', function(ev) {
@@ -96,10 +96,10 @@
         // Ensure firebase-messaging-sw.js is explicitly registered for Web Push
         navigator.serviceWorker.register('/firebase-messaging-sw.js')
           .then(function(reg) {
-            console.log('[RemindBuddy] Web Push Service Worker registered with scope:', reg.scope);
+            console.log('[SmartBuddy] Web Push Service Worker registered with scope:', reg.scope);
           })
           .catch(function(err) {
-            console.warn('[RemindBuddy] Web Push Service Worker registration note:', err);
+            console.warn('[SmartBuddy] Web Push Service Worker registration note:', err);
           });
       }
       // 2. Clear CacheStorage cache entries

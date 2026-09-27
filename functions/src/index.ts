@@ -1,5 +1,5 @@
 /**
- * RemindBuddy Cloud Functions - Entry Point
+ * SmartBuddy Cloud Functions - Entry Point
  * Modularized Architecture
  */
 

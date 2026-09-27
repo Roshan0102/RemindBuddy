@@ -77,7 +77,7 @@ class AppPermissionService {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'To provide timely reminders and real-time local updates, RemindBuddy requires the following permissions:',
+                  'To provide timely reminders and real-time local updates, SmartBuddy requires the following permissions:',
                   style: TextStyle(fontSize: 13, height: 1.4),
                 ),
                 const SizedBox(height: 14),
@@ -220,7 +220,7 @@ class AppPermissionService {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'If Android shows "Restricted Setting":\n1. Tap "Open App Info" below.\n2. Tap the 3 dots (⋮) in the top-right corner.\n3. Tap "Allow restricted settings".\n4. Re-open RemindBuddy and grant SMS permission.',
+                      'If Android shows "Restricted Setting":\n1. Tap "Open App Info" below.\n2. Tap the 3 dots (⋮) in the top-right corner.\n3. Tap "Allow restricted settings".\n4. Re-open SmartBuddy and grant SMS permission.',
                       style: TextStyle(fontSize: 11.5, height: 1.4),
                     ),
                   ],

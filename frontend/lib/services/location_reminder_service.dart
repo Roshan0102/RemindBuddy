@@ -74,7 +74,7 @@ class LocationReminderService {
           distanceFilter: 15, // trigger update when moved ~15m
           intervalDuration: const Duration(seconds: 10),
           foregroundNotificationConfig: const ForegroundNotificationConfig(
-            notificationTitle: "RemindBuddy Location Monitor",
+            notificationTitle: "SmartBuddy Location Monitor",
             notificationText: "Tracking active location reminders in background",
             enableWakeLock: true,
           ),

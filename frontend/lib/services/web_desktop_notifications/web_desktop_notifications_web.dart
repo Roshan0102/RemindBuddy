@@ -54,7 +54,7 @@ class WebDesktopNotifications {
         title,
         body: body,
         icon: '/icons/Icon-192.png',
-        tag: tag ?? 'remindbuddy_${DateTime.now().millisecondsSinceEpoch}',
+        tag: tag ?? 'smartbuddy_${DateTime.now().millisecondsSinceEpoch}',
       );
 
       notification.onClick.listen((_) {
@@ -90,7 +90,7 @@ class WebDesktopNotifications {
             final action = data['action'];
             final feature = data['feature'] ?? data['type'];
             if (action == 'NAVIGATE_FEATURE' && feature != null && feature.toString().isNotEmpty) {
-              debugPrint('[RemindBuddy Web] Received NAVIGATE_FEATURE from Service Worker: $feature');
+              debugPrint('[SmartBuddy Web] Received NAVIGATE_FEATURE from Service Worker: $feature');
               NotificationService().handleNotificationPayload(feature.toString());
             }
           }

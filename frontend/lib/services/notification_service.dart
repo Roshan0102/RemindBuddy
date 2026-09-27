@@ -229,7 +229,7 @@ class NotificationService {
             final data = change.doc.data();
             if (data == null) continue;
 
-            final title = data['title']?.toString() ?? 'RemindBuddy Alert';
+            final title = data['title']?.toString() ?? 'SmartBuddy Alert';
             final body = data['body']?.toString() ?? '';
             final type = data['type']?.toString() ?? '';
 

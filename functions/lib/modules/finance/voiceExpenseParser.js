@@ -63,7 +63,7 @@ exports.parseVoiceExpensesWithAI = functions.runWith({ timeoutSeconds: 60, memor
     const accountsListStr = Array.isArray(accounts) && accounts.length > 0
         ? accounts.map((a) => `- ${a.name || a.id}`).join('\n')
         : "- Cash\n- UPI / GPay / PhonePe\n- Primary Bank Account";
-    const prompt = `You are a high-speed, intelligent financial transaction parser for RemindBuddy Smart Bank Tracker.
+    const prompt = `You are a high-speed, intelligent financial transaction parser for SmartBuddy Smart Bank Tracker.
 The user dictated multiple daily expenses, payments, or received money in a single voice sentence.
 
 Extract EVERY separate transaction mentioned in the spoken text and output a JSON object with a "transactions" array.

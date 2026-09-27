@@ -1,8 +1,8 @@
 name: remindbuddy
-description: "A comprehensive family management, reminder and finance tracking app."
+description: "SmartBuddy - A comprehensive daily life management, reminders, finance tracking, and career assistant app."
 publish_to: 'none'
 
-version: 1.10.37+416
+version: 1.10.38+417
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

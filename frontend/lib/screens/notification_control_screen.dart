@@ -246,7 +246,7 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                             ),
                             subtitle: const Text(
-                              'Receive push alerts on your phone (iPhone PWA & Android) or PC even when RemindBuddy is closed',
+                              'Receive push alerts on your phone (iPhone PWA & Android) or PC even when SmartBuddy is closed',
                               style: TextStyle(fontSize: 12),
                             ),
                             value: _notifPrefs['desktop_notifications'] ?? true,
@@ -306,7 +306,7 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 const Text(
-                                  '• iPhone: Apple requires adding RemindBuddy to your Home Screen (Safari Share ➔ Add to Home Screen) to receive push alerts.\n• Android: Native push works in Chrome, Edge, and Samsung Internet.',
+                                  '• iPhone: Apple requires adding SmartBuddy to your Home Screen (Safari Share ➔ Add to Home Screen) to receive push alerts.\n• Android: Native push works in Chrome, Edge, and Samsung Internet.',
                                   style: TextStyle(fontSize: 11, color: Colors.grey, height: 1.35),
                                 ),
                               ],

@@ -1304,7 +1304,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      'Enter your Gmail address and 16-character App Password to allow RemindBuddy to dispatch job applications on your behalf.',
+                      'Enter your Gmail address and 16-character App Password to allow SmartBuddy to dispatch job applications on your behalf.',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 12),

@@ -449,7 +449,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.language_rounded,
                   iconGradient: const [Color(0xFF0EA5E9), Color(0xFF0284C7)],
                   title: 'SmartBuddy Web App',
-                  subtitle: 'https://remindbuddy-b68f9.web.app',
+                  subtitle: 'https://smartbuddy-app.web.app',
                   badgeText: 'Open',
                   badgeColor: const Color(0xFF0EA5E9),
                   isFirst: true,
@@ -458,7 +458,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtextColor: subtextColor,
                   onTap: () async {
                     HapticFeedback.selectionClick();
-                    final uri = Uri.parse('https://remindbuddy-b68f9.web.app');
+                    final uri = Uri.parse('https://smartbuddy-app.web.app');
                     await launchUrl(uri, mode: LaunchMode.externalApplication);
                   },
                 ),
@@ -477,7 +477,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: () {
                     HapticFeedback.selectionClick();
                     Share.share(
-                      'Check out SmartBuddy - Your all-in-one AI daily life, reminders, and career assistant: https://remindbuddy-b68f9.web.app',
+                      'Check out SmartBuddy - Your all-in-one AI daily life, reminders, and career assistant: https://smartbuddy-app.web.app',
                       subject: 'SmartBuddy Web App',
                     );
                   },
@@ -533,7 +533,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   iconGradient: const [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
                   title: 'SmartBuddy Engine',
                   subtitle: 'All-in-One AI Daily Life & Assistant Platform',
-                  badgeText: 'v1.10.37',
+                  badgeText: 'v1.10.38',
                   badgeColor: const Color(0xFF8B5CF6),
                   isFirst: false,
                   isLast: true,

@@ -122,7 +122,7 @@ class BatteryOptimizationService {
                 context,
                 title: 'Autostart',
                 status: null, // We can't easily check this from code
-                description: 'Allow RemindBuddy to wake up on its own.',
+                description: 'Allow SmartBuddy to wake up on its own.',
                 icon: Icons.shutter_speed,
                 onPressed: () => openAutostartSettings(),
               ),

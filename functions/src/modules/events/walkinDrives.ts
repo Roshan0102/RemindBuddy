@@ -381,14 +381,14 @@ Respond ONLY with a JSON array matching this schema:
                         `${w.registrationLink ? `<a href="${w.registrationLink}">View Walk-In Posting</a>` : ''}</li>`
                     ).join('');
                     await transporter.sendMail({
-                        from: `"RemindBuddy Walk-Ins" <${emailConfig.email}>`,
+                        from: `"SmartBuddy Walk-Ins" <${emailConfig.email}>`,
                         to: emailConfig.email,
-                        subject: `🚶 [RemindBuddy] ${newCount} New Walk-In Drive(s) Found in ${location || 'your area'}`,
+                        subject: `🚶 [SmartBuddy] ${newCount} New Walk-In Drive(s) Found in ${location || 'your area'}`,
                         html: `
                             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
                                 <h2 style="color: #EA580C; margin-top: 0;">New Walk-In Drives Discovered</h2>
                                 <p>Hello,</p>
-                                <p>RemindBuddy found <strong>${newCount}</strong> new walk-in drive(s) matching your configured preferences in <strong>${location}</strong>:</p>
+                                <p>SmartBuddy found <strong>${newCount}</strong> new walk-in drive(s) matching your configured preferences in <strong>${location}</strong>:</p>
                                 <ul style="padding-left: 20px;">${walkinListHtml}</ul>
                                 <p style="color: #6B7280; font-size: 13px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">Discovered during your scheduled 8:00 PM IST daily run.</p>
                             </div>

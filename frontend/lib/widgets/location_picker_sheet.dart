@@ -137,7 +137,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
         'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(trimmed)}&format=json&limit=5&addressdetails=1',
       );
       final response = await http.get(url, headers: {
-        'User-Agent': 'RemindBuddyApp/1.0 (com.remindbuddy.remindbuddy)',
+        'User-Agent': 'SmartBuddyApp/1.0 (com.remindbuddy.remindbuddy)',
       }).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200 && mounted) {

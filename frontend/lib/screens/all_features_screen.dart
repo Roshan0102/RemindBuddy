@@ -166,7 +166,7 @@ class AllFeaturesScreen extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            'Explore all tools, utilities, and AI modules in RemindBuddy.',
+                            'Explore all tools, utilities, and AI modules in SmartBuddy.',
                             style: TextStyle(
                               fontSize: 13,
                               color: isDark ? Colors.white60 : Colors.grey.shade600,

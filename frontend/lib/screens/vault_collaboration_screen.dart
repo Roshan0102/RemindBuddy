@@ -251,7 +251,7 @@ class _VaultCollaborationScreenState extends State<VaultCollaborationScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Collaborate and share secure vault documents bi-directionally with another RemindBuddy app user.',
+                    'Collaborate and share secure vault documents bi-directionally with another SmartBuddy app user.',
                     style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                   ),
                   const SizedBox(height: 16),

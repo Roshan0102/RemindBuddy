@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "remindbuddy-b68f9"
-  }
+  },
+  "targets": {
+    "remindbuddy-b68f9": {
+      "hosting": {
+        "smartbuddy": [
+          "smartbuddy-app"
+        ],
+        "remindbuddy": [
+          "remindbuddy-b68f9"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

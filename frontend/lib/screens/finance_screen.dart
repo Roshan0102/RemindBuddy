@@ -4888,8 +4888,8 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                               ),
                               Text(
                                 isPermissionGranted
-                                    ? 'RemindBuddy is actively listening to payment alerts.'
-                                    : 'Allow RemindBuddy in Android Settings to read payment alerts.',
+                                    ? 'SmartBuddy is actively listening to payment alerts.'
+                                    : 'Allow SmartBuddy in Android Settings to read payment alerts.',
                                 style: TextStyle(color: subtextColor, fontSize: 11),
                               ),
                             ],

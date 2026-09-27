@@ -344,14 +344,14 @@ Respond ONLY with a JSON array matching this schema:
                         `<span>📍 Location: ${e.location || location}</span><br>` +
                         `${e.registrationLink ? `<a href="${e.registrationLink}">Register / View Event</a>` : ''}</li>`).join('');
                     await transporter.sendMail({
-                        from: `"RemindBuddy Tech Events" <${emailConfig.email}>`,
+                        from: `"SmartBuddy Tech Events" <${emailConfig.email}>`,
                         to: emailConfig.email,
-                        subject: `📅 [RemindBuddy] ${newCount} New Tech Event(s) Found in ${location || 'your area'}`,
+                        subject: `📅 [SmartBuddy] ${newCount} New Tech Event(s) Found in ${location || 'your area'}`,
                         html: `
                             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
                                 <h2 style="color: #2563EB; margin-top: 0;">New Tech Events Discovered</h2>
                                 <p>Hello,</p>
-                                <p>RemindBuddy found <strong>${newCount}</strong> new tech event(s) and meetup(s) matching your interests (<strong>${interests.join(', ')}</strong>) in <strong>${location}</strong>:</p>
+                                <p>SmartBuddy found <strong>${newCount}</strong> new tech event(s) and meetup(s) matching your interests (<strong>${interests.join(', ')}</strong>) in <strong>${location}</strong>:</p>
                                 <ul style="padding-left: 20px;">${eventsListHtml}</ul>
                                 <p style="color: #6B7280; font-size: 13px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">Discovered during your scheduled 7:00 PM IST daily run.</p>
                             </div>
