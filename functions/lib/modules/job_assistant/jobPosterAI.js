@@ -14,8 +14,11 @@ exports.parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 540, memory:
         const userDoc = await firebase_1.db.collection("users").doc(uid).get();
         const uData = userDoc.exists ? (userDoc.data() || {}) : {};
         const enabledModules = uData.enabledModules || [];
-        if (!enabledModules.includes("job_assistant")) {
-            throw new functions.https.HttpsError('permission-denied', 'The AI Job Assistant module is disabled for your account.');
+        const jobSubPerms = uData.jobAssistantSubPermissions || {};
+        const isManualApplyEnabled = (enabledModules.includes("job_assistant") || enabledModules.includes("manual_apply"))
+            && jobSubPerms.manual_apply !== false;
+        if (!isManualApplyEnabled) {
+            throw new functions.https.HttpsError('permission-denied', 'Manual Scan & Apply module is disabled for your account.');
         }
         let userGeminiKey = (((_a = uData.userApiKeys) === null || _a === void 0 ? void 0 : _a.geminiApiKey) || uData.geminiApiKey || "").trim();
         const { applicantName } = data;

@@ -7,4 +7,9 @@ class UrlLauncherHelper {
   static Future<void> openInNewTabOrExternal(String url) async {
     await impl.openExternalUrl(url);
   }
+
+  /// Triggers a native browser file download on Web with a specific filename
+  static void downloadBase64(String cleanBase64, String filename, {String mimeType = 'application/pdf'}) {
+    impl.downloadBase64File(cleanBase64, filename, mimeType);
+  }
 }

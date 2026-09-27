@@ -8,3 +8,5 @@ Future<void> openExternalUrl(String url) async {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
+
+void downloadBase64File(String cleanBase64, String filename, String mimeType) {}

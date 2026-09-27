@@ -12,8 +12,13 @@ export const parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 540, me
         const userDoc = await db.collection("users").doc(uid).get();
         const uData = userDoc.exists ? (userDoc.data() || {}) : {};
         const enabledModules = uData.enabledModules || [];
-        if (!enabledModules.includes("job_assistant")) {
-            throw new functions.https.HttpsError('permission-denied', 'The AI Job Assistant module is disabled for your account.');
+        const jobSubPerms = uData.jobAssistantSubPermissions || {};
+
+        const isManualApplyEnabled = (enabledModules.includes("job_assistant") || enabledModules.includes("manual_apply"))
+            && jobSubPerms.manual_apply !== false;
+
+        if (!isManualApplyEnabled) {
+            throw new functions.https.HttpsError('permission-denied', 'Manual Scan & Apply module is disabled for your account.');
         }
 
         let userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();

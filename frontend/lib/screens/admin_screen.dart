@@ -480,6 +480,13 @@ class _AdminScreenState extends State<AdminScreen> {
         newModules.remove('linkedin_auto_apply');
       }
     }
+    if (subKey == 'career_portals') {
+      if (enable && !newModules.contains('career_portals')) {
+        newModules.add('career_portals');
+      } else if (!enable) {
+        newModules.remove('career_portals');
+      }
+    }
 
     try {
       await FirebaseFirestore.instance.collection('users').doc(userId).set({
@@ -522,6 +529,11 @@ class _AdminScreenState extends State<AdminScreen> {
       if (!newModules.contains('linkedin_auto_apply')) newModules.add('linkedin_auto_apply');
     } else {
       newModules.remove('linkedin_auto_apply');
+    }
+    if (newPerms['career_portals'] == true) {
+      if (!newModules.contains('career_portals')) newModules.add('career_portals');
+    } else {
+      newModules.remove('career_portals');
     }
 
     try {

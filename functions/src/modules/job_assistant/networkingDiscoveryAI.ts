@@ -275,9 +275,14 @@ export async function discoverNetworkingLeadsForUser(
 
     const userData = userDoc.data() || {};
     const enabledModules = userData.enabledModules || [];
-    if (!enabledModules.includes("job_assistant")) {
-        console.log(`[StartupRadar] Skipping user ${uid}: job_assistant module is disabled in enabledModules.`);
-        return { success: false, count: 0, leads: [], message: "AI Job Assistant module is disabled for this account." };
+    const jobSubPerms = userData.jobAssistantSubPermissions || {};
+
+    const isColdOutreachEnabled = (enabledModules.includes("job_assistant") || enabledModules.includes("cold_outreach"))
+        && jobSubPerms.cold_outreach !== false;
+
+    if (!isColdOutreachEnabled) {
+        console.log(`[StartupRadar] Skipping user ${uid}: cold_outreach sub-permission or job_assistant module is disabled.`);
+        return { success: false, count: 0, leads: [], message: "Cold Outreach & Networking module is disabled for this account." };
     }
 
     // Guard: Prevent running more than once per day for automated runs
@@ -1000,7 +1005,12 @@ export async function internalNetworkingDiscoveryDispatcher(): Promise<void> {
             const uid = doc.id;
 
             const enabledModules = data.enabledModules || [];
-            if (!enabledModules.includes("job_assistant")) {
+            const jobSubPerms = data.jobAssistantSubPermissions || {};
+
+            const isColdOutreachEnabled = (enabledModules.includes("job_assistant") || enabledModules.includes("cold_outreach"))
+                && jobSubPerms.cold_outreach !== false;
+
+            if (!isColdOutreachEnabled) {
                 continue;
             }
 

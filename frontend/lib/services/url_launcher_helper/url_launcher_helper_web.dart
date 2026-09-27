@@ -47,3 +47,17 @@ Future<void> openExternalUrl(String url) async {
     }
   }
 }
+
+void downloadBase64File(String cleanBase64, String filename, String mimeType) {
+  try {
+    final dataUrl = 'data:$mimeType;base64,$cleanBase64';
+    final anchor = html.AnchorElement(href: dataUrl)
+      ..setAttribute('download', filename)
+      ..style.display = 'none';
+    html.document.body?.children.add(anchor);
+    anchor.click();
+    anchor.remove();
+  } catch (e) {
+    debugPrint('Anchor element download failed on web: $e');
+  }
+}

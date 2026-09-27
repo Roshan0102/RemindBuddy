@@ -3416,12 +3416,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         forceRefresh: force,
         customRole: _portalRoleController.text.trim().isNotEmpty ? _portalRoleController.text.trim() : null,
       );
-      final msg = res['message']?.toString() ?? 'Career portal discovery complete.';
+      final bool isSuccess = res['success'] != false;
+      final msg = res['message']?.toString() ?? (isSuccess ? 'Career portal discovery complete.' : 'Discovery failed.');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(msg),
-            backgroundColor: const Color(0xFF10B981),
+            backgroundColor: isSuccess ? const Color(0xFF10B981) : Colors.redAccent,
           ),
         );
       }
@@ -3442,17 +3443,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       if (b64 != null && b64.isNotEmpty) {
         final cleanB64 = b64.replaceFirst(RegExp(r'^data:application\/pdf;base64,'), '');
         final bytes = base64Decode(cleanB64);
-        final safeCompany = job.companyName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+        final applicantName = _applicantNameController.text.trim().isNotEmpty
+            ? _applicantNameController.text.trim()
+            : (FirebaseAuth.instance.currentUser?.displayName?.trim().isNotEmpty == true
+                ? FirebaseAuth.instance.currentUser!.displayName!.trim()
+                : 'Candidate');
+        final safeApplicant = applicantName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
         final safeRole = job.jobTitle.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
-        final fileName = '${safeCompany}_${safeRole}_Tailored_Resume.pdf';
+        final fileName = '${safeApplicant}_${safeRole}_Resume.pdf';
 
         if (kIsWeb) {
-          final dataUrl = 'data:application/pdf;base64,$cleanB64';
-          await launchUrl(Uri.parse(dataUrl));
+          UrlLauncherHelper.downloadBase64(cleanB64, fileName);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Downloading tailored resume for ${job.companyName}...'),
+                content: Text('Downloading $fileName for ${job.companyName}...'),
                 backgroundColor: const Color(0xFF10B981),
               ),
             );

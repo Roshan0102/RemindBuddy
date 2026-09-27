@@ -176,9 +176,14 @@ export async function discoverAndApplyForUser(
 
     const userData = userDoc.data() || {};
     const enabledModules = userData.enabledModules || [];
-    if (!enabledModules.includes("job_assistant")) {
-        console.log(`[JobDiscovery] Skipping user ${uid}: job_assistant module is disabled in enabledModules.`);
-        return { success: false, appliedCount: 0, jobs: [], message: "AI Job Assistant module is disabled for this account." };
+    const jobSubPerms = userData.jobAssistantSubPermissions || {};
+
+    const isAutoApplyEnabled = (enabledModules.includes("job_assistant") || enabledModules.includes("auto_apply"))
+        && jobSubPerms.auto_apply !== false;
+
+    if (!isAutoApplyEnabled) {
+        console.log(`[JobDiscovery] Skipping user ${uid}: auto_apply sub-permission or job_assistant module is disabled.`);
+        return { success: false, appliedCount: 0, jobs: [], message: "Auto-Apply Agent module is disabled for this account." };
     }
 
     const emailConfig = userData.emailConfig || {};
@@ -925,10 +930,14 @@ export async function internalAutoJobDiscoveryAndApply(): Promise<void> {
             const uid = doc.id;
             const data = doc.data() || {};
             const enabledModules = data.enabledModules || [];
+            const jobSubPerms = data.jobAssistantSubPermissions || {};
 
-            // 1. Must have job_assistant module explicitly enabled by admin in enabledModules
-            if (!enabledModules.includes("job_assistant")) {
-                console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: job_assistant module is disabled in enabledModules.`);
+            // 1. Must have job_assistant module enabled and auto_apply sub-permission not false
+            const isAutoApplyEnabled = (enabledModules.includes("job_assistant") || enabledModules.includes("auto_apply"))
+                && jobSubPerms.auto_apply !== false;
+
+            if (!isAutoApplyEnabled) {
+                console.log(`[internalAutoJobDiscoveryAndApply] Skipping user ${uid}: auto_apply module or sub-permission is disabled.`);
                 continue;
             }
             if (data.autoApplySettings?.enabled === false) {

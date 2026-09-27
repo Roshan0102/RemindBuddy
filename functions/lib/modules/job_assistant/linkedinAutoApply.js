@@ -33,8 +33,11 @@ async function processLinkedInAutoApplyForUser(uid, options) {
         }
         const userData = userDoc.data() || {};
         const enabledModules = userData.enabledModules || [];
+        const jobSubPerms = userData.jobAssistantSubPermissions || {};
         // 1. Admin Module Control: Must be enabled for user
-        if (!enabledModules.includes("linkedin_auto_apply")) {
+        const isLinkedInEnabled = (enabledModules.includes("job_assistant") || enabledModules.includes("linkedin_auto_apply"))
+            && jobSubPerms.linkedin_auto_apply !== false;
+        if (!isLinkedInEnabled) {
             console.log(`[LinkedInAutoApply] User ${uid} does NOT have 'linkedin_auto_apply' module enabled by admin. Skipping.`);
             if (isManual) {
                 throw new functions.https.HttpsError('permission-denied', 'LinkedIn Auto-Apply is currently disabled by administrator for your account.');
@@ -500,8 +503,11 @@ async function internalLinkedInPostAutoApplyDispatcher() {
         for (const userDoc of usersSnap.docs) {
             const userData = userDoc.data() || {};
             const enabledModules = userData.enabledModules || [];
-            // Admin module check: must be explicitly enabled by admin
-            if (!enabledModules.includes("linkedin_auto_apply")) {
+            const jobSubPerms = userData.jobAssistantSubPermissions || {};
+            // Admin module check: must be enabled in enabledModules or sub-permissions
+            const isLinkedInEnabled = (enabledModules.includes("job_assistant") || enabledModules.includes("linkedin_auto_apply"))
+                && jobSubPerms.linkedin_auto_apply !== false;
+            if (!isLinkedInEnabled) {
                 continue;
             }
             // User preference toggle (if user opted out in their own settings)

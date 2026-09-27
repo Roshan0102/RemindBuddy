@@ -337,9 +337,15 @@ export async function executeCareerPortalDiscovery(
     }
 
     const userData = userDoc.data() || {};
-    const enabledModules = userData.enabledModules || [];
-    if (!enabledModules.includes("career_portals") && !enabledModules.includes("auto_apply")) {
-        console.log(`[CareerPortalATS] Skipping user ${uid}: career_portals module is disabled.`);
+    const enabledModules: string[] = userData.enabledModules || [];
+    const jobSubPerms = userData.jobAssistantSubPermissions || {};
+
+    const isParentEnabled = enabledModules.includes("job_assistant") ||
+                           enabledModules.includes("career_portals") ||
+                           enabledModules.includes("auto_apply");
+
+    if (!isParentEnabled || jobSubPerms.career_portals === false) {
+        console.log(`[CareerPortalATS] Skipping user ${uid}: career_portals module is disabled in settings.`);
         return { success: false, discoveredCount: 0, jobs: [], message: "Career portals module is disabled in settings." };
     }
 
