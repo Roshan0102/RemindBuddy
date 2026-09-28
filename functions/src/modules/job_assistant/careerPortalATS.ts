@@ -282,15 +282,21 @@ async function fetchAshbyJobs(
 async function fetchTavilyCareerPortals(
     apiKey: string,
     roles: string[],
-    locations: string[]
+    locations: string[],
+    maxExpYears: number = 3
 ): Promise<TavilySearchResult[]> {
     const allResults: TavilySearchResult[] = [];
     const primaryRole = roles[0] || "DevOps Engineer";
     const locQuery = locations.map(l => `"${l}"`).join(" OR ") || '"India" OR "Remote"';
 
+    // When candidate is early-career (<= 3 yrs), strongly exclude senior/staff/lead/executive/manager/ML titles
+    const negativeFilters = maxExpYears <= 3
+        ? '-senior -sr -staff -principal -lead -manager -director -vp -"product manager" -"machine learning"'
+        : '-director -vp';
+
     const queries = [
-        `("${primaryRole}" OR "Cloud Engineer") (${locQuery})`,
-        `("Site Reliability Engineer" OR "Infrastructure Engineer" OR "AWS Cloud Engineer") (${locQuery})`
+        `("${primaryRole}" OR "Cloud Engineer") (${locQuery}) ${negativeFilters}`.trim(),
+        `("Site Reliability Engineer" OR "Infrastructure Engineer" OR "AWS Cloud Engineer") (${locQuery}) ${negativeFilters}`.trim()
     ];
 
     for (const q of queries) {
@@ -351,12 +357,16 @@ export async function executeCareerPortalDiscovery(
 
     // 1. Extract Target Preferences
     const autoApplySettings = userData.autoApplySettings || {};
+    const minExpYears: number = typeof autoApplySettings.minExpYears === "number" ? autoApplySettings.minExpYears : 0;
+    const maxExpYears: number = typeof autoApplySettings.maxExpYears === "number" ? autoApplySettings.maxExpYears : 3;
+    const isFresher: boolean = autoApplySettings.isFresher === true || maxExpYears === 0;
+
     let targetRoles: string[] = autoApplySettings.targetRoles || ["DevOps Engineer", "Cloud Engineer"];
     if (options?.customRole) {
         targetRoles = [options.customRole, ...targetRoles];
     }
-    const targetLocations: string[] = autoApplySettings.targetLocations || ["India", "Remote", "Bengaluru", "Hyderabad", "Pune"];
-    const targetRoleKeywords = ["devops", "cloud", "sre", "reliability", "infrastructure", "platform", "kubernetes", "terraform", "aws"];
+    const targetLocations: string[] = autoApplySettings.locations || autoApplySettings.targetLocations || ["India", "Remote", "Bengaluru", "Hyderabad", "Pune"];
+    const targetRoleKeywords = ["devops", "cloud", "sre", "reliability", "infrastructure", "platform", "kubernetes", "terraform", "aws", "systems", "automation", "ci/cd"];
 
     // 2. Extract Keys & Base Resume
     const userApiKeys = userData.userApiKeys || {};
@@ -444,7 +454,7 @@ export async function executeCareerPortalDiscovery(
     // D. Tavily Search (days: 3)
     if (tavilyKey) {
         try {
-            const tavilyResults = await fetchTavilyCareerPortals(tavilyKey, targetRoles, targetLocations);
+            const tavilyResults = await fetchTavilyCareerPortals(tavilyKey, targetRoles, targetLocations, maxExpYears);
             console.log(`[CareerPortalATS] Tavily returned ${tavilyResults.length} ATS links.`);
 
             for (const r of tavilyResults) {
@@ -478,9 +488,44 @@ export async function executeCareerPortalDiscovery(
         }
     }
 
-    // 5. Deduplicate by URL
+    // 5. Smart Pre-filtering: Filter out senior/staff roles (if early career) & completely unrelated roles
+    const seniorKeywords = ["senior", "sr.", "sr ", "staff", "principal", "lead", "director", "vp", "head of", "manager", "architect"];
+    const unrelatedRoleKeywords = ["product manager", "project manager", "scrum master", "data scientist", "machine learning", "sales", "accountant", "marketing", "recruiter", "hr "];
+
+    const eligibleCandidates = rawDiscovered.filter(job => {
+        const titleLower = (job.title || "").toLowerCase();
+
+        // If candidate is early-career (maxExpYears <= 3), exclude senior/staff titles
+        if (maxExpYears <= 3) {
+            if (seniorKeywords.some(kw => titleLower.includes(kw))) {
+                console.log(`[CareerPortalATS] Pre-filtered out senior title for candidate (${maxExpYears}y max): "${job.title}" @ ${job.company}`);
+                return false;
+            }
+        }
+
+        // Exclude unrelated disciplines
+        if (unrelatedRoleKeywords.some(u => titleLower.includes(u))) {
+            console.log(`[CareerPortalATS] Pre-filtered out unrelated discipline: "${job.title}" @ ${job.company}`);
+            return false;
+        }
+
+        // Ensure title has relevance to DevOps/Cloud/SRE/Infrastructure/Platform/Engineering
+        const hasRelevance = targetRoleKeywords.some(kw => titleLower.includes(kw)) ||
+            titleLower.includes("engineer") ||
+            titleLower.includes("developer") ||
+            titleLower.includes("infrastructure") ||
+            titleLower.includes("systems");
+        if (!hasRelevance) {
+            console.log(`[CareerPortalATS] Pre-filtered out irrelevant title: "${job.title}" @ ${job.company}`);
+            return false;
+        }
+
+        return true;
+    });
+
+    // 6. Deduplicate by URL
     const seenUrls = new Set<string>();
-    const uniqueCandidates = rawDiscovered.filter(job => {
+    const uniqueCandidates = eligibleCandidates.filter(job => {
         if (!job.url || seenUrls.has(job.url)) return false;
         seenUrls.add(job.url);
         return true;
@@ -488,7 +533,7 @@ export async function executeCareerPortalDiscovery(
 
     console.log(`[CareerPortalATS] Total unique candidates discovered: ${uniqueCandidates.length}. Verifying URLs (no 404s)...`);
 
-    // 6. Strict URL Validation: Filter out broken links, 404s, or error redirects
+    // 7. Strict URL Validation: Filter out broken links, 404s, or error redirects
     const validatedJobs: typeof uniqueCandidates = [];
     for (const cand of uniqueCandidates) {
         const isValid = await verifyJobUrl(cand.url);
@@ -501,7 +546,7 @@ export async function executeCareerPortalDiscovery(
     }
 
     if (validatedJobs.length === 0) {
-        const msg = "No fresh jobs (<48h) found on career portals matching your criteria right now.";
+        const msg = `No fresh jobs (<72h) found on career portals matching roles and ${minExpYears}-${maxExpYears} yrs experience right now.`;
         await logFeatureExecution(uid, {
             feature: "career_portals",
             featureTitle: "Career Portals (ATS Matcher)",
@@ -512,7 +557,7 @@ export async function executeCareerPortalDiscovery(
         return { success: true, discoveredCount: 0, jobs: [], message: msg };
     }
 
-    console.log(`[CareerPortalATS] ${validatedJobs.length} verified jobs passed 48h check & 404 verification. Tailoring with Gemini...`);
+    console.log(`[CareerPortalATS] ${validatedJobs.length} verified jobs passed 72h check & 404 verification. Tailoring with Gemini...`);
 
     // 7. Gemini ATS Matcher & Resume Tailoring (Process up to 4 top matched jobs per run)
     const finalizedRecords: CareerPortalJobRecord[] = [];
@@ -523,6 +568,10 @@ export async function executeCareerPortalDiscovery(
             const prompt = `You are a Principal Technical Recruiter and ATS Optimization Expert.
 Analyze the candidate's attached resume PDF and the following fresh job opening from an official company career portal.
 
+CANDIDATE TARGET PROFILE:
+- Target Roles: ${targetRoles.join(', ')}
+- Target Experience Level: ${minExpYears} - ${maxExpYears} years ${isFresher ? '(Fresher / Recent Graduate)' : ''}
+
 JOB OPENING:
 - Company: ${job.company}
 - Title: ${job.title}
@@ -531,23 +580,32 @@ JOB OPENING:
 - Job Description:
 ${job.jd}
 
-YOUR TASK:
-1. Compute an accurate ATS Match Score (0 - 100) comparing the candidate's real skills & experience to this JD.
-2. Identify matched skills already present.
-3. Identify crucial missing ATS keywords from the JD that can be ethically highlighted.
-4. TAILOR THE RESUME:
+CRITICAL SCREENING & ATS EVALUATION RULES:
+1. Strict Experience & Seniority Gate:
+   - Check the Job Description for required years of experience or seniority tier.
+   - If the JD requires more than ${Math.max(maxExpYears + 1, 3)} years of experience (e.g. 4+ years, 5+ years, 7+ years, 10+ years), or requires senior/staff/principal/managerial leadership, set "isQualified": false and "atsScore": 40.
+   - If the job discipline does not fit the candidate's target roles (e.g. Product Management, AI/ML Research, Non-technical), set "isQualified": false and "atsScore": 40.
+2. Rigorous ATS Match Scoring:
+   - Compare the candidate's real skills & experience from the resume against this JD.
+   - Assign an ATS Match Score (0 - 100).
+   - ONLY assign an atsScore >= 80 if the candidate is a strong, genuine match for this role at their experience level.
+   - If "isQualified" is false, atsScore MUST be strictly below 80.
+3. Resume Tailoring (ONLY performed if candidate is qualified and atsScore >= 80):
    - Extract the candidate's real personal details (fullName, contactLine with location, phone, email, LinkedIn, GitHub).
    - Write a compelling, tailored 2-3 sentence Professional Summary matching ${job.company}'s requirements.
    - Categorize Technical Skills into high-impact ATS groupings (Cloud & DevOps, CI/CD, Containerization, IaC, Monitoring, Scripting).
    - Tailor the Professional Experience entries: KEEP all original companies, job titles, and employment periods from the candidate's resume, but REWRITE the achievement bullet points to prominently incorporate the target keywords (e.g. Kubernetes, Terraform, Docker, AWS, Prometheus, GitHub Actions, Linux) with measurable impact.
    - Tailor Key Projects highlighting real-world deliverables.
    - Preserve Education & Certifications from the original resume.
-   - Note: The resume can be 1 page or 2 pages based on candidate's history. Do not invent fake employers or fake degrees.
+   - Note: Do not invent fake employers or fake degrees.
 
 OUTPUT STRICT JSON FORMAT:
 {
-  "atsScore": 92,
-  "matchReasoning": "Strong match on AWS, Docker, Kubernetes. Highlighted Terraform and GitOps CI/CD pipelines.",
+  "isQualified": true,
+  "disqualificationReason": "",
+  "atsScore": 88,
+  "experienceRequired": "${minExpYears}-${maxExpYears} years",
+  "matchReasoning": "Strong match on AWS, Docker, Kubernetes at target experience level...",
   "matchedSkills": ["AWS", "Docker", "Kubernetes", "Linux", "CI/CD"],
   "injectedKeywords": ["Terraform", "ArgoCD", "Helm", "Prometheus"],
   "tailoredSummary": "Results-driven Cloud/DevOps Engineer with...",
@@ -618,7 +676,15 @@ OUTPUT STRICT JSON FORMAT:
             const geminiResp = await callGeminiAPI(geminiPayload, { apiKey: geminiKey, timeout: 90000 });
             const parsed = JSON.parse(geminiResp.text || "{}");
 
-            const atsScore = typeof parsed.atsScore === "number" ? parsed.atsScore : 85;
+            const atsScore = typeof parsed.atsScore === "number" ? parsed.atsScore : 0;
+            const isQualified = parsed.isQualified !== false;
+
+            // USER REQUIREMENT: Only create resume and save if ATS Score >= 80% and matches experience
+            if (atsScore < 80 || !isQualified) {
+                console.log(`[CareerPortalATS] Discarding ${job.title} @ ${job.company}: ATS Score ${atsScore}% (< 80%) or not qualified (${parsed.disqualificationReason || 'Score below 80%'}). No resume created.`);
+                continue;
+            }
+
             const matchedSkills = Array.isArray(parsed.matchedSkills) ? parsed.matchedSkills : [];
             const injectedKeywords = Array.isArray(parsed.injectedKeywords) ? parsed.injectedKeywords : [];
             const matchReasoning = parsed.matchReasoning || "Tailored for ATS optimization.";
@@ -665,7 +731,7 @@ OUTPUT STRICT JSON FORMAT:
                 portalUrl: job.url,
                 location: job.location,
                 workplaceType: job.location.toLowerCase().includes("remote") ? "remote" : "hybrid",
-                experienceRequired: "1-3 years",
+                experienceRequired: parsed.experienceRequired || `${minExpYears}-${maxExpYears} years`,
                 postedAt: job.postedAt,
                 discoveredAt: admin.firestore.Timestamp.now(),
                 atsScore,
@@ -694,14 +760,18 @@ OUTPUT STRICT JSON FORMAT:
         featureTitle: "Career Portals (ATS Matcher)",
         status: finalizedRecords.length > 0 ? "success" : "no_results",
         count: finalizedRecords.length,
-        message: `Discovered and tailored ${finalizedRecords.length} fresh ATS career portal openings (<48h).`
+        message: finalizedRecords.length > 0
+            ? `Discovered and tailored ${finalizedRecords.length} fresh ATS career portal openings (>=80% match, <72h).`
+            : `No portal openings met the strict >=80% ATS match and experience criteria (<72h).`
     });
 
     return {
         success: true,
         discoveredCount: finalizedRecords.length,
         jobs: finalizedRecords,
-        message: `Discovered and tailored ${finalizedRecords.length} fresh career portal jobs (<48h).`
+        message: finalizedRecords.length > 0
+            ? `Discovered and tailored ${finalizedRecords.length} high-match (>=80%) career portal jobs (<72h).`
+            : `No portal openings met the strict >=80% ATS match and experience criteria for ${minExpYears}-${maxExpYears} yrs.`
     };
 }
 

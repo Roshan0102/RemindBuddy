@@ -1394,6 +1394,7 @@ class JobAssistantService {
 
   Future<Map<String, dynamic>> runLinkedInAutoApplyNow({
     List<String>? roles,
+    List<String>? locations,
     int? minExpYears,
     int? maxExpYears,
     int? maxApplications,
@@ -1404,6 +1405,7 @@ class JobAssistantService {
     );
     final response = await callable.call<Map<String, dynamic>>({
       if (roles != null) 'roles': roles,
+      if (locations != null) 'locations': locations,
       if (minExpYears != null) 'minExpYears': minExpYears,
       if (maxExpYears != null) 'maxExpYears': maxExpYears,
       if (maxApplications != null) 'maxApplications': maxApplications,

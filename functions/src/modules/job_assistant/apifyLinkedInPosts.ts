@@ -17,6 +17,7 @@ export interface ApifyLinkedInSearchOptions {
     apiToken?: string;
     apiTokens?: string[];
     roles?: string[];
+    locations?: string[];
     experienceFilter?: string; // e.g. "1-3 years" or "junior"
     datePosted?: "past-24h" | "past-week" | "past-month";
     maxPosts?: number;
@@ -34,8 +35,9 @@ export async function searchLinkedInPostsViaApify(
         apiToken,
         apiTokens,
         roles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"],
+        locations = [],
         datePosted = "past-24h",
-        maxPosts = 15
+        maxPosts = 25
     } = options;
 
     const tokensToTry: string[] = [];
@@ -53,12 +55,46 @@ export async function searchLinkedInPostsViaApify(
         throw new Error("At least one Apify API Token is required.");
     }
 
-    // Construct natural, high-yield recruiter hiring queries
-    const searchQueries = roles.map(role => {
-        return `hiring "${role}" (email OR "send resume" OR "share CV" OR "mail your resume" OR CV)`;
-    });
+    // Limit to max 4 target roles
+    const safeRoles = roles.slice(0, 4);
 
-    console.log(`[ApifyLinkedIn] Executing multi-role post search for ${roles.length} roles with ${tokensToTry.length} available token(s)...`);
+    // Expand location synonyms (e.g. Bengaluru <-> Bangalore) and build location clause
+    const expandedLocs: string[] = [];
+    for (const loc of (locations || []).slice(0, 5)) {
+        const trimmed = (loc || "").trim();
+        if (!trimmed) continue;
+        if (!expandedLocs.some(x => x.toLowerCase() === trimmed.toLowerCase())) {
+            expandedLocs.push(trimmed);
+        }
+        if (trimmed.toLowerCase() === 'bengaluru' && !expandedLocs.some(x => x.toLowerCase() === 'bangalore')) {
+            expandedLocs.push('Bangalore');
+        } else if (trimmed.toLowerCase() === 'bangalore' && !expandedLocs.some(x => x.toLowerCase() === 'bengaluru')) {
+            expandedLocs.push('Bengaluru');
+        }
+    }
+
+    const locClause = expandedLocs.length > 0
+        ? `(${expandedLocs.map(l => l.includes(' ') ? `"${l}"` : l).join(' OR ')})`
+        : "";
+
+    // 1. Primary Combined Query: combines ALL candidate target roles in an OR clause + location clause.
+    // This ensures Apify fetches posts across all roles rather than stopping at the first role.
+    const searchQueries: string[] = [];
+    if (safeRoles.length > 1) {
+        const rolesOrClause = safeRoles.map(r => `"${r}"`).join(' OR ');
+        searchQueries.push(
+            `hiring (${rolesOrClause}) (email OR "send resume" OR "share CV" OR "mail your resume" OR CV)${locClause ? ` ${locClause}` : ''}`
+        );
+    }
+
+    // 2. Individual role queries as fallback in the same run
+    for (const role of safeRoles) {
+        searchQueries.push(
+            `hiring "${role}" (email OR "send resume" OR "share CV" OR "mail your resume" OR CV)${locClause ? ` ${locClause}` : ''}`
+        );
+    }
+
+    console.log(`[ApifyLinkedIn] Executing multi-role search across ${safeRoles.length} role(s) with location clause: "${locClause || 'Any'}"...`);
 
     let response: any = null;
     let usedTokenIndex = 0;

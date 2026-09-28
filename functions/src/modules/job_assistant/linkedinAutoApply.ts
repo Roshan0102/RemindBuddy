@@ -19,13 +19,53 @@ export interface LinkedInAutoApplyOptions {
     isManual?: boolean;
     maxApplications?: number;
     roles?: string[];
+    locations?: string[];
     minExpYears?: number;
     maxExpYears?: number;
 }
 
+function isForeignOnsite(
+    detectedLocation: string,
+    targetLocations: string[],
+    isRemote: boolean,
+    postContent: string
+): boolean {
+    if (isRemote) return false;
+    if (!detectedLocation && !postContent) return false;
+
+    const locText = `${detectedLocation} ${postContent}`.toLowerCase();
+    const explicitOnsite = locText.includes('onsite') || locText.includes('on-site') || locText.includes('in-office') || locText.includes('in office') || locText.includes('hybrid');
+
+    // If candidate's target locations explicitly match, it is acceptable
+    const matchesTarget = targetLocations.some(tl => {
+        const normTL = tl.toLowerCase().trim();
+        if (!normTL) return false;
+        if (normTL === 'remote') return true;
+        return locText.includes(normTL);
+    });
+
+    if (matchesTarget) return false;
+
+    // Known foreign indicators
+    const foreignIndicators = [
+        'morristown', 'new jersey', ' nj', ', nj', 'new york', ' ny', ', ny',
+        'california', ' ca', ', ca', 'texas', ' tx', ', tx', 'florida', ' fl', ', fl',
+        'london', 'united kingdom', ' uk', ', uk', 'canada', 'toronto', 'vancouver',
+        'australia', 'sydney', 'melbourne', 'germany', 'berlin', 'munich',
+        'singapore', 'dubai', 'uae', 'netherlands', 'amsterdam'
+    ];
+
+    const isForeign = foreignIndicators.some(fi => locText.includes(fi));
+    if (isForeign && explicitOnsite) return true;
+    if (isForeign && !locText.includes('remote') && !locText.includes('wfh')) return true;
+
+    return false;
+}
+
 /**
  * Executes real-time LinkedIn recruiter post scraping via Apify, checks unified applied job history
- * to ensure zero duplicate emails, evaluates experience/role fit with Gemini, and auto-applies via Gmail.
+ * across all Job Assistant modules (Auto-Apply, Portals, Cold Outreach), evaluates experience/role/location
+ * fit with Gemini, and auto-applies via Gmail.
  */
 export async function processLinkedInAutoApplyForUser(
     uid: string,
@@ -109,7 +149,7 @@ export async function processLinkedInAutoApplyForUser(
             apifyTokens.push(process.env.APIFY_API_KEY.trim());
         }
 
-        // 4. Target Roles & Experience Range
+        // 4. Target Roles, Locations & Experience Range (Limited to max 4 roles, max 5 locations)
         let targetRoles: string[] = options?.roles || linkedinSettings.targetRoles || userData.autoApplySettings?.targetRoles || [];
         if (typeof targetRoles === 'string') {
             targetRoles = (targetRoles as string).split(',').map(s => s.trim()).filter(Boolean);
@@ -117,6 +157,27 @@ export async function processLinkedInAutoApplyForUser(
         if (targetRoles.length === 0) {
             targetRoles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"];
         }
+        targetRoles = targetRoles.slice(0, 4);
+
+        let targetLocations: string[] = options?.locations ||
+            linkedinSettings.targetLocations ||
+            linkedinSettings.locations ||
+            userData.autoApplySettings?.locations ||
+            userData.autoApplySettings?.targetLocations ||
+            userData.targetLocations ||
+            userData.locations ||
+            [];
+        if (typeof targetLocations === 'string') {
+            targetLocations = (targetLocations as string).split(',').map(s => s.trim()).filter(Boolean);
+        }
+        targetLocations = targetLocations.slice(0, 5);
+
+        const excludedCompanies: string[] = (
+            userData.autoApplySettings?.excludedCompanies ||
+            userData.excludedCompanies ||
+            linkedinSettings.excludedCompanies ||
+            []
+        ).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
 
         const minExp = options?.minExpYears ?? linkedinSettings.minExpYears ?? userData.autoApplySettings?.minExpYears ?? 1;
         const maxExp = options?.maxExpYears ?? linkedinSettings.maxExpYears ?? userData.autoApplySettings?.maxExpYears ?? 3;
@@ -170,34 +231,78 @@ export async function processLinkedInAutoApplyForUser(
             return { success: false, appliedCount: 0, message: msg, jobs: [] };
         }
 
-        // 6. Check UNIFIED APPLIED JOB HISTORY to prevent duplicate emails
-        const existingAppsSnap = await db.collection("users").doc(uid).collection("job_applications").get();
+        // 6. Check UNIFIED APPLIED JOB HISTORY across ALL modules (job_applications, networking_leads, career_portal_jobs, system_bounced_emails)
         const appliedEmails = new Set<string>();
+        const appliedUrls = new Set<string>();
         const appliedEmailRoles = new Set<string>();
 
-        existingAppsSnap.forEach((doc) => {
-            const d = doc.data();
-            const email = (d.recipientEmail || "").toLowerCase().trim();
-            const role = normalizeJobRole(d.jobTitle || "");
-            if (email) {
-                appliedEmails.add(email);
-            }
-            if (email && role) {
-                appliedEmailRoles.add(`${email}|${role}`);
-            }
-        });
+        // 6a. job_applications (Auto-Apply Agent & LinkedIn)
+        try {
+            const existingAppsSnap = await db.collection("users").doc(uid).collection("job_applications").get();
+            existingAppsSnap.forEach((doc) => {
+                const d = doc.data();
+                const email = (d.recipientEmail || "").toLowerCase().trim();
+                const role = normalizeJobRole(d.jobTitle || "");
+                const url = (d.sourceUrl || "").toLowerCase().trim();
+                if (email) appliedEmails.add(email);
+                if (url) appliedUrls.add(url);
+                if (email && role) appliedEmailRoles.add(`${email}|${role}`);
+            });
+        } catch (e: any) {
+            console.warn(`[LinkedInAutoApply] Error loading job_applications: ${e.message}`);
+        }
 
-        console.log(`[LinkedInAutoApply] User ${uid} has ${appliedEmails.size} previously applied email(s) in unified history.`);
+        // 6b. networking_leads (Cold Outreach to Founders / Recruiters)
+        try {
+            const networkingSnap = await db.collection("users").doc(uid).collection("networking_leads").get();
+            networkingSnap.forEach((doc) => {
+                const d = doc.data();
+                const email = (d.email || d.recipientEmail || "").toLowerCase().trim();
+                const pUrl = (d.linkedinUrl || d.postUrl || "").toLowerCase().trim();
+                if (email) appliedEmails.add(email);
+                if (pUrl) appliedUrls.add(pUrl);
+            });
+        } catch (e: any) {
+            console.warn(`[LinkedInAutoApply] Error loading networking_leads: ${e.message}`);
+        }
 
-        // 7. Scrape Real-Time LinkedIn Posts via Apify (Single Run, No Retries)
+        // 6c. career_portal_jobs (Career Portals ATS)
+        try {
+            const portalSnap = await db.collection("users").doc(uid).collection("career_portal_jobs").get();
+            portalSnap.forEach((doc) => {
+                const d = doc.data();
+                const email = (d.recipientEmail || "").toLowerCase().trim();
+                const jUrl = (d.jobUrl || d.applyUrl || "").toLowerCase().trim();
+                if (email) appliedEmails.add(email);
+                if (jUrl) appliedUrls.add(jUrl);
+            });
+        } catch (e: any) {
+            console.warn(`[LinkedInAutoApply] Error loading career_portal_jobs: ${e.message}`);
+        }
+
+        // 6d. system_bounced_emails (Bounced addresses to avoid spam flags)
+        try {
+            const bouncedSnap = await db.collection("system_bounced_emails").limit(500).get();
+            bouncedSnap.forEach((doc) => {
+                const bEmail = (doc.data()?.email || doc.id || "").toLowerCase().trim();
+                if (bEmail) appliedEmails.add(bEmail);
+            });
+        } catch (e: any) {
+            console.warn(`[LinkedInAutoApply] Error loading system_bounced_emails: ${e.message}`);
+        }
+
+        console.log(`[LinkedInAutoApply] User ${uid} has ${appliedEmails.size} previously contacted email(s) and ${appliedUrls.size} processed post URL(s) in unified history.`);
+
+        // 7. Scrape Real-Time LinkedIn Posts via Apify (Multi-role & Location Filtered)
         let searchResult;
         try {
             searchResult = await searchLinkedInPostsViaApify({
                 apiTokens: apifyTokens,
                 roles: targetRoles,
+                locations: targetLocations,
                 experienceFilter,
                 datePosted: "past-24h",
-                maxPosts: 20
+                maxPosts: 25
             });
         } catch (apifyErr: any) {
             console.error(`[LinkedInAutoApply] Apify scraping error for user ${uid}:`, apifyErr.message);
@@ -235,16 +340,28 @@ export async function processLinkedInAutoApplyForUser(
             return { success: true, appliedCount: 0, message: msg, jobs: [] };
         }
 
-        // 8. Filter Posts against Unified History & Experience Restrictions
+        // 8. Filter Posts against Unified History, Blacklist & Experience Restrictions
         const candidatePosts: { post: LinkedInPostItem; email: string }[] = [];
         const seniorKeywords = ["5+ years", "6+ years", "7+ years", "8+ years", "10+ years", "minimum 5 years", "principal", "staff engineer", "engineering manager", "director"];
 
         for (const post of posts) {
             if (!post.hasEmail || post.emails.length === 0) continue;
 
+            const postUrl = (post.url || "").toLowerCase().trim();
+            if (postUrl && appliedUrls.has(postUrl)) {
+                console.log(`[LinkedInAutoApply] DEDUPLICATED: Post URL ${postUrl} was already applied to previously. Skipping.`);
+                continue;
+            }
+
             const postContentLower = post.content.toLowerCase();
             
-            // Experience sanity check: if user is 1-3 years and post asks for 5+ / 7+ / 8+ years, skip
+            // Check company blacklist / excluded companies
+            if (excludedCompanies.some(comp => comp && postContentLower.includes(comp))) {
+                console.log(`[LinkedInAutoApply] Skipping post ${post.id}: Mentions excluded company.`);
+                continue;
+            }
+
+            // Experience sanity check: if user is 0-3 years and post asks for 5+ / 7+ / 8+ years, skip
             if (maxExp <= 4) {
                 const hasHighExpRequirement = seniorKeywords.some(kw => postContentLower.includes(kw));
                 if (hasHighExpRequirement) {
@@ -256,7 +373,7 @@ export async function processLinkedInAutoApplyForUser(
             for (const email of post.emails) {
                 const normEmail = email.toLowerCase().trim();
                 if (appliedEmails.has(normEmail)) {
-                    console.log(`[LinkedInAutoApply] DEDUPLICATED: Email ${normEmail} was already contacted previously. Skipping.`);
+                    console.log(`[LinkedInAutoApply] DEDUPLICATED: Email ${normEmail} was already contacted previously across unified modules. Skipping.`);
                     continue;
                 }
 
@@ -269,7 +386,7 @@ export async function processLinkedInAutoApplyForUser(
         console.log(`[LinkedInAutoApply] Found ${candidatePosts.length} fresh, uncontacted candidate post(s).`);
 
         if (candidatePosts.length === 0) {
-            const msg = "All recruiter emails from the latest LinkedIn posts have already been applied to (unified history deduped).";
+            const msg = "All recruiter emails from the latest LinkedIn posts have already been contacted across unified history.";
             await logFeatureExecution(uid, {
                 feature: 'linkedin_auto_apply',
                 featureTitle: 'LinkedIn Auto-Apply (Apify)',
@@ -316,7 +433,7 @@ export async function processLinkedInAutoApplyForUser(
                 p.targetRoles.some((r: string) => post.content.toLowerCase().includes(r.toLowerCase()))
             ) || resumeProfiles.find(p => p.isDefault) || resumeProfiles[0];
 
-            // Use Gemini to verify role alignment, extract metadata, and draft tailored cover letter
+            // Use Gemini to verify role alignment, location & remote policy, and draft tailored cover letter
             let generatedApplication: any = null;
             try {
                 const prompt = `You are an elite career advisor and executive recruiter.
@@ -324,24 +441,44 @@ Analyze this real-time LinkedIn recruiter hiring post:
 "${post.content}"
 Author: "${post.authorName}" (${post.authorTitle})
 
-The candidate "${applicantName}" is applying with experience ${minExp}-${maxExp} years targeting roles: ${targetRoles.join(', ')}.
+Candidate Profile:
+- Name: "${applicantName}"
+- Experience: ${minExp}-${maxExp} years
+- Target Roles: ${targetRoles.join(', ')}
+- Target Locations: ${targetLocations.length > 0 ? targetLocations.join(', ') : 'Remote / India'}
+- Excluded Companies: ${excludedCompanies.length > 0 ? excludedCompanies.join(', ') : 'None'}
 
-Requirements:
-1. Determine if this post is a genuine job opening that fits within candidate's target roles and experience (${minExp}-${maxExp} years).
-2. If it requires 5+ or senior years or is completely unrelated, set isMatch: false.
-3. If it matches, extract:
+CRITICAL MATCHING RULES (MUST FOLLOW STRICTLY):
+1. ROLE MATCH: The post must genuinely be hiring for at least one of the candidate's target roles (${targetRoles.join(', ')}).
+2. EXPERIENCE FIT: Must fit within ${minExp}-${maxExp} years experience. If the post explicitly requires 5+, 6+, 7+, 8+, 10+, Senior, Lead, Staff, or Principal years and candidate has <= 4 years, set isMatch: false.
+3. LOCATION & WORK MODE POLICY (CRITICAL):
+   - Candidate Target Locations: ${targetLocations.length > 0 ? targetLocations.join(', ') : 'Any'}.
+   - Identify the job location and work mode (Remote, Hybrid, Onsite) from the post content.
+   - If the job is located in an unselected/foreign city, state, or country (e.g. USA, New Jersey, Morristown, UK, Europe, etc.):
+     * It is ONLY acceptable if it is EXPLICITLY marked as REMOTE / Work From Home.
+     * If it is ONSITE or HYBRID in an unselected country/city (such as Morristown NJ, Dallas TX, London, etc.), you MUST REJECT IT (set isMatch: false).
+   - If the job is located in one of the candidate's target locations (${targetLocations.join(', ')}), it is acceptable whether Onsite, Hybrid, or Remote.
+   - If the job is explicitly REMOTE, it is acceptable.
+4. EXCLUDED COMPANIES: If the hiring company or recruitment agency matches any excluded company (${excludedCompanies.join(', ')}), set isMatch: false.
+5. If rejected, set isMatch: false and provide a clear "rejectionReason".
+6. If matching, extract:
    - "companyName": Name of the hiring company or recruitment agency.
-   - "jobTitle": Clear title of the job.
+   - "jobTitle": Clear title of the job matching candidate's target roles.
+   - "detectedLocation": The city/country and work mode (e.g. "Bengaluru (Hybrid)", "Remote (India)", "Chennai (Onsite)").
+   - "isRemote": boolean (true if work from home / remote is allowed).
    - "subject": Tailored email subject line (e.g. "Application: [Job Title] - ${applicantName}").
-   - "coverLetter": A punchy, compelling 2-3 paragraph application email tailored to this post. Highlight relevant tools (e.g. AWS, Docker, Kubernetes, CI/CD, Terraform). Sign off with:
+   - "coverLetter": A punchy, compelling 2-3 paragraph application email tailored to this post. Highlight relevant tools matching the role (e.g. AWS, Docker, Kubernetes, CI/CD, Terraform). Sign off with:
 "Best regards,
 ${applicantName}"
 
 Respond ONLY with valid JSON:
 {
   "isMatch": boolean,
+  "rejectionReason": string,
   "companyName": string,
   "jobTitle": string,
+  "detectedLocation": string,
+  "isRemote": boolean,
   "subject": string,
   "coverLetter": string
 }`;
@@ -364,13 +501,23 @@ Respond ONLY with valid JSON:
                     isMatch: true,
                     companyName: post.authorTitle || "Hiring Team",
                     jobTitle: targetRoles[0],
+                    detectedLocation: targetLocations[0] || "Remote",
+                    isRemote: true,
                     subject: `Application for ${targetRoles[0]} - ${applicantName}`,
                     coverLetter: `Dear Hiring Team,\n\nI am writing to express my enthusiastic interest in the ${targetRoles[0]} position shared on LinkedIn. With hands-on experience in cloud infrastructure, automation, and modern DevOps practices, I am confident in my ability to deliver immediate value.\n\nPlease find my resume attached for your consideration. I welcome the opportunity to connect and discuss how my background aligns with your team's goals.\n\nBest regards,\n${applicantName}`
                 };
             }
 
             if (!generatedApplication || generatedApplication.isMatch === false) {
-                console.log(`[LinkedInAutoApply] Gemini marked post as non-matching. Skipping.`);
+                console.log(`[LinkedInAutoApply] Rejected post ${post.id}: ${generatedApplication?.rejectionReason || 'Did not meet role/location criteria'}`);
+                continue;
+            }
+
+            // Code-level safety check on location
+            const detectedLoc = (generatedApplication.detectedLocation || "").trim();
+            const isRemoteJob = generatedApplication.isRemote === true || post.content.toLowerCase().includes('remote') || post.content.toLowerCase().includes('wfh');
+            if (isForeignOnsite(detectedLoc, targetLocations, isRemoteJob, post.content)) {
+                console.log(`[LinkedInAutoApply] Safety check rejected post ${post.id}: Location "${detectedLoc}" is onsite outside target locations.`);
                 continue;
             }
 
@@ -402,11 +549,12 @@ Respond ONLY with valid JSON:
                 console.log(`[LinkedInAutoApply] Application email sent to ${recipientEmail} (${finalCompany}): ${info.messageId}`);
 
                 // Save to UNIFIED job_applications collection
+                const finalLocation = detectedLoc || (isRemoteJob ? "Remote" : (targetLocations.length > 0 ? targetLocations.join(' / ') : "Remote"));
                 const applicationRecord = {
                     jobTitle: finalTitle,
                     companyName: finalCompany,
                     recipientEmail: recipientEmail,
-                    location: "India / Remote",
+                    location: finalLocation,
                     experienceRequired: `${minExp}-${maxExp} Years`,
                     sourcePlatform: "LinkedIn Post (Apify)",
                     source: "linkedin_post_apify",
@@ -428,8 +576,9 @@ Respond ONLY with valid JSON:
 
                 const docRef = await db.collection("users").doc(uid).collection("job_applications").add(applicationRecord);
 
-                // Add to in-memory set immediately to prevent any subsequent post sending duplicate
+                // Add to in-memory sets immediately to prevent any subsequent post sending duplicate
                 appliedEmails.add(recipientEmail);
+                if (post.url) appliedUrls.add(post.url.toLowerCase().trim());
                 appliedEmailRoles.add(`${recipientEmail}|${normalizeJobRole(finalTitle)}`);
 
                 successfullyApplied.push({
@@ -606,6 +755,7 @@ export const runLinkedInAutoApplyNow = functions.runWith({ timeoutSeconds: 300, 
         const result = await processLinkedInAutoApplyForUser(uid, {
             isManual: true,
             roles: data?.roles,
+            locations: data?.locations,
             minExpYears: data?.minExpYears,
             maxExpYears: data?.maxExpYears,
             maxApplications: data?.maxApplications

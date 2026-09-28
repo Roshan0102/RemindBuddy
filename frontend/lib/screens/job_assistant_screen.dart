@@ -929,27 +929,67 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 10),
-                    TextField(
-                      controller: rolesController,
-                      decoration: InputDecoration(
-                        labelText: 'Target Job Roles (comma-separated)',
-                        hintText: 'e.g. Flutter Developer, Software Engineer, Full Stack',
-                        prefixIcon: const Icon(Icons.work_outline_rounded),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        isDense: true,
-                      ),
-                      maxLines: 2,
+                    StatefulBuilder(
+                      builder: (fieldCtx, setFieldState) {
+                        final parsedRoles = rolesController.text
+                            .split(',')
+                            .map((s) => s.trim())
+                            .where((s) => s.isNotEmpty)
+                            .toList();
+                        final hasRoleError = parsedRoles.length > 4;
+                        return TextField(
+                          controller: rolesController,
+                          onChanged: (_) {
+                            setFieldState(() {});
+                            setDialogState(() {});
+                          },
+                          decoration: InputDecoration(
+                            labelText: 'Target Job Roles (Max 4, comma-separated)',
+                            hintText: 'e.g. Flutter Developer, Software Engineer, Full Stack',
+                            prefixIcon: const Icon(Icons.work_outline_rounded),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            isDense: true,
+                            helperText: hasRoleError
+                                ? null
+                                : 'Max 4 roles (${parsedRoles.length}/4 entered)',
+                            errorText: hasRoleError
+                                ? 'Limit reached: Maximum 4 target roles allowed (${parsedRoles.length} entered)'
+                                : null,
+                          ),
+                          maxLines: 2,
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: locationsController,
-                      decoration: InputDecoration(
-                        labelText: 'Target Locations (comma-separated)',
-                        hintText: 'e.g. Bengaluru, Remote, Hyderabad, Chennai',
-                        prefixIcon: const Icon(Icons.location_on_outlined),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        isDense: true,
-                      ),
+                    StatefulBuilder(
+                      builder: (fieldCtx, setFieldState) {
+                        final parsedLocs = locationsController.text
+                            .split(',')
+                            .map((s) => s.trim())
+                            .where((s) => s.isNotEmpty)
+                            .toList();
+                        final hasLocError = parsedLocs.length > 5;
+                        return TextField(
+                          controller: locationsController,
+                          onChanged: (_) {
+                            setFieldState(() {});
+                            setDialogState(() {});
+                          },
+                          decoration: InputDecoration(
+                            labelText: 'Target Locations (Max 5, comma-separated)',
+                            hintText: 'e.g. Bengaluru, Remote, Hyderabad, Chennai',
+                            prefixIcon: const Icon(Icons.location_on_outlined),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            isDense: true,
+                            helperText: hasLocError
+                                ? null
+                                : 'Max 5 locations (${parsedLocs.length}/5 entered, e.g. Bengaluru, Remote)',
+                            errorText: hasLocError
+                                ? 'Limit reached: Maximum 5 target locations allowed (${parsedLocs.length} entered)'
+                                : null,
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 10),
                     Container(
@@ -1396,6 +1436,31 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                             .map((s) => s.trim())
                             .where((s) => s.isNotEmpty)
                             .toList();
+
+                        if (rolesList.length > 4) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('⚠️ Maximum 4 target job roles allowed (you entered ${rolesList.length}). Please remove ${rolesList.length - 4}.'),
+                              backgroundColor: Colors.orange.shade800,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          setDialogState(() => isSaving = false);
+                          return;
+                        }
+
+                        if (locsList.length > 5) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('⚠️ Maximum 5 target locations allowed (you entered ${locsList.length}). Please remove ${locsList.length - 5}.'),
+                              backgroundColor: Colors.orange.shade800,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          setDialogState(() => isSaving = false);
+                          return;
+                        }
+
                         final minExp = isFresherVal ? 0 : (int.tryParse(minExpController.text.trim()) ?? 0);
                         final maxExp = isFresherVal ? 0 : (int.tryParse(maxExpController.text.trim()) ?? 3);
 
@@ -1419,6 +1484,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
                         await _service.saveLinkedInAutoApplySettings({
                           'targetRoles': rolesList,
+                          'targetLocations': locsList,
                           'minExpYears': minExp,
                           'maxExpYears': maxExp,
                           'isFresher': isFresherVal,
@@ -2555,6 +2621,28 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   Future<void> _saveAutoApplySettings() async {
     var roles = _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
     var locs = _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+
+    if (roles.length > 4) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('⚠️ Maximum 4 target job roles allowed (you have ${roles.length}). Please remove ${roles.length - 4}.'),
+          backgroundColor: Colors.orange.shade800,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (locs.length > 5) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('⚠️ Maximum 5 target locations allowed (you have ${locs.length}). Please remove ${locs.length - 5}.'),
+          backgroundColor: Colors.orange.shade800,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     final minExp = _isFresher ? 0 : (int.tryParse(_minExpController.text.trim()) ?? 0);
     final maxExp = _isFresher ? 0 : (int.tryParse(_maxExpController.text.trim()) ?? 3);
 
@@ -2580,11 +2668,23 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         isFresher: _isFresher,
         maxPerRun: 6,
       );
+
+      // Keep LinkedIn Auto-Apply Settings in sync with the unified target roles & locations
+      await _service.saveLinkedInAutoApplySettings({
+        'targetRoles': roles,
+        'targetLocations': locs,
+        'minExpYears': minExp,
+        'maxExpYears': maxExp,
+        'isFresher': _isFresher,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Auto-Apply settings saved successfully!'),
+            content: Text('Target preferences & Auto-Apply settings saved successfully!'),
             backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -3485,7 +3585,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           );
         }
       } else if (job.tailoredResumePdfUrl != null && job.tailoredResumePdfUrl!.isNotEmpty) {
-        await launchUrl(Uri.parse(job.tailoredResumePdfUrl!), mode: LaunchMode.externalApplication);
+        await UrlLauncherHelper.openInNewTabOrExternal(job.tailoredResumePdfUrl!);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -3504,9 +3604,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
   Future<void> _openPortalAndApply(CareerPortalJob job) async {
     try {
-      final uri = Uri.tryParse(job.portalUrl);
-      if (uri != null) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final cleanUrl = job.portalUrl.trim();
+      if (cleanUrl.isNotEmpty) {
+        await UrlLauncherHelper.openInNewTabOrExternal(cleanUrl);
         await _service.updateCareerPortalJobStatus(job.id, 'applied');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -4453,27 +4553,61 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                       ),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _targetRolesController,
-                      decoration: InputDecoration(
-                        labelText: 'Target Job Roles (comma-separated)',
-                        hintText: 'e.g. .NET Developer, Software Engineer, Full Stack Developer, Flutter Developer',
-                        prefixIcon: const Icon(Icons.work_outline_rounded),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        isDense: true,
-                      ),
-                      maxLines: 2,
+                    Builder(
+                      builder: (context) {
+                        final parsedRoles = _targetRolesController.text
+                            .split(',')
+                            .map((s) => s.trim())
+                            .where((s) => s.isNotEmpty)
+                            .toList();
+                        final hasRoleError = parsedRoles.length > 4;
+                        return TextField(
+                          controller: _targetRolesController,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            labelText: 'Target Job Roles (Max 4, comma-separated)',
+                            hintText: 'e.g. .NET Developer, Software Engineer, Full Stack, Flutter Developer',
+                            prefixIcon: const Icon(Icons.work_outline_rounded),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            isDense: true,
+                            helperText: hasRoleError
+                                ? null
+                                : 'Max 4 roles (${parsedRoles.length}/4 entered)',
+                            errorText: hasRoleError
+                                ? 'Limit reached: Maximum 4 target roles allowed (${parsedRoles.length} entered)'
+                                : null,
+                          ),
+                          maxLines: 2,
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _locationsController,
-                      decoration: InputDecoration(
-                        labelText: 'Target Locations (comma-separated)',
-                        hintText: 'e.g. Bengaluru, India, Remote, Chennai',
-                        prefixIcon: const Icon(Icons.location_on_outlined),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        isDense: true,
-                      ),
+                    Builder(
+                      builder: (context) {
+                        final parsedLocs = _locationsController.text
+                            .split(',')
+                            .map((s) => s.trim())
+                            .where((s) => s.isNotEmpty)
+                            .toList();
+                        final hasLocError = parsedLocs.length > 5;
+                        return TextField(
+                          controller: _locationsController,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            labelText: 'Target Locations (Max 5, comma-separated)',
+                            hintText: 'e.g. Bengaluru, India, Remote, Chennai',
+                            prefixIcon: const Icon(Icons.location_on_outlined),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            isDense: true,
+                            helperText: hasLocError
+                                ? null
+                                : 'Max 5 locations (${parsedLocs.length}/5 entered, e.g. Bengaluru, Remote)',
+                            errorText: hasLocError
+                                ? 'Limit reached: Maximum 5 target locations allowed (${parsedLocs.length} entered)'
+                                : null,
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
                     // Configurable Blacklist / Excluded Companies
@@ -5149,16 +5283,37 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     });
 
     try {
-      final roles = _linkedInRolesController.text
-          .split(',')
-          .map((s) => s.trim())
-          .where((s) => s.isNotEmpty)
-          .toList();
-      final minExp = int.tryParse(_linkedInMinExpController.text.trim()) ?? 1;
-      final maxExp = int.tryParse(_linkedInMaxExpController.text.trim()) ?? 3;
+      // Unified Target Roles (Max 4)
+      var roles = _targetRolesController.text.trim().isNotEmpty
+          ? _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+          : _linkedInRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      if (roles.isEmpty && _radarTechDomains.isNotEmpty) {
+        roles = List.from(_radarTechDomains);
+      }
+      if (roles.length > 4) roles = roles.sublist(0, 4);
+
+      // Unified Target Locations (Max 5)
+      var locs = _locationsController.text.trim().isNotEmpty
+          ? _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+          : (_radarLocations.isNotEmpty ? List<String>.from(_radarLocations) : <String>[]);
+      if (locs.length > 5) locs = locs.sublist(0, 5);
+
+      final minExp = _isFresher
+          ? 0
+          : (int.tryParse(_minExpController.text.trim().isNotEmpty
+                  ? _minExpController.text.trim()
+                  : _linkedInMinExpController.text.trim()) ??
+              0);
+      final maxExp = _isFresher
+          ? 0
+          : (int.tryParse(_maxExpController.text.trim().isNotEmpty
+                  ? _maxExpController.text.trim()
+                  : _linkedInMaxExpController.text.trim()) ??
+              3);
 
       final res = await _service.runLinkedInAutoApplyNow(
         roles: roles.isNotEmpty ? roles : null,
+        locations: locs.isNotEmpty ? locs : null,
         minExpYears: minExp,
         maxExpYears: maxExp,
       );
@@ -5451,9 +5606,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               ElevatedButton(
                 onPressed: isSaving ? null : () async {
                   setDlgState(() => isSaving = true);
-                  final roles = _targetRolesController.text.trim().isNotEmpty
+                  var roles = _targetRolesController.text.trim().isNotEmpty
                       ? _targetRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
                       : _linkedInRolesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+                  if (roles.length > 4) roles = roles.sublist(0, 4);
+
+                  var locs = _locationsController.text.trim().isNotEmpty
+                      ? _locationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+                      : (_radarLocations.isNotEmpty ? List<String>.from(_radarLocations) : <String>[]);
+                  if (locs.length > 5) locs = locs.sublist(0, 5);
+
                   final minExp = _isFresher
                       ? 0
                       : (int.tryParse(_minExpController.text.trim().isNotEmpty
@@ -5479,6 +5641,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     'apifyToken3': _apifyToken3Controller.text.trim(),
                     'apifyTokens': tokens,
                     'targetRoles': roles,
+                    'targetLocations': locs,
                     'minExpYears': minExp,
                     'maxExpYears': maxExp,
                     'isFresher': _isFresher,
