@@ -12,6 +12,7 @@ const geminiHelper_1 = require("../../utils/geminiHelper");
 const featureLogger_1 = require("../../utils/featureLogger");
 const logger_1 = require("../../utils/logger");
 const emailFormatter_1 = require("../../utils/emailFormatter");
+const experienceMatcher_1 = require("../../utils/experienceMatcher");
 function normalizeJobRole(role) {
     return (role || "").toLowerCase()
         .replace(/[^a-z0-9]/g, ' ')
@@ -57,7 +58,7 @@ function isForeignOnsite(detectedLocation, targetLocations, isRemote, postConten
  * fit with Gemini, and auto-applies via Gmail.
  */
 async function processLinkedInAutoApplyForUser(uid, options) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
     const isManual = (_a = options === null || options === void 0 ? void 0 : options.isManual) !== null && _a !== void 0 ? _a : false;
     const scheduledSlot = isManual ? "Manual Run" : "Scheduled Run (Apify)";
     try {
@@ -68,6 +69,17 @@ async function processLinkedInAutoApplyForUser(uid, options) {
         const userData = userDoc.data() || {};
         const enabledModules = userData.enabledModules || [];
         const jobSubPerms = userData.jobAssistantSubPermissions || {};
+        // Distributed Lock: Prevent duplicate concurrent executions for the same user
+        const nowMs = Date.now();
+        const lastLockTime = ((_c = (_b = userData.linkedinAutoApplyLock) === null || _b === void 0 ? void 0 : _b.toMillis) === null || _c === void 0 ? void 0 : _c.call(_b)) || 0;
+        if (nowMs - lastLockTime < 6 * 60 * 1000) {
+            const msg = "LinkedIn Auto-Apply is currently in progress for your account. Please wait for the current run to finish.";
+            console.log(`[LinkedInAutoApply] User ${uid} locked: another instance is currently running.`);
+            return { success: false, appliedCount: 0, message: msg, jobs: [] };
+        }
+        await firebase_1.db.collection("users").doc(uid).set({
+            linkedinAutoApplyLock: firebase_1.admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
         // 1. Admin Module Control: Must be enabled for user
         const isLinkedInEnabled = (enabledModules.includes("job_assistant") || enabledModules.includes("linkedin_auto_apply"))
             && jobSubPerms.linkedin_auto_apply !== false;
@@ -129,19 +141,25 @@ async function processLinkedInAutoApplyForUser(uid, options) {
             apifyTokens.push(process.env.APIFY_API_KEY.trim());
         }
         // 4. Target Roles, Locations & Experience Range (Limited to max 4 roles, max 5 locations)
-        let targetRoles = (options === null || options === void 0 ? void 0 : options.roles) || linkedinSettings.targetRoles || ((_b = userData.autoApplySettings) === null || _b === void 0 ? void 0 : _b.targetRoles) || [];
+        let targetRoles = (options === null || options === void 0 ? void 0 : options.roles) || linkedinSettings.targetRoles || ((_d = userData.autoApplySettings) === null || _d === void 0 ? void 0 : _d.targetRoles) || [];
         if (typeof targetRoles === 'string') {
             targetRoles = targetRoles.split(',').map(s => s.trim()).filter(Boolean);
         }
+        if (targetRoles.length === 0 && userData.targetRoles) {
+            targetRoles = Array.isArray(userData.targetRoles) ? userData.targetRoles : [userData.targetRoles];
+        }
+        if (targetRoles.length === 0 && userData.targetRole) {
+            targetRoles = [userData.targetRole];
+        }
         if (targetRoles.length === 0) {
-            targetRoles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"];
+            targetRoles = ["Software Engineer", "Developer"];
         }
         targetRoles = targetRoles.slice(0, 4);
         let targetLocations = (options === null || options === void 0 ? void 0 : options.locations) ||
             linkedinSettings.targetLocations ||
             linkedinSettings.locations ||
-            ((_c = userData.autoApplySettings) === null || _c === void 0 ? void 0 : _c.locations) ||
-            ((_d = userData.autoApplySettings) === null || _d === void 0 ? void 0 : _d.targetLocations) ||
+            ((_e = userData.autoApplySettings) === null || _e === void 0 ? void 0 : _e.locations) ||
+            ((_f = userData.autoApplySettings) === null || _f === void 0 ? void 0 : _f.targetLocations) ||
             userData.targetLocations ||
             userData.locations ||
             [];
@@ -149,12 +167,12 @@ async function processLinkedInAutoApplyForUser(uid, options) {
             targetLocations = targetLocations.split(',').map(s => s.trim()).filter(Boolean);
         }
         targetLocations = targetLocations.slice(0, 5);
-        const excludedCompanies = (((_e = userData.autoApplySettings) === null || _e === void 0 ? void 0 : _e.excludedCompanies) ||
+        const excludedCompanies = (((_g = userData.autoApplySettings) === null || _g === void 0 ? void 0 : _g.excludedCompanies) ||
             userData.excludedCompanies ||
             linkedinSettings.excludedCompanies ||
             []).map((s) => s.trim().toLowerCase()).filter(Boolean);
-        const minExp = (_j = (_g = (_f = options === null || options === void 0 ? void 0 : options.minExpYears) !== null && _f !== void 0 ? _f : linkedinSettings.minExpYears) !== null && _g !== void 0 ? _g : (_h = userData.autoApplySettings) === null || _h === void 0 ? void 0 : _h.minExpYears) !== null && _j !== void 0 ? _j : 1;
-        const maxExp = (_o = (_l = (_k = options === null || options === void 0 ? void 0 : options.maxExpYears) !== null && _k !== void 0 ? _k : linkedinSettings.maxExpYears) !== null && _l !== void 0 ? _l : (_m = userData.autoApplySettings) === null || _m === void 0 ? void 0 : _m.maxExpYears) !== null && _o !== void 0 ? _o : 3;
+        const minExp = (_l = (_j = (_h = options === null || options === void 0 ? void 0 : options.minExpYears) !== null && _h !== void 0 ? _h : linkedinSettings.minExpYears) !== null && _j !== void 0 ? _j : (_k = userData.autoApplySettings) === null || _k === void 0 ? void 0 : _k.minExpYears) !== null && _l !== void 0 ? _l : 1;
+        const maxExp = (_q = (_o = (_m = options === null || options === void 0 ? void 0 : options.maxExpYears) !== null && _m !== void 0 ? _m : linkedinSettings.maxExpYears) !== null && _o !== void 0 ? _o : (_p = userData.autoApplySettings) === null || _p === void 0 ? void 0 : _p.maxExpYears) !== null && _q !== void 0 ? _q : 3;
         const experienceFilter = `${minExp}-${maxExp} years`;
         // 5. Load Candidate Resume Profile
         const resumeProfiles = [];
@@ -318,7 +336,6 @@ async function processLinkedInAutoApplyForUser(uid, options) {
         }
         // 8. Filter Posts against Unified History, Blacklist & Experience Restrictions
         const candidatePosts = [];
-        const seniorKeywords = ["5+ years", "6+ years", "7+ years", "8+ years", "10+ years", "minimum 5 years", "principal", "staff engineer", "engineering manager", "director"];
         for (const post of posts) {
             if (!post.hasEmail || post.emails.length === 0)
                 continue;
@@ -333,22 +350,23 @@ async function processLinkedInAutoApplyForUser(uid, options) {
                 console.log(`[LinkedInAutoApply] Skipping post ${post.id}: Mentions excluded company.`);
                 continue;
             }
-            // Experience sanity check: if user is 0-3 years and post asks for 5+ / 7+ / 8+ years, skip
-            if (maxExp <= 4) {
-                const hasHighExpRequirement = seniorKeywords.some(kw => postContentLower.includes(kw));
-                if (hasHighExpRequirement) {
-                    console.log(`[LinkedInAutoApply] Skipping post ${post.id}: Requires high/senior experience.`);
-                    continue;
-                }
+            // Strict Experience check: if post requires experience exceeding candidate maxExp (e.g. 5 to 8 years, 5+ yrs), skip immediately
+            const expCheck = (0, experienceMatcher_1.isExperienceExceeded)(post.content, maxExp, minExp);
+            if (expCheck.exceeded) {
+                console.log(`[LinkedInAutoApply] Pre-filter skipped post ${post.id}: ${expCheck.reason}`);
+                continue;
             }
             for (const email of post.emails) {
                 const normEmail = email.toLowerCase().trim();
                 if (appliedEmails.has(normEmail)) {
-                    console.log(`[LinkedInAutoApply] DEDUPLICATED: Email ${normEmail} was already contacted previously across unified modules. Skipping.`);
+                    console.log(`[LinkedInAutoApply] DEDUPLICATED: Email ${normEmail} was already contacted or queued in this batch. Skipping.`);
                     continue;
                 }
                 candidatePosts.push({ post, email: normEmail });
-                // Only take one unique email per post to prevent multiple emails to same post
+                // Register immediately so no subsequent post in this batch picks the same recipient email or post URL
+                appliedEmails.add(normEmail);
+                if (postUrl)
+                    appliedUrls.add(postUrl);
                 break;
             }
         }
@@ -367,15 +385,15 @@ async function processLinkedInAutoApplyForUser(uid, options) {
             return { success: true, appliedCount: 0, message: msg, jobs: [] };
         }
         // 9. Process Applications with Gemini Verification & Nodemailer Sending
-        const maxPerRun = Math.min((_q = (_p = options === null || options === void 0 ? void 0 : options.maxApplications) !== null && _p !== void 0 ? _p : linkedinSettings.maxPerRun) !== null && _q !== void 0 ? _q : 5, 8);
+        const maxPerRun = Math.min((_s = (_r = options === null || options === void 0 ? void 0 : options.maxApplications) !== null && _r !== void 0 ? _r : linkedinSettings.maxPerRun) !== null && _s !== void 0 ? _s : 5, 8);
         const postsToProcess = candidatePosts.slice(0, maxPerRun);
         let applicantName = (userData.applicantName || userData.displayName || "").trim();
         if (!applicantName) {
             try {
                 const authUser = await firebase_1.admin.auth().getUser(uid);
-                applicantName = authUser.displayName || ((_r = authUser.email) === null || _r === void 0 ? void 0 : _r.split('@')[0]) || "Applicant";
+                applicantName = authUser.displayName || ((_t = authUser.email) === null || _t === void 0 ? void 0 : _t.split('@')[0]) || "Applicant";
             }
-            catch (_t) {
+            catch (_v) {
                 applicantName = "Applicant";
             }
         }
@@ -389,15 +407,39 @@ async function processLinkedInAutoApplyForUser(uid, options) {
         });
         const successfullyApplied = [];
         const todayStr = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
+        const alreadySentEmailsThisRun = new Set();
+        let lastEmailSentTimestamp = 0;
         for (const item of postsToProcess) {
             const { post, email: recipientEmail } = item;
+            // In-run deduplication guard: never email the same recipient twice in one run
+            if (alreadySentEmailsThisRun.has(recipientEmail)) {
+                console.log(`[LinkedInAutoApply] DEDUPLICATED: Email ${recipientEmail} was already contacted in this run. Skipping.`);
+                continue;
+            }
+            // Fresh database duplicate check to prevent race conditions
+            try {
+                const dupCheck = await firebase_1.db.collection("users").doc(uid).collection("job_applications")
+                    .where("recipientEmail", "==", recipientEmail)
+                    .limit(1)
+                    .get();
+                if (!dupCheck.empty) {
+                    console.log(`[LinkedInAutoApply] DEDUPLICATED: Recipient ${recipientEmail} already found in Firestore job_applications. Skipping.`);
+                    alreadySentEmailsThisRun.add(recipientEmail);
+                    appliedEmails.add(recipientEmail);
+                    continue;
+                }
+            }
+            catch (dupErr) {
+                console.warn(`[LinkedInAutoApply] Duplicate check warning:`, dupErr.message);
+            }
             // Pick matching resume profile
             const matchedProfile = resumeProfiles.find(p => p.targetRoles.some((r) => post.content.toLowerCase().includes(r.toLowerCase()))) || resumeProfiles.find(p => p.isDefault) || resumeProfiles[0];
+            const cleanResumeB64 = ((matchedProfile === null || matchedProfile === void 0 ? void 0 : matchedProfile.base64) || "").replace(/^data:application\/pdf;base64,/, '').trim();
             // Use Gemini to verify role alignment, location & remote policy, and draft tailored cover letter
             let generatedApplication = null;
             try {
                 const prompt = `You are an elite career advisor and executive recruiter.
-Analyze this real-time LinkedIn recruiter hiring post:
+Analyze this real-time LinkedIn recruiter hiring post against the candidate's ATTACHED RESUME PDF:
 "${post.content}"
 Author: "${post.authorName}" (${post.authorTitle})
 
@@ -408,9 +450,13 @@ Candidate Profile:
 - Target Locations: ${targetLocations.length > 0 ? targetLocations.join(', ') : 'Remote / India'}
 - Excluded Companies: ${excludedCompanies.length > 0 ? excludedCompanies.join(', ') : 'None'}
 
-CRITICAL MATCHING RULES (MUST FOLLOW STRICTLY):
+CRITICAL MATCHING & GROUND-TRUTH RULES (MUST FOLLOW STRICTLY):
 1. ROLE MATCH: The post must genuinely be hiring for at least one of the candidate's target roles (${targetRoles.join(', ')}).
-2. EXPERIENCE FIT: Must fit within ${minExp}-${maxExp} years experience. If the post explicitly requires 5+, 6+, 7+, 8+, 10+, Senior, Lead, Staff, or Principal years and candidate has <= 4 years, set isMatch: false.
+2. EXPERIENCE FIT (CRITICAL HARD DISQUALIFIER):
+   - Candidate has ${minExp} to ${maxExp} years of experience.
+   - Detect the required years of experience from the post (e.g. "5 to 8 years", "5-8 yrs", "4+ years", "5+ years", "3-5 years", "min 5 years", etc.).
+   - If the post explicitly requires experience exceeding the candidate's maximum (${maxExp} years, allowing at most a 1-year stretch, e.g. candidate has ${minExp}-${maxExp} years but post requires 4+, 5+, 5-8 years, 6+, 7+, 8+, 10+, Senior, Lead, Staff, Principal, Architect), you MUST IMMEDIATELY DISQUALIFY THE POST: set "isMatch": false and "rejectionReason": "Experience mismatch: post requires [detected experience], exceeding candidate's configured ${minExp}-${maxExp} years".
+   - DO NOT apply or attempt to bridge large experience gaps. Recruiters reject candidates who do not meet their experience requirements.
 3. LOCATION & WORK MODE POLICY (CRITICAL):
    - Candidate Target Locations: ${targetLocations.length > 0 ? targetLocations.join(', ') : 'Any'}.
    - Identify the job location and work mode (Remote, Hybrid, Onsite) from the post content.
@@ -424,17 +470,36 @@ CRITICAL MATCHING RULES (MUST FOLLOW STRICTLY):
 6. If matching, extract:
    - "companyName": Name of the hiring company or recruitment agency.
    - "jobTitle": Clear title of the job matching candidate's target roles.
+   - "detectedExperience": Extracted experience required by the job (e.g. "0-2 years", "1-3 years", "Fresher").
    - "detectedLocation": The city/country and work mode (e.g. "Bengaluru (Hybrid)", "Remote (India)", "Chennai (Onsite)").
    - "isRemote": boolean (true if work from home / remote is allowed).
-   - "subject": Tailored email subject line (e.g. "Application: [Job Title] - ${applicantName}").
-   - "coverLetter": A punchy, compelling 2-3 paragraph application email tailored to this post. Highlight relevant tools matching the role (e.g. AWS, Docker, Kubernetes, CI/CD, Terraform). Sign off with:
-"Best regards,
+   - "subject": Tailored email subject line (format: "Application for [Job Title] - ${applicantName}").
+   - "coverLetter": A comprehensive, compelling, and highly personalized application email tailored specifically to this hiring post.
+     CRITICAL STRUCTURE & HIGH-CONVERSION MANDATES:
+     1. PROFESSIONAL GREETING: e.g. "Dear Hiring Team," or "Dear [Author Name]," if available.
+     2. COMPELLING OPENING: Express keen, enthusiastic interest in the specific [Job Title] role at [Company], referencing details or focus areas mentioned in their post.
+     3. VALUE PROPOSITION & RELEVANCE: Directly reference the job requirements and technologies highlighted in the post, and articulate how the candidate's real verified experience from their resume solves them.
+     4. KEY CONTRIBUTIONS PREPARED TO DELIVER (MANDATORY):
+        Include a dedicated bulleted section:
+        "Key contributions I am prepared to deliver include:"
+        Provide 3-4 concrete, impactful bullet points (using "•") directly derived from the candidate's attached resume PDF (quantified project deliverables, architectures built, optimizations achieved, and verified technical proficiencies).
+     5. EXPERIENCE ALIGNMENT: Articulate the candidate's verified hands-on project mastery and immediate readiness to deliver value from Day 1 without overpromising.
+     6. CALL TO ACTION & RESUME REFERENCE: Respectfully mention the attached resume for review and propose a brief 10-15 minute discussion.
+     7. SIGN-OFF:
+"Sincerely,
 ${applicantName}"
+
+     CRITICAL RESUME GROUNDING INSTRUCTION:
+     - You MUST ground all technical skills, programming languages, frameworks, and past achievements SOLELY on the candidate's attached resume PDF.
+     - NEVER hallucinate, invent, or assume skills that are NOT in the candidate's resume (e.g. DO NOT mention DevOps, AWS, Kubernetes, Terraform, Cloud, or CI/CD unless they are explicitly written in the candidate's attached resume).
+     - Focus strictly on the candidate's actual stack and experience as documented in their resume.
+     - STRICT PROHIBITION ON REPETITIVE BOILERPLATE: DO NOT use repetitive generic template sentences like "I am writing to express my enthusiastic interest in the ... position shared on LinkedIn. With hands-on experience in ..., I am confident in my ability to deliver immediate value." Every single application email MUST be uniquely customized, substantive, and authentically tailored.
 
 Respond ONLY with valid JSON:
 {
   "isMatch": boolean,
   "rejectionReason": string,
+  "detectedExperience": string,
   "companyName": string,
   "jobTitle": string,
   "detectedLocation": string,
@@ -443,32 +508,45 @@ Respond ONLY with valid JSON:
   "coverLetter": string
 }`;
                 const geminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
-                const geminiResp = await (0, geminiHelper_1.callGeminiAPI)({
+                const geminiParts = [];
+                if (cleanResumeB64) {
+                    geminiParts.push({
+                        inlineData: {
+                            mimeType: "application/pdf",
+                            data: cleanResumeB64
+                        }
+                    });
+                }
+                geminiParts.push({ text: prompt });
+                const geminiPayload = {
+                    contents: [{ parts: geminiParts }],
+                    generationConfig: { responseMimeType: "application/json" }
+                };
+                const geminiResp = await (0, geminiHelper_1.callGeminiAPI)(geminiPayload, {
                     apiKey: geminiKey || undefined,
-                    payload: {
-                        contents: [{ parts: [{ text: prompt }] }],
-                        generationConfig: { responseMimeType: "application/json" }
-                    }
+                    timeout: 45000
                 });
                 const rawText = geminiResp.text || "{}";
                 generatedApplication = JSON.parse(rawText.replace(/```json/g, '').replace(/```/g, '').trim());
             }
             catch (aiErr) {
-                console.warn(`[LinkedInAutoApply] Gemini post analysis error:`, aiErr.message);
-                // Fallback application format if Gemini JSON parsing fails
+                console.warn(`[LinkedInAutoApply] Gemini post analysis error for post ${post.id}:`, aiErr.message);
                 generatedApplication = {
-                    isMatch: true,
-                    companyName: post.authorTitle || "Hiring Team",
-                    jobTitle: targetRoles[0],
-                    detectedLocation: targetLocations[0] || "Remote",
-                    isRemote: true,
-                    subject: `Application for ${targetRoles[0]} - ${applicantName}`,
-                    coverLetter: `Dear Hiring Team,\n\nI am writing to express my enthusiastic interest in the ${targetRoles[0]} position shared on LinkedIn. With hands-on experience in cloud infrastructure, automation, and modern DevOps practices, I am confident in my ability to deliver immediate value.\n\nPlease find my resume attached for your consideration. I welcome the opportunity to connect and discuss how my background aligns with your team's goals.\n\nBest regards,\n${applicantName}`
+                    isMatch: false,
+                    rejectionReason: `AI parsing failed: ${aiErr.message}`
                 };
             }
             if (!generatedApplication || generatedApplication.isMatch === false) {
-                console.log(`[LinkedInAutoApply] Rejected post ${post.id}: ${(generatedApplication === null || generatedApplication === void 0 ? void 0 : generatedApplication.rejectionReason) || 'Did not meet role/location criteria'}`);
+                console.log(`[LinkedInAutoApply] Rejected post ${post.id}: ${(generatedApplication === null || generatedApplication === void 0 ? void 0 : generatedApplication.rejectionReason) || 'Did not meet role/location/experience criteria'}`);
                 continue;
+            }
+            // Post-AI safety check on experience
+            if (generatedApplication.detectedExperience) {
+                const aiExpCheck = (0, experienceMatcher_1.isExperienceExceeded)(generatedApplication.detectedExperience, maxExp, minExp);
+                if (aiExpCheck.exceeded) {
+                    console.log(`[LinkedInAutoApply] Safety check rejected post ${post.id}: AI detected experience "${generatedApplication.detectedExperience}" exceeding candidate max of ${maxExp} years.`);
+                    continue;
+                }
             }
             // Code-level safety check on location
             const detectedLoc = (generatedApplication.detectedLocation || "").trim();
@@ -479,7 +557,7 @@ Respond ONLY with valid JSON:
             }
             const finalTitle = generatedApplication.jobTitle || targetRoles[0];
             const finalCompany = generatedApplication.companyName || post.authorName || "Hiring Partner";
-            const finalSubject = generatedApplication.subject || `Application for ${finalTitle} - ${applicantName}`;
+            const finalSubject = generatedApplication.subject || `Application for ${finalTitle} - ${finalCompany} - ${applicantName}`;
             const finalBody = generatedApplication.coverLetter;
             // Prepare attachments
             const cleanB64 = (matchedProfile.base64 || "").replace(/^data:application\/pdf;base64,/, '');
@@ -488,6 +566,17 @@ Respond ONLY with valid JSON:
                     content: Buffer.from(cleanB64, 'base64'),
                     contentType: 'application/pdf'
                 }] : [];
+            // Pacing Guard: Ensure at least 60 seconds (1 minute) has elapsed since the previous email was sent
+            // to prevent Gmail / Google spam & bot detection
+            if (lastEmailSentTimestamp > 0) {
+                const elapsedMs = Date.now() - lastEmailSentTimestamp;
+                const minWaitMs = 60000; // 60 seconds
+                if (elapsedMs < minWaitMs) {
+                    const remainingWaitMs = minWaitMs - elapsedMs;
+                    console.log(`[LinkedInAutoApply] Rate-limiting guard: waiting ${Math.round(remainingWaitMs / 1000)}s before sending next application email to ${recipientEmail} to prevent Google bot/spam flags...`);
+                    await new Promise(resolve => setTimeout(resolve, remainingWaitMs));
+                }
+            }
             // Send via Nodemailer
             try {
                 const formatted = (0, emailFormatter_1.formatEmailContent)(finalBody);
@@ -499,6 +588,9 @@ Respond ONLY with valid JSON:
                     html: formatted.html,
                     attachments
                 });
+                lastEmailSentTimestamp = Date.now();
+                alreadySentEmailsThisRun.add(recipientEmail);
+                appliedEmails.add(recipientEmail);
                 console.log(`[LinkedInAutoApply] Application email sent to ${recipientEmail} (${finalCompany}): ${info.messageId}`);
                 // Save to UNIFIED job_applications collection
                 const finalLocation = detectedLoc || (isRemoteJob ? "Remote" : (targetLocations.length > 0 ? targetLocations.join(' / ') : "Remote"));
@@ -526,8 +618,6 @@ Respond ONLY with valid JSON:
                     postExcerpt: post.content.substring(0, 300)
                 };
                 const docRef = await firebase_1.db.collection("users").doc(uid).collection("job_applications").add(applicationRecord);
-                // Add to in-memory sets immediately to prevent any subsequent post sending duplicate
-                appliedEmails.add(recipientEmail);
                 if (post.url)
                     appliedUrls.add(post.url.toLowerCase().trim());
                 appliedEmailRoles.add(`${recipientEmail}|${normalizeJobRole(finalTitle)}`);
@@ -552,7 +642,7 @@ Respond ONLY with valid JSON:
             try {
                 const userTokenDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
                 if (!userTokenDoc.empty) {
-                    const fcmToken = (_s = userTokenDoc.docs[0].data()) === null || _s === void 0 ? void 0 : _s.fcmToken;
+                    const fcmToken = (_u = userTokenDoc.docs[0].data()) === null || _u === void 0 ? void 0 : _u.fcmToken;
                     if (fcmToken) {
                         const compNames = successfullyApplied.map(j => j.companyName).slice(0, 3).join(', ');
                         const notifTitle = `⚡ Auto-Applied to ${successfullyApplied.length} LinkedIn Post${successfullyApplied.length > 1 ? 's' : ''}!`;
@@ -637,6 +727,16 @@ Respond ONLY with valid JSON:
             jobs: []
         };
     }
+    finally {
+        try {
+            await firebase_1.db.collection("users").doc(uid).set({
+                linkedinAutoApplyLock: null
+            }, { merge: true });
+        }
+        catch (lockErr) {
+            console.warn(`[LinkedInAutoApply] Error clearing lock for user ${uid}:`, lockErr.message);
+        }
+    }
 }
 /**
  * Scheduled Dispatcher for LinkedIn Auto-Apply.
@@ -679,7 +779,7 @@ async function internalLinkedInPostAutoApplyDispatcher() {
 /**
  * Callable Cloud Function: Allows users to trigger LinkedIn Auto-Apply on-demand from the UI.
  */
-exports.runLinkedInAutoApplyNow = functions.runWith({ timeoutSeconds: 300, memory: "1GB" }).https.onCall(async (data, context) => {
+exports.runLinkedInAutoApplyNow = functions.runWith({ timeoutSeconds: 540, memory: "1GB" }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
     }

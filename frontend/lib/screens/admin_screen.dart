@@ -428,21 +428,42 @@ class _AdminScreenState extends State<AdminScreen> {
       if (!newModules.contains(moduleId)) newModules.add(moduleId);
     } else {
       newModules.remove(moduleId);
-      if (moduleId == 'job_assistant') {
+    }
+
+    final Map<String, dynamic> updatePayload = {
+      'enabledModules': newModules,
+    };
+
+    if (moduleId == 'job_assistant') {
+      if (enable) {
+        if (!newModules.contains('linkedin_auto_apply')) newModules.add('linkedin_auto_apply');
+        if (!newModules.contains('career_portals')) newModules.add('career_portals');
+        updatePayload['jobAssistantSubPermissions'] = {
+          'auto_apply': true,
+          'career_portals': true,
+          'linkedin_auto_apply': true,
+          'cold_outreach': true,
+          'manual_apply': true,
+        };
+      } else {
         newModules.remove('linkedin_auto_apply');
+        newModules.remove('career_portals');
       }
     }
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(userId).set({
-        'enabledModules': newModules,
-      }, SetOptions(merge: true));
+      await FirebaseFirestore.instance.collection('users').doc(userId).set(
+        updatePayload,
+        SetOptions(merge: true),
+      );
 
       await FirebaseFunctions.instance
           .httpsCallable('adminUpdateUserModules')
           .call({
             'userId': userId,
             'enabledModules': newModules,
+            if (updatePayload.containsKey('jobAssistantSubPermissions'))
+              'jobAssistantSubPermissions': updatePayload['jobAssistantSubPermissions'],
           });
     } catch (e) {
       if (mounted) {

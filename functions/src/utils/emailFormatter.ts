@@ -35,10 +35,13 @@ export function formatEmailContent(rawMarkdownText: string): { html: string; tex
         line = line.replace(/\*(.*?)\*/g, '<em>$1</em>');
         line = line.replace(/_(.*?)_/g, '<em>$1</em>');
 
-        if (line.trim() === '') {
-            htmlBody += '<br/>';
+        const trimmed = line.trim();
+        if (trimmed === '') {
+            htmlBody += '<div style="height: 12px;"></div>';
+        } else if (trimmed.startsWith('•') || trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+            htmlBody += `<div style="margin-bottom: 6px; padding-left: 14px; line-height: 1.6;">${line}</div>`;
         } else {
-            htmlBody += `<div style="margin-bottom: 4px;">${line}</div>`;
+            htmlBody += `<div style="margin-bottom: 6px; line-height: 1.6;">${line}</div>`;
         }
     }
 

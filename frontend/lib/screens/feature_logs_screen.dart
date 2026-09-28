@@ -71,6 +71,7 @@ class FeatureLogsScreen extends StatefulWidget {
 class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
   String _selectedFilter = 'all';
   bool _isLoadingFallback = true;
+  bool _logsCleared = false;
   List<FeatureLogEntry> _synthesizedFallbackLogs = [];
 
   @override
@@ -82,6 +83,11 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
   /// Synthesizes historical runs from existing user timestamps and collections
   /// if fewer than 10 logs are present in Firestore.
   Future<void> _loadHistoricalFallback() async {
+    if (_logsCleared) {
+      if (mounted) setState(() => _isLoadingFallback = false);
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       if (mounted) setState(() => _isLoadingFallback = false);
@@ -202,6 +208,104 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
                   ? 'Auto-dispatched $emailsSent startup pitch(es) via email. ${leadList.length} LinkedIn notes ready.'
                   : 'Discovered ${leadList.length} startup leader(s). LinkedIn notes ready!',
               scheduledSlot: '11:30 AM',
+              details: details,
+              timestamp: dt,
+            ));
+          });
+        }
+      }
+
+      // 2b. LinkedIn Hiring Posts Fallback Synthesizer
+      if (widget.allowedFeatures.contains('linkedin_auto_apply')) {
+        final linkedinSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('job_applications')
+            .where('isAutoApplied', isEqualTo: true)
+            .orderBy('appliedAt', descending: true)
+            .limit(15)
+            .get();
+
+        final filteredLinkedinDocs = linkedinSnap.docs.where((d) {
+          final data = d.data();
+          final src = (data['source'] ?? '').toString().toLowerCase();
+          final plat = (data['sourcePlatform'] ?? '').toString().toLowerCase();
+          return src.contains('linkedin') || plat.contains('linkedin');
+        }).toList();
+
+        if (filteredLinkedinDocs.isNotEmpty) {
+          final Map<String, List<Map<String, dynamic>>> postsByDay = {};
+          for (final d in filteredLinkedinDocs) {
+            final data = d.data();
+            final at = data['appliedAt'];
+            DateTime dt = DateTime.now();
+            if (at is Timestamp) dt = at.toDate();
+            final key = DateFormat('yyyy-MM-dd_a').format(dt);
+            postsByDay.putIfAbsent(key, () => []).add(data);
+          }
+
+          postsByDay.forEach((dayKey, postList) {
+            final firstAt = postList.first['appliedAt'];
+            DateTime dt = DateTime.now();
+            if (firstAt is Timestamp) dt = firstAt.toDate();
+
+            final details = postList
+                .map((p) => "${p['jobTitle'] ?? 'Opportunity'} at ${p['companyName'] ?? 'Hiring Team'}")
+                .toList();
+
+            fallbacks.add(FeatureLogEntry(
+              id: 'fallback_linkedin_$dayKey',
+              feature: 'linkedin_auto_apply',
+              featureTitle: 'LinkedIn Hiring Posts',
+              status: 'success',
+              count: postList.length,
+              message: 'Auto-applied & replied to ${postList.length} verified hiring post(s).',
+              scheduledSlot: dt.hour >= 17 ? '11:00 PM' : '11:00 AM',
+              details: details,
+              timestamp: dt,
+            ));
+          });
+        }
+      }
+
+      // 2c. Career Portals & ATS Matchmaker Fallback Synthesizer
+      if (widget.allowedFeatures.contains('career_portals')) {
+        final portalsSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('career_portal_jobs')
+            .orderBy('createdAt', descending: true)
+            .limit(15)
+            .get();
+
+        if (portalsSnap.docs.isNotEmpty) {
+          final Map<String, List<Map<String, dynamic>>> portalsByDay = {};
+          for (final d in portalsSnap.docs) {
+            final data = d.data();
+            final ct = data['createdAt'];
+            DateTime dt = DateTime.now();
+            if (ct is Timestamp) dt = ct.toDate();
+            final key = DateFormat('yyyy-MM-dd_a').format(dt);
+            portalsByDay.putIfAbsent(key, () => []).add(data);
+          }
+
+          portalsByDay.forEach((dayKey, portalList) {
+            final firstCt = portalList.first['createdAt'];
+            DateTime dt = DateTime.now();
+            if (firstCt is Timestamp) dt = firstCt.toDate();
+
+            final details = portalList
+                .map((p) => "${p['jobTitle'] ?? 'Direct Role'} at ${p['companyName'] ?? 'Career Portal'} (${p['atsPlatform'] ?? 'ATS'})")
+                .toList();
+
+            fallbacks.add(FeatureLogEntry(
+              id: 'fallback_portal_$dayKey',
+              feature: 'career_portals',
+              featureTitle: 'Career Portals & ATS',
+              status: 'success',
+              count: portalList.length,
+              message: 'Matched ${portalList.length} direct opening(s) on company career portals.',
+              scheduledSlot: dt.hour >= 16 ? '10:30 PM' : '10:30 AM',
               details: details,
               timestamp: dt,
             ));
@@ -347,6 +451,10 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
         return Colors.blueAccent;
       case 'cold_outreach':
         return Colors.tealAccent;
+      case 'linkedin_auto_apply':
+        return const Color(0xFF0A66C2);
+      case 'career_portals':
+        return Colors.deepPurpleAccent;
       case 'tech_events':
         return Colors.purpleAccent;
       case 'walkin_drives':
@@ -362,6 +470,10 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
         return Icons.bolt_rounded;
       case 'cold_outreach':
         return Icons.people_alt_rounded;
+      case 'linkedin_auto_apply':
+        return Icons.dynamic_feed_rounded;
+      case 'career_portals':
+        return Icons.travel_explore_rounded;
       case 'tech_events':
         return Icons.event_available_rounded;
       case 'walkin_drives':
@@ -373,8 +485,14 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
 
   Widget _buildScheduleInfoBanner(bool isDark) {
     String scheduleInfo = '';
-    if (widget.allowedFeatures.contains('auto_apply') && widget.allowedFeatures.contains('cold_outreach')) {
-      scheduleInfo = '⚡ Auto-Apply runs twice daily at 10:00 AM & 10:00 PM IST.\n🚀 Cold Outreach Startup Radar runs daily at 11:30 AM IST.';
+    if (widget.allowedFeatures.contains('auto_apply') ||
+        widget.allowedFeatures.contains('linkedin_auto_apply') ||
+        widget.allowedFeatures.contains('career_portals') ||
+        widget.allowedFeatures.contains('cold_outreach')) {
+      scheduleInfo = '⚡ Auto-Apply: 10:00 AM & 10:00 PM IST\n'
+          '🏢 Career Portals & ATS: 10:30 AM & 10:30 PM IST\n'
+          '💼 LinkedIn Posts: 11:00 AM & 11:00 PM IST\n'
+          '🚀 Cold Outreach: 11:30 AM IST';
     } else if (widget.allowedFeatures.contains('tech_events')) {
       scheduleInfo = '📅 Scheduled Run: Scans tech meetups & conferences daily at 7:00 PM IST.';
     } else if (widget.allowedFeatures.contains('walkin_drives')) {
@@ -420,6 +538,8 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
     final options = [
       {'key': 'all', 'label': 'All Logs'},
       if (widget.allowedFeatures.contains('auto_apply')) {'key': 'auto_apply', 'label': 'Auto-Apply'},
+      if (widget.allowedFeatures.contains('linkedin_auto_apply')) {'key': 'linkedin_auto_apply', 'label': 'LinkedIn'},
+      if (widget.allowedFeatures.contains('career_portals')) {'key': 'career_portals', 'label': 'Career Portals'},
       if (widget.allowedFeatures.contains('cold_outreach')) {'key': 'cold_outreach', 'label': 'Cold Outreach'},
       if (widget.allowedFeatures.contains('tech_events')) {'key': 'tech_events', 'label': 'Tech Events'},
       if (widget.allowedFeatures.contains('walkin_drives')) {'key': 'walkin_drives', 'label': 'Walk-Ins'},
@@ -491,6 +611,10 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
       statusIcon = Icons.check_circle_rounded;
       if (log.feature == 'auto_apply') {
         statusLabel = '${log.count} ${log.count == 1 ? "Job" : "Jobs"} Applied';
+      } else if (log.feature == 'linkedin_auto_apply') {
+        statusLabel = '${log.count} ${log.count == 1 ? "Post" : "Posts"} Applied';
+      } else if (log.feature == 'career_portals') {
+        statusLabel = '${log.count} ${log.count == 1 ? "Portal" : "Portals"} Matched';
       } else if (log.feature == 'cold_outreach') {
         statusLabel = '${log.count} ${log.count == 1 ? "Startup" : "Startups"} Pitched';
       } else if (log.feature == 'tech_events') {
@@ -504,6 +628,10 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
       statusIcon = Icons.info_outline_rounded;
       if (log.feature == 'auto_apply') {
         statusLabel = '0 Jobs Fetched';
+      } else if (log.feature == 'linkedin_auto_apply') {
+        statusLabel = '0 Posts Found';
+      } else if (log.feature == 'career_portals') {
+        statusLabel = '0 Portals Matched';
       } else if (log.feature == 'cold_outreach') {
         statusLabel = '0 Startups Found';
       } else if (log.feature == 'tech_events') {
@@ -698,6 +826,100 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
     );
   }
 
+  Future<void> _confirmClearAllLogs(BuildContext context) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 24),
+            const SizedBox(width: 8),
+            Text('Clear All Logs?', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to delete all automation logs? This will clear your entire execution history from the database.',
+          style: GoogleFonts.outfit(fontSize: 13.5, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Cancel', style: GoogleFonts.outfit(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Delete All', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _clearAllLogs();
+    }
+  }
+
+  Future<void> _clearAllLogs() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Clearing execution logs...'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+
+      final colRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('feature_logs');
+
+      final snap = await colRef.get();
+      if (snap.docs.isNotEmpty) {
+        final batch = FirebaseFirestore.instance.batch();
+        for (final doc in snap.docs) {
+          batch.delete(doc.reference);
+        }
+        await batch.commit();
+      }
+
+      if (mounted) {
+        setState(() {
+          _logsCleared = true;
+          _synthesizedFallbackLogs = [];
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All execution logs cleared successfully.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to clear logs: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -722,10 +944,18 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
         elevation: 0,
         actions: [
           IconButton(
+            icon: const Icon(Icons.delete_sweep_rounded),
+            tooltip: 'Clear All Logs',
+            onPressed: () => _confirmClearAllLogs(context),
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Refresh Logs',
             onPressed: () {
-              setState(() => _isLoadingFallback = true);
+              setState(() {
+                _logsCleared = false;
+                _isLoadingFallback = true;
+              });
               _loadHistoricalFallback();
             },
           ),
@@ -737,7 +967,7 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
             .doc(user.uid)
             .collection('feature_logs')
             .orderBy('timestamp', descending: true)
-            .limit(30)
+            .limit(100)
             .snapshots(),
         builder: (context, snapshot) {
           final List<FeatureLogEntry> realLogs = [];
@@ -751,10 +981,10 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
             }
           }
 
-          // Combine real logs with synthesized historical fallback logs if fewer than 10 entries exist
+          // Combine real logs with synthesized historical fallback logs if fewer than 10 entries exist and not cleared
           final List<FeatureLogEntry> displayLogs = [...realLogs];
 
-          if (displayLogs.length < 10 && _synthesizedFallbackLogs.isNotEmpty) {
+          if (!_logsCleared && displayLogs.length < 10 && _synthesizedFallbackLogs.isNotEmpty) {
             for (final fallback in _synthesizedFallbackLogs) {
               // Avoid duplicate logs within 1 hour of an existing real log
               final alreadyExists = displayLogs.any((l) =>
@@ -815,7 +1045,7 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12, left: 4),
                   child: Text(
-                    'Last ${filteredLogs.take(10).length} Executions',
+                    '${filteredLogs.length} Execution ${filteredLogs.length == 1 ? "Log" : "Logs"}',
                     style: GoogleFonts.outfit(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -823,7 +1053,7 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
                     ),
                   ),
                 ),
-                ...filteredLogs.take(10).map((log) => _buildLogCard(log, isDark)),
+                ...filteredLogs.map((log) => _buildLogCard(log, isDark)),
               ],
             ],
           );

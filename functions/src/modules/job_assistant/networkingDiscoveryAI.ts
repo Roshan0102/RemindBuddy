@@ -162,12 +162,12 @@ export async function resolveUserResumeGroundTruth(
 Analyze the attached candidate Resume PDF and extract the EXACT, UNMODIFIED facts into JSON.
 
 CRITICAL RULES:
-1. "exactTitle": Extract the candidate's exact current or most recent job title (e.g., "Cloud & DevOps Engineer"). DO NOT inflate to "Lead" or "Senior" unless the resume literally says "Lead" or "Senior".
+1. "exactTitle": Extract the candidate's exact current or most recent job title (e.g., "Software Engineer", "Developer", or candidate's verified role). DO NOT inflate to "Lead" or "Senior" unless the resume literally says "Lead" or "Senior".
 2. "yearsOfExperience": Real total years of experience (e.g. "1+ years" or "Entry level, 2024 graduate").
-3. "coreSkills": Array of 8-15 verified programming languages, tools, cloud platforms, and frameworks explicitly listed on the resume. DO NOT invent skills (e.g., do NOT list Flutter unless Flutter is explicitly on the resume).
-4. "certifications": Array of official certifications listed (e.g., "AWS Certified Solutions Architect Associate").
-5. "education": Array of degrees (e.g., "B.Tech in Artificial Intelligence and Data Science").
-6. "measurableAchievements": Array of 2-4 quantitative bullets directly from their projects/experience (e.g., "Reduced deployment time by 70%", "30% cloud cost reduction").
+3. "coreSkills": Array of 8-15 verified programming languages, tools, and frameworks explicitly listed on the resume. DO NOT invent skills.
+4. "certifications": Array of official certifications listed on the resume.
+5. "education": Array of degrees.
+6. "measurableAchievements": Array of 2-4 quantitative bullets directly from their projects/experience (e.g., "Reduced response latency by 40%", "Built scalable core modules").
 
 Return ONLY valid JSON in this structure:
 {
@@ -288,6 +288,19 @@ export async function discoverNetworkingLeadsForUser(
     // Guard: Prevent running more than once per day for automated runs
     const todayStr = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
     if (!options?.isManualTrigger) {
+        // User-level toggle: skip if user disabled cold outreach in their settings
+        const isUserColdOutreachDisabled = userData.coldOutreachSettings?.enabled === false ||
+                                           userData.startupRadarSettings?.enabled === false;
+        if (isUserColdOutreachDisabled) {
+            console.log(`[StartupRadar] Skipping user ${uid}: cold outreach / startup radar is disabled in user settings.`);
+            return {
+                success: true,
+                count: 0,
+                leads: [],
+                message: "Cold outreach is turned off in your settings."
+            };
+        }
+
         if (userData.networkingLastRanDate === todayStr) {
             console.log(`[StartupRadar] Skipping user ${uid}: cold outreach has already run today (${todayStr}).`);
             return {
@@ -559,7 +572,7 @@ CRITICAL RULES & MANDATES:
    - The person must CURRENTLY be a Founder, Co-Founder, CEO, CTO, Head of Engineering, VP of Engineering, or Tech Lead. Discard past founders who now work as general employees at large consultancies.
 3. STRICT RESUME FIDELITY & NO INVENTED SKILLS / NO INFLATED TITLES:
    - Candidate's Exact Verified Title: "${resumeGroundTruth.exactTitle}".
-   - ABSOLUTE PROHIBITION ON TITLE INFLATION: Refer to candidate strictly as "${resumeGroundTruth.exactTitle}" or their natural discipline (e.g. "DevOps/Cloud Engineer"). NEVER invent or assume titles like "Lead Engineer", "Senior Engineer", "Principal", "Director", or "Tech Lead" unless literally present in their verified title above.
+   - ABSOLUTE PROHIBITION ON TITLE INFLATION: Refer to candidate strictly as "${resumeGroundTruth.exactTitle}" or their natural discipline (e.g. "${targetRoles[0] || 'Software Engineer'}"). NEVER invent or assume titles like "Lead Engineer", "Senior Engineer", "Principal", "Director", or "Tech Lead" unless literally present in their verified title above.
    - ABSOLUTE PROHIBITION ON INVENTED SKILLS: Highlight ONLY the candidate's real verified technologies: ${resumeGroundTruth.coreSkills.slice(0, 8).join(", ")}.
    - ABSOLUTELY NEVER mention or invent unverified frameworks or languages (e.g. NEVER mention Flutter, React Native, Java, Kotlin, Swift, Golang unless explicitly in the verified technologies list above).
 4. AUTHENTIC, DYNAMIC VALUE PITCH TAILORED TO CANDIDATE'S ACTUAL RESUME:
@@ -1024,7 +1037,13 @@ export async function internalNetworkingDiscoveryDispatcher(): Promise<void> {
             const hasKeys = !!((userApiKeys.tavilyApiKey || data.tavilyApiKey) && (userApiKeys.geminiApiKey || data.geminiApiKey));
             if (!hasKeys) continue;
 
-            if (data.autoApplySettings?.enabled === false) continue;
+            // User-level toggle: If the user explicitly disabled Startup Radar / Cold Outreach in their settings
+            const isUserDisabled = data.coldOutreachSettings?.enabled === false ||
+                                   data.startupRadarSettings?.enabled === false;
+            if (isUserDisabled) {
+                console.log(`[internalNetworkingDiscoveryDispatcher] Skipping user ${uid}: cold outreach is disabled in user settings.`);
+                continue;
+            }
 
             eligibleUids.push(uid);
         }

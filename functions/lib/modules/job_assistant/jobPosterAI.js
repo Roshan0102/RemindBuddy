@@ -5,7 +5,7 @@ const functions = require("firebase-functions");
 const firebase_1 = require("../../config/firebase");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 exports.parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 540, memory: "1GB" }).https.onCall(async (data, context) => {
-    var _a;
+    var _a, _b;
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
     }
@@ -37,33 +37,47 @@ exports.parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 540, memory:
         }
         if (!promptName)
             promptName = "Candidate";
-        const { imagesBase64, mode, resumeBase64, customPrompt } = data;
-        if (!imagesBase64 || !Array.isArray(imagesBase64) || imagesBase64.length === 0) {
-            throw new functions.https.HttpsError('invalid-argument', 'No image data provided.');
+        const { imagesBase64, jobText, mode, resumeBase64, customPrompt } = data;
+        const hasImages = Array.isArray(imagesBase64) && imagesBase64.length > 0;
+        const hasText = typeof jobText === "string" && jobText.trim().length > 0;
+        if (!hasImages && !hasText) {
+            throw new functions.https.HttpsError('invalid-argument', 'Please provide either job poster screenshot(s) or job posting text.');
         }
         const isSingleJob = (mode === 'single_job');
-        const userDirective = customPrompt ? `\nUSER SPECIFIC DIRECTIVE / INSTRUCTION: "${customPrompt}"\nEnsure you strictly follow this user directive when selecting and analyzing job roles from the screenshots.\n` : "";
-        const prompt = isSingleJob
-            ? `Analyze the provided screenshot(s) and candidate Resume (PDF). These screenshot(s) belong to the SAME SINGLE job posting.
-Stitch the text and context together. Extract structured job details.
+        const userDirective = customPrompt ? `\nUSER SPECIFIC DIRECTIVE / INSTRUCTION: "${customPrompt}"\nEnsure you strictly follow this user directive when selecting and analyzing job roles.\n` : "";
+        let prompt = "";
+        if (hasText && !hasImages) {
+            prompt = `Analyze the provided job description / recruiter hiring post text and candidate Resume (PDF).
+Extract structured job details and write an authentic, high-converting application email.
 ${userDirective}
+
+Hiring Post / Job Description Content:
+"""
+${jobText.trim()}
+"""
+
 CRITICAL INSTRUCTIONS FOR COVER LETTER & SUBJECT:
 1. Candidate's Full Name is: "${promptName}".
 2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, framework proficiencies, work history, and key projects.
-3. Compare candidate's actual resume experience against the job poster requirements. Write a highly personalized, compelling, professional cover letter that directly maps candidate's specific accomplishments, certifications, and skills from their resume to the exact requirements of the job posting.
-4. EXPERIENCE GAP & SKILL-VALUE BRIDGING (MANDATORY):
-   - Carefully compare the candidate's years of experience stated in their attached Resume against the required experience in the job poster.
-   - If the job poster seeks more experience than the candidate currently has on their resume (e.g. posting asks for 2+ or 3+ years, but resume shows 1-2 years):
-     You MUST proactively, diplomatically, and creatively bridge this gap in the cover letter.
-     Do NOT apologize or sound underqualified. Instead, confidently acknowledge the experience expectation while decisively pivoting to the candidate's deep, hands-on mastery of the exact required tools, frameworks, and architectures (e.g., Docker, Kubernetes, AWS/Cloud, CI/CD, Terraform, etc.).
-     Explicitly highlight that while their formal tenure may be fewer years, their intense project-based experience, rapid problem-solving ability, and proven track record of delivering reliable systems enable them to hit the ground running and create immediate high-impact value from Day 1.
-   - If the candidate's experience matches or exceeds the poster's requirements, highlight their battle-tested depth and proven results.
-5. The cover letter MUST sound authentically human-written (not robotic, generic, or boilerplate AI output).
-6. Format the generated subject as: "${promptName} - [Job Title]" or "[Job Title] - ${promptName}".
-7. Sign off the cover letter with:
+3. Compare candidate's actual resume experience against the job post requirements. Write a highly personalized, compelling, professional application email that directly maps candidate's specific accomplishments, certifications, and skills from their resume to the exact requirements of the job.
+4. COVER LETTER STRUCTURE & KEY CONTRIBUTIONS:
+   a) Engaging Opening: Express keen, enthusiastic interest in the specific [Job Title] role at [Company], referencing details or team focus from the post.
+   b) Value Proposition: Clearly explain what direct value and technical alignment the candidate brings based on real resume highlights.
+   c) KEY CONTRIBUTIONS PREPARED TO DELIVER (MANDATORY):
+      A dedicated bulleted section:
+      "Key contributions I am prepared to deliver include:"
+      Provide 3-4 concrete, impactful bullet points (using "•") directly derived from the candidate's attached resume PDF (quantified project deliverables, architectures built, optimizations achieved, and verified technical proficiencies).
+   d) Strategic Alignment & Experience Gap Bridging:
+      If the job seeks more experience than the candidate has, proactively and confidently bridge the gap by emphasizing deep hands-on project mastery and immediate readiness to deliver value from Day 1.
+   e) Professional Call to Action & Resume Reference: Propose a brief 10-15 minute discussion and mention the attached resume.
+   f) Sign-off:
 "Sincerely,
 ${promptName}"
-NEVER leave generic placeholders like "[Your Name]", "[Applicant Name]", or "[Name]".
+5. STRICT RESUME GROUNDING & NO HALLUCINATION:
+   - Ground all technical skills, frameworks, and past achievements SOLELY on the candidate's attached resume PDF.
+   - NEVER invent or assume skills not present on the resume.
+6. The cover letter MUST sound authentically human-written (not robotic, generic, or repetitive boilerplate).
+7. Format the generated subject as: "Application for [Job Title] - ${promptName}".
 
 Respond ONLY with a JSON object matching this schema:
 {
@@ -71,33 +85,37 @@ Respond ONLY with a JSON object matching this schema:
     {
       "jobTitle": "string",
       "companyName": "string",
-      "recipientEmail": "string",
+      "recipientEmail": "string (extract recipient or recruiter email if mentioned in post, else empty string)",
       "extractedSkills": ["string"],
       "generatedSubject": "string",
       "generatedCoverLetter": "string"
     }
   ]
-}`
-            : `Analyze the provided screenshots and candidate Resume (PDF). Each screenshot represents a SEPARATE, DIFFERENT job posting.
-Extract structured job details for EACH job posting separately.
+}`;
+        }
+        else if (isSingleJob) {
+            prompt = `Analyze the provided screenshot(s) and candidate Resume (PDF). These screenshot(s) belong to the SAME SINGLE job posting.
+Stitch the text and context together. Extract structured job details.
 ${userDirective}
 CRITICAL INSTRUCTIONS FOR COVER LETTER & SUBJECT:
 1. Candidate's Full Name is: "${promptName}".
-2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, certifications, work history, and key projects.
-3. Compare candidate's actual resume experience against each job poster's requirements. Write a highly personalized, compelling, professional cover letter for EACH job posting that directly maps candidate's specific accomplishments from their resume to that job.
-4. EXPERIENCE GAP & SKILL-VALUE BRIDGING (MANDATORY):
-   - Carefully compare the candidate's years of experience stated in their attached Resume against the required experience in each job poster.
-   - If a job poster seeks more experience than the candidate currently has on their resume (e.g. posting asks for 2+ or 3+ years, but resume shows 1-2 years):
-     You MUST proactively, diplomatically, and creatively bridge this gap in the cover letter.
-     Do NOT apologize or sound underqualified. Instead, confidently acknowledge the experience expectation while decisively pivoting to the candidate's deep, hands-on mastery of the exact required tools, frameworks, and architectures (e.g., Docker, Kubernetes, AWS/Cloud, CI/CD, Terraform, etc.).
-     Explicitly highlight that while their formal tenure may be fewer years, their intense project-based experience, rapid problem-solving ability, and proven track record of delivering reliable systems enable them to hit the ground running and create immediate high-impact value from Day 1.
-   - If the candidate's experience matches or exceeds the poster's requirements, highlight their battle-tested depth and proven results.
-5. The cover letter MUST sound authentically human-written (not robotic, generic, or boilerplate AI output).
-6. Format the generated subject as: "${promptName} - [Job Title]" or "[Job Title] - ${promptName}".
-7. Sign off the cover letter with:
+2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, framework proficiencies, work history, and key projects.
+3. Compare candidate's actual resume experience against the job poster requirements. Write a highly personalized, compelling, professional application email that directly maps candidate's specific accomplishments, certifications, and skills from their resume to the exact requirements of the job posting.
+4. COVER LETTER STRUCTURE & KEY CONTRIBUTIONS:
+   a) Engaging Opening: Express keen, enthusiastic interest in the specific [Job Title] role at [Company], referencing details from the poster.
+   b) Value Proposition: Clearly explain what direct value and technical alignment the candidate brings based on real resume highlights.
+   c) KEY CONTRIBUTIONS PREPARED TO DELIVER (MANDATORY):
+      A dedicated bulleted section:
+      "Key contributions I am prepared to deliver include:"
+      Provide 3-4 concrete, impactful bullet points (using "•") directly derived from the candidate's attached resume PDF (quantified project deliverables, architectures built, optimizations achieved, and verified technical proficiencies).
+   d) Strategic Alignment & Experience Gap Bridging:
+      If the job poster seeks more experience than the candidate currently has on their resume (e.g. posting asks for 2+ or 3+ years, but resume shows 1-2 years), proactively, diplomatically, and creatively bridge this gap. Confidently acknowledge the expectation while decisively pivoting to the candidate's deep, hands-on mastery of the exact required tools, frameworks, and architectures, demonstrating immediate readiness from Day 1.
+   e) Professional Call to Action & Resume Reference: Propose a brief 10-15 minute discussion and mention the attached resume.
+   f) Sign-off:
 "Sincerely,
 ${promptName}"
-NEVER leave generic placeholders like "[Your Name]", "[Applicant Name]", or "[Name]".
+5. STRICT RESUME GROUNDING: Ground all skills SOLELY on the attached resume. NEVER hallucinate skills or use generic boilerplate.
+6. Format the generated subject as: "Application for [Job Title] - ${promptName}".
 
 Respond ONLY with a JSON object matching this schema:
 {
@@ -112,10 +130,49 @@ Respond ONLY with a JSON object matching this schema:
     }
   ]
 }`;
+        }
+        else {
+            prompt = `Analyze the provided screenshots and candidate Resume (PDF). Each screenshot represents a SEPARATE, DIFFERENT job posting.
+Extract structured job details for EACH job posting separately.
+${userDirective}
+CRITICAL INSTRUCTIONS FOR COVER LETTER & SUBJECT:
+1. Candidate's Full Name is: "${promptName}".
+2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, certifications, work history, and key projects.
+3. Compare candidate's actual resume experience against each job poster's requirements. Write a highly personalized, compelling, professional cover letter for EACH job posting that directly maps candidate's specific accomplishments from their resume to that job.
+4. COVER LETTER STRUCTURE & KEY CONTRIBUTIONS:
+   a) Engaging Opening: Express keen, enthusiastic interest in the specific role at the company.
+   b) Value Proposition: Clearly explain direct technical alignment.
+   c) KEY CONTRIBUTIONS PREPARED TO DELIVER (MANDATORY):
+      A dedicated bulleted section:
+      "Key contributions I am prepared to deliver include:"
+      Provide 3-4 concrete, impactful bullet points (using "•") directly derived from the candidate's attached resume PDF.
+   d) Experience Gap Bridging: Bridge any experience gap with hands-on project mastery and immediate readiness.
+   e) Professional Call to Action & Resume Reference: Propose a brief discussion and mention attached resume.
+   f) Sign-off:
+"Sincerely,
+${promptName}"
+5. STRICT RESUME GROUNDING: Ground all skills SOLELY on the attached resume. NEVER hallucinate skills or use generic boilerplate.
+6. Format the generated subject as: "Application for [Job Title] - ${promptName}".
+
+Respond ONLY with a JSON object matching this schema:
+{
+  "jobs": [
+    {
+      "jobTitle": "string",
+      "companyName": "string",
+      "recipientEmail": "string",
+      "extractedSkills": ["string"],
+      "generatedSubject": "string",
+      "generatedCoverLetter": "string"
+    }
+  ]
+}`;
+        }
         const inlineParts = [];
-        // Attach Resume PDF if present
-        if (resumeBase64) {
-            const cleanResumeB64 = resumeBase64.replace(/^data:application\/pdf;base64,/, '');
+        // Attach Resume PDF if present (from data or user profile)
+        const effectiveResumeB64 = (resumeBase64 || ((_b = uData.masterResume) === null || _b === void 0 ? void 0 : _b.base64) || "").toString().trim();
+        if (effectiveResumeB64) {
+            const cleanResumeB64 = effectiveResumeB64.replace(/^data:application\/pdf;base64,/, '');
             inlineParts.push({
                 inlineData: {
                     mimeType: "application/pdf",
@@ -123,16 +180,18 @@ Respond ONLY with a JSON object matching this schema:
                 }
             });
         }
-        // Attach Image Screenshots
-        imagesBase64.forEach((b64) => {
-            const cleanB64 = b64.replace(/^data:image\/\w+;base64,/, '');
-            inlineParts.push({
-                inlineData: {
-                    mimeType: "image/jpeg",
-                    data: cleanB64
-                }
+        // Attach Image Screenshots if provided
+        if (hasImages) {
+            imagesBase64.forEach((b64) => {
+                const cleanB64 = b64.replace(/^data:image\/\w+;base64,/, '');
+                inlineParts.push({
+                    inlineData: {
+                        mimeType: "image/jpeg",
+                        data: cleanB64
+                    }
+                });
             });
-        });
+        }
         const payload = {
             contents: [
                 {

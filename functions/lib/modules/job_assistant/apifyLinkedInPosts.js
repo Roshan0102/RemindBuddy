@@ -9,7 +9,7 @@ const axios_1 = require("axios");
  */
 async function searchLinkedInPostsViaApify(options) {
     var _a, _b, _c, _d;
-    const { apiToken, apiTokens, roles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"], locations = [], datePosted = "past-24h", maxPosts = 25 } = options;
+    const { apiToken, apiTokens, roles = ["Software Engineer", "Developer"], locations = [], datePosted = "past-24h", maxPosts = 25 } = options;
     const tokensToTry = [];
     if (apiTokens && Array.isArray(apiTokens)) {
         for (const t of apiTokens) {

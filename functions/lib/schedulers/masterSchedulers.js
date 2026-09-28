@@ -16,6 +16,7 @@ const jobDiscoveryAI_1 = require("../modules/job_assistant/jobDiscoveryAI");
 const replyTracker_1 = require("../modules/job_assistant/replyTracker");
 const networkingDiscoveryAI_1 = require("../modules/job_assistant/networkingDiscoveryAI");
 const linkedinAutoApply_1 = require("../modules/job_assistant/linkedinAutoApply");
+const careerPortalATS_1 = require("../modules/job_assistant/careerPortalATS");
 // --- CONSOLIDATED MASTER SCHEDULERS (2 Schedulers total for 100% Free GCP Tier) ---
 // 1. Minute Master Runner (Replaces checkDailyReminders, checkPendingGoldChitNotifications, and handles targeted minute notifications)
 exports.masterMinuteRunner = functions.pubsub.schedule('* * * * *')
@@ -115,9 +116,15 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
                 console.error("Error in internalAutoJobDiscoveryAndApply inside masterHalfHourlyRunner:", err);
             }
         }
-        // 11:00 AM IST (Hour 11): Gold Fetch & Market Forecast
+        // 11:00 AM IST (Hour 11): Morning LinkedIn Real-Time Recruiter Post Scraper & Auto-Apply, plus Gold Fetch
         if (hour === 11) {
-            console.log("[masterHalfHourlyRunner] Executing 11:00 AM tasks: Gold Fetch & AI Market Forecast...");
+            console.log("[masterHalfHourlyRunner] Executing 11:00 AM tasks: LinkedIn Recruiter Posts Scraper & Auto-Apply, Gold Fetch...");
+            try {
+                await (0, linkedinAutoApply_1.internalLinkedInPostAutoApplyDispatcher)();
+            }
+            catch (err) {
+                console.error("Error in internalLinkedInPostAutoApplyDispatcher at 11:00 inside masterHalfHourlyRunner:", err);
+            }
             try {
                 await (0, goldFunctions_1.internalPerformGoldFetch)();
             }
@@ -193,17 +200,27 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
                 console.error("Error in internalDailyShiftReminder inside masterHalfHourlyRunner:", err);
             }
         }
-    }
-    // Check if running near the half hour (:30)
-    if (minute >= 15 && minute < 45) {
-        // 10:30 AM IST (Hour 10, Minute 30): Morning LinkedIn Real-Time Recruiter Post Scraper & Auto-Apply
-        if (hour === 10) {
-            console.log("[masterHalfHourlyRunner] Executing 10:30 AM tasks: LinkedIn Recruiter Posts Scraper & Auto-Apply...");
+        // 11:00 PM IST (Hour 23): Evening LinkedIn Real-Time Recruiter Post Scraper & Auto-Apply
+        if (hour === 23) {
+            console.log("[masterHalfHourlyRunner] Executing 11:00 PM tasks: Evening LinkedIn Recruiter Posts Scraper & Auto-Apply...");
             try {
                 await (0, linkedinAutoApply_1.internalLinkedInPostAutoApplyDispatcher)();
             }
             catch (err) {
-                console.error("Error in internalLinkedInPostAutoApplyDispatcher at 10:30 inside masterHalfHourlyRunner:", err);
+                console.error("Error in internalLinkedInPostAutoApplyDispatcher at 23:00 inside masterHalfHourlyRunner:", err);
+            }
+        }
+    }
+    // Check if running near the half hour (:30)
+    if (minute >= 15 && minute < 45) {
+        // 10:30 AM IST (Hour 10, Minute 30): Morning Direct ATS Career Portals Discovery & Tailoring
+        if (hour === 10) {
+            console.log("[masterHalfHourlyRunner] Executing 10:30 AM tasks: Morning Direct ATS Career Portals Discovery & Tailoring...");
+            try {
+                await (0, careerPortalATS_1.internalCareerPortalDiscoveryDispatcher)();
+            }
+            catch (err) {
+                console.error("Error in internalCareerPortalDiscoveryDispatcher at 10:30 inside masterHalfHourlyRunner:", err);
             }
         }
         // 11:30 AM IST (Hour 11, Minute 30): Daily Cold Outreach & Leadership Networking Discovery
@@ -216,16 +233,6 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
                 console.error("Error in internalNetworkingDiscoveryDispatcher inside masterHalfHourlyRunner:", err);
             }
         }
-        // 08:30 PM IST (Hour 20, Minute 30): Evening LinkedIn Real-Time Recruiter Post Scraper & Auto-Apply
-        if (hour === 20) {
-            console.log("[masterHalfHourlyRunner] Executing 08:30 PM tasks: Evening LinkedIn Recruiter Posts Scraper & Auto-Apply...");
-            try {
-                await (0, linkedinAutoApply_1.internalLinkedInPostAutoApplyDispatcher)();
-            }
-            catch (err) {
-                console.error("Error in internalLinkedInPostAutoApplyDispatcher at 20:30 inside masterHalfHourlyRunner:", err);
-            }
-        }
         // 09:30 PM IST (Hour 21, Minute 30): Daily Bank Tracker & Untagged Expense Tagging Notifier
         if (hour === 21) {
             console.log("[masterHalfHourlyRunner] Executing 09:30 PM tasks: Daily Bank Tracker & Untagged Expense Notification...");
@@ -234,6 +241,16 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
             }
             catch (err) {
                 console.error("Error in internalDailyUntaggedExpenseNotifier inside masterHalfHourlyRunner:", err);
+            }
+        }
+        // 10:30 PM IST (Hour 22, Minute 30): Evening Direct ATS Career Portals Discovery & Tailoring
+        if (hour === 22) {
+            console.log("[masterHalfHourlyRunner] Executing 10:30 PM tasks: Evening Direct ATS Career Portals Discovery & Tailoring...");
+            try {
+                await (0, careerPortalATS_1.internalCareerPortalDiscoveryDispatcher)();
+            }
+            catch (err) {
+                console.error("Error in internalCareerPortalDiscoveryDispatcher at 22:30 inside masterHalfHourlyRunner:", err);
             }
         }
         console.log(`[masterHalfHourlyRunner] Half-hour check completed for ${timeStr} IST.`);

@@ -110,12 +110,12 @@ async function resolveUserResumeGroundTruth(uid, userData, resumeBase64, userGem
 Analyze the attached candidate Resume PDF and extract the EXACT, UNMODIFIED facts into JSON.
 
 CRITICAL RULES:
-1. "exactTitle": Extract the candidate's exact current or most recent job title (e.g., "Cloud & DevOps Engineer"). DO NOT inflate to "Lead" or "Senior" unless the resume literally says "Lead" or "Senior".
+1. "exactTitle": Extract the candidate's exact current or most recent job title (e.g., "Software Engineer", "Developer", or candidate's verified role). DO NOT inflate to "Lead" or "Senior" unless the resume literally says "Lead" or "Senior".
 2. "yearsOfExperience": Real total years of experience (e.g. "1+ years" or "Entry level, 2024 graduate").
-3. "coreSkills": Array of 8-15 verified programming languages, tools, cloud platforms, and frameworks explicitly listed on the resume. DO NOT invent skills (e.g., do NOT list Flutter unless Flutter is explicitly on the resume).
-4. "certifications": Array of official certifications listed (e.g., "AWS Certified Solutions Architect Associate").
-5. "education": Array of degrees (e.g., "B.Tech in Artificial Intelligence and Data Science").
-6. "measurableAchievements": Array of 2-4 quantitative bullets directly from their projects/experience (e.g., "Reduced deployment time by 70%", "30% cloud cost reduction").
+3. "coreSkills": Array of 8-15 verified programming languages, tools, and frameworks explicitly listed on the resume. DO NOT invent skills.
+4. "certifications": Array of official certifications listed on the resume.
+5. "education": Array of degrees.
+6. "measurableAchievements": Array of 2-4 quantitative bullets directly from their projects/experience (e.g., "Reduced response latency by 40%", "Built scalable core modules").
 
 Return ONLY valid JSON in this structure:
 {
@@ -204,7 +204,7 @@ async function verifyEmailDomainMx(email) {
  * and saves LinkedIn connection notes for 1-tap manual outreach.
  */
 async function discoverNetworkingLeadsForUser(uid, options) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
     console.log(`[StartupRadar] Starting Seed/Series A startup discovery for user ${uid}...`);
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     if (!userDoc.exists) {
@@ -222,6 +222,18 @@ async function discoverNetworkingLeadsForUser(uid, options) {
     // Guard: Prevent running more than once per day for automated runs
     const todayStr = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
     if (!(options === null || options === void 0 ? void 0 : options.isManualTrigger)) {
+        // User-level toggle: skip if user disabled cold outreach in their settings
+        const isUserColdOutreachDisabled = ((_a = userData.coldOutreachSettings) === null || _a === void 0 ? void 0 : _a.enabled) === false ||
+            ((_b = userData.startupRadarSettings) === null || _b === void 0 ? void 0 : _b.enabled) === false;
+        if (isUserColdOutreachDisabled) {
+            console.log(`[StartupRadar] Skipping user ${uid}: cold outreach / startup radar is disabled in user settings.`);
+            return {
+                success: true,
+                count: 0,
+                leads: [],
+                message: "Cold outreach is turned off in your settings."
+            };
+        }
         if (userData.networkingLastRanDate === todayStr) {
             console.log(`[StartupRadar] Skipping user ${uid}: cold outreach has already run today (${todayStr}).`);
             return {
@@ -304,7 +316,7 @@ async function discoverNetworkingLeadsForUser(uid, options) {
             status: 'error',
             count: 0,
             message: 'API Key Error: Missing Tavily or Gemini API key. Please configure in Settings -> AI & Search Keys.',
-            isManual: (_a = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _a !== void 0 ? _a : false
+            isManual: (_c = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _c !== void 0 ? _c : false
         });
         return {
             success: false,
@@ -315,8 +327,8 @@ async function discoverNetworkingLeadsForUser(uid, options) {
     }
     // Resolve Email Transporter & Resume for automatic email delivery
     const emailConfig = userData.emailConfig || {};
-    const userEmail = (_b = emailConfig.email) === null || _b === void 0 ? void 0 : _b.trim();
-    const appPassword = (_c = emailConfig.appPassword) === null || _c === void 0 ? void 0 : _c.trim();
+    const userEmail = (_d = emailConfig.email) === null || _d === void 0 ? void 0 : _d.trim();
+    const appPassword = (_e = emailConfig.appPassword) === null || _e === void 0 ? void 0 : _e.trim();
     let canSendEmails = !!(userEmail && appPassword);
     let resumeBase64 = "";
     let resumeFileName = "Resume.pdf";
@@ -432,7 +444,7 @@ async function discoverNetworkingLeadsForUser(uid, options) {
             status: lastTavilyError ? 'error' : 'no_results',
             count: 0,
             message,
-            isManual: (_d = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _d !== void 0 ? _d : false
+            isManual: (_f = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _f !== void 0 ? _f : false
         });
         return {
             success: !lastTavilyError,
@@ -473,7 +485,7 @@ CRITICAL RULES & MANDATES:
    - The person must CURRENTLY be a Founder, Co-Founder, CEO, CTO, Head of Engineering, VP of Engineering, or Tech Lead. Discard past founders who now work as general employees at large consultancies.
 3. STRICT RESUME FIDELITY & NO INVENTED SKILLS / NO INFLATED TITLES:
    - Candidate's Exact Verified Title: "${resumeGroundTruth.exactTitle}".
-   - ABSOLUTE PROHIBITION ON TITLE INFLATION: Refer to candidate strictly as "${resumeGroundTruth.exactTitle}" or their natural discipline (e.g. "DevOps/Cloud Engineer"). NEVER invent or assume titles like "Lead Engineer", "Senior Engineer", "Principal", "Director", or "Tech Lead" unless literally present in their verified title above.
+   - ABSOLUTE PROHIBITION ON TITLE INFLATION: Refer to candidate strictly as "${resumeGroundTruth.exactTitle}" or their natural discipline (e.g. "${targetRoles[0] || 'Software Engineer'}"). NEVER invent or assume titles like "Lead Engineer", "Senior Engineer", "Principal", "Director", or "Tech Lead" unless literally present in their verified title above.
    - ABSOLUTE PROHIBITION ON INVENTED SKILLS: Highlight ONLY the candidate's real verified technologies: ${resumeGroundTruth.coreSkills.slice(0, 8).join(", ")}.
    - ABSOLUTELY NEVER mention or invent unverified frameworks or languages (e.g. NEVER mention Flutter, React Native, Java, Kotlin, Swift, Golang unless explicitly in the verified technologies list above).
 4. AUTHENTIC, DYNAMIC VALUE PITCH TAILORED TO CANDIDATE'S ACTUAL RESUME:
@@ -541,7 +553,7 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             status: 'error',
             count: 0,
             message: errMsg,
-            isManual: (_e = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _e !== void 0 ? _e : false
+            isManual: (_g = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _g !== void 0 ? _g : false
         });
         return { success: false, count: 0, leads: [], message: `AI analysis busy: ${apiErr.message}` };
     }
@@ -604,7 +616,7 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             email: lead.email ? lead.email.trim().toLowerCase() : null,
             category: ["founder", "engineering_manager", "talent_acquisition"].includes(lead.category) ? lead.category : "founder",
             connectionNote: note,
-            fullPitch: ((_f = lead.fullPitch) === null || _f === void 0 ? void 0 : _f.trim()) || note,
+            fullPitch: ((_h = lead.fullPitch) === null || _h === void 0 ? void 0 : _h.trim()) || note,
             fundingStage: lead.fundingStage || "Seed / Series A",
             techStack: Array.isArray(lead.techStack) && lead.techStack.length > 0
                 ? lead.techStack
@@ -639,7 +651,7 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
                 email: lead.email ? lead.email.trim().toLowerCase() : null,
                 category: ["founder", "engineering_manager", "talent_acquisition"].includes(lead.category) ? lead.category : "engineering_manager",
                 connectionNote: note,
-                fullPitch: ((_g = lead.fullPitch) === null || _g === void 0 ? void 0 : _g.trim()) || note,
+                fullPitch: ((_j = lead.fullPitch) === null || _j === void 0 ? void 0 : _j.trim()) || note,
                 fundingStage: lead.fundingStage || "High-Growth Startup",
                 techStack: Array.isArray(lead.techStack) && lead.techStack.length > 0
                     ? lead.techStack
@@ -657,7 +669,7 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             status: 'no_results',
             count: 0,
             message: 'All discovered startups were previously pitched or excluded.',
-            isManual: (_h = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _h !== void 0 ? _h : false
+            isManual: (_k = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _k !== void 0 ? _k : false
         });
         return { success: true, count: 0, leads: [], message: "All discovered startups were previously pitched or excluded." };
     }
@@ -762,7 +774,7 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             fullPitch: lead.fullPitch,
             fundingStage: lead.fundingStage,
             techStack: lead.techStack,
-            emailSent: (_j = lead.emailSent) !== null && _j !== void 0 ? _j : false,
+            emailSent: (_l = lead.emailSent) !== null && _l !== void 0 ? _l : false,
             emailSentAt: lead.emailSentAt ? firebase_1.admin.firestore.Timestamp.fromDate(lead.emailSentAt) : null,
             emailSubject: lead.emailSubject || null,
             messageId: lead.messageId || null,
@@ -825,7 +837,7 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
             ? `Auto-dispatched ${emailsSentCount} startup pitch(es) via email. ${qualifiedLeads.length} LinkedIn notes ready.`
             : `Discovered ${qualifiedLeads.length} startup leader(s) in ${targetLocations[0] || 'target area'} (LinkedIn notes ready).`,
         details: leadDetails,
-        isManual: (_k = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _k !== void 0 ? _k : false
+        isManual: (_m = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _m !== void 0 ? _m : false
     });
     return {
         success: true,
@@ -868,7 +880,7 @@ exports.processNetworkingDiscoveryUserTask = functions.runWith({ timeoutSeconds:
  * Dispatches isolated background Cloud Tasks per eligible user and terminates immediately.
  */
 async function internalNetworkingDiscoveryDispatcher() {
-    var _a;
+    var _a, _b;
     console.log("[internalNetworkingDiscoveryDispatcher] Starting daily Startup Radar scan at 11:30 AM IST...");
     const todayStr = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
     try {
@@ -893,8 +905,13 @@ async function internalNetworkingDiscoveryDispatcher() {
             const hasKeys = !!((userApiKeys.tavilyApiKey || data.tavilyApiKey) && (userApiKeys.geminiApiKey || data.geminiApiKey));
             if (!hasKeys)
                 continue;
-            if (((_a = data.autoApplySettings) === null || _a === void 0 ? void 0 : _a.enabled) === false)
+            // User-level toggle: If the user explicitly disabled Startup Radar / Cold Outreach in their settings
+            const isUserDisabled = ((_a = data.coldOutreachSettings) === null || _a === void 0 ? void 0 : _a.enabled) === false ||
+                ((_b = data.startupRadarSettings) === null || _b === void 0 ? void 0 : _b.enabled) === false;
+            if (isUserDisabled) {
+                console.log(`[internalNetworkingDiscoveryDispatcher] Skipping user ${uid}: cold outreach is disabled in user settings.`);
                 continue;
+            }
             eligibleUids.push(uid);
         }
         console.log(`[internalNetworkingDiscoveryDispatcher] Eligible users for Startup Radar: ${eligibleUids.length}`);

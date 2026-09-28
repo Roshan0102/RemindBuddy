@@ -871,13 +871,30 @@ class JobAssistantService {
     if (doc == null) return;
 
     await doc.collection('job_applications').doc(appId).delete();
+
+    if (appId.startsWith('cp_')) {
+      final cpId = appId.substring(3);
+      try {
+        await doc.collection('career_portal_jobs').doc(cpId).update({
+          'status': 'discovered',
+        });
+      } catch (e) {
+        debugPrint('Error resetting career portal status on delete: $e');
+      }
+    }
   }
 
   // ============================================================================
   // AI PARSING & EMAIL DISPATCH
   // ============================================================================
 
-  Future<List<JobApplication>> parseJobPostersWithAI(List<String> imagesBase64, String mode, {String? customPrompt, String? applicantName}) async {
+  Future<List<JobApplication>> parseJobPostersWithAI(
+    List<String> imagesBase64,
+    String mode, {
+    String? jobText,
+    String? customPrompt,
+    String? applicantName,
+  }) async {
     final masterResume = await getMasterResume();
     final resolvedName = (applicantName != null && applicantName.trim().isNotEmpty)
         ? applicantName.trim()
@@ -889,7 +906,8 @@ class JobAssistantService {
     );
     final response = await callable.call({
       'imagesBase64': imagesBase64,
-      'mode': mode, // 'single_job' or 'multiple_jobs'
+      if (jobText != null && jobText.trim().isNotEmpty) 'jobText': jobText.trim(),
+      'mode': mode, // 'single_job', 'multiple_jobs', or 'text_post'
       'resumeBase64': masterResume['base64'],
       'applicantName': resolvedName.isNotEmpty ? resolvedName : 'Candidate',
       'customPrompt': customPrompt ?? '',
@@ -919,6 +937,20 @@ class JobAssistantService {
     }
 
     return parsedJobs;
+  }
+
+  Future<List<JobApplication>> parseJobTextWithAI(
+    String jobText, {
+    String? customPrompt,
+    String? applicantName,
+  }) async {
+    return parseJobPostersWithAI(
+      [],
+      'text_post',
+      jobText: jobText,
+      customPrompt: customPrompt,
+      applicantName: applicantName,
+    );
   }
 
   Future<JobApplication> generateManualJobApplicationWithAI({
@@ -1303,34 +1335,51 @@ class JobAssistantService {
   }
 
   Future<void> saveStartupRadarSettings({
-    required List<String> locations,
-    required List<String> techDomains,
+    List<String>? locations,
+    List<String>? techDomains,
+    bool? enabled,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(_userKey('job_assistant_radar_locations'), locations);
-      await prefs.setStringList(_userKey('job_assistant_radar_domains'), techDomains);
+      if (locations != null) await prefs.setStringList(_userKey('job_assistant_radar_locations'), locations);
+      if (techDomains != null) await prefs.setStringList(_userKey('job_assistant_radar_domains'), techDomains);
+      if (enabled != null) await prefs.setBool(_userKey('job_assistant_cold_outreach_enabled'), enabled);
     } catch (_) {}
 
     final doc = _userDoc;
     if (doc == null) return;
 
-    await doc.set({
-      'startupRadarSettings': {
-        'locations': locations,
-        'techDomains': techDomains,
+    final Map<String, dynamic> updateMap = {
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (locations != null) updateMap['locations'] = locations;
+    if (techDomains != null) updateMap['techDomains'] = techDomains;
+    if (enabled != null) updateMap['enabled'] = enabled;
+
+    final Map<String, dynamic> payload = {
+      'startupRadarSettings': updateMap,
+    };
+    if (enabled != null) {
+      payload['coldOutreachSettings'] = {
+        'enabled': enabled,
         'updatedAt': FieldValue.serverTimestamp(),
-      },
-    }, SetOptions(merge: true));
+      };
+    }
+
+    await doc.set(payload, SetOptions(merge: true));
   }
 
   Future<Map<String, dynamic>> getStartupRadarSettings() async {
     List<String> cachedLocs = [];
     List<String> cachedDomains = [];
+    bool? cachedEnabled;
     try {
       final prefs = await SharedPreferences.getInstance();
       cachedLocs = prefs.getStringList(_userKey('job_assistant_radar_locations')) ?? [];
       cachedDomains = prefs.getStringList(_userKey('job_assistant_radar_domains')) ?? [];
+      if (prefs.containsKey(_userKey('job_assistant_cold_outreach_enabled'))) {
+        cachedEnabled = prefs.getBool(_userKey('job_assistant_cold_outreach_enabled'));
+      }
     } catch (_) {}
 
     final doc = _userDoc;
@@ -1338,6 +1387,7 @@ class JobAssistantService {
       return {
         'locations': cachedLocs,
         'techDomains': cachedDomains,
+        'enabled': cachedEnabled ?? true,
       };
     }
 
@@ -1372,16 +1422,20 @@ class JobAssistantService {
           if (autoApplyRoles is List) domains = List<String>.from(autoApplyRoles);
         }
 
+        final bool isEnabled = settings['enabled'] ?? data?['coldOutreachSettings']?['enabled'] ?? cachedEnabled ?? true;
+
         // Cache to SharedPreferences
         try {
           final prefs = await SharedPreferences.getInstance();
           if (locs.isNotEmpty) await prefs.setStringList(_userKey('job_assistant_radar_locations'), locs);
           if (domains.isNotEmpty) await prefs.setStringList(_userKey('job_assistant_radar_domains'), domains);
+          await prefs.setBool(_userKey('job_assistant_cold_outreach_enabled'), isEnabled);
         } catch (_) {}
 
         return {
           'locations': locs,
           'techDomains': domains,
+          'enabled': isEnabled,
         };
       }
     } catch (_) {}
@@ -1389,6 +1443,7 @@ class JobAssistantService {
     return {
       'locations': cachedLocs,
       'techDomains': cachedDomains,
+      'enabled': cachedEnabled ?? true,
     };
   }
 
@@ -1401,7 +1456,7 @@ class JobAssistantService {
   }) async {
     final callable = _functions.httpsCallable(
       'runLinkedInAutoApplyNow',
-      options: HttpsCallableOptions(timeout: const Duration(seconds: 300)),
+      options: HttpsCallableOptions(timeout: const Duration(seconds: 540)),
     );
     final response = await callable.call<Map<String, dynamic>>({
       if (roles != null) 'roles': roles,
@@ -1467,18 +1522,113 @@ class JobAssistantService {
     return Map<String, dynamic>.from(response.data);
   }
 
-  Future<void> updateCareerPortalJobStatus(String jobId, String status) async {
+  Future<void> updateCareerPortalJobStatus(String jobId, String status, {CareerPortalJob? job}) async {
     final uid = _uid;
     if (uid == null) return;
-    await _db
-        .collection('users')
-        .doc(uid)
+    final doc = _db.collection('users').doc(uid);
+    await doc
         .collection('career_portal_jobs')
         .doc(jobId)
         .update({
       'status': status,
       if (status == 'applied') 'appliedAt': FieldValue.serverTimestamp(),
     });
+
+    if (status == 'applied') {
+      try {
+        final Map<String, dynamic> data;
+        if (job != null) {
+          data = job.toJson();
+        } else {
+          final cpDoc = await doc.collection('career_portal_jobs').doc(jobId).get();
+          data = cpDoc.data() ?? {};
+        }
+
+        final jobTitle = (data['jobTitle'] ?? 'Job Opening').toString();
+        final companyName = (data['companyName'] ?? 'Company').toString();
+        final portalType = (data['portalType'] ?? 'portal').toString().toUpperCase();
+        final portalUrl = (data['portalUrl'] ?? '').toString();
+        final location = (data['location'] ?? '').toString();
+        final experience = (data['experienceRequired'] ?? '').toString();
+        final skills = (data['matchedSkills'] is List) ? List<String>.from(data['matchedSkills']) : <String>[];
+        final summary = (data['tailoredSummary'] ?? data['jobDescriptionSnippet'] ?? '').toString();
+
+        await doc.collection('job_applications').doc('cp_$jobId').set({
+          'id': 'cp_$jobId',
+          'jobTitle': jobTitle,
+          'companyName': companyName,
+          'recipientEmail': portalUrl.isNotEmpty ? portalUrl : '$portalType Portal',
+          'extractedSkills': skills,
+          'generatedSubject': 'ATS Application for $jobTitle at $companyName',
+          'generatedCoverLetter': summary,
+          'status': 'sent',
+          'appliedAt': FieldValue.serverTimestamp(),
+          'isAutoApplied': false,
+          'location': location,
+          'experienceRequired': experience,
+          'sourcePlatform': 'Career Portal ($portalType)',
+          'source': 'career_portal',
+          'sourceUrl': portalUrl,
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Error syncing applied career portal job to job_applications: $e');
+      }
+    } else {
+      try {
+        final appRef = doc.collection('job_applications').doc('cp_$jobId');
+        final appSnap = await appRef.get();
+        if (appSnap.exists) {
+          await appRef.delete();
+        }
+      } catch (e) {
+        debugPrint('Error cleaning up unapplied career portal job: $e');
+      }
+    }
+  }
+
+  Future<void> saveCareerPortalsSettings(Map<String, dynamic> settings) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (settings.containsKey('enabled')) {
+        await prefs.setBool(_userKey('job_assistant_career_portals_enabled'), settings['enabled'] == true);
+      }
+    } catch (_) {}
+    await _db.collection('users').doc(uid).set({
+      'careerPortalsSettings': {
+        ...settings,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }
+    }, SetOptions(merge: true));
+  }
+
+  Future<Map<String, dynamic>> getCareerPortalsSettings() async {
+    bool? cachedEnabled;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_userKey('job_assistant_career_portals_enabled'))) {
+        cachedEnabled = prefs.getBool(_userKey('job_assistant_career_portals_enabled'));
+      }
+    } catch (_) {}
+
+    try {
+      final doc = await _userDoc?.get();
+      final data = doc?.data() as Map<String, dynamic>?;
+      if (data != null && data.containsKey('careerPortalsSettings')) {
+        final rawSettings = data['careerPortalsSettings'];
+        final map = rawSettings is Map ? Map<String, dynamic>.from(rawSettings) : <String, dynamic>{};
+        if (cachedEnabled != null && !map.containsKey('enabled')) {
+          map['enabled'] = cachedEnabled;
+        }
+        return map;
+      }
+    } catch (e) {
+      debugPrint('Error getting careerPortalsSettings: $e');
+    }
+    return {
+      'enabled': cachedEnabled ?? true,
+    };
   }
 }
 

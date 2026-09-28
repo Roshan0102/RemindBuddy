@@ -34,7 +34,7 @@ export async function searchLinkedInPostsViaApify(
     const {
         apiToken,
         apiTokens,
-        roles = ["DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"],
+        roles = ["Software Engineer", "Developer"],
         locations = [],
         datePosted = "past-24h",
         maxPosts = 25

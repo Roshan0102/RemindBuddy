@@ -6,6 +6,7 @@ import { callGeminiAPI } from "../../utils/geminiHelper";
 import { searchTavily, TavilySearchResult } from "../../utils/tavilyHelper";
 import { generateAtsResumePdf, TailoredResumeData } from "../../utils/pdfResumeGenerator";
 import { enqueueUserCloudTask } from "../../utils/cloudTasksHelper";
+import { isExperienceExceeded } from "../../utils/experienceMatcher";
 
 export interface CareerPortalJobRecord {
     id: string;
@@ -140,7 +141,7 @@ async function fetchGreenhouseJobs(
                 const rawContent = (j.content || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
                 results.push({
-                    title: j.title || "DevOps / Cloud Engineer",
+                    title: j.title || "Software Engineer",
                     company: j.company_name || companySlug.charAt(0).toUpperCase() + companySlug.slice(1),
                     url: j.absolute_url,
                     location: j.location?.name || "Remote",
@@ -203,7 +204,7 @@ async function fetchLeverJobs(
                 const rawContent = (p.descriptionPlain || p.description || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
                 results.push({
-                    title: p.text || "Cloud / DevOps Engineer",
+                    title: p.text || "Software Engineer",
                     company: companySlug.charAt(0).toUpperCase() + companySlug.slice(1),
                     url: p.hostedUrl || p.applyUrl,
                     location: p.categories?.location || "Remote",
@@ -286,7 +287,8 @@ async function fetchTavilyCareerPortals(
     maxExpYears: number = 3
 ): Promise<TavilySearchResult[]> {
     const allResults: TavilySearchResult[] = [];
-    const primaryRole = roles[0] || "DevOps Engineer";
+    const primaryRole = roles[0] || "Software Engineer";
+    const secondaryRole = roles[1] || (roles[0] ? `${roles[0]} Developer` : "Developer");
     const locQuery = locations.map(l => `"${l}"`).join(" OR ") || '"India" OR "Remote"';
 
     // When candidate is early-career (<= 3 yrs), strongly exclude senior/staff/lead/executive/manager/ML titles
@@ -295,8 +297,8 @@ async function fetchTavilyCareerPortals(
         : '-director -vp';
 
     const queries = [
-        `("${primaryRole}" OR "Cloud Engineer") (${locQuery}) ${negativeFilters}`.trim(),
-        `("Site Reliability Engineer" OR "Infrastructure Engineer" OR "AWS Cloud Engineer") (${locQuery}) ${negativeFilters}`.trim()
+        `("${primaryRole}") (${locQuery}) ${negativeFilters}`.trim(),
+        `("${secondaryRole}") (${locQuery}) ${negativeFilters}`.trim()
     ];
 
     for (const q of queries) {
@@ -355,18 +357,41 @@ export async function executeCareerPortalDiscovery(
         return { success: false, discoveredCount: 0, jobs: [], message: "Career portals module is disabled in settings." };
     }
 
+    // User preference toggle (skip if disabled by user and not manual forceRefresh)
+    if (userData.careerPortalsSettings?.enabled === false && !options?.forceRefresh) {
+        console.log(`[CareerPortalATS] Skipping user ${uid}: career_portals is disabled in user settings.`);
+        return { success: false, discoveredCount: 0, jobs: [], message: "Career portals discovery is disabled in your settings." };
+    }
+
     // 1. Extract Target Preferences
     const autoApplySettings = userData.autoApplySettings || {};
     const minExpYears: number = typeof autoApplySettings.minExpYears === "number" ? autoApplySettings.minExpYears : 0;
     const maxExpYears: number = typeof autoApplySettings.maxExpYears === "number" ? autoApplySettings.maxExpYears : 3;
     const isFresher: boolean = autoApplySettings.isFresher === true || maxExpYears === 0;
 
-    let targetRoles: string[] = autoApplySettings.targetRoles || ["DevOps Engineer", "Cloud Engineer"];
+    let targetRoles: string[] = autoApplySettings.targetRoles || [];
+    if (typeof targetRoles === 'string') {
+        targetRoles = (targetRoles as string).split(',').map(s => s.trim()).filter(Boolean);
+    }
+    if (targetRoles.length === 0 && userData.targetRoles) {
+        targetRoles = Array.isArray(userData.targetRoles) ? userData.targetRoles : [userData.targetRoles];
+    }
+    if (targetRoles.length === 0 && userData.targetRole) {
+        targetRoles = [userData.targetRole];
+    }
+    if (targetRoles.length === 0) {
+        targetRoles = ["Software Engineer", "Developer"];
+    }
     if (options?.customRole) {
         targetRoles = [options.customRole, ...targetRoles];
     }
     const targetLocations: string[] = autoApplySettings.locations || autoApplySettings.targetLocations || ["India", "Remote", "Bengaluru", "Hyderabad", "Pune"];
-    const targetRoleKeywords = ["devops", "cloud", "sre", "reliability", "infrastructure", "platform", "kubernetes", "terraform", "aws", "systems", "automation", "ci/cd"];
+    const targetRoleKeywords = Array.from(new Set(
+        targetRoles.flatMap(r => r.toLowerCase().split(/[\s/,-]+/).filter(w => w.length > 2))
+    ));
+    if (targetRoleKeywords.length === 0) {
+        targetRoleKeywords.push("developer", "engineer", "software");
+    }
 
     // 2. Extract Keys & Base Resume
     const userApiKeys = userData.userApiKeys || {};
@@ -474,7 +499,7 @@ export async function executeCareerPortalDiscovery(
                 }
 
                 rawDiscovered.push({
-                    title: r.title.replace(/\|.*$/, "").replace(/-.*$/, "").trim() || "DevOps Engineer",
+                    title: r.title.replace(/\|.*$/, "").replace(/-.*$/, "").trim() || "Software Engineer",
                     company: compName,
                     url: r.url,
                     location: "Remote / India",
@@ -509,12 +534,10 @@ export async function executeCareerPortalDiscovery(
             return false;
         }
 
-        // Ensure title has relevance to DevOps/Cloud/SRE/Infrastructure/Platform/Engineering
+        // Ensure title has relevance to candidate target roles or engineering
         const hasRelevance = targetRoleKeywords.some(kw => titleLower.includes(kw)) ||
             titleLower.includes("engineer") ||
-            titleLower.includes("developer") ||
-            titleLower.includes("infrastructure") ||
-            titleLower.includes("systems");
+            titleLower.includes("developer");
         if (!hasRelevance) {
             console.log(`[CareerPortalATS] Pre-filtered out irrelevant title: "${job.title}" @ ${job.company}`);
             return false;
@@ -564,6 +587,13 @@ export async function executeCareerPortalDiscovery(
     const jobsToTailor = validatedJobs.slice(0, 4);
 
     for (const job of jobsToTailor) {
+        // Pre-filter: strict experience gate
+        const expCheck = isExperienceExceeded(`${job.title} ${job.jd}`, maxExpYears, minExpYears);
+        if (expCheck.exceeded) {
+            console.log(`[CareerPortalATS] Pre-filter skipped job '${job.title}' at '${job.company}': ${expCheck.reason}`);
+            continue;
+        }
+
         try {
             const prompt = `You are a Principal Technical Recruiter and ATS Optimization Expert.
 Analyze the candidate's attached resume PDF and the following fresh job opening from an official company career portal.
@@ -592,10 +622,11 @@ CRITICAL SCREENING & ATS EVALUATION RULES:
    - If "isQualified" is false, atsScore MUST be strictly below 80.
 3. Resume Tailoring (ONLY performed if candidate is qualified and atsScore >= 80):
    - Extract the candidate's real personal details (fullName, contactLine with location, phone, email, LinkedIn, GitHub).
-   - Write a compelling, tailored 2-3 sentence Professional Summary matching ${job.company}'s requirements.
-   - Categorize Technical Skills into high-impact ATS groupings (Cloud & DevOps, CI/CD, Containerization, IaC, Monitoring, Scripting).
-   - Tailor the Professional Experience entries: KEEP all original companies, job titles, and employment periods from the candidate's resume, but REWRITE the achievement bullet points to prominently incorporate the target keywords (e.g. Kubernetes, Terraform, Docker, AWS, Prometheus, GitHub Actions, Linux) with measurable impact.
-   - Tailor Key Projects highlighting real-world deliverables.
+   - Write a compelling, tailored 2-3 sentence Professional Summary matching ${job.company}'s requirements, strictly based on candidate's real domain and experience.
+   - Categorize Technical Skills into high-impact ATS groupings relevant to the candidate's actual domain and resume (e.g. Languages & Frameworks, Databases & Tools, Architecture & Practices).
+   - Tailor the Professional Experience entries: KEEP all original companies, job titles, and employment periods from the candidate's resume, and refine the achievement bullet points to highlight skills matching the JD that the candidate ACTUALLY possesses.
+   - CRITICAL ANTI-HALLUCINATION RULE: DO NOT inject, assume, or invent skills, tools, or platforms that the candidate does not have in their attached resume. If the candidate is a .NET Developer, do not inject Cloud/DevOps tools like Terraform, AWS, Docker, or Kubernetes unless they are explicitly present in their resume.
+   - Tailor Key Projects highlighting real-world deliverables from their background.
    - Preserve Education & Certifications from the original resume.
    - Note: Do not invent fake employers or fake degrees.
 
@@ -605,34 +636,34 @@ OUTPUT STRICT JSON FORMAT:
   "disqualificationReason": "",
   "atsScore": 88,
   "experienceRequired": "${minExpYears}-${maxExpYears} years",
-  "matchReasoning": "Strong match on AWS, Docker, Kubernetes at target experience level...",
-  "matchedSkills": ["AWS", "Docker", "Kubernetes", "Linux", "CI/CD"],
-  "injectedKeywords": ["Terraform", "ArgoCD", "Helm", "Prometheus"],
-  "tailoredSummary": "Results-driven Cloud/DevOps Engineer with...",
+  "matchReasoning": "Strong match on required candidate technical stack at target experience level...",
+  "matchedSkills": ["Skill 1", "Skill 2"],
+  "injectedKeywords": ["Relevant Tool from Resume"],
+  "tailoredSummary": "Results-driven Developer with...",
   "tailoredResume": {
     "fullName": "Candidate Name",
     "contactLine": "City, Country | +91 ... | email@... | linkedin.com/in/... | github.com/...",
     "professionalSummary": "...",
     "skills": [
-      { "category": "Cloud & Infrastructure", "items": "AWS, Docker, Kubernetes, Terraform" },
-      { "category": "CI/CD & Automation", "items": "GitHub Actions, Jenkins, Bash, Python" }
+      { "category": "Languages & Frameworks", "items": "Relevant candidate languages & frameworks" },
+      { "category": "Databases & Tools", "items": "Relevant candidate tools & databases" }
     ],
     "experience": [
       {
         "company": "Company Name",
         "role": "Job Title",
         "period": "2023 - Present",
-        "location": "Bengaluru, India",
+        "location": "City, Country",
         "bulletPoints": [
-          "Automated cloud infrastructure with Terraform...",
-          "Architected CI/CD pipelines reducing deployment times by 40%..."
+          "Developed core features...",
+          "Optimized system performance..."
         ]
       }
     ],
     "projects": [
       {
         "title": "Project Title",
-        "techStack": "AWS, Kubernetes, Terraform",
+        "techStack": "Candidate actual tech stack",
         "bulletPoints": [
           "Implemented..."
         ]
@@ -647,7 +678,7 @@ OUTPUT STRICT JSON FORMAT:
       }
     ],
     "certifications": [
-      "AWS Certified Solutions Architect"
+      "Candidate Certifications (if present in resume)"
     ]
   }
 }`;
@@ -834,3 +865,61 @@ export const processCareerPortalDiscoveryTask = functions
             res.status(500).send(err.message);
         }
     });
+
+/**
+ * Scheduled dispatcher for Career Portals discovery.
+ * Called twice daily (09:30 AM & 06:30 PM IST).
+ */
+export async function internalCareerPortalDiscoveryDispatcher(): Promise<void> {
+    console.log("[CareerPortalATS] Starting scheduled Career Portal discovery dispatcher (09:30 AM & 06:30 PM IST)...");
+    try {
+        const usersSnap = await db.collection("users").get();
+        let dispatchedCount = 0;
+
+        for (const userDoc of usersSnap.docs) {
+            const uid = userDoc.id;
+            const userData = userDoc.data() || {};
+            const enabledModules: string[] = userData.enabledModules || [];
+            const jobSubPerms = userData.jobAssistantSubPermissions || {};
+
+            const isParentEnabled = enabledModules.includes("job_assistant") ||
+                                   enabledModules.includes("career_portals") ||
+                                   enabledModules.includes("auto_apply");
+
+            if (!isParentEnabled || jobSubPerms.career_portals === false) {
+                continue;
+            }
+
+            // User preference toggle: Skip if disabled by the user
+            if (userData.careerPortalsSettings?.enabled === false) {
+                console.log(`[CareerPortalATS] User ${uid} disabled career portals in settings. Skipping scheduled run.`);
+                continue;
+            }
+
+            // Must have Gemini API key configured
+            const userApiKeys = userData.userApiKeys || {};
+            const geminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
+            if (!geminiKey) {
+                continue;
+            }
+
+            dispatchedCount++;
+            console.log(`[CareerPortalATS] Dispatching scheduled Career Portal discovery for user ${uid}...`);
+
+            const taskName = await enqueueUserCloudTask("career-portals-queue", "processCareerPortalDiscoveryTask", {
+                uid,
+                forceRefresh: false
+            });
+
+            if (!taskName) {
+                executeCareerPortalDiscovery(uid, { forceRefresh: false }).catch(err => {
+                    console.error(`[CareerPortalATS] Background execution error for user ${uid}:`, err);
+                });
+            }
+        }
+        console.log(`[CareerPortalATS] Dispatcher finished. Queued for ${dispatchedCount} user(s).`);
+    } catch (e: any) {
+        console.error("[CareerPortalATS] Error in scheduled career portal dispatcher:", e);
+    }
+}
+

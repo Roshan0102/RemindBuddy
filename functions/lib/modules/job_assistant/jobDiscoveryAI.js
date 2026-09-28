@@ -15,6 +15,7 @@ const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
 const emailFormatter_1 = require("../../utils/emailFormatter");
+const experienceMatcher_1 = require("../../utils/experienceMatcher");
 /**
  * Helper to validate email strings
  */
@@ -405,14 +406,18 @@ CRITICAL VERIFICATION & EXTRACTION MANDATES:
 3. HUMAN-WRITTEN, HIGH-CONVERTING APPLICATION EMAIL:
    - For each matching job, write a highly authentic, natural, and engaging cover letter tailored specifically to that job title and company.
    - Read the candidate's attached Resume PDF to extract concrete accomplishments, technical skills, programming languages, frameworks, and domain expertise directly from the resume, and align them specifically with the company's requirements.
-   - EXPERIENCE GAP & SKILL-VALUE BRIDGING:
-     If the job opening seeks more years of experience than the candidate has on their resume (e.g., asking for 2+ or 3+ years, but candidate's resume shows 1-2 years), proactively, diplomatically, and creatively bridge this gap. Confidently acknowledge the expectation and pivot decisively to the candidate's hands-on mastery of the exact required tools, architectures, and real-world project deliveries, demonstrating that they will add immediate, high-impact value from Day 1 without requiring extensive ramp-up.
+   - EXPERIENCE ALIGNMENT:
+     Strictly match openings within ${minExp}-${maxExp} years. Never apply to or select roles requiring 4+, 5+, 5-8, 6+, 7+, 8+, 10+, Senior, Lead, or Principal experience. If the candidate has e.g. 2 years and the role asks for 2-3 years, articulate the candidate's verified hands-on project mastery and immediate readiness to deliver value from Day 1.
    - Structure:
      a) Enthusiastic opening identifying the specific role and company.
      b) Value Proposition: Clear explanation of what direct value and expertise the candidate brings based on real resume highlights.
-     c) Key Relevant Skills: 3-4 bullet points matching the exact requirements of the job.
-     d) Professional closing & Call to Action proposing a brief discussion, mentioning the attached resume.
+     c) Key Contributions Prepared to Deliver (MANDATORY):
+        A dedicated bulleted section:
+        "Key contributions I am prepared to deliver include:"
+        Provide 3-4 concrete, impactful bullet points (using "•") directly derived from the candidate's attached resume PDF that directly match the requirements of the job.
+     d) Professional closing & Call to Action proposing a brief 10-15 minute discussion, mentioning the attached resume.
      e) Sign-off: "Sincerely,\n${applicantName}" (Never use placeholders like [Your Name]).
+   - Strict Anti-Hallucination: Ground all skills and accomplishments SOLELY on the candidate's attached resume PDF. NEVER invent or assume skills not present on the resume. STRICTLY AVOID generic, repetitive boilerplate templates.
    - Subject line format: "Application for [Job Title] - ${applicantName}"
 
 4. LOCATION & WORK MODE MATCHING:
@@ -586,6 +591,14 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         if (!hasValidMx) {
             console.log(`[JobDiscovery] Skipping job at '${job.companyName}' because domain '${email}' has no valid MX records (dead/unreachable email domain).`);
             continue;
+        }
+        // Strict Experience Check: reject jobs requiring experience exceeding candidate's maxExp
+        if (job.experienceRequired) {
+            const expCheck = (0, experienceMatcher_1.isExperienceExceeded)(job.experienceRequired, maxExp, minExp);
+            if (expCheck.exceeded) {
+                console.log(`[JobDiscovery] Skipping job '${job.jobTitle}' at '${job.companyName}': ${expCheck.reason}`);
+                continue;
+            }
         }
         validFilteredJobs.push(job);
         if (validFilteredJobs.length >= maxApplyLimit) {
