@@ -25,6 +25,7 @@ import 'job_replies_screen.dart';
 import 'feature_logs_screen.dart';
 import '../services/notification_service.dart';
 import '../services/web_clipboard_drag/web_clipboard_drag.dart';
+import 'in_app_call_screen.dart';
 
 class JobAssistantScreen extends StatefulWidget {
   final int? initialFeatureIndex;
@@ -3578,6 +3579,64 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     );
   }
 
+  Future<void> _triggerSimulatedCall() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('📞 Simulating incoming recruiter call in 2 seconds...'),
+        backgroundColor: Color(0xFF10B981),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable('simulateRecruiterVoiceCall');
+      final res = await callable.call({
+        'companyName': 'Google Cloud',
+        'jobTitle': _targetRolesController.text.isNotEmpty ? _targetRolesController.text.split(',').first.trim() : 'Senior Flutter Engineer',
+        'recruiterName': 'Sarah Jenkins (HR Lead)',
+        'question': 'Could you please confirm your current notice period and expected CTC?',
+      });
+      final sessionId = res.data?['sessionId'] as String? ?? '';
+      if (sessionId.isNotEmpty && mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => InAppCallScreen(
+              sessionId: sessionId,
+              companyName: 'Google Cloud',
+              jobTitle: _targetRolesController.text.isNotEmpty ? _targetRolesController.text.split(',').first.trim() : 'Senior Flutter Engineer',
+              recruiterName: 'Sarah Jenkins (HR Lead)',
+              recruiterEmail: 'sarah.recruiter.test@gmail.com',
+              question: 'Could you please confirm your current notice period and expected CTC?',
+              candidateName: _applicantNameController.text.isNotEmpty ? _applicantNameController.text.trim() : 'Candidate',
+              initialRinging: true,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error triggering simulated call: $e');
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => InAppCallScreen(
+              sessionId: 'simulated_local_${DateTime.now().millisecondsSinceEpoch}',
+              companyName: 'Google Cloud',
+              jobTitle: _targetRolesController.text.isNotEmpty ? _targetRolesController.text.split(',').first.trim() : 'Senior Flutter Engineer',
+              recruiterName: 'Sarah Jenkins (HR Lead)',
+              recruiterEmail: 'sarah.recruiter.test@gmail.com',
+              question: 'Could you please confirm your current notice period and expected CTC?',
+              candidateName: _applicantNameController.text.isNotEmpty ? _applicantNameController.text.trim() : 'Candidate',
+              initialRinging: true,
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   // ============================================================================
   // BUILD METHOD
   // ============================================================================
@@ -3614,6 +3673,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               : _getFeatureTitle(_selectedFeatureIndex!),
           elevation: 2,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.phone_in_talk_rounded, color: Color(0xFF10B981)),
+              tooltip: 'Test AI Recruiter Call',
+              onPressed: _triggerSimulatedCall,
+            ),
             IconButton(
               icon: const Icon(Icons.receipt_long_rounded),
               tooltip: 'Automation Run Logs',

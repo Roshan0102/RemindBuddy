@@ -16,6 +16,7 @@ const mailparser_1 = require("mailparser");
 const firebase_1 = require("../../config/firebase");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const logger_1 = require("../../utils/logger");
+const voiceCallSession_1 = require("../voice/voiceCallSession");
 const GENERIC_DOMAINS = new Set([
     "gmail.com",
     "yahoo.com",
@@ -562,6 +563,27 @@ Return ONLY valid JSON in this exact structure:
                     }
                     catch (notifErr) {
                         console.error(`[ReplyTracker] Error sending push notification to user ${uid}:`, notifErr.message);
+                    }
+                    // 7. IN-APP AI VOICE CALL TRIGGER (Actionable queries / interview invites)
+                    if (analysis.responseType === "hr_query" || analysis.responseType === "interview_invite" || (analysis.actionRequired && analysis.actionRequired.toLowerCase() !== "none")) {
+                        try {
+                            await (0, voiceCallSession_1.triggerRecruiterVoiceCallSession)({
+                                uid,
+                                companyName: matchedApp.companyName || "Recruiter",
+                                jobTitle: matchedApp.jobTitle || "Job Opportunity",
+                                recruiterName: senderName || "Hiring Team",
+                                recruiterEmail: senderAddress,
+                                subject: subject,
+                                emailSnippet: analysis.summary || "Recruiter replied with an inquiry.",
+                                emailBody: cleanBodySnippet,
+                                actionRequired: analysis.actionRequired || "Respond to recruiter inquiry",
+                                applicationId: matchedApp.id || "",
+                                candidateName: userData.displayName || userData.name || "Candidate"
+                            });
+                        }
+                        catch (voiceCallErr) {
+                            console.warn(`[ReplyTracker] Note creating voice call session for user ${uid}:`, voiceCallErr.message);
+                        }
                     }
                 }
             }

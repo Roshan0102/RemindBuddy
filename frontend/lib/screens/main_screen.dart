@@ -37,6 +37,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../main.dart';
 import 'alarm_ringing_screen.dart';
 import '../models/calendar_reminder.dart';
+import 'in_app_call_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -80,6 +81,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   StreamSubscription? _authSubscription;
   StreamSubscription? _userPrefsSubscription;
   StreamSubscription? _widgetLaunchSub;
+  StreamSubscription? _voiceCallSubscription;
+  bool _isShowingCallScreen = false;
 
   @override
   void initState() {
@@ -88,6 +91,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _loadInitialData();
     _setupNotificationListener();
     _setupHomeWidgetLaunchListener();
+    _setupVoiceCallSessionListener();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkPendingNotification();
       _checkWebNotificationLaunch();
@@ -97,6 +101,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _listenToUserPreferences();
       HomeWidgetService().syncAllWidgets();
       if (user != null) {
+        _setupVoiceCallSessionListener();
         HomeWidgetService().startFinanceWidgetLiveSync();
         HomeWidgetService().startShiftWidgetLiveSync();
         HomeWidgetService().startNoteChecklistLiveSync();
@@ -578,7 +583,57 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _notificationSubscription?.cancel();
     _authSubscription?.cancel();
     _userPrefsSubscription?.cancel();
+    _voiceCallSubscription?.cancel();
     super.dispose();
+  }
+
+  void _setupVoiceCallSessionListener() {
+    _voiceCallSubscription?.cancel();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _voiceCallSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('voice_call_sessions')
+        .where('status', isEqualTo: 'ringing')
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted || _isShowingCallScreen) return;
+      for (final change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added || change.type == DocumentChangeType.modified) {
+          final data = change.doc.data();
+          if (data != null && data['status'] == 'ringing') {
+            _launchIncomingCallScreen(change.doc.id, data);
+            break;
+          }
+        }
+      }
+    }, onError: (e) {
+      debugPrint("Error in voiceCallSession listener: $e");
+    });
+  }
+
+  void _launchIncomingCallScreen(String sessionId, Map<String, dynamic> data) {
+    if (_isShowingCallScreen) return;
+    _isShowingCallScreen = true;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InAppCallScreen(
+          sessionId: sessionId,
+          companyName: data['companyName'] ?? 'Recruiter',
+          jobTitle: data['jobTitle'] ?? 'Job Opportunity',
+          recruiterName: data['recruiterName'] ?? 'Recruiter',
+          recruiterEmail: data['recruiterEmail'] ?? '',
+          question: data['actionRequired'] ?? data['emailSnippet'] ?? 'Notice period and expected CTC',
+          candidateName: data['candidateName'] ?? 'Candidate',
+          initialRinging: true,
+        ),
+      ),
+    ).then((_) {
+      _isShowingCallScreen = false;
+    });
   }
 
   void _setupHomeWidgetLaunchListener() {
@@ -1714,7 +1769,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'SmartBuddy v1.10.43',
+                  'SmartBuddy v1.10.44',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

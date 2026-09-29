@@ -4,6 +4,7 @@ import { simpleParser } from "mailparser";
 import { admin, db } from "../../config/firebase";
 import { callGeminiAPI } from "../../utils/geminiHelper";
 import { logNotification } from "../../utils/logger";
+import { triggerRecruiterVoiceCallSession } from "../voice/voiceCallSession";
 
 const GENERIC_DOMAINS = new Set([
     "gmail.com",
@@ -621,6 +622,27 @@ Return ONLY valid JSON in this exact structure:
                     }
                 } catch (notifErr: any) {
                     console.error(`[ReplyTracker] Error sending push notification to user ${uid}:`, notifErr.message);
+                }
+
+                // 7. IN-APP AI VOICE CALL TRIGGER (Actionable queries / interview invites)
+                if (analysis.responseType === "hr_query" || analysis.responseType === "interview_invite" || (analysis.actionRequired && analysis.actionRequired.toLowerCase() !== "none")) {
+                    try {
+                        await triggerRecruiterVoiceCallSession({
+                            uid,
+                            companyName: matchedApp.companyName || "Recruiter",
+                            jobTitle: matchedApp.jobTitle || "Job Opportunity",
+                            recruiterName: senderName || "Hiring Team",
+                            recruiterEmail: senderAddress,
+                            subject: subject,
+                            emailSnippet: analysis.summary || "Recruiter replied with an inquiry.",
+                            emailBody: cleanBodySnippet,
+                            actionRequired: analysis.actionRequired || "Respond to recruiter inquiry",
+                            applicationId: matchedApp.id || "",
+                            candidateName: userData.displayName || userData.name || "Candidate"
+                        });
+                    } catch (voiceCallErr: any) {
+                        console.warn(`[ReplyTracker] Note creating voice call session for user ${uid}:`, voiceCallErr.message);
+                    }
                 }
             }
         } finally {

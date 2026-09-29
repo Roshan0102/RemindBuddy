@@ -1,0 +1,280 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.sendVoiceCallApprovedReply = exports.voiceCallChatTurn = exports.simulateRecruiterVoiceCall = void 0;
+exports.triggerRecruiterVoiceCallSession = triggerRecruiterVoiceCallSession;
+const functions = require("firebase-functions");
+const nodemailer = require("nodemailer");
+const firebase_1 = require("../../config/firebase");
+const groqHelper_1 = require("../../utils/groqHelper");
+const geminiHelper_1 = require("../../utils/geminiHelper");
+/**
+ * Creates an active voice call session in Firestore and dispatches a high-priority FCM call signal.
+ */
+async function triggerRecruiterVoiceCallSession(params) {
+    var _a;
+    const { uid } = params;
+    const sessionRef = firebase_1.db.collection("users").doc(uid).collection("voice_call_sessions").doc();
+    const sessionId = sessionRef.id;
+    const sessionData = {
+        id: sessionId,
+        status: "ringing",
+        companyName: params.companyName || "Recruiter",
+        jobTitle: params.jobTitle || "Job Opportunity",
+        recruiterName: params.recruiterName || "Recruiter",
+        recruiterEmail: params.recruiterEmail || "",
+        subject: params.subject || "",
+        emailSnippet: params.emailSnippet || "",
+        emailBody: params.emailBody || "",
+        actionRequired: params.actionRequired || "Respond to recruiter inquiry",
+        applicationId: params.applicationId || "",
+        candidateName: params.candidateName || "Candidate",
+        createdAt: firebase_1.admin.firestore.FieldValue.serverTimestamp()
+    };
+    await sessionRef.set(sessionData);
+    // Send high-priority FCM notification
+    try {
+        const userDoc = await firebase_1.db.collection("users").doc(uid).get();
+        const userData = userDoc.data() || {};
+        let fcmToken = userData.fcmToken;
+        if (!fcmToken) {
+            const tokenDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
+            if (!tokenDoc.empty) {
+                fcmToken = (_a = tokenDoc.docs[0].data()) === null || _a === void 0 ? void 0 : _a.fcmToken;
+            }
+        }
+        if (fcmToken) {
+            await firebase_1.admin.messaging().send({
+                token: fcmToken,
+                data: {
+                    type: "INCOMING_VOICE_CALL",
+                    sessionId: sessionId,
+                    callerName: "SmartBuddy Recruiter Call",
+                    companyName: params.companyName || "Recruiter",
+                    jobTitle: params.jobTitle || "Job Opportunity",
+                    recruiterName: params.recruiterName || "Recruiter",
+                    actionRequired: params.actionRequired || ""
+                },
+                android: {
+                    priority: "high",
+                    notification: {
+                        title: `📞 Incoming Call: ${params.companyName || "Recruiter"}`,
+                        body: `Sarah asked: ${params.actionRequired || "Notice period & availability"}. Tap to answer.`,
+                        channelId: "smartbuddy_call_channel",
+                        priority: "max"
+                    }
+                }
+            });
+            console.log(`[VoiceCall] Successfully dispatched FCM call alert to user ${uid} (Session: ${sessionId})`);
+        }
+    }
+    catch (fcmErr) {
+        console.warn(`[VoiceCall] FCM dispatch note for user ${uid}:`, fcmErr.message);
+    }
+    return sessionId;
+}
+/**
+ * Callable endpoint to simulate an incoming recruiter call for interactive testing.
+ */
+exports.simulateRecruiterVoiceCall = functions.runWith({ timeoutSeconds: 30, memory: "256MB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+    }
+    const uid = context.auth.uid;
+    const userDoc = await firebase_1.db.collection("users").doc(uid).get();
+    const userData = userDoc.data() || {};
+    const candidateName = userData.displayName || userData.name || "Candidate";
+    const companyName = (data === null || data === void 0 ? void 0 : data.companyName) || "Google Cloud";
+    const jobTitle = (data === null || data === void 0 ? void 0 : data.jobTitle) || "Senior Flutter Engineer";
+    const recruiterName = (data === null || data === void 0 ? void 0 : data.recruiterName) || "Sarah Jenkins (HR Lead)";
+    const question = (data === null || data === void 0 ? void 0 : data.question) || "Could you please confirm your current notice period and expected CTC?";
+    const sessionId = await triggerRecruiterVoiceCallSession({
+        uid,
+        companyName,
+        jobTitle,
+        recruiterName,
+        recruiterEmail: "sarah.recruiter.test@gmail.com",
+        subject: `Re: Application for ${jobTitle} - ${candidateName}`,
+        emailSnippet: question,
+        emailBody: `Hi ${candidateName}, thank you for applying to ${companyName}. We were impressed by your profile. ${question} We look forward to hearing from you!`,
+        actionRequired: question,
+        applicationId: "simulated_test_app",
+        candidateName
+    });
+    return {
+        success: true,
+        sessionId,
+        message: "Incoming voice call simulated successfully."
+    };
+});
+/**
+ * Process a conversational speech turn during the active call.
+ * Uses Groq LPU as Primary (<200ms) with Gemini Flash as Secondary Fallback.
+ */
+exports.voiceCallChatTurn = functions.runWith({ timeoutSeconds: 30, memory: "256MB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+    }
+    const uid = context.auth.uid;
+    const { sessionId, userSpeech, conversationHistory } = data;
+    if (!sessionId || !userSpeech) {
+        throw new functions.https.HttpsError("invalid-argument", "sessionId and userSpeech are required.");
+    }
+    const sessionRef = firebase_1.db.collection("users").doc(uid).collection("voice_call_sessions").doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+    if (!sessionDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Call session not found.");
+    }
+    const session = sessionDoc.data();
+    // Fetch user API keys
+    const userDoc = await firebase_1.db.collection("users").doc(uid).get();
+    const userData = userDoc.data() || {};
+    const userApiKeys = userData.userApiKeys || {};
+    const groqApiKey = userApiKeys.groqApiKey || userData.groqApiKey || process.env.GROQ_API_KEY || "";
+    const geminiApiKey = userApiKeys.geminiApiKey || userData.geminiApiKey || process.env.GEMINI_API_KEY || "";
+    const systemPrompt = `You are SmartBuddy, an AI Voice Calling Assistant acting on behalf of ${session.candidateName}.
+You are on an active voice phone call with ${session.candidateName}.
+Context:
+- Company: ${session.companyName}
+- Job Title: ${session.jobTitle}
+- Recruiter Name: ${session.recruiterName}
+- Recruiter's Email Question: "${session.emailBody || session.actionRequired}"
+
+Your Objective:
+1. Converse naturally in SHORT, conversational sentences suitable for speech (1-2 sentences max).
+2. Answer any doubts the candidate asks (about company, salary, interview dates).
+3. Extract their preferred response (notice period, expected salary, availability).
+4. When they confirm what to reply (e.g. "Yes, send it", "Tell them 30 days and 20 LPA", "Go ahead"), explicitly ask for final confirmation: "Should I go ahead and email this reply to ${session.recruiterName}?"
+5. When they say YES or confirm to send, end your message with the exact phrase: "[SEND_CONFIRMED]" followed by a brief sign-off ("Sending your email now. Have a great day!").`;
+    const formattedHistory = Array.isArray(conversationHistory)
+        ? conversationHistory.map((h) => `${h.role === "assistant" ? "AI" : "Candidate"}: ${h.text}`).join("\n")
+        : "";
+    const fullPrompt = `${formattedHistory}\nCandidate: ${userSpeech}\nAI:`;
+    // 1. Try Groq Primary
+    if (groqApiKey) {
+        try {
+            const groqRes = await (0, groqHelper_1.callGroqAPI)({
+                apiKey: groqApiKey,
+                systemPrompt,
+                prompt: fullPrompt,
+                temperature: 0.3,
+                maxTokens: 150
+            });
+            const replyText = groqRes.text || "";
+            const isConfirmed = replyText.includes("[SEND_CONFIRMED]");
+            const cleanText = replyText.replace("[SEND_CONFIRMED]", "").trim();
+            return {
+                replyText: cleanText,
+                isConfirmed,
+                engineUsed: `Groq (${groqRes.modelUsed})`
+            };
+        }
+        catch (groqErr) {
+            console.warn(`[VoiceCall] Groq failed, falling back to Gemini Flash:`, groqErr.message);
+        }
+    }
+    // 2. Fallback to Gemini Flash
+    try {
+        const geminiRes = await (0, geminiHelper_1.callGeminiAPI)({
+            contents: [
+                {
+                    role: "user",
+                    parts: [{ text: `${systemPrompt}\n\n${fullPrompt}` }]
+                }
+            ],
+            generationConfig: {
+                temperature: 0.3,
+                maxOutputTokens: 150
+            }
+        }, {
+            apiKey: geminiApiKey,
+            timeout: 10000
+        });
+        const replyText = geminiRes.text || "I understand. Would you like me to send this reply to the recruiter?";
+        const isConfirmed = replyText.includes("[SEND_CONFIRMED]");
+        const cleanText = replyText.replace("[SEND_CONFIRMED]", "").trim();
+        return {
+            replyText: cleanText,
+            isConfirmed,
+            engineUsed: "Gemini Flash (Fallback)"
+        };
+    }
+    catch (geminiErr) {
+        console.error(`[VoiceCall] Both Groq and Gemini failed:`, geminiErr);
+        throw new functions.https.HttpsError("internal", "Unable to generate speech response.");
+    }
+});
+/**
+ * Callable endpoint to send the approved recruiter email once the user completes the voice call.
+ */
+exports.sendVoiceCallApprovedReply = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+    }
+    const uid = context.auth.uid;
+    const { sessionId, finalReplyText } = data;
+    if (!sessionId || !finalReplyText) {
+        throw new functions.https.HttpsError("invalid-argument", "sessionId and finalReplyText are required.");
+    }
+    const sessionRef = firebase_1.db.collection("users").doc(uid).collection("voice_call_sessions").doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+    if (!sessionDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Call session not found.");
+    }
+    const session = sessionDoc.data();
+    // Fetch user email credentials
+    const userDoc = await firebase_1.db.collection("users").doc(uid).get();
+    const userData = userDoc.data() || {};
+    const emailSettings = userData.emailSettings || userData.jobAssistantSettings || {};
+    const senderEmail = emailSettings.userEmail || emailSettings.email || userData.email;
+    const appPassword = emailSettings.appPassword || emailSettings.emailPassword;
+    if (!senderEmail || !appPassword) {
+        throw new functions.https.HttpsError("failed-precondition", "User email or App Password not configured.");
+    }
+    const cleanAppPassword = appPassword.replace(/\s+/g, "");
+    const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+            user: senderEmail,
+            pass: cleanAppPassword
+        }
+    });
+    const replySubject = session.subject.toLowerCase().startsWith("re:")
+        ? session.subject
+        : `Re: ${session.subject || `Application for ${session.jobTitle}`}`;
+    const formattedBody = `Dear ${session.recruiterName || "Hiring Team"},\n\n` +
+        `${finalReplyText}\n\n` +
+        `Best regards,\n` +
+        `${session.candidateName}\n` +
+        `${senderEmail}`;
+    await transporter.sendMail({
+        from: `"${session.candidateName}" <${senderEmail}>`,
+        to: session.recruiterEmail,
+        subject: replySubject,
+        text: formattedBody
+    });
+    // Update session status
+    await sessionRef.update({
+        status: "completed",
+        replySent: true,
+        replyBody: formattedBody,
+        updatedAt: firebase_1.admin.firestore.FieldValue.serverTimestamp()
+    });
+    // Update job application record if linked
+    if (session.applicationId && session.applicationId !== "simulated_test_app") {
+        try {
+            await firebase_1.db.collection("users").doc(uid).collection("job_applications").doc(session.applicationId).update({
+                status: "replied",
+                replySentAt: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
+                lastVoiceCallSessionId: sessionId
+            });
+        }
+        catch (appErr) {
+            console.warn(`[VoiceCall] Note updating application ${session.applicationId}:`, appErr.message);
+        }
+    }
+    return {
+        success: true,
+        message: `Email reply successfully delivered to ${session.recruiterEmail}`
+    };
+});
+//# sourceMappingURL=voiceCallSession.js.map

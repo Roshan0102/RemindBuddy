@@ -68,6 +68,12 @@ export {
     voiceAssistantQuery
 } from "./modules/voice/voiceAssistant";
 
+export {
+    simulateRecruiterVoiceCall,
+    voiceCallChatTurn,
+    sendVoiceCallApprovedReply
+} from "./modules/voice/voiceCallSession";
+
 // Job Assistant
 export {
     parseJobPostersWithAI
