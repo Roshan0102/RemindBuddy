@@ -503,15 +503,16 @@ CRITICAL SCREENING & ATS EVALUATION RULES:
    - Assign an ATS Match Score (0 - 100).
    - ONLY assign an atsScore >= 80 if the candidate is a strong, genuine match for this role at their experience level.
    - If "isQualified" is false, atsScore MUST be strictly below 80.
-3. Resume Tailoring (ONLY performed if candidate is qualified and atsScore >= 80):
-   - Extract the candidate's real personal details (fullName, contactLine with location, phone, email, LinkedIn, GitHub).
-   - Write a compelling, tailored 2-3 sentence Professional Summary matching ${job.company}'s requirements, strictly based on candidate's real domain and experience.
-   - Categorize Technical Skills into high-impact ATS groupings relevant to the candidate's actual domain and resume (e.g. Languages & Frameworks, Databases & Tools, Architecture & Practices).
-   - Tailor the Professional Experience entries: KEEP all original companies, job titles, and employment periods from the candidate's resume, and refine the achievement bullet points to highlight skills matching the JD that the candidate ACTUALLY possesses.
-   - CRITICAL ANTI-HALLUCINATION RULE: DO NOT inject, assume, or invent skills, tools, or platforms that the candidate does not have in their attached resume. If the candidate is a .NET Developer, do not inject Cloud/DevOps tools like Terraform, AWS, Docker, or Kubernetes unless they are explicitly present in their resume.
-   - Tailor Key Projects highlighting real-world deliverables from their background.
-   - Preserve Education & Certifications from the original resume.
-   - Note: Do not invent fake employers or fake degrees.
+3. Resume Tailoring & ATS Keyword Enrichment (ONLY performed if candidate is qualified and atsScore >= 80):
+   - Authenticity Preservation: KEEP all authentic companies, official job titles, employment periods, education institutions, and certifications from the candidate's attached resume. Do not invent fake employers or fake degrees.
+   - Comprehensive ATS Keyword Integration:
+     * Carefully analyze the Job Description to extract all required technical skills, tools, frameworks, platforms, and methodologies.
+     * When the candidate is a strong fit for the role (e.g. 80-95%+ domain alignment), AUTOMATICALLY BRIDGE ANY KEYWORD GAPS by including the missing JD skills, tools, and industry keywords into the tailored resume so the resume achieves a top-tier ATS match (95%+).
+     * Technical Skills: Group them into comprehensive, high-impact categories appropriate for the candidate's domain (e.g. Languages & Frameworks, Cloud & Infrastructure, CI/CD & DevOps, Databases & Caching, Monitoring & Security, Architecture & Tools). Seamlessly add the missing relevant tools and technologies required by the JD.
+     * Professional Summary: Craft a targeted 2-3 sentence summary that directly addresses the employer's needs and incorporates the primary keywords from the JD.
+     * Professional Experience & Key Projects: Refine the achievement bullet points to highlight measurable outcomes and naturally weave in the relevant JD keywords, tools, and methodologies that the candidate utilized in their domain.
+     * Return all keywords and skills that were incorporated from the JD into the "injectedKeywords" array.
+     * Re-evaluate "atsScore" (0 - 100) reflecting the enhanced keyword match of the tailored resume (typically 90 - 98%).
 
 OUTPUT STRICT JSON FORMAT:
 {

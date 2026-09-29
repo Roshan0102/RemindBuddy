@@ -77,19 +77,22 @@ export function generateAtsResumePdf(data: TailoredResumeData): Promise<Buffer> 
 
             function addSectionHeader(title: string) {
                 doc.moveDown(0.35);
+                const headerY = doc.y;
                 doc.fontSize(10)
                     .font("Helvetica-Bold")
-                    .fillColor("#1F2937")
-                    .text(title.toUpperCase());
+                    .fillColor("#111827")
+                    .text(title.toUpperCase(), 36, headerY, { width: contentWidth });
 
-                const y = doc.y;
-                doc.moveTo(36, y)
-                    .lineTo(pageWidth - 36, y)
-                    .lineWidth(0.6)
+                const lineY = doc.y + 2;
+                doc.moveTo(36, lineY)
+                    .lineTo(pageWidth - 36, lineY)
+                    .lineWidth(0.75)
                     .strokeColor("#9CA3AF")
                     .stroke();
 
-                doc.moveDown(0.25);
+                // Clean 5pt breathing room between line and content, reset left margin
+                doc.y = lineY + 5;
+                doc.x = 36;
             }
 
             // 2. Professional Summary
@@ -98,7 +101,8 @@ export function generateAtsResumePdf(data: TailoredResumeData): Promise<Buffer> 
                 doc.fontSize(8.5)
                     .font("Helvetica")
                     .fillColor("#374151")
-                    .text(data.professionalSummary.trim(), { lineGap: 1.5, align: "left" });
+                    .text(data.professionalSummary.trim(), 36, doc.y, { lineGap: 1.5, width: contentWidth, align: "left" });
+                doc.x = 36;
             }
 
             // 3. Technical Skills
@@ -109,10 +113,11 @@ export function generateAtsResumePdf(data: TailoredResumeData): Promise<Buffer> 
                     doc.fontSize(8.5)
                         .font("Helvetica-Bold")
                         .fillColor("#111827")
-                        .text(`${s.category}: `, { continued: true })
+                        .text(`${s.category}: `, 36, doc.y, { continued: true, lineGap: 1.5 })
                         .font("Helvetica")
                         .fillColor("#374151")
-                        .text(s.items, { lineGap: 1.5 });
+                        .text(s.items, { lineGap: 1.5, width: contentWidth });
+                    doc.x = 36;
                 }
             }
 
@@ -133,7 +138,7 @@ export function generateAtsResumePdf(data: TailoredResumeData): Promise<Buffer> 
                         .fillColor("#4B5563")
                         .text(exp.period || "", 36, topY, { align: "right", width: contentWidth });
 
-                    doc.moveDown(0.15);
+                    doc.moveDown(0.12);
                     const subY = doc.y;
 
                     doc.fontSize(8.5)
@@ -148,7 +153,7 @@ export function generateAtsResumePdf(data: TailoredResumeData): Promise<Buffer> 
                             .text(exp.location, 36, subY, { align: "right", width: contentWidth });
                     }
 
-                    doc.moveDown(0.25);
+                    doc.moveDown(0.2);
 
                     if (Array.isArray(exp.bulletPoints)) {
                         for (const bp of exp.bulletPoints) {
@@ -156,10 +161,15 @@ export function generateAtsResumePdf(data: TailoredResumeData): Promise<Buffer> 
                             doc.fontSize(8.5)
                                 .font("Helvetica")
                                 .fillColor("#374151")
-                                .text("•  " + bp.trim(), 48, doc.y, { lineGap: 1.5, width: contentWidth - 12 });
-                            doc.moveDown(0.12);
+                                .text("•   " + bp.trim(), 46, doc.y, {
+                                    indent: -10,
+                                    lineGap: 1.6,
+                                    width: contentWidth - 10
+                                });
+                            doc.moveDown(0.1);
                         }
                     }
+                    doc.x = 36;
                 }
             }
 
@@ -168,15 +178,17 @@ export function generateAtsResumePdf(data: TailoredResumeData): Promise<Buffer> 
                 addSectionHeader("Key Projects");
                 for (const proj of data.projects) {
                     doc.moveDown(0.2);
+                    const projY = doc.y;
+
                     doc.fontSize(9)
                         .font("Helvetica-Bold")
                         .fillColor("#111827")
-                        .text(proj.title || "Project", { continued: !!proj.techStack });
+                        .text(proj.title || "Project", 36, projY, { continued: !!proj.techStack });
 
                     if (proj.techStack) {
                         doc.font("Helvetica-Oblique")
                             .fillColor("#4B5563")
-                            .text("  |  " + proj.techStack);
+                            .text("  |  " + proj.techStack, { lineGap: 1.5, width: contentWidth });
                     }
 
                     doc.moveDown(0.15);
@@ -187,10 +199,15 @@ export function generateAtsResumePdf(data: TailoredResumeData): Promise<Buffer> 
                             doc.fontSize(8.5)
                                 .font("Helvetica")
                                 .fillColor("#374151")
-                                .text("•  " + bp.trim(), 48, doc.y, { lineGap: 1.5, width: contentWidth - 12 });
-                            doc.moveDown(0.12);
+                                .text("•   " + bp.trim(), 46, doc.y, {
+                                    indent: -10,
+                                    lineGap: 1.6,
+                                    width: contentWidth - 10
+                                });
+                            doc.moveDown(0.1);
                         }
                     }
+                    doc.x = 36;
                 }
             }
 
@@ -216,7 +233,8 @@ export function generateAtsResumePdf(data: TailoredResumeData): Promise<Buffer> 
                     doc.fontSize(8.5)
                         .font("Helvetica")
                         .fillColor("#374151")
-                        .text(instLoc);
+                        .text(instLoc, 36, doc.y, { lineGap: 1.5, width: contentWidth });
+                    doc.x = 36;
                 }
             }
 
@@ -228,9 +246,14 @@ export function generateAtsResumePdf(data: TailoredResumeData): Promise<Buffer> 
                     doc.fontSize(8.5)
                         .font("Helvetica")
                         .fillColor("#374151")
-                        .text("•  " + cert.trim(), 48, doc.y, { lineGap: 1.5, width: contentWidth - 12 });
+                        .text("•   " + cert.trim(), 46, doc.y, {
+                            indent: -10,
+                            lineGap: 1.6,
+                            width: contentWidth - 10
+                        });
                     doc.moveDown(0.1);
                 }
+                doc.x = 36;
             }
 
             doc.end();
