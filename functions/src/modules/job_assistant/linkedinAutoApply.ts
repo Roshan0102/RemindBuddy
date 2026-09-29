@@ -94,7 +94,9 @@ export async function processLinkedInAutoApplyForUser(
             return { success: false, appliedCount: 0, message: msg, jobs: [] };
         }
         await db.collection("users").doc(uid).set({
-            linkedinAutoApplyLock: admin.firestore.FieldValue.serverTimestamp()
+            linkedinAutoApplyLock: admin.firestore.FieldValue.serverTimestamp(),
+            linkedinAutoApplyLastRan: admin.firestore.FieldValue.serverTimestamp(),
+            jobsLastRan: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
 
         // 1. Admin Module Control: Must be enabled for user
@@ -356,6 +358,10 @@ export async function processLinkedInAutoApplyForUser(
                 scheduledSlot,
                 isManual
             });
+            await db.collection("users").doc(uid).set({
+                linkedinAutoApplyLastRan: admin.firestore.FieldValue.serverTimestamp(),
+                jobsLastRan: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
             return { success: true, appliedCount: 0, message: msg, jobs: [] };
         }
 
@@ -414,6 +420,10 @@ export async function processLinkedInAutoApplyForUser(
                 scheduledSlot,
                 isManual
             });
+            await db.collection("users").doc(uid).set({
+                linkedinAutoApplyLastRan: admin.firestore.FieldValue.serverTimestamp(),
+                jobsLastRan: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
             return { success: true, appliedCount: 0, message: msg, jobs: [] };
         }
 
@@ -551,6 +561,7 @@ Respond ONLY with valid JSON:
 }`;
 
                 const geminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
+                const groqKey = (userApiKeys.groqApiKey || userData.groqApiKey || "").trim();
                 const geminiParts: any[] = [];
                 if (cleanResumeB64) {
                     geminiParts.push({
@@ -568,6 +579,7 @@ Respond ONLY with valid JSON:
                 };
                 const geminiResp = await callGeminiAPI(geminiPayload, {
                     apiKey: geminiKey || undefined,
+                    groqApiKey: groqKey || undefined,
                     timeout: 45000
                 });
 

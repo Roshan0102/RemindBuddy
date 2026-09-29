@@ -284,28 +284,35 @@ async function fetchTavilyCareerPortals(
     apiKey: string,
     roles: string[],
     locations: string[],
-    maxExpYears: number = 3
+    _maxExpYears: number = 3,
+    secondaryApiKey?: string
 ): Promise<TavilySearchResult[]> {
     const allResults: TavilySearchResult[] = [];
-    const primaryRole = roles[0] || "Software Engineer";
-    const secondaryRole = roles[1] || (roles[0] ? `${roles[0]} Developer` : "Developer");
-    const locQuery = locations.map(l => `"${l}"`).join(" OR ") || '"India" OR "Remote"';
+    const searchRoles = (roles && roles.length > 0)
+        ? roles.slice(0, 4)
+        : ["Software Engineer", "Developer"];
 
-    // When candidate is early-career (<= 3 yrs), strongly exclude senior/staff/lead/executive/manager/ML titles
-    const negativeFilters = maxExpYears <= 3
-        ? '-senior -sr -staff -principal -lead -manager -director -vp -"product manager" -"machine learning"'
-        : '-director -vp';
+    const primaryLocs: string[] = [];
+    for (const loc of (locations || []).slice(0, 2)) {
+        if (!primaryLocs.includes(loc)) primaryLocs.push(loc);
+    }
+    if (!primaryLocs.some(l => l.toLowerCase() === 'remote')) {
+        primaryLocs.push('Remote');
+    }
+    if (!primaryLocs.some(l => l.toLowerCase() === 'india')) {
+        primaryLocs.push('India');
+    }
+    const locQuery = primaryLocs.map(l => `"${l}"`).join(" OR ");
 
-    const queries = [
-        `("${primaryRole}") (${locQuery}) ${negativeFilters}`.trim(),
-        `("${secondaryRole}") (${locQuery}) ${negativeFilters}`.trim()
-    ];
-
-    for (const q of queries) {
+    // Dedicated search per role targeting top ATS domains
+    for (const role of searchRoles) {
         try {
+            const query = `"${role}" (${locQuery})`.trim();
+            console.log(`[CareerPortalATS] Querying Tavily ATS boards for role: "${role}"...`);
             const resp = await searchTavily({
                 apiKey,
-                query: q,
+                secondaryApiKey,
+                query,
                 searchDepth: "advanced",
                 maxResults: 10,
                 days: 3, // Last 72 hours
@@ -323,7 +330,7 @@ async function fetchTavilyCareerPortals(
                 }
             }
         } catch (err: any) {
-            console.warn(`[CareerPortalATS] Tavily search error: ${err.message}`);
+            console.warn(`[CareerPortalATS] Tavily search error for role "${role}": ${err.message}`);
         }
     }
 
@@ -396,10 +403,12 @@ export async function executeCareerPortalDiscovery(
     // 2. Extract Keys & Base Resume
     const userApiKeys = userData.userApiKeys || {};
     const tavilyKey = (userApiKeys.tavilyApiKey || userData.tavilyApiKey || "").trim();
+    const tavilyKey2 = (userApiKeys.tavilyApiKey2 || userApiKeys.secondaryTavilyApiKey || userData.tavilyApiKey2 || userData.secondaryTavilyApiKey || "").trim();
     const geminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
+    const groqKey = (userApiKeys.groqApiKey || userData.groqApiKey || "").trim();
 
-    if (!geminiKey) {
-        const msg = "Gemini API key is required. Please configure in Settings -> AI & Search Keys.";
+    if (!geminiKey && !groqKey) {
+        const msg = "Gemini/Groq API key is required. Please configure in Settings -> AI & Search Keys.";
         await logFeatureExecution(uid, {
             feature: "career_portals",
             featureTitle: "Career Portals (ATS Matcher)",
@@ -477,9 +486,9 @@ export async function executeCareerPortalDiscovery(
     }
 
     // D. Tavily Search (days: 3)
-    if (tavilyKey) {
+    if (tavilyKey || tavilyKey2) {
         try {
-            const tavilyResults = await fetchTavilyCareerPortals(tavilyKey, targetRoles, targetLocations, maxExpYears);
+            const tavilyResults = await fetchTavilyCareerPortals(tavilyKey, targetRoles, targetLocations, maxExpYears, tavilyKey2);
             console.log(`[CareerPortalATS] Tavily returned ${tavilyResults.length} ATS links.`);
 
             for (const r of tavilyResults) {
@@ -705,7 +714,11 @@ OUTPUT STRICT JSON FORMAT:
                 }
             };
 
-            const geminiResp = await callGeminiAPI(geminiPayload, { apiKey: geminiKey, timeout: 90000 });
+            const geminiResp = await callGeminiAPI(geminiPayload, { 
+                apiKey: geminiKey, 
+                groqApiKey: groqKey,
+                timeout: 90000 
+            });
             const parsed = JSON.parse(geminiResp.text || "{}");
 
             const atsScore = typeof parsed.atsScore === "number" ? parsed.atsScore : 0;

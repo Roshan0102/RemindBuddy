@@ -5,6 +5,7 @@ exports.fetchAvailableModelsFromAPI = fetchAvailableModelsFromAPI;
 exports.callGeminiAPI = callGeminiAPI;
 const axios_1 = require("axios");
 const firebase_1 = require("../config/firebase");
+const groqHelper_1 = require("./groqHelper");
 // Active Gemini models ordered by speed, intelligence and fallback hierarchy
 exports.DEFAULT_MODELS = [
     "gemini-3.8-flash",
@@ -150,6 +151,43 @@ async function callGeminiAPI(payload, options = {}) {
                 await new Promise((res) => setTimeout(res, 400));
                 break; // Move to next model
             }
+        }
+    }
+    // Tier-2 Universal Fallback: If all Gemini models failed, attempt Groq (Llama 3.3 70B)
+    const groqKey = (options.groqApiKey || "").trim();
+    if (groqKey) {
+        console.log(`[GeminiHelper] 🔄 All Gemini models failed or rate-limited. Cascading to Tier-2 Groq fallback (llama-3.3-70b-versatile)...`);
+        try {
+            let extractedText = "";
+            if (payload && Array.isArray(payload.contents)) {
+                for (const item of payload.contents) {
+                    if (Array.isArray(item.parts)) {
+                        for (const part of item.parts) {
+                            if (typeof part.text === "string") {
+                                extractedText += part.text + "\n";
+                            }
+                        }
+                    }
+                }
+            }
+            else if (typeof payload === "string") {
+                extractedText = payload;
+            }
+            if (extractedText.trim()) {
+                const groqRes = await (0, groqHelper_1.callGroqAPI)({
+                    apiKey: groqKey,
+                    prompt: extractedText
+                });
+                console.log(`[GeminiHelper] ✅ Tier-2 Groq fallback succeeded (${groqRes.modelUsed})!`);
+                return {
+                    text: groqRes.text,
+                    raw: groqRes.raw,
+                    modelUsed: `Groq (${groqRes.modelUsed}) [Gemini Fallback]`
+                };
+            }
+        }
+        catch (groqErr) {
+            console.error(`[GeminiHelper] Tier-2 Groq fallback also failed: ${groqErr.message}`);
         }
     }
     const isQuota = ((_j = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _j === void 0 ? void 0 : _j.status) === 429;

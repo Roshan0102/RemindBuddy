@@ -23,7 +23,9 @@ export async function fetchAndStoreWalkInsForUserInternal(
     let roles = ["Software Engineer", "Developer"];
     let location = "Bengaluru";
     let userTavilyKey = "";
+    let userTavilyKey2 = "";
     let userGeminiKey = "";
+    let userGroqKey = "";
 
     if (userDoc.exists) {
         const data = userDoc.data();
@@ -43,7 +45,9 @@ export async function fetchAndStoreWalkInsForUserInternal(
             }
             const userApiKeys = data.userApiKeys || {};
             userTavilyKey = (userApiKeys.tavilyApiKey || data.tavilyApiKey || "").trim();
+            userTavilyKey2 = (userApiKeys.tavilyApiKey2 || userApiKeys.secondaryTavilyApiKey || data.tavilyApiKey2 || data.secondaryTavilyApiKey || "").trim();
             userGeminiKey = (userApiKeys.geminiApiKey || data.geminiApiKey || "").trim();
+            userGroqKey = (userApiKeys.groqApiKey || data.groqApiKey || "").trim();
         }
     }
 
@@ -59,17 +63,17 @@ export async function fetchAndStoreWalkInsForUserInternal(
 
     console.log(`[WalkinDrives] Isolated execution for user ${uid}: Roles=[${roles.join(', ')}], Location="${location}"`);
 
-    if (!userTavilyKey || !userGeminiKey) {
-        console.log(`[WalkinDrives] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
+    if ((!userTavilyKey && !userTavilyKey2) || (!userGeminiKey && !userGroqKey)) {
+        console.log(`[WalkinDrives] User ${uid} has not configured their personal Tavily and Gemini/Groq API keys in Settings. Skipping.`);
         await logFeatureExecution(uid, {
             feature: 'walkin_drives',
             featureTitle: 'Walk-In Drives',
             status: 'error',
             count: 0,
-            message: 'API Key Error: Missing Tavily or Gemini API key. Please configure in Settings -> AI & Search Keys.',
+            message: 'API Key Error: Missing Tavily or Gemini/Groq API key. Please configure in Settings -> AI & Search Keys.',
             isManual: !triggerNotification
         });
-        return { success: false, walkins: [], message: "Tavily and Gemini API keys not configured in Settings." };
+        return { success: false, walkins: [], message: "Tavily and Gemini/Groq API keys not configured in Settings." };
     }
 
     const today = moment().tz('Asia/Kolkata');
@@ -91,6 +95,7 @@ export async function fetchAndStoreWalkInsForUserInternal(
             console.log(`[WalkinDrives] Querying Tavily (advanced) for user ${uid} (Role: "${role}")...`);
             const tavilyResp = await searchTavily({
                 apiKey: userTavilyKey,
+                secondaryApiKey: userTavilyKey2,
                 query,
                 searchDepth: "advanced",
                 maxResults: 5
@@ -116,6 +121,7 @@ export async function fetchAndStoreWalkInsForUserInternal(
             console.log(`[WalkinDrives] Trying fallback Tavily query: "${fallbackQuery}"...`);
             const fallbackResp = await searchTavily({
                 apiKey: userTavilyKey,
+                secondaryApiKey: userTavilyKey2,
                 query: fallbackQuery,
                 searchDepth: "basic",
                 maxResults: 5
@@ -196,7 +202,11 @@ Respond ONLY with a JSON array matching this schema:
 
     let textResponse = "";
     try {
-        const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 60000 });
+        const geminiResult = await callGeminiAPI(payload, { 
+            apiKey: userGeminiKey, 
+            groqApiKey: userGroqKey,
+            timeout: 60000 
+        });
         textResponse = geminiResult.text || "";
     } catch (apiErr: any) {
         console.error("[WalkinDrives] Gemini analysis failed:", apiErr.message);

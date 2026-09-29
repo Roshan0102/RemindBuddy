@@ -335,19 +335,45 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               _linkedInRolesController.text = liveRoles.join(', ');
             }
 
-            final lRan = data['linkedinAutoApplyLastRan'];
+            final lRan = data['linkedinAutoApplyLastRan'] ?? data['linkedinAutoApplySettings']?['lastRan'] ?? data['jobsLastRan'];
             if (lRan is Timestamp) {
               _linkedInLastRan = lRan.toDate();
             } else if (lRan is String) {
               _linkedInLastRan = DateTime.tryParse(lRan);
             }
 
-            final lApplied = data['linkedinAutoApplyLastApplied'];
+            final lApplied = data['linkedinAutoApplyLastApplied'] ?? data['linkedinAutoApplySettings']?['lastApplied'];
             if (lApplied is Timestamp) {
               _linkedInLastApplied = lApplied.toDate();
             } else if (lApplied is String) {
               _linkedInLastApplied = DateTime.tryParse(lApplied);
             }
+
+            // Also check latest job_applications where source is linkedin_auto_apply asynchronously
+            FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .collection('job_applications')
+                .where('source', isEqualTo: 'linkedin_auto_apply')
+                .orderBy('appliedAt', descending: true)
+                .limit(1)
+                .get()
+                .then((latestLinkedInApp) {
+              if (mounted && latestLinkedInApp.docs.isNotEmpty) {
+                final appDate = latestLinkedInApp.docs.first.data()['appliedAt'];
+                DateTime? appDt;
+                if (appDate is Timestamp) {
+                  appDt = appDate.toDate();
+                } else if (appDate is String) {
+                  appDt = DateTime.tryParse(appDate);
+                }
+                if (appDt != null && (_linkedInLastApplied == null || appDt.isAfter(_linkedInLastApplied!))) {
+                  setState(() {
+                    _linkedInLastApplied = appDt;
+                  });
+                }
+              }
+            }).catchError((_) {});
 
             final lSettings = Map<String, dynamic>.from(data['linkedinAutoApplySettings'] ?? {});
             if (lSettings.isNotEmpty) {

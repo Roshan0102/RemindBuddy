@@ -13,10 +13,14 @@ class AIKeysSettingsScreen extends StatefulWidget {
 
 class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
   final _geminiController = TextEditingController();
+  final _groqController = TextEditingController();
   final _tavilyController = TextEditingController();
+  final _tavilySecondaryController = TextEditingController();
 
   bool _obscureGemini = true;
+  bool _obscureGroq = true;
   bool _obscureTavily = true;
+  bool _obscureTavilySecondary = true;
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -29,7 +33,9 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
   @override
   void dispose() {
     _geminiController.dispose();
+    _groqController.dispose();
     _tavilyController.dispose();
+    _tavilySecondaryController.dispose();
     super.dispose();
   }
 
@@ -46,7 +52,9 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
         final data = doc.data()!;
         final userKeys = data['userApiKeys'] as Map<String, dynamic>? ?? {};
         _geminiController.text = (userKeys['geminiApiKey'] ?? data['geminiApiKey'] ?? '').toString();
+        _groqController.text = (userKeys['groqApiKey'] ?? data['groqApiKey'] ?? '').toString();
         _tavilyController.text = (userKeys['tavilyApiKey'] ?? data['tavilyApiKey'] ?? '').toString();
+        _tavilySecondaryController.text = (userKeys['tavilyApiKey2'] ?? userKeys['secondaryTavilyApiKey'] ?? data['tavilyApiKey2'] ?? data['secondaryTavilyApiKey'] ?? '').toString();
       }
     } catch (e) {
       debugPrint('Error loading user API keys: $e');
@@ -67,7 +75,9 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
     }
 
     final geminiKey = _geminiController.text.trim();
+    final groqKey = _groqController.text.trim();
     final tavilyKey = _tavilyController.text.trim();
+    final tavilyKey2 = _tavilySecondaryController.text.trim();
 
     setState(() => _isSaving = true);
 
@@ -75,11 +85,17 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'userApiKeys': {
           'geminiApiKey': geminiKey,
+          'groqApiKey': groqKey,
           'tavilyApiKey': tavilyKey,
+          'tavilyApiKey2': tavilyKey2,
+          'secondaryTavilyApiKey': tavilyKey2,
           'updatedAt': FieldValue.serverTimestamp(),
         },
         'geminiApiKey': geminiKey,
+        'groqApiKey': groqKey,
         'tavilyApiKey': tavilyKey,
+        'tavilyApiKey2': tavilyKey2,
+        'secondaryTavilyApiKey': tavilyKey2,
       }, SetOptions(merge: true));
 
       if (mounted) {
@@ -254,7 +270,71 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // 2. Tavily Search API Key Section
+                // 2. Groq AI API Key Section (Tier-2 Fallback)
+                Card(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.bolt_rounded, color: Colors.deepOrange, size: 22),
+                            SizedBox(width: 8),
+                            Text(
+                              'Groq AI API Key (Optional Free Fallback)',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          '100% Free (14,400 Requests/Day). Powered by Llama 3.3 70B Versatile on ultra-fast LPUs. Automatically takes over if Google Gemini faces high traffic.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _groqController,
+                          obscureText: _obscureGroq,
+                          decoration: InputDecoration(
+                            labelText: 'Groq API Key',
+                            hintText: 'gsk_...',
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.flash_on_rounded, color: Colors.deepOrange),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(_obscureGroq ? Icons.visibility_off : Icons.visibility),
+                                  onPressed: () => setState(() => _obscureGroq = !_obscureGroq),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.paste_rounded),
+                                  tooltip: 'Paste',
+                                  onPressed: () => _pasteTo(_groqController),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () => _openUrl('https://console.groq.com/keys'),
+                            icon: const Icon(Icons.open_in_new, size: 14),
+                            label: const Text('Get Free Key (console.groq.com)', style: TextStyle(fontSize: 12)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 3. Tavily Search API Key Section
                 Card(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   elevation: 1,
@@ -268,7 +348,7 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                             Icon(Icons.travel_explore_rounded, color: Colors.teal, size: 20),
                             SizedBox(width: 8),
                             Text(
-                              'Tavily Search API Key',
+                              'Tavily Search API Keys',
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                             ),
                           ],
@@ -283,7 +363,7 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                           controller: _tavilyController,
                           obscureText: _obscureTavily,
                           decoration: InputDecoration(
-                            labelText: 'Tavily API Key',
+                            labelText: 'Primary Tavily API Key',
                             hintText: 'tvly-dev-...',
                             border: const OutlineInputBorder(),
                             prefixIcon: const Icon(Icons.search_rounded, color: Colors.teal),
@@ -301,6 +381,52 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                                 ),
                               ],
                             ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _tavilySecondaryController,
+                          obscureText: _obscureTavilySecondary,
+                          decoration: InputDecoration(
+                            labelText: 'Secondary Tavily API Key (Optional Fallback)',
+                            hintText: 'tvly-dev-... (Auto-fallback if Key 1 hits limit)',
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.swap_calls_rounded, color: Colors.teal),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(_obscureTavilySecondary ? Icons.visibility_off : Icons.visibility),
+                                  onPressed: () => setState(() => _obscureTavilySecondary = !_obscureTavilySecondary),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.paste_rounded),
+                                  tooltip: 'Paste',
+                                  onPressed: () => _pasteTo(_tavilySecondaryController),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.teal.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.teal.withValues(alpha: 0.2)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.info_outline_rounded, size: 16, color: Colors.teal),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Automatic Cascading: If your Primary Key exceeds Tavily limits or monthly quota, RemindBuddy automatically retries using your Secondary Key.',
+                                  style: TextStyle(fontSize: 11.5, color: Colors.teal),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 8),

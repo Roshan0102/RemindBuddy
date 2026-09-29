@@ -19,7 +19,9 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification, cust
     let location = "";
     let eventMode = "In-Person";
     let userTavilyKey = "";
+    let userTavilyKey2 = "";
     let userGeminiKey = "";
+    let userGroqKey = "";
     if (userDoc.exists) {
         const data = userDoc.data();
         const enabledModules = (data === null || data === void 0 ? void 0 : data.enabledModules) || [];
@@ -39,7 +41,9 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification, cust
             }
             const userApiKeys = data.userApiKeys || {};
             userTavilyKey = (userApiKeys.tavilyApiKey || data.tavilyApiKey || "").trim();
+            userTavilyKey2 = (userApiKeys.tavilyApiKey2 || userApiKeys.secondaryTavilyApiKey || data.tavilyApiKey2 || data.secondaryTavilyApiKey || "").trim();
             userGeminiKey = (userApiKeys.geminiApiKey || data.geminiApiKey || "").trim();
+            userGroqKey = (userApiKeys.groqApiKey || data.groqApiKey || "").trim();
         }
     }
     // Isolate and apply explicit user preferences if provided in task/callable payload
@@ -62,14 +66,14 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification, cust
         location = "Bengaluru, India";
     }
     console.log(`[TechEvents] Isolated execution for user ${uid}: Interests=[${interests.join(', ')}], Location="${location}", Mode="${eventMode}"`);
-    if (!userTavilyKey || !userGeminiKey) {
-        console.log(`[TechEvents] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
+    if ((!userTavilyKey && !userTavilyKey2) || (!userGeminiKey && !userGroqKey)) {
+        console.log(`[TechEvents] User ${uid} has not configured their personal Tavily and Gemini/Groq API keys in Settings. Skipping.`);
         await (0, featureLogger_1.logFeatureExecution)(uid, {
             feature: 'tech_events',
             featureTitle: 'Tech Events',
             status: 'error',
             count: 0,
-            message: 'API Key Error: Missing Tavily or Gemini API key. Please configure in Settings -> AI & Search Keys.',
+            message: 'API Key Error: Missing Tavily or Gemini/Groq API key. Please configure in Settings -> AI & Search Keys.',
             isManual: !triggerNotification
         });
         return { success: false, events: [], message: "Tavily and Gemini API keys not configured in Settings." };
@@ -108,6 +112,7 @@ async function fetchAndStoreEventsForUserInternal(uid, triggerNotification, cust
             console.log(`[TechEvents] Querying Tavily for user ${uid} (Interest: "${interest}")...`);
             const tavilyResp = await (0, tavilyHelper_1.searchTavily)({
                 apiKey: userTavilyKey,
+                secondaryApiKey: userTavilyKey2,
                 query,
                 searchDepth: "basic",
                 maxResults: 4
@@ -178,7 +183,11 @@ Respond ONLY with a JSON array matching this schema:
     };
     let textResponse = "";
     try {
-        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { apiKey: userGeminiKey, timeout: 60000 });
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, {
+            apiKey: userGeminiKey,
+            groqApiKey: userGroqKey,
+            timeout: 60000
+        });
         textResponse = geminiResult.text || "";
     }
     catch (apiErr) {

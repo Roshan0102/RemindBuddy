@@ -343,28 +343,40 @@ export async function discoverAndApplyForUser(
     // Fetch User BYOK API Keys from user document
     const userApiKeys = userData.userApiKeys || {};
     const userTavilyKey = (userApiKeys.tavilyApiKey || userData.tavilyApiKey || "").trim();
+    const userTavilyKey2 = (userApiKeys.tavilyApiKey2 || userApiKeys.secondaryTavilyApiKey || userData.tavilyApiKey2 || userData.secondaryTavilyApiKey || "").trim();
     const userGeminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
+    const userGroqKey = (userApiKeys.groqApiKey || userData.groqApiKey || "").trim();
 
-    if (!userTavilyKey || !userGeminiKey) {
-        console.log(`[JobDiscovery] User ${uid} has not configured their personal Tavily and Gemini API keys in Settings. Skipping.`);
+    if ((!userTavilyKey && !userTavilyKey2) || (!userGeminiKey && !userGroqKey)) {
+        console.log(`[JobDiscovery] User ${uid} has not configured their personal Tavily and Gemini/Groq API keys in Settings. Skipping.`);
         await logFeatureExecution(uid, {
             feature: 'auto_apply',
             featureTitle: 'Auto-Apply Agent',
             status: 'error',
             count: 0,
-            message: 'API Key Error: Missing Tavily or Gemini API key. Please configure them in Settings -> AI & Search Keys.',
+            message: 'API Key Error: Missing Tavily or Gemini/Groq API key. Please configure them in Settings -> AI & Search Keys.',
             isManual: options?.isManualTrigger ?? false
         });
         return { 
             success: false, 
             appliedCount: 0, 
             jobs: [], 
-            message: "Please configure your free Tavily & Gemini API keys in Settings -> AI & Search Keys." 
+            message: "Please configure your free Tavily & Gemini/Groq API keys in Settings -> AI & Search Keys." 
         };
     }
 
     const formattedRolesList = targetRoles.map((role, idx) => `   ${idx + 1}. "${role}"`).join("\n");
-    const locQuery = targetLocations.map(l => `"${l}"`).join(" OR ");
+    
+    // For Tavily web query, use top 2 user preferred locations + "Remote" for clean, high-yield matching.
+    // (Gemini brain receives the FULL targetLocations array for deep candidate filtering).
+    const primarySearchLocs: string[] = [];
+    for (const loc of targetLocations.slice(0, 2)) {
+        if (!primarySearchLocs.includes(loc)) primarySearchLocs.push(loc);
+    }
+    if (!primarySearchLocs.some(l => l.toLowerCase() === 'remote')) {
+        primarySearchLocs.push('Remote');
+    }
+    const searchLocQuery = primarySearchLocs.map(l => `"${l}"`).join(" OR ");
     const todayStr = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
 
     const isFresherCandidate = (minExp === 0 && maxExp === 0);
@@ -403,20 +415,17 @@ export async function discoverAndApplyForUser(
     const seenUrls = new Set<string>();
     let lastTavilyError = "";
 
+    // Search individually for each configured target role (up to 4 roles)
     for (const role of targetRoles.slice(0, 4)) {
         try {
-            const expQuery = isFresherCandidate
-                ? '("fresher" OR "entry level" OR "trainee" OR "0 years")'
-                : (minExp === 0 
-                    ? `("0-${maxExp} years" OR "fresher" OR "junior" OR "entry level")`
-                    : `("${minExp}-${maxExp} years")`);
-
-            const recruiterPhrases = '("hiring" OR "we are hiring") ("send resume" OR "share resume" OR "email resume" OR "drop your resume" OR "mail your resume" OR "email CV" OR "send CV" OR "email us at")';
-            const query = `"${role}" ${expQuery} ${recruiterPhrases} "@" (${locQuery}) -site:facebook.com/groups`;
+            // Clean, unconstrained recruiter intent query (no rigid exp text - Gemini evaluates candidate experience)
+            const recruiterPhrases = '("hiring" OR "we are hiring" OR "looking for") ("send resume" OR "share CV" OR "email resume" OR "email CV" OR "drop your resume")';
+            const query = `"${role}" ${recruiterPhrases} "@" (${searchLocQuery}) -site:facebook.com/groups`;
             console.log(`[JobDiscovery] Querying Tavily for user ${uid} (Role: "${role}")...`);
             
             const tavilyResp = await searchTavily({
                 apiKey: userTavilyKey,
+                secondaryApiKey: userTavilyKey2,
                 query,
                 searchDepth: "advanced",
                 maxResults: 6,
@@ -541,7 +550,11 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
     let rawText = "";
     let modelUsed = "";
     try {
-        const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 120000 });
+        const geminiResult = await callGeminiAPI(payload, { 
+            apiKey: userGeminiKey, 
+            groqApiKey: userGroqKey,
+            timeout: 120000 
+        });
         rawText = geminiResult.text || "";
         modelUsed = geminiResult.modelUsed || "";
     } catch (apiErr: any) {

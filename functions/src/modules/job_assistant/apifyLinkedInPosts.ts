@@ -73,28 +73,24 @@ export async function searchLinkedInPostsViaApify(
         }
     }
 
+    // Ensure Remote / India are included in location synonyms if Indian locations or general locations are specified
+    if (!expandedLocs.some(x => x.toLowerCase() === 'remote')) {
+        expandedLocs.push('Remote');
+    }
+    if (!expandedLocs.some(x => x.toLowerCase() === 'india')) {
+        expandedLocs.push('India');
+    }
+
     const locClause = expandedLocs.length > 0
         ? `(${expandedLocs.map(l => l.includes(' ') ? `"${l}"` : l).join(' OR ')})`
         : "";
 
-    // 1. Primary Combined Query: combines ALL candidate target roles in an OR clause + location clause.
-    // This ensures Apify fetches posts across all roles rather than stopping at the first role.
-    const searchQueries: string[] = [];
-    if (safeRoles.length > 1) {
-        const rolesOrClause = safeRoles.map(r => `"${r}"`).join(' OR ');
-        searchQueries.push(
-            `hiring (${rolesOrClause}) (email OR "send resume" OR "share CV" OR "mail your resume" OR CV)${locClause ? ` ${locClause}` : ''}`
-        );
-    }
+    // Dedicated search query per target role to guarantee equal, deep coverage for every role
+    const searchQueries: string[] = safeRoles.map(role => 
+        `hiring "${role}" (email OR "send resume" OR "share CV" OR "mail your resume" OR CV)${locClause ? ` ${locClause}` : ''}`
+    );
 
-    // 2. Individual role queries as fallback in the same run
-    for (const role of safeRoles) {
-        searchQueries.push(
-            `hiring "${role}" (email OR "send resume" OR "share CV" OR "mail your resume" OR CV)${locClause ? ` ${locClause}` : ''}`
-        );
-    }
-
-    console.log(`[ApifyLinkedIn] Executing multi-role search across ${safeRoles.length} role(s) with location clause: "${locClause || 'Any'}"...`);
+    console.log(`[ApifyLinkedIn] Executing dedicated search queries for ${safeRoles.length} role(s) with location clause: "${locClause || 'Any'}"...`);
 
     let response: any = null;
     let usedTokenIndex = 0;

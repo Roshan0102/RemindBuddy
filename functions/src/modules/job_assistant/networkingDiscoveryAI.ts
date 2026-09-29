@@ -377,23 +377,25 @@ export async function discoverNetworkingLeadsForUser(
     // Resolve API Keys
     const userApiKeys = userData.userApiKeys || {};
     const userTavilyKey = (userApiKeys.tavilyApiKey || userData.tavilyApiKey || "").trim();
+    const userTavilyKey2 = (userApiKeys.tavilyApiKey2 || userApiKeys.secondaryTavilyApiKey || userData.tavilyApiKey2 || userData.secondaryTavilyApiKey || "").trim();
     const userGeminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
+    const userGroqKey = (userApiKeys.groqApiKey || userData.groqApiKey || "").trim();
 
-    if (!userTavilyKey || !userGeminiKey) {
-        console.log(`[StartupRadar] User ${uid} missing personal Tavily or Gemini API key in Settings.`);
+    if ((!userTavilyKey && !userTavilyKey2) || (!userGeminiKey && !userGroqKey)) {
+        console.log(`[StartupRadar] User ${uid} missing personal Tavily or Gemini/Groq API key in Settings.`);
         await logFeatureExecution(uid, {
             feature: 'cold_outreach',
             featureTitle: 'Cold Outreach',
             status: 'error',
             count: 0,
-            message: 'API Key Error: Missing Tavily or Gemini API key. Please configure in Settings -> AI & Search Keys.',
+            message: 'API Key Error: Missing Tavily or Gemini/Groq API key. Please configure in Settings -> AI & Search Keys.',
             isManual: options?.isManualTrigger ?? false
         });
         return {
             success: false,
             count: 0,
             leads: [],
-            message: "Please configure your personal Tavily & Gemini API keys in Job Assistant Settings."
+            message: "Please configure your personal Tavily & Gemini/Groq API keys in Job Assistant Settings."
         };
     }
 
@@ -489,6 +491,7 @@ export async function discoverNetworkingLeadsForUser(
             console.log(`[StartupRadar] Running Tavily search for: ${qObj.query}...`);
             const tavilyResp = await searchTavily({
                 apiKey: userTavilyKey,
+                secondaryApiKey: userTavilyKey2,
                 query: qObj.query,
                 searchDepth: "advanced",
                 maxResults: 10,
@@ -631,7 +634,11 @@ Return ONLY a valid JSON array of objects. No markdown backticks, no wrapping te
 
     let rawText = "";
     try {
-        const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 120000 });
+        const geminiResult = await callGeminiAPI(payload, { 
+            apiKey: userGeminiKey, 
+            groqApiKey: userGroqKey,
+            timeout: 120000 
+        });
         rawText = geminiResult.text || "";
     } catch (apiErr: any) {
         console.error("[StartupRadar] Gemini analysis failed:", apiErr.message);
@@ -1034,7 +1041,9 @@ export async function internalNetworkingDiscoveryDispatcher(): Promise<void> {
             }
 
             const userApiKeys = data.userApiKeys || {};
-            const hasKeys = !!((userApiKeys.tavilyApiKey || data.tavilyApiKey) && (userApiKeys.geminiApiKey || data.geminiApiKey));
+            const hasTavily = !!(userApiKeys.tavilyApiKey || userApiKeys.tavilyApiKey2 || userApiKeys.secondaryTavilyApiKey || data.tavilyApiKey || data.tavilyApiKey2 || data.secondaryTavilyApiKey);
+            const hasGemini = !!(userApiKeys.geminiApiKey || data.geminiApiKey);
+            const hasKeys = hasTavily && hasGemini;
             if (!hasKeys) continue;
 
             // User-level toggle: If the user explicitly disabled Startup Radar / Cold Outreach in their settings

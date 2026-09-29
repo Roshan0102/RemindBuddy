@@ -533,7 +533,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   iconGradient: const [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
                   title: 'SmartBuddy Engine',
                   subtitle: 'All-in-One AI Daily Life & Assistant Platform',
-                  badgeText: 'v1.10.42',
+                  badgeText: 'v1.10.43',
                   badgeColor: const Color(0xFF8B5CF6),
                   isFirst: false,
                   isLast: true,

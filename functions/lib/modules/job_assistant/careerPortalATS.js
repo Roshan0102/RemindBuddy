@@ -209,24 +209,32 @@ async function fetchAshbyJobs(targetRoleKeywords, targetLocations, _cutoffTimeMs
 /**
  * Searches Tavily targeting major ATS portals with days: 3 (last 72 hours).
  */
-async function fetchTavilyCareerPortals(apiKey, roles, locations, maxExpYears = 3) {
+async function fetchTavilyCareerPortals(apiKey, roles, locations, _maxExpYears = 3, secondaryApiKey) {
     const allResults = [];
-    const primaryRole = roles[0] || "Software Engineer";
-    const secondaryRole = roles[1] || (roles[0] ? `${roles[0]} Developer` : "Developer");
-    const locQuery = locations.map(l => `"${l}"`).join(" OR ") || '"India" OR "Remote"';
-    // When candidate is early-career (<= 3 yrs), strongly exclude senior/staff/lead/executive/manager/ML titles
-    const negativeFilters = maxExpYears <= 3
-        ? '-senior -sr -staff -principal -lead -manager -director -vp -"product manager" -"machine learning"'
-        : '-director -vp';
-    const queries = [
-        `("${primaryRole}") (${locQuery}) ${negativeFilters}`.trim(),
-        `("${secondaryRole}") (${locQuery}) ${negativeFilters}`.trim()
-    ];
-    for (const q of queries) {
+    const searchRoles = (roles && roles.length > 0)
+        ? roles.slice(0, 4)
+        : ["Software Engineer", "Developer"];
+    const primaryLocs = [];
+    for (const loc of (locations || []).slice(0, 2)) {
+        if (!primaryLocs.includes(loc))
+            primaryLocs.push(loc);
+    }
+    if (!primaryLocs.some(l => l.toLowerCase() === 'remote')) {
+        primaryLocs.push('Remote');
+    }
+    if (!primaryLocs.some(l => l.toLowerCase() === 'india')) {
+        primaryLocs.push('India');
+    }
+    const locQuery = primaryLocs.map(l => `"${l}"`).join(" OR ");
+    // Dedicated search per role targeting top ATS domains
+    for (const role of searchRoles) {
         try {
+            const query = `"${role}" (${locQuery})`.trim();
+            console.log(`[CareerPortalATS] Querying Tavily ATS boards for role: "${role}"...`);
             const resp = await (0, tavilyHelper_1.searchTavily)({
                 apiKey,
-                query: q,
+                secondaryApiKey,
+                query,
                 searchDepth: "advanced",
                 maxResults: 10,
                 days: 3, // Last 72 hours
@@ -244,7 +252,7 @@ async function fetchTavilyCareerPortals(apiKey, roles, locations, maxExpYears = 
             }
         }
         catch (err) {
-            console.warn(`[CareerPortalATS] Tavily search error: ${err.message}`);
+            console.warn(`[CareerPortalATS] Tavily search error for role "${role}": ${err.message}`);
         }
     }
     return allResults;
@@ -303,9 +311,11 @@ async function executeCareerPortalDiscovery(uid, options) {
     // 2. Extract Keys & Base Resume
     const userApiKeys = userData.userApiKeys || {};
     const tavilyKey = (userApiKeys.tavilyApiKey || userData.tavilyApiKey || "").trim();
+    const tavilyKey2 = (userApiKeys.tavilyApiKey2 || userApiKeys.secondaryTavilyApiKey || userData.tavilyApiKey2 || userData.secondaryTavilyApiKey || "").trim();
     const geminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
-    if (!geminiKey) {
-        const msg = "Gemini API key is required. Please configure in Settings -> AI & Search Keys.";
+    const groqKey = (userApiKeys.groqApiKey || userData.groqApiKey || "").trim();
+    if (!geminiKey && !groqKey) {
+        const msg = "Gemini/Groq API key is required. Please configure in Settings -> AI & Search Keys.";
         await (0, featureLogger_1.logFeatureExecution)(uid, {
             feature: "career_portals",
             featureTitle: "Career Portals (ATS Matcher)",
@@ -368,9 +378,9 @@ async function executeCareerPortalDiscovery(uid, options) {
         console.warn(`[CareerPortalATS] Ashby API fetch failed: ${e.message}`);
     }
     // D. Tavily Search (days: 3)
-    if (tavilyKey) {
+    if (tavilyKey || tavilyKey2) {
         try {
-            const tavilyResults = await fetchTavilyCareerPortals(tavilyKey, targetRoles, targetLocations, maxExpYears);
+            const tavilyResults = await fetchTavilyCareerPortals(tavilyKey, targetRoles, targetLocations, maxExpYears, tavilyKey2);
             console.log(`[CareerPortalATS] Tavily returned ${tavilyResults.length} ATS links.`);
             for (const r of tavilyResults) {
                 let portalType = "other";
@@ -586,7 +596,11 @@ OUTPUT STRICT JSON FORMAT:
                     responseMimeType: "application/json"
                 }
             };
-            const geminiResp = await (0, geminiHelper_1.callGeminiAPI)(geminiPayload, { apiKey: geminiKey, timeout: 90000 });
+            const geminiResp = await (0, geminiHelper_1.callGeminiAPI)(geminiPayload, {
+                apiKey: geminiKey,
+                groqApiKey: groqKey,
+                timeout: 90000
+            });
             const parsed = JSON.parse(geminiResp.text || "{}");
             const atsScore = typeof parsed.atsScore === "number" ? parsed.atsScore : 0;
             const isQualified = parsed.isQualified !== false;

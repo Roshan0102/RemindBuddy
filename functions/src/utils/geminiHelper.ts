@@ -1,8 +1,10 @@
 import axios from "axios";
 import { db } from "../config/firebase";
+import { callGroqAPI } from "./groqHelper";
 
 export interface GeminiCallOptions {
     apiKey?: string;
+    groqApiKey?: string;
     models?: string[];
     maxRetries?: number;
     timeout?: number;
@@ -176,6 +178,43 @@ export async function callGeminiAPI(
                 await new Promise((res) => setTimeout(res, 400));
                 break; // Move to next model
             }
+        }
+    }
+
+    // Tier-2 Universal Fallback: If all Gemini models failed, attempt Groq (Llama 3.3 70B)
+    const groqKey = (options.groqApiKey || "").trim();
+    if (groqKey) {
+        console.log(`[GeminiHelper] 🔄 All Gemini models failed or rate-limited. Cascading to Tier-2 Groq fallback (llama-3.3-70b-versatile)...`);
+        try {
+            let extractedText = "";
+            if (payload && Array.isArray(payload.contents)) {
+                for (const item of payload.contents) {
+                    if (Array.isArray(item.parts)) {
+                        for (const part of item.parts) {
+                            if (typeof part.text === "string") {
+                                extractedText += part.text + "\n";
+                            }
+                        }
+                    }
+                }
+            } else if (typeof payload === "string") {
+                extractedText = payload;
+            }
+
+            if (extractedText.trim()) {
+                const groqRes = await callGroqAPI({
+                    apiKey: groqKey,
+                    prompt: extractedText
+                });
+                console.log(`[GeminiHelper] ✅ Tier-2 Groq fallback succeeded (${groqRes.modelUsed})!`);
+                return {
+                    text: groqRes.text,
+                    raw: groqRes.raw,
+                    modelUsed: `Groq (${groqRes.modelUsed}) [Gemini Fallback]`
+                };
+            }
+        } catch (groqErr: any) {
+            console.error(`[GeminiHelper] Tier-2 Groq fallback also failed: ${groqErr.message}`);
         }
     }
 

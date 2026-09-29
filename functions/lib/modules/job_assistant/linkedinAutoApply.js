@@ -78,7 +78,9 @@ async function processLinkedInAutoApplyForUser(uid, options) {
             return { success: false, appliedCount: 0, message: msg, jobs: [] };
         }
         await firebase_1.db.collection("users").doc(uid).set({
-            linkedinAutoApplyLock: firebase_1.admin.firestore.FieldValue.serverTimestamp()
+            linkedinAutoApplyLock: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
+            linkedinAutoApplyLastRan: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
+            jobsLastRan: firebase_1.admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
         // 1. Admin Module Control: Must be enabled for user
         const isLinkedInEnabled = (enabledModules.includes("job_assistant") || enabledModules.includes("linkedin_auto_apply"))
@@ -332,6 +334,10 @@ async function processLinkedInAutoApplyForUser(uid, options) {
                 scheduledSlot,
                 isManual
             });
+            await firebase_1.db.collection("users").doc(uid).set({
+                linkedinAutoApplyLastRan: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
+                jobsLastRan: firebase_1.admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
             return { success: true, appliedCount: 0, message: msg, jobs: [] };
         }
         // 8. Filter Posts against Unified History, Blacklist & Experience Restrictions
@@ -382,6 +388,10 @@ async function processLinkedInAutoApplyForUser(uid, options) {
                 scheduledSlot,
                 isManual
             });
+            await firebase_1.db.collection("users").doc(uid).set({
+                linkedinAutoApplyLastRan: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
+                jobsLastRan: firebase_1.admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
             return { success: true, appliedCount: 0, message: msg, jobs: [] };
         }
         // 9. Process Applications with Gemini Verification & Nodemailer Sending
@@ -508,6 +518,7 @@ Respond ONLY with valid JSON:
   "coverLetter": string
 }`;
                 const geminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
+                const groqKey = (userApiKeys.groqApiKey || userData.groqApiKey || "").trim();
                 const geminiParts = [];
                 if (cleanResumeB64) {
                     geminiParts.push({
@@ -524,6 +535,7 @@ Respond ONLY with valid JSON:
                 };
                 const geminiResp = await (0, geminiHelper_1.callGeminiAPI)(geminiPayload, {
                     apiKey: geminiKey || undefined,
+                    groqApiKey: groqKey || undefined,
                     timeout: 45000
                 });
                 const rawText = geminiResp.text || "{}";
