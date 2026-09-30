@@ -3920,11 +3920,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
         // Apply portal filter
         final filteredJobs = allJobs.where((j) {
+          // If 'applied' filter is selected, ONLY show applied jobs
+          if (_portalFilter == 'applied') {
+            if (j.status != 'applied') return false;
+          } else {
+            // Default view (all, greenhouse, lever, ashby, high_match):
+            // Exclude already applied jobs so user only sees unapplied / newly fetched openings
+            if (j.status == 'applied') return false;
+          }
+
           if (_portalFilter == 'greenhouse' && j.portalType != 'greenhouse') return false;
           if (_portalFilter == 'lever' && j.portalType != 'lever') return false;
           if (_portalFilter == 'ashby' && j.portalType != 'ashby') return false;
           if (_portalFilter == 'high_match' && j.atsScore < 80) return false;
-          if (_portalFilter == 'applied' && j.status != 'applied') return false;
 
           if (_portalSearchQuery.trim().isNotEmpty) {
             final q = _portalSearchQuery.toLowerCase();
@@ -4148,7 +4156,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _buildPortalFilterChip('all', 'All (<72h)'),
+                  _buildPortalFilterChip('all', 'All Unapplied (<72h)'),
                   const SizedBox(width: 8),
                   _buildPortalFilterChip('greenhouse', 'Greenhouse 🟢'),
                   const SizedBox(width: 8),
@@ -4179,13 +4187,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 child: Column(
                   children: [
                     Icon(
-                      Icons.apartment_rounded,
+                      _portalFilter == 'applied' ? Icons.task_alt_rounded : Icons.apartment_rounded,
                       size: 48,
                       color: isDark ? Colors.white30 : Colors.black26,
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'No Career Portal Openings Found',
+                      _portalFilter == 'applied'
+                          ? 'No Applied Openings Yet'
+                          : 'No Unapplied Career Portal Openings Found',
                       style: GoogleFonts.outfit(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -4194,7 +4204,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Tap "Discover Portals" above to fetch fresh openings from Greenhouse, Lever, and Ashby verified within the last 48 hours.',
+                      _portalFilter == 'applied'
+                          ? 'When you apply to career portal openings, they will be tracked here.'
+                          : 'Tap "Discover Portals" above to fetch fresh openings from Greenhouse, Lever, and Ashby verified within the last 48 hours.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 12,

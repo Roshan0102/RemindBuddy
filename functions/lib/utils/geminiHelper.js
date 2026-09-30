@@ -52,7 +52,7 @@ const unsupportedModels = new Set();
  * - Built-in exponential backoff for HTTP 503 (high-demand transient spikes) and HTTP 429
  */
 async function callGeminiAPI(payload, options = {}) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
     let targetApiKey = (options.apiKey || "").trim();
     // If no custom user key provided, fetch admin key from Firestore
     if (!targetApiKey) {
@@ -72,7 +72,7 @@ async function callGeminiAPI(payload, options = {}) {
         candidateModels = [...exports.DEFAULT_MODELS];
     }
     const timeout = options.timeout || 120000;
-    const maxRetries = (_a = options.maxRetries) !== null && _a !== void 0 ? _a : 1;
+    const maxRetries = (_a = options.maxRetries) !== null && _a !== void 0 ? _a : 0;
     let lastError = null;
     // Normalize tools payload for Google Search if present
     const normalizedPayload = JSON.parse(JSON.stringify(payload));
@@ -129,8 +129,7 @@ async function callGeminiAPI(payload, options = {}) {
                         await new Promise((res) => setTimeout(res, delayMs));
                         continue;
                     }
-                    console.log(`[GeminiHelper] 429 limit reached for '${model}'. Cascading to next model in tier...`);
-                    await new Promise((res) => setTimeout(res, 500));
+                    console.log(`[GeminiHelper] 429 for '${model}'. Cascading immediately to next model in tier...`);
                     break; // Move to next model in cascade
                 }
                 // 503 / 502 / 504 Transient high demand or server overload spike
@@ -142,13 +141,11 @@ async function callGeminiAPI(payload, options = {}) {
                         await new Promise((res) => setTimeout(res, delayMs));
                         continue;
                     }
-                    console.log(`[GeminiHelper] Server still busy for '${model}'. Cascading to next model in tier...`);
-                    await new Promise((res) => setTimeout(res, 500));
+                    console.log(`[GeminiHelper] High demand (Status ${status}) on '${model}'. Cascading immediately to next model in tier...`);
                     break; // Move to next model in cascade
                 }
-                // For any other unexpected error, pause briefly and cascade to next model
-                console.warn(`[GeminiHelper] Unhandled error on '${model}' (${status}): ${errMsg}. Cascading to next model...`);
-                await new Promise((res) => setTimeout(res, 400));
+                // For any other unexpected error, immediately cascade to next model
+                console.warn(`[GeminiHelper] Error on '${model}' (${status}): ${errMsg}. Cascading to next model...`);
                 break; // Move to next model
             }
         }
@@ -191,9 +188,17 @@ async function callGeminiAPI(payload, options = {}) {
         }
     }
     const isQuota = ((_j = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _j === void 0 ? void 0 : _j.status) === 429;
+    const isBusy = ((_k = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _k === void 0 ? void 0 : _k.status) === 503 ||
+        ((_l = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _l === void 0 ? void 0 : _l.status) === 502 ||
+        ((_m = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _m === void 0 ? void 0 : _m.status) === 504 ||
+        (((_q = (_p = (_o = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _o === void 0 ? void 0 : _o.data) === null || _p === void 0 ? void 0 : _p.error) === null || _q === void 0 ? void 0 : _q.message) && (lastError.response.data.error.message.includes("high demand") ||
+            lastError.response.data.error.message.includes("spikes in demand") ||
+            lastError.response.data.error.message.includes("overloaded")));
     const finalMessage = isQuota
         ? "Gemini API Quota Exceeded (HTTP 429). The daily or per-minute rate limit for Gemini API has been reached on this key. Please check your Google AI Studio / GCP quota or configure a backup API key."
-        : (((_m = (_l = (_k = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _k === void 0 ? void 0 : _k.data) === null || _l === void 0 ? void 0 : _l.error) === null || _m === void 0 ? void 0 : _m.message) || (lastError === null || lastError === void 0 ? void 0 : lastError.message) || "All Gemini API attempts failed across all models.");
+        : isBusy
+            ? "Google AI Studio is currently experiencing high demand (HTTP 503). Spikes in traffic are temporary. Please try again after a few moments."
+            : (((_t = (_s = (_r = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _r === void 0 ? void 0 : _r.data) === null || _s === void 0 ? void 0 : _s.error) === null || _t === void 0 ? void 0 : _t.message) || (lastError === null || lastError === void 0 ? void 0 : lastError.message) || "All Gemini API attempts failed across all models.");
     throw new Error(`Gemini Service Error: ${finalMessage}`);
 }
 //# sourceMappingURL=geminiHelper.js.map

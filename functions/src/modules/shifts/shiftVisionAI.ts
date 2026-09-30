@@ -2,7 +2,7 @@ import * as functions from "firebase-functions";
 import { db } from "../../config/firebase";
 import { callGeminiAPI } from "../../utils/geminiHelper";
 
-export const analyzeRosterImage = functions.runWith({ timeoutSeconds: 180, memory: "1GB" }).https.onCall(async (data, context) => {
+export const analyzeRosterImage = functions.runWith({ timeoutSeconds: 540, memory: "1GB" }).https.onCall(async (data, context) => {
     // Ensure user is authenticated
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
@@ -62,8 +62,8 @@ INSTRUCTIONS:
    - 'M' or 'Morning' -> shift_type: "morning", start_time: "06:00", end_time: "14:00", is_week_off: false
    - 'A' or 'Afternoon' -> shift_type: "afternoon", start_time: "14:00", end_time: "22:00", is_week_off: false
    - 'N' or 'Night' -> shift_type: "night", start_time: "22:00", end_time: "06:00", is_week_off: false
-   - 'D' or 'G' or 'General' -> shift_type: "general", start_time: "09:00", end_time: "17:00", is_week_off: false
-   - 'L' (Leave), 'H' (Holiday), 'OFF', blank cell, or empty box -> shift_type: "week_off", start_time: null, end_time: null, is_week_off: true
+   - 'D' or 'Day' or 'G' or 'General' -> shift_type: "day", start_time: "09:00", end_time: "17:00", is_week_off: false
+   - 'L' (Paid Leave), 'H' (Public Holiday), 'OFF', 'WO' (Week Off), blank cell, or empty box -> shift_type: "week_off", start_time: null, end_time: null, is_week_off: true
 
 OUTPUT SCHEMA:
 Return ONLY the JSON object matching the requested schema with all days in "shifts".`;
@@ -95,7 +95,7 @@ Return ONLY the JSON object matching the requested schema with all days in "shif
                             type: "OBJECT",
                             properties: {
                                 date: { type: "STRING", description: "Date formatted as YYYY-MM-DD" },
-                                shift_type: { type: "STRING", description: "morning, afternoon, night, or week_off" },
+                                shift_type: { type: "STRING", description: "morning, afternoon, night, day, or week_off" },
                                 start_time: { type: "STRING", nullable: true, description: "HH:MM format" },
                                 end_time: { type: "STRING", nullable: true, description: "HH:MM format" },
                                 is_week_off: { type: "BOOLEAN" }
@@ -112,18 +112,29 @@ Return ONLY the JSON object matching the requested schema with all days in "shif
     try {
         const geminiResult = await callGeminiAPI(payload, {
             apiKey: userGeminiKey || undefined,
-            timeout: 60000
+            timeout: 60000,
+            maxRetries: 0
         });
         const textResponse = geminiResult.text;
         if (!textResponse) {
             throw new functions.https.HttpsError('internal', 'Empty content returned from Gemini API.');
         }
 
-        // Return parsed JSON object
-        return JSON.parse(textResponse);
+        // Return parsed JSON object including modelUsed
+        const parsed = JSON.parse(textResponse);
+        return {
+            ...parsed,
+            modelUsed: geminiResult.modelUsed
+        };
     } catch (error: any) {
         console.error("Gemini API Error in analyzeRosterImage:", error.message);
-        throw new functions.https.HttpsError('internal', `Error calling Gemini API: ${error.message}`);
+        let userMessage = error.message || "Failed to analyze roster image.";
+        if (userMessage.includes("503") || userMessage.toLowerCase().includes("high demand") || userMessage.toLowerCase().includes("overloaded")) {
+            userMessage = "Google AI Studio is currently experiencing heavy server traffic (high demand spike). Please wait a moment and try scanning again.";
+        } else if (userMessage.includes("429") || userMessage.toLowerCase().includes("quota")) {
+            userMessage = "AI API quota limit reached (HTTP 429). Please check your Gemini API key quota or try again in a few minutes.";
+        }
+        throw new functions.https.HttpsError('internal', userMessage);
     }
 });
 

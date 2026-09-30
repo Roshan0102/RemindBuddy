@@ -88,7 +88,7 @@ export async function callGeminiAPI(
     }
 
     const timeout = options.timeout || 120000;
-    const maxRetries = options.maxRetries ?? 1;
+    const maxRetries = options.maxRetries ?? 0;
 
     let lastError: any = null;
 
@@ -154,8 +154,7 @@ export async function callGeminiAPI(
                         await new Promise((res) => setTimeout(res, delayMs));
                         continue;
                     }
-                    console.log(`[GeminiHelper] 429 limit reached for '${model}'. Cascading to next model in tier...`);
-                    await new Promise((res) => setTimeout(res, 500));
+                    console.log(`[GeminiHelper] 429 for '${model}'. Cascading immediately to next model in tier...`);
                     break; // Move to next model in cascade
                 }
 
@@ -168,14 +167,12 @@ export async function callGeminiAPI(
                         await new Promise((res) => setTimeout(res, delayMs));
                         continue;
                     }
-                    console.log(`[GeminiHelper] Server still busy for '${model}'. Cascading to next model in tier...`);
-                    await new Promise((res) => setTimeout(res, 500));
+                    console.log(`[GeminiHelper] High demand (Status ${status}) on '${model}'. Cascading immediately to next model in tier...`);
                     break; // Move to next model in cascade
                 }
 
-                // For any other unexpected error, pause briefly and cascade to next model
-                console.warn(`[GeminiHelper] Unhandled error on '${model}' (${status}): ${errMsg}. Cascading to next model...`);
-                await new Promise((res) => setTimeout(res, 400));
+                // For any other unexpected error, immediately cascade to next model
+                console.warn(`[GeminiHelper] Error on '${model}' (${status}): ${errMsg}. Cascading to next model...`);
                 break; // Move to next model
             }
         }
@@ -219,9 +216,19 @@ export async function callGeminiAPI(
     }
 
     const isQuota = lastError?.response?.status === 429;
+    const isBusy = lastError?.response?.status === 503 ||
+        lastError?.response?.status === 502 ||
+        lastError?.response?.status === 504 ||
+        (lastError?.response?.data?.error?.message && (
+            lastError.response.data.error.message.includes("high demand") ||
+            lastError.response.data.error.message.includes("spikes in demand") ||
+            lastError.response.data.error.message.includes("overloaded")
+        ));
     const finalMessage = isQuota
         ? "Gemini API Quota Exceeded (HTTP 429). The daily or per-minute rate limit for Gemini API has been reached on this key. Please check your Google AI Studio / GCP quota or configure a backup API key."
-        : (lastError?.response?.data?.error?.message || lastError?.message || "All Gemini API attempts failed across all models.");
+        : isBusy
+            ? "Google AI Studio is currently experiencing high demand (HTTP 503). Spikes in traffic are temporary. Please try again after a few moments."
+            : (lastError?.response?.data?.error?.message || lastError?.message || "All Gemini API attempts failed across all models.");
     throw new Error(`Gemini Service Error: ${finalMessage}`);
 }
 

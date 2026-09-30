@@ -44,13 +44,16 @@ class Shift {
   }
 
   String getDisplayName() {
-    switch (shiftType) {
+    switch (shiftType.toLowerCase()) {
       case 'morning':
         return 'Morning Shift';
       case 'afternoon':
         return 'Afternoon Shift';
       case 'night':
         return 'Night Shift';
+      case 'day':
+      case 'general':
+        return 'Day Shift';
       case 'week_off':
         return 'Week Off';
       default:
@@ -70,20 +73,23 @@ class ShiftRoster {
   final String employeeName;
   final String month;
   final List<Shift> shifts;
+  final String? modelUsed;
 
   ShiftRoster({
     required this.employeeName,
     required this.month,
     required this.shifts,
+    this.modelUsed,
   });
 
   factory ShiftRoster.fromJson(Map<dynamic, dynamic> json) {
     return ShiftRoster(
       employeeName: json['employee_name']?.toString() ?? '',
       month: json['month']?.toString() ?? '',
-      shifts: (json['shifts'] as List)
+      shifts: ((json['shifts'] as List?) ?? [])
           .map((shift) => Shift.fromJson(shift as Map))
           .toList(),
+      modelUsed: json['modelUsed']?.toString(),
     );
   }
 }

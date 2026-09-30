@@ -146,6 +146,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     switch (shiftType.toLowerCase()) {
       case 'morning':
         return const Color(0xFFF59E0B); // Amber / Gold
+      case 'day':
+      case 'general':
+        return const Color(0xFF2563EB); // Royal Blue
       case 'afternoon':
         return const Color(0xFF06B6D4); // Cyan / Azure
       case 'night':
@@ -161,6 +164,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     switch (shiftType.toLowerCase()) {
       case 'morning':
         return Icons.wb_sunny_rounded;
+      case 'day':
+      case 'general':
+        return Icons.business_center_rounded;
       case 'afternoon':
         return Icons.wb_twilight_rounded;
       case 'night':
@@ -176,6 +182,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
     switch (shiftType.toLowerCase()) {
       case 'morning':
         return 'Morning';
+      case 'day':
+      case 'general':
+        return 'Day';
       case 'afternoon':
         return 'Afternoon';
       case 'night':
@@ -378,6 +387,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
     String employeeName = '';
     String monthLabel = '';
+    String modelUsed = '';
     List<Shift> parsedShifts = [];
 
     final messenger = ScaffoldMessenger.of(context);
@@ -539,7 +549,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
 
                         final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable(
                           'analyzeRosterImage',
-                          options: HttpsCallableOptions(timeout: const Duration(seconds: 180)),
+                          options: HttpsCallableOptions(timeout: const Duration(seconds: 540)),
                         );
                         final result = await callable.call(<String, dynamic>{
                           'image': base64Image,
@@ -553,6 +563,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             parsedShifts = roster.shifts;
                             employeeName = roster.employeeName;
                             monthLabel = roster.month;
+                            modelUsed = roster.modelUsed ?? '';
                             isPreviewMode = true;
                             isScanning = false;
                           });
@@ -561,7 +572,17 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         }
                       } catch (e) {
                         setDialogState(() {
-                          errorMessage = 'Scanning failed: $e';
+                          String cleanMsg = e.toString();
+                          if (cleanMsg.contains('FirebaseFunctionsException:')) {
+                            final match = RegExp(r'FirebaseFunctionsException:\s*(\[[^\]]+\]\s*)?(.*)').firstMatch(cleanMsg);
+                            if (match != null && match.group(2) != null) {
+                              cleanMsg = match.group(2)!.trim();
+                            }
+                          }
+                          if (cleanMsg.toLowerCase().contains('deadline') || cleanMsg.toLowerCase().contains('timeout')) {
+                            cleanMsg = 'AI Service took too long due to heavy server traffic on Gemini. Please try scanning again shortly.';
+                          }
+                          errorMessage = 'Scanning failed: $cleanMsg';
                           isScanning = false;
                         });
                       }
@@ -600,6 +621,34 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                       'Roster Month: $monthLabel',
                       style: GoogleFonts.outfit(color: Colors.grey.shade500, fontSize: 14),
                     ),
+                    if (modelUsed.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.auto_awesome, size: 14, color: Color(0xFF2563EB)),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Extracted by: $modelUsed',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF2563EB),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const Divider(height: 24),
                     Text(
                       'Review/edit shifts for each day below:',
@@ -620,8 +669,8 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         itemBuilder: (context, index) {
                           final shift = parsedShifts[index];
                           final validShiftType = [
-                            'morning', 'afternoon', 'night', 'general', 'week_off'
-                          ].contains(shift.shiftType) ? shift.shiftType : 'week_off';
+                            'morning', 'day', 'afternoon', 'night', 'general', 'week_off'
+                          ].contains(shift.shiftType) ? (shift.shiftType == 'general' ? 'day' : shift.shiftType) : 'week_off';
 
                           return ListTile(
                             dense: true,
@@ -639,9 +688,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                               underline: const SizedBox(),
                               items: const [
                                 DropdownMenuItem(value: 'morning', child: Text('Morning')),
+                                DropdownMenuItem(value: 'day', child: Text('Day (09:00 - 17:00)')),
                                 DropdownMenuItem(value: 'afternoon', child: Text('Afternoon')),
                                 DropdownMenuItem(value: 'night', child: Text('Night')),
-                                DropdownMenuItem(value: 'general', child: Text('General')),
                                 DropdownMenuItem(value: 'week_off', child: Text('Week Off')),
                               ],
                               onChanged: (newType) {
@@ -653,6 +702,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                                     if (newType == 'morning') {
                                       start = '06:00';
                                       end = '14:00';
+                                    } else if (newType == 'day') {
+                                      start = '09:00';
+                                      end = '17:00';
                                     } else if (newType == 'afternoon') {
                                       start = '14:00';
                                       end = '22:00';
@@ -761,6 +813,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                         rosterMonth: rosterMonth,
                         rawJson: newJsonString,
                         rosterImageUrl: rosterImageUrl,
+                        modelUsed: modelUsed,
                       );
 
                       await _shiftService.scheduleDailyShiftNotification();
@@ -874,6 +927,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     ),
                     items: const [
                       DropdownMenuItem(value: 'morning', child: Text('🌅 Morning (06:00 - 14:00)')),
+                      DropdownMenuItem(value: 'day', child: Text('💼 Day Shift (09:00 - 17:00)')),
                       DropdownMenuItem(value: 'afternoon', child: Text('☀️ Afternoon (14:00 - 22:00)')),
                       DropdownMenuItem(value: 'night', child: Text('🌙 Night (22:00 - 06:00)')),
                       DropdownMenuItem(value: 'week_off', child: Text('🏖️ Week Off (Rest)')),
@@ -899,6 +953,9 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                     if (selectedType == 'morning') {
                       startTime = '06:00';
                       endTime = '14:00';
+                    } else if (selectedType == 'day' || selectedType == 'general') {
+                      startTime = '09:00';
+                      endTime = '17:00';
                     } else if (selectedType == 'afternoon') {
                       startTime = '14:00';
                       endTime = '22:00';
@@ -1431,6 +1488,7 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildBreakdownCol('Morning', _statistics?['morning'] ?? 0, const Color(0xFFF59E0B)),
+                _buildBreakdownCol('Day', _statistics?['day'] ?? 0, const Color(0xFF2563EB)),
                 _buildBreakdownCol('Afternoon', _statistics?['afternoon'] ?? 0, const Color(0xFF06B6D4)),
                 _buildBreakdownCol('Night', _statistics?['night'] ?? 0, const Color(0xFF8B5CF6)),
                 _buildBreakdownCol('Off Days', _statistics?['week_off'] ?? 0, const Color(0xFF10B981)),

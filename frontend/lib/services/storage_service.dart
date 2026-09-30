@@ -802,10 +802,10 @@ class StorageService {
 
   Future<Map<String, int>> getShiftStatistics(String month, {required String rosterMonth}) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return {'morning': 0, 'afternoon': 0, 'night': 0, 'week_off': 0, 'total_working': 0};
+    if (user == null) return {'morning': 0, 'afternoon': 0, 'night': 0, 'day': 0, 'week_off': 0, 'total_working': 0};
     
     final shifts = await getAllShifts(rosterMonth: rosterMonth);
-    int m = 0, a = 0, n = 0, w = 0, tw = 0;
+    int m = 0, a = 0, n = 0, d = 0, w = 0, tw = 0;
     for (var s in shifts) {
       final type = s['shift_type']?.toString().toLowerCase() ?? '';
       if (type == 'morning') {
@@ -814,6 +814,8 @@ class StorageService {
         a++;
       } else if (type == 'night') {
         n++;
+      } else if (type == 'day' || type == 'general') {
+        d++;
       } else if (type == 'week_off') {
         w++;
       }
@@ -822,7 +824,7 @@ class StorageService {
         tw++;
       }
     }
-    return {'morning': m, 'afternoon': a, 'night': n, 'week_off': w, 'total_working': tw};
+    return {'morning': m, 'afternoon': a, 'night': n, 'day': d, 'week_off': w, 'total_working': tw};
   }
 
   Future<void> saveShiftRoster(
@@ -832,6 +834,7 @@ class StorageService {
     required String rosterMonth, 
     required String rawJson,
     String? rosterImageUrl,
+    String? modelUsed,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -847,6 +850,9 @@ class StorageService {
     };
     if (rosterImageUrl != null) {
       docData['roster_image_url'] = rosterImageUrl;
+    }
+    if (modelUsed != null && modelUsed.isNotEmpty) {
+      docData['model_used'] = modelUsed;
     }
     
     batch.set(monthRef, docData, SetOptions(merge: true));

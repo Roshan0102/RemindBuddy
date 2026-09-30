@@ -10,6 +10,8 @@ class AppFilePickerImpl {
   static Future<AppPickedFile?> pickImage({bool fromCamera = false}) async {
     final XFile? file = await _imagePicker.pickImage(
       source: fromCamera ? ImageSource.camera : ImageSource.gallery,
+      maxWidth: 2048,
+      maxHeight: 2048,
       imageQuality: 85,
     );
     if (file == null) return null;
