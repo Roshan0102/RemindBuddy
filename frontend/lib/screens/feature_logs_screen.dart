@@ -431,6 +431,51 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
         }
       }
 
+      // 7. Manual Scan & Apply Fallback Synthesizer
+      if (widget.allowedFeatures.contains('manual_apply')) {
+        final manualAppsSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('job_applications')
+            .where('isAutoApplied', isEqualTo: false)
+            .orderBy('appliedAt', descending: true)
+            .limit(20)
+            .get();
+
+        if (manualAppsSnap.docs.isNotEmpty) {
+          final Map<String, List<Map<String, dynamic>>> appsByDay = {};
+          for (final d in manualAppsSnap.docs) {
+            final ad = d.data();
+            final at = ad['appliedAt'];
+            DateTime dt = DateTime.now();
+            if (at is Timestamp) dt = at.toDate();
+            final key = DateFormat('yyyy-MM-dd').format(dt);
+            appsByDay.putIfAbsent(key, () => []).add(ad);
+          }
+
+          appsByDay.forEach((dayKey, appList) {
+            final firstAt = appList.first['appliedAt'];
+            DateTime dt = DateTime.now();
+            if (firstAt is Timestamp) dt = firstAt.toDate();
+
+            final compNames = appList.map((a) => "${a['jobTitle'] ?? 'Role'} at ${a['companyName'] ?? 'Company'}").toList();
+
+            fallbacks.add(FeatureLogEntry(
+              id: 'fallback_manual_$dayKey',
+              feature: 'manual_apply',
+              featureTitle: 'Manual Scan & Apply',
+              status: 'success',
+              count: appList.length,
+              message: 'Applied for ${appList.length} job(s) via Manual Apply & Scan: ${compNames.take(2).join(', ')}',
+              scheduledSlot: DateFormat('hh:mm a').format(dt),
+              details: compNames,
+              timestamp: dt,
+              isManual: true,
+            ));
+          });
+        }
+      }
+
       fallbacks.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
       if (mounted) {
@@ -449,6 +494,8 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
     switch (feature) {
       case 'auto_apply':
         return Colors.blueAccent;
+      case 'manual_apply':
+        return const Color(0xFF10B981);
       case 'cold_outreach':
         return Colors.tealAccent;
       case 'linkedin_auto_apply':
@@ -468,6 +515,8 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
     switch (feature) {
       case 'auto_apply':
         return Icons.bolt_rounded;
+      case 'manual_apply':
+        return Icons.camera_alt_rounded;
       case 'cold_outreach':
         return Icons.people_alt_rounded;
       case 'linkedin_auto_apply':
@@ -538,6 +587,7 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
     final options = [
       {'key': 'all', 'label': 'All Logs'},
       if (widget.allowedFeatures.contains('auto_apply')) {'key': 'auto_apply', 'label': 'Auto-Apply'},
+      if (widget.allowedFeatures.contains('manual_apply')) {'key': 'manual_apply', 'label': 'Manual Scan & Apply'},
       if (widget.allowedFeatures.contains('linkedin_auto_apply')) {'key': 'linkedin_auto_apply', 'label': 'LinkedIn'},
       if (widget.allowedFeatures.contains('career_portals')) {'key': 'career_portals', 'label': 'Career Portals'},
       if (widget.allowedFeatures.contains('cold_outreach')) {'key': 'cold_outreach', 'label': 'Cold Outreach'},
@@ -609,7 +659,7 @@ class _FeatureLogsScreenState extends State<FeatureLogsScreen> {
       statusBg = isDark ? const Color(0xFF0F3820) : const Color(0xFFDCFCE7);
       statusFg = isDark ? const Color(0xFF4ADE80) : const Color(0xFF15803D);
       statusIcon = Icons.check_circle_rounded;
-      if (log.feature == 'auto_apply') {
+      if (log.feature == 'auto_apply' || log.feature == 'manual_apply') {
         statusLabel = '${log.count} ${log.count == 1 ? "Job" : "Jobs"} Applied';
       } else if (log.feature == 'linkedin_auto_apply') {
         statusLabel = '${log.count} ${log.count == 1 ? "Post" : "Posts"} Applied';

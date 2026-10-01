@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 import '../services/gold_price_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/app_permission_service.dart';
@@ -32,10 +33,10 @@ class _HomeScreenState extends State<HomeScreen> {
   
   // Static Weather Cache across Screen Mounts (avoids re-fetching on tab/screen switch)
   static DateTime? _lastWeatherFetchTime;
-  static String _cachedCity = 'Bengaluru';
-  static String _cachedTemp = '--°C';
-  static String _cachedCondition = 'Partly Cloudy';
-  static IconData _cachedIcon = Icons.wb_sunny_rounded;
+  static String _cachedCity = '--';
+  static String _cachedTemp = '--';
+  static String _cachedCondition = 'Location Off';
+  static IconData _cachedIcon = Icons.location_off_rounded;
 
   // Custom dashboard widget list chosen by user (weather is in permanent top header)
   List<String> _activeWidgets = ['gold_price', 'reminders', 'daily_reminders', 'notes'];
@@ -188,15 +189,15 @@ class _HomeScreenState extends State<HomeScreen> {
     List<String>? savedWidgets = prefs.getStringList('dashboard_active_widgets');
     String? savedHero = prefs.getString('dashboard_hero_widget');
 
-    // Restore cached weather to eliminate initial --°C flicker
+    // Restore cached weather if valid
     final cachedCity = prefs.getString('cached_weather_city');
     final cachedTemp = prefs.getString('cached_weather_temp');
     final cachedCond = prefs.getString('cached_weather_cond');
     final cachedIconCode = prefs.getInt('cached_weather_icon_code');
-    if (cachedCity != null && cachedTemp != null) {
+    if (cachedCity != null && cachedCity.isNotEmpty && cachedCity != '--' && cachedTemp != null && cachedTemp != '--') {
       _cachedCity = cachedCity;
       _cachedTemp = cachedTemp;
-      _cachedCondition = cachedCond ?? 'Partly Cloudy';
+      _cachedCondition = cachedCond ?? 'Clear';
       if (cachedIconCode != null) {
         _cachedIcon = _resolveWeatherIconFromCode(cachedIconCode);
       }
@@ -208,30 +209,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (cachedModules != null && cachedModules.isNotEmpty) {
       _enabledModules = cachedModules;
-    }
-
-    // Load persistent dashboard preferences from Firestore across sessions
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      try {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        if (doc.exists && doc.data() != null) {
-          final data = doc.data()!;
-          if (data['dashboardPreferences'] != null) {
-            final dashPrefs = Map<String, dynamic>.from(data['dashboardPreferences']);
-            if (dashPrefs['activeWidgets'] is List && (dashPrefs['activeWidgets'] as List).isNotEmpty) {
-              savedWidgets = List<String>.from(dashPrefs['activeWidgets']);
-              await prefs.setStringList('dashboard_active_widgets', savedWidgets);
-            }
-            if (dashPrefs['heroWidget'] is String && (dashPrefs['heroWidget'] as String).isNotEmpty) {
-              savedHero = dashPrefs['heroWidget'] as String;
-              await prefs.setString('dashboard_hero_widget', savedHero);
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('Error loading dashboard preferences from Firestore: $e');
-      }
     }
 
     if (savedWidgets != null && savedWidgets.isNotEmpty) {
@@ -248,8 +225,43 @@ class _HomeScreenState extends State<HomeScreen> {
           : (_activeWidgets.isNotEmpty ? _activeWidgets.first : 'gold_price');
     }
 
+    // Instant UI load - no waiting for remote network roundtrips!
     if (mounted) {
       setState(() => _isLoading = false);
+    }
+
+    // Background sync for persistent Firestore dashboard preferences
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      FirebaseFirestore.instance.collection('users').doc(user.uid).get().then((doc) {
+        if (doc.exists && doc.data() != null && mounted) {
+          final data = doc.data()!;
+          if (data['dashboardPreferences'] != null) {
+            final dashPrefs = Map<String, dynamic>.from(data['dashboardPreferences']);
+            bool changed = false;
+            if (dashPrefs['activeWidgets'] is List && (dashPrefs['activeWidgets'] as List).isNotEmpty) {
+              final fromDb = List<String>.from(dashPrefs['activeWidgets']).where(_isWidgetAllowed).toList();
+              if (fromDb.isNotEmpty && !listEquals(fromDb, _activeWidgets)) {
+                _activeWidgets = fromDb;
+                prefs.setStringList('dashboard_active_widgets', fromDb);
+                changed = true;
+              }
+            }
+            if (dashPrefs['heroWidget'] is String && _isWidgetAllowed(dashPrefs['heroWidget'])) {
+              if (_heroWidget != dashPrefs['heroWidget']) {
+                _heroWidget = dashPrefs['heroWidget'] as String;
+                prefs.setString('dashboard_hero_widget', _heroWidget);
+                changed = true;
+              }
+            }
+            if (changed && mounted) {
+              setState(() {});
+            }
+          }
+        }
+      }).catchError((e) {
+        debugPrint('Non-blocking error reading remote dashboard preferences: $e');
+      });
     }
   }
 
@@ -353,27 +365,80 @@ class _HomeScreenState extends State<HomeScreen> {
     // 5-minute cache throttle to prevent re-fetching on tab/screen switch
     if (!force && _lastWeatherFetchTime != null) {
       final diff = DateTime.now().difference(_lastWeatherFetchTime!);
-      if (diff < const Duration(minutes: 5) && _weatherTemp != '--°C') {
+      if (diff < const Duration(minutes: 5) && _weatherTemp != '--' && _weatherTemp != '--°C') {
         return;
       }
     }
 
     try {
-      double lat = 12.9716; // default Bengaluru
-      double lon = 77.5946;
-      String city = _weatherCity.isNotEmpty && _weatherCity != 'Bengaluru' ? _weatherCity : 'Bengaluru';
-
-      try {
-        final ipRes = await http.get(Uri.parse('http://ip-api.com/json')).timeout(const Duration(seconds: 3));
-        if (ipRes.statusCode == 200) {
-          final ipData = json.decode(ipRes.body);
-          if (ipData['status'] == 'success') {
-            lat = (ipData['lat'] as num).toDouble();
-            lon = (ipData['lon'] as num).toDouble();
-            city = ipData['city']?.toString() ?? 'Bengaluru';
-          }
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          setState(() {
+            _weatherCity = '--';
+            _weatherTemp = '--';
+            _weatherCondition = 'Location Off';
+            _weatherIcon = Icons.location_off_rounded;
+          });
         }
-      } catch (_) {}
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            setState(() {
+              _weatherCity = '--';
+              _weatherTemp = '--';
+              _weatherCondition = 'Permission Denied';
+              _weatherIcon = Icons.location_off_rounded;
+            });
+          }
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          setState(() {
+            _weatherCity = '--';
+            _weatherTemp = '--';
+            _weatherCondition = 'Permission Denied';
+            _weatherIcon = Icons.location_off_rounded;
+          });
+        }
+        return;
+      }
+
+      // Live coordinates from GPS/Browser
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 4),
+        ),
+      );
+
+      final lat = position.latitude;
+      final lon = position.longitude;
+
+      String city = '--';
+      try {
+        final geoUrl = Uri.parse(
+          'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lon&localityLanguage=en',
+        );
+        final geoRes = await http.get(geoUrl).timeout(const Duration(seconds: 3));
+        if (geoRes.statusCode == 200) {
+          final geoData = json.decode(geoRes.body);
+          city = geoData['city']?.toString() ??
+              geoData['locality']?.toString() ??
+              geoData['principalSubdivision']?.toString() ??
+              'My Location';
+        }
+      } catch (_) {
+        city = 'My Location';
+      }
 
       final response = await http
           .get(Uri.parse('https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current_weather=true'))
@@ -423,7 +488,16 @@ class _HomeScreenState extends State<HomeScreen> {
           });
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted && (_weatherTemp == '--' || _weatherTemp == '--°C')) {
+        setState(() {
+          _weatherCity = '--';
+          _weatherTemp = '--';
+          _weatherCondition = 'Unavailable';
+          _weatherIcon = Icons.location_off_rounded;
+        });
+      }
+    }
   }
 
   void _loadDashboardData() {
@@ -1314,7 +1388,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 12),
           // Right side: Compact, comfortably-sized Weather Widget Chip
           Tooltip(
-            message: '$_weatherCondition in $_weatherCity (Tap to refresh)',
+            message: _weatherCity == '--' ? 'Tap to enable location & fetch live weather' : '$_weatherCondition in $_weatherCity (Tap to refresh)',
             child: InkWell(
               onTap: () => _fetchWeather(force: true),
               borderRadius: BorderRadius.circular(16),
@@ -1562,7 +1636,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 🌐 Web Weather Chip: Enhanced desktop chip with temperature, condition tag, city & refresh
   Widget _buildWebWeatherChip(bool isDark) {
     return Tooltip(
-      message: '$_weatherCondition in $_weatherCity (Click to refresh)',
+      message: _weatherCity == '--' ? 'Click to enable location & fetch live weather' : '$_weatherCondition in $_weatherCity (Click to refresh)',
       child: InkWell(
         onTap: () => _fetchWeather(force: true),
         borderRadius: BorderRadius.circular(16),

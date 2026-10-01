@@ -39,6 +39,35 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       LogService.staticLog("FCM BG: Successfully updated GoldWidget to rate $rate (change: $change)");
     }
   }
+
+  if (message.data['type'] == 'INCOMING_VOICE_CALL') {
+    final FlutterLocalNotificationsPlugin localNotifs = FlutterLocalNotificationsPlugin();
+    const androidDetails = AndroidNotificationDetails(
+      'smartbuddy_call_channel',
+      'Recruiter Voice Calls',
+      channelDescription: 'High priority incoming AI Recruiter phone calls with ringing',
+      importance: Importance.max,
+      priority: Priority.max,
+      fullScreenIntent: true,
+      category: AndroidNotificationCategory.call,
+      visibility: NotificationVisibility.public,
+      ongoing: true,
+      autoCancel: false,
+    );
+    final company = message.data['companyName'] ?? 'Recruiter';
+    final recruiter = message.data['recruiterName'] ?? 'Recruiter';
+    final job = message.data['jobTitle'] ?? 'Job Opportunity';
+    final sessionId = message.data['sessionId'] ?? '';
+    final actionReq = message.data['actionRequired'] ?? '';
+
+    await localNotifs.show(
+      888888,
+      '📞 Incoming Recruiter Call: $company',
+      '$recruiter is calling regarding $job. Tap to answer.',
+      const NotificationDetails(android: androidDetails),
+      payload: 'INCOMING_CALL|$sessionId|$company|$job|$recruiter|$actionReq',
+    );
+  }
 }
 
 @pragma('vm:entry-point')
@@ -548,6 +577,14 @@ class NotificationService {
           playSound: false,
           audioAttributesUsage: AudioAttributesUsage.alarm,
         ),
+        AndroidNotificationChannel(
+          'smartbuddy_call_channel',
+          'Recruiter Voice Calls',
+          description: 'High priority incoming AI Recruiter phone calls with ringing',
+          importance: Importance.max,
+          playSound: true,
+          audioAttributesUsage: AudioAttributesUsage.voiceCommunication,
+        ),
       ];
 
       final androidPlugin = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
@@ -597,6 +634,13 @@ class NotificationService {
         final user = FirebaseAuth.instance.currentUser;
         final uid = user?.uid ?? message.data['uid'] ?? '';
         payload = "DAILY_REMINDER|$reminderId|$uid";
+      } else if (type == 'INCOMING_VOICE_CALL' || message.data['type'] == 'INCOMING_VOICE_CALL') {
+        final sessionId = message.data['sessionId'] ?? '';
+        final companyName = message.data['companyName'] ?? 'Recruiter';
+        final jobTitle = message.data['jobTitle'] ?? 'Job Opportunity';
+        final recruiterName = message.data['recruiterName'] ?? 'Recruiter';
+        final question = message.data['actionRequired'] ?? '';
+        payload = "INCOMING_CALL|$sessionId|$companyName|$jobTitle|$recruiterName|$question";
       }
       if (payload != null && payload.isNotEmpty && payload != 'null') {
         handleNotificationPayload(payload);
@@ -638,6 +682,13 @@ class NotificationService {
           final user = FirebaseAuth.instance.currentUser;
           final uid = user?.uid ?? initialMessage.data['uid'] ?? '';
           payload = "DAILY_REMINDER|$reminderId|$uid";
+        } else if (type == 'INCOMING_VOICE_CALL' || initialMessage.data['type'] == 'INCOMING_VOICE_CALL') {
+          final sessionId = initialMessage.data['sessionId'] ?? '';
+          final companyName = initialMessage.data['companyName'] ?? 'Recruiter';
+          final jobTitle = initialMessage.data['jobTitle'] ?? 'Job Opportunity';
+          final recruiterName = initialMessage.data['recruiterName'] ?? 'Recruiter';
+          final question = initialMessage.data['actionRequired'] ?? '';
+          payload = "INCOMING_CALL|$sessionId|$companyName|$jobTitle|$recruiterName|$question";
         }
         if (payload != null && payload.isNotEmpty && payload != 'null') {
           _pendingPayload = payload;
@@ -651,6 +702,17 @@ class NotificationService {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       LogService.staticLog("Received foreground FCM: ${message.notification?.title}");
       
+      if (message.data['type'] == 'INCOMING_VOICE_CALL') {
+        final sessionId = message.data['sessionId'] ?? '';
+        final companyName = message.data['companyName'] ?? 'Recruiter';
+        final jobTitle = message.data['jobTitle'] ?? 'Job Opportunity';
+        final recruiterName = message.data['recruiterName'] ?? 'Recruiter';
+        final question = message.data['actionRequired'] ?? 'Notice period and CTC confirmation';
+        
+        handleNotificationPayload('INCOMING_CALL|$sessionId|$companyName|$jobTitle|$recruiterName|$question');
+        return;
+      }
+
       RemoteNotification? notification = message.notification;
       AndroidNotification? android = message.notification?.android;
 

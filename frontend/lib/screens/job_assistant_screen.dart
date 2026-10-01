@@ -2641,6 +2641,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         _bodyControllers.remove(index)?.dispose();
         _refinePromptControllers.remove(index)?.dispose();
         _refiningMap.remove(index);
+        if (_extractedJobs.isEmpty || _uploadMode == 'paste_text') {
+          _pastedJobTextController.clear();
+          _customScreenshotPromptController.clear();
+          _manualCompanyNameController.clear();
+          _manualJobTitleController.clear();
+          _manualCompanyUrlController.clear();
+          _manualRecipientEmailsController.clear();
+          _manualCompanyNotesController.clear();
+          _manualCustomPromptController.clear();
+        }
       });
 
       if (mounted) {
@@ -2840,6 +2850,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       _bodyControllers.clear();
       _refinePromptControllers.clear();
       _refiningMap.clear();
+      _pastedJobTextController.clear();
+      _customScreenshotPromptController.clear();
+      _manualCompanyNameController.clear();
+      _manualJobTitleController.clear();
+      _manualCompanyUrlController.clear();
+      _manualRecipientEmailsController.clear();
+      _manualCompanyNotesController.clear();
+      _manualCustomPromptController.clear();
       _isSendingAll = false;
     });
 
@@ -3210,6 +3228,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
   bool _isSubFeatureEnabled(String subKey) {
     if (subKey == 'history') return true;
+    if (subKey == 'ai_recruiter_call') {
+      return _jobAssistantSubPermissions?['ai_recruiter_call'] == true;
+    }
     if (_jobAssistantSubPermissions == null) {
       return true;
     }
@@ -3583,6 +3604,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
+    if (!_isSubFeatureEnabled('ai_recruiter_call')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('AI Recruiter Call is disabled by Administrator for your account.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('📞 Simulating incoming recruiter call in 2 seconds...'),
@@ -3673,11 +3704,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               : _getFeatureTitle(_selectedFeatureIndex!),
           elevation: 2,
           actions: [
-            IconButton(
-              icon: const Icon(Icons.phone_in_talk_rounded, color: Color(0xFF10B981)),
-              tooltip: 'Test AI Recruiter Call',
-              onPressed: _triggerSimulatedCall,
-            ),
+            if (_isSubFeatureEnabled('ai_recruiter_call'))
+              IconButton(
+                icon: const Icon(Icons.phone_in_talk_rounded, color: Color(0xFF10B981)),
+                tooltip: 'Test AI Recruiter Call',
+                onPressed: _triggerSimulatedCall,
+              ),
             IconButton(
               icon: const Icon(Icons.receipt_long_rounded),
               tooltip: 'Automation Run Logs',
@@ -3687,7 +3719,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   MaterialPageRoute(
                     builder: (context) => const FeatureLogsScreen(
                       title: 'AI Applicant Logs',
-                      allowedFeatures: ['auto_apply', 'cold_outreach', 'linkedin_auto_apply', 'career_portals'],
+                      allowedFeatures: ['auto_apply', 'manual_apply', 'cold_outreach', 'linkedin_auto_apply', 'career_portals'],
                     ),
                   ),
                 );

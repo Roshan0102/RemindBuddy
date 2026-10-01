@@ -565,7 +565,9 @@ Return ONLY valid JSON in this exact structure:
                         console.error(`[ReplyTracker] Error sending push notification to user ${uid}:`, notifErr.message);
                     }
                     // 7. IN-APP AI VOICE CALL TRIGGER (Actionable queries / interview invites)
-                    if (analysis.responseType === "hr_query" || analysis.responseType === "interview_invite" || (analysis.actionRequired && analysis.actionRequired.toLowerCase() !== "none")) {
+                    const jobSubPerms = userData.jobAssistantSubPermissions || {};
+                    const isVoiceCallEnabled = jobSubPerms.ai_recruiter_call === true;
+                    if (isVoiceCallEnabled && (analysis.responseType === "hr_query" || analysis.responseType === "interview_invite" || (analysis.actionRequired && analysis.actionRequired.toLowerCase() !== "none"))) {
                         try {
                             await (0, voiceCallSession_1.triggerRecruiterVoiceCallSession)({
                                 uid,

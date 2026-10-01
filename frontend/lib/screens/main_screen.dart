@@ -282,6 +282,31 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
 
+    if (type.startsWith('INCOMING_CALL')) {
+      final parts = type.split('|');
+      final sessionId = parts.length > 1 ? parts[1] : '';
+      final companyName = parts.length > 2 && parts[2].isNotEmpty ? parts[2] : 'Recruiter';
+      final jobTitle = parts.length > 3 && parts[3].isNotEmpty ? parts[3] : 'Job Opportunity';
+      final recruiterName = parts.length > 4 && parts[4].isNotEmpty ? parts[4] : 'Recruiter';
+      final question = parts.length > 5 && parts[5].isNotEmpty ? parts[5] : 'Could you please confirm your notice period and expected CTC?';
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => InAppCallScreen(
+            sessionId: sessionId,
+            companyName: companyName,
+            jobTitle: jobTitle,
+            recruiterName: recruiterName,
+            recruiterEmail: 'recruiter@company.com',
+            question: question,
+            candidateName: FirebaseAuth.instance.currentUser?.displayName ?? 'Candidate',
+            initialRinging: true,
+          ),
+        ),
+      );
+      return;
+    }
+
     if (type.startsWith('CALENDAR_REMINDER')) {
       _selectTabOrPush('reminders');
       final parts = type.split('|');
@@ -1769,7 +1794,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'SmartBuddy v1.10.45',
+                  'SmartBuddy v1.10.46',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

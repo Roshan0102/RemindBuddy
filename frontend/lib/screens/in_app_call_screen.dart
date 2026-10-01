@@ -53,6 +53,7 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
 
   // Timer
   Timer? _callTimer;
+  Timer? _silenceTimer;
   int _callSeconds = 0;
 
   // Transcripts & Chat
@@ -90,6 +91,7 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
   @override
   void dispose() {
     _callTimer?.cancel();
+    _silenceTimer?.cancel();
     _speechToText.stop();
     _flutterTts.stop();
     _pulseController.dispose();
@@ -103,7 +105,7 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
       _speechEnabled = await _speechToText.initialize(
         onError: (err) {
           debugPrint('[CallScreen] STT Error: ${err.errorMsg}');
-          if (mounted) {
+          if (mounted && !_isAiSpeaking && !_isProcessing) {
             setState(() {
               _isListening = false;
               _waveController.stop();
@@ -113,12 +115,22 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
         onStatus: (status) {
           debugPrint('[CallScreen] STT Status: $status');
           if (status == 'done' || status == 'notListening') {
-            if (mounted && _isListening) {
-              setState(() {
-                _isListening = false;
-                _waveController.stop();
-              });
-              _onUserFinishedSpeaking();
+            if (mounted && _isListening && !_isAiSpeaking && !_isProcessing) {
+              if (_currentSpokenText.trim().isEmpty) {
+                // Keep listening active so the user can speak at their own pace
+                Future.delayed(const Duration(milliseconds: 400), () {
+                  if (mounted && _isListening && !_isAiSpeaking && !_isProcessing && !_isMuted) {
+                    _startListening();
+                  }
+                });
+              } else {
+                // If user has spoken words, start a generous 2-second silence debounce timer
+                _silenceTimer ??= Timer(const Duration(milliseconds: 2000), () {
+                  if (mounted && _isListening && _currentSpokenText.trim().isNotEmpty && !_isAiSpeaking && !_isProcessing) {
+                    _onUserFinishedSpeaking();
+                  }
+                });
+              }
             }
           }
         },
@@ -129,8 +141,9 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
 
     try {
       await _flutterTts.setLanguage('en-US');
-      await _flutterTts.setSpeechRate(0.52);
+      await _flutterTts.setSpeechRate(0.50);
       await _flutterTts.setPitch(1.0);
+      await _flutterTts.awaitSpeakCompletion(true);
 
       _flutterTts.setStartHandler(() {
         if (mounted) {
@@ -149,8 +162,7 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
             _waveController.stop();
             _statusMessage = 'Listening to you...';
           });
-          // Immediately open the mic for user response
-          if (!_isCallEnded && !_isMuted) {
+          if (!_isCallEnded && !_isMuted && !_isProcessing) {
             _startListening();
           }
         }
@@ -162,7 +174,11 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
           setState(() {
             _isAiSpeaking = false;
             _waveController.stop();
+            _statusMessage = 'Listening to you...';
           });
+          if (!_isCallEnded && !_isMuted && !_isProcessing) {
+            _startListening();
+          }
         }
       });
     } catch (e) {
@@ -219,13 +235,41 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
     });
 
     await Future.delayed(const Duration(milliseconds: 300));
-    _speakText(greeting);
+    await _speakText(greeting);
   }
 
   Future<void> _speakText(String text) async {
     if (_isCallEnded) return;
-    await _flutterTts.stop();
-    await _flutterTts.speak(text);
+    _silenceTimer?.cancel();
+    try {
+      await _speechToText.stop();
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _isListening = false;
+        _isAiSpeaking = true;
+        _waveController.repeat(reverse: true);
+        _statusMessage = 'SmartBuddy is speaking...';
+      });
+    }
+
+    try {
+      await _flutterTts.awaitSpeakCompletion(true);
+      await _flutterTts.speak(text);
+    } catch (e) {
+      debugPrint('[CallScreen] TTS speak error: $e');
+    } finally {
+      if (mounted && !_isCallEnded && !_isMuted && !_isProcessing) {
+        setState(() {
+          _isAiSpeaking = false;
+          _waveController.stop();
+          _statusMessage = 'Listening to you...';
+        });
+        await Future.delayed(const Duration(milliseconds: 300));
+        _startListening();
+      }
+    }
   }
 
   Future<void> _startListening() async {
@@ -233,34 +277,48 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
 
     final hasMic = await AppPermissionService().ensureMicrophonePermission(context);
     if (!hasMic || !_speechEnabled) {
-      setState(() {
-        _statusMessage = 'Microphone not accessible';
-      });
+      if (mounted) {
+        setState(() {
+          _statusMessage = 'Microphone permission needed';
+        });
+      }
       return;
     }
 
-    _currentSpokenText = '';
-    setState(() {
-      _isListening = true;
-      _statusMessage = 'Listening to you...';
-      _waveController.repeat(reverse: true);
-    });
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
+
+    if (mounted) {
+      setState(() {
+        _isListening = true;
+        _statusMessage = 'Listening to you... Speak freely';
+        _waveController.repeat(reverse: true);
+      });
+    }
 
     try {
       await _speechToText.listen(
         onResult: (result) {
-          if (mounted) {
-            setState(() {
-              _currentSpokenText = result.recognizedWords;
-            });
-          }
+          if (!mounted || _isAiSpeaking || _isProcessing) return;
+          setState(() {
+            _currentSpokenText = result.recognizedWords;
+          });
+          _scrollToBottom();
+
+          // Reset silence timer on every recognized word chunk (2.4s debounce)
+          _silenceTimer?.cancel();
+          _silenceTimer = Timer(const Duration(milliseconds: 2400), () {
+            if (mounted && _isListening && _currentSpokenText.trim().isNotEmpty && !_isAiSpeaking && !_isProcessing) {
+              _onUserFinishedSpeaking();
+            }
+          });
         },
         listenOptions: SpeechListenOptions(
           cancelOnError: false,
           partialResults: true,
           listenMode: ListenMode.dictation,
-          listenFor: const Duration(seconds: 30),
-          pauseFor: const Duration(seconds: 3),
+          listenFor: const Duration(seconds: 45),
+          pauseFor: const Duration(seconds: 4),
           localeId: 'en_US',
         ),
       );
@@ -270,22 +328,30 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
   }
 
   Future<void> _onUserFinishedSpeaking() async {
-    if (_currentSpokenText.trim().isEmpty || _isCallEnded) return;
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
+
+    if (_currentSpokenText.trim().isEmpty || _isCallEnded || _isAiSpeaking || _isProcessing) return;
 
     final userSpeech = _currentSpokenText.trim();
     _currentSpokenText = '';
 
+    try {
+      await _speechToText.stop();
+    } catch (_) {}
+
     setState(() {
+      _isListening = false;
       _messages.add({'role': 'user', 'text': userSpeech});
       _isProcessing = true;
-      _statusMessage = 'Thinking with Groq LPU...';
+      _statusMessage = 'Thinking with Groq AI...';
       _waveController.stop();
     });
 
     _scrollToBottom();
 
     try {
-      // Call voiceCallChatTurn Cloud Function
+      // Call voiceCallChatTurn Cloud Function with full metadata
       final callable = FirebaseFunctions.instance.httpsCallable(
         'voiceCallChatTurn',
         options: HttpsCallableOptions(timeout: const Duration(seconds: 25)),
@@ -295,6 +361,12 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
         'sessionId': widget.sessionId,
         'userSpeech': userSpeech,
         'conversationHistory': _messages,
+        'companyName': widget.companyName,
+        'jobTitle': widget.jobTitle,
+        'recruiterName': widget.recruiterName,
+        'recruiterEmail': widget.recruiterEmail,
+        'question': widget.question,
+        'candidateName': widget.candidateName,
       });
 
       final data = Map<String, dynamic>.from(res.data ?? {});
@@ -319,12 +391,16 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
       }
     } catch (e) {
       debugPrint('[CallScreen] Error in voice turn: $e');
+      final fallbackReply = "Got it! Would you like me to send this reply to ${widget.recruiterName}?";
       if (mounted) {
         setState(() {
+          _messages.add({'role': 'assistant', 'text': fallbackReply});
           _isProcessing = false;
-          _statusMessage = 'Error connecting to AI. Please try again.';
+          _statusMessage = 'SmartBuddy Assistant';
         });
+        _scrollToBottom();
       }
+      await _speakText(fallbackReply);
     }
   }
 
@@ -817,7 +893,62 @@ class _InAppCallScreenState extends State<InAppCallScreen> with TickerProviderSt
           ),
         ),
 
-        const SizedBox(height: 16),
+        if (_isListening || _currentSpokenText.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _currentSpokenText.trim().isNotEmpty
+                    ? () => _onUserFinishedSpeaking()
+                    : null,
+                icon: const Icon(Icons.send_rounded, size: 16),
+                label: Text(
+                  _currentSpokenText.trim().isNotEmpty
+                      ? 'Done Speaking (Send Response)'
+                      : 'Listening... (Speak your answer)',
+                  style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: emerald,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.white10,
+                  disabledForegroundColor: Colors.grey.shade400,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: _currentSpokenText.trim().isNotEmpty ? 4 : 0,
+                ),
+              ),
+            ),
+          )
+        else if (_isProcessing)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: emerald),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'AI Thinking...',
+                    style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey.shade300),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        const SizedBox(height: 10),
 
         // In-Call Controls Footer
         Container(

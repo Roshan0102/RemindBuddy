@@ -444,6 +444,7 @@ class _AdminScreenState extends State<AdminScreen> {
           'linkedin_auto_apply': true,
           'cold_outreach': true,
           'manual_apply': true,
+          'ai_recruiter_call': false,
         };
       } else {
         newModules.remove('linkedin_auto_apply');
@@ -2783,14 +2784,16 @@ $firebaseApkUrl
                                   'linkedin_auto_apply': true,
                                   'cold_outreach': true,
                                   'manual_apply': true,
+                                  'ai_recruiter_call': false,
                                 };
                           final int activeSubCount = [
                             'auto_apply',
                             'career_portals',
                             'linkedin_auto_apply',
                             'cold_outreach',
-                            'manual_apply'
-                          ].where((k) => jobSubPerms[k] != false).length;
+                            'manual_apply',
+                            'ai_recruiter_call',
+                          ].where((k) => jobSubPerms[k] == true || (k != 'ai_recruiter_call' && jobSubPerms[k] != false)).length;
 
                           return Container(
                             margin: const EdgeInsets.symmetric(vertical: 7),
@@ -3103,7 +3106,7 @@ $firebaseApkUrl
                                                 ),
                                               ),
                                               subtitle: Text(
-                                                '$activeSubCount of 5 Sub-features Active',
+                                                '$activeSubCount of 6 Sub-features Active',
                                                 style: TextStyle(
                                                   fontSize: 11.5,
                                                   color: subtextColor,
@@ -3132,6 +3135,7 @@ $firebaseApkUrl
                                                           'linkedin_auto_apply': true,
                                                           'cold_outreach': false,
                                                           'manual_apply': false,
+                                                          'ai_recruiter_call': false,
                                                         },
                                                         enabledModules,
                                                       ),
@@ -3156,6 +3160,7 @@ $firebaseApkUrl
                                                           'linkedin_auto_apply': true,
                                                           'cold_outreach': true,
                                                           'manual_apply': true,
+                                                          'ai_recruiter_call': true,
                                                         },
                                                         enabledModules,
                                                       ),
@@ -3180,6 +3185,7 @@ $firebaseApkUrl
                                                           'linkedin_auto_apply': false,
                                                           'cold_outreach': false,
                                                           'manual_apply': false,
+                                                          'ai_recruiter_call': false,
                                                         },
                                                         enabledModules,
                                                       ),
@@ -3223,13 +3229,22 @@ $firebaseApkUrl
                                                     'icon': Icons.add_photo_alternate_rounded,
                                                     'color': const Color(0xFFF59E0B),
                                                   },
+                                                  {
+                                                    'key': 'ai_recruiter_call',
+                                                    'title': 'AI Recruiter Mock Call 📞',
+                                                    'subtitle': 'Interactive phone interview simulations with AI voice recruiter',
+                                                    'icon': Icons.phone_in_talk_rounded,
+                                                    'color': const Color(0xFF10B981),
+                                                  },
                                                 ].map((sub) {
                                                   final subKey = sub['key'] as String;
                                                   final subTitle = sub['title'] as String;
                                                   final subSubtitle = sub['subtitle'] as String;
                                                   final subIcon = sub['icon'] as IconData;
                                                   final subColor = sub['color'] as Color;
-                                                  final isSubEnabled = jobSubPerms[subKey] != false;
+                                                  final isSubEnabled = subKey == 'ai_recruiter_call'
+                                                      ? (jobSubPerms[subKey] == true)
+                                                      : (jobSubPerms[subKey] != false);
 
                                                   return Container(
                                                     margin: const EdgeInsets.only(bottom: 6),
