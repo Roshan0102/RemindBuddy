@@ -1,4 +1,5 @@
 import '../models/sms_transaction.dart';
+import 'expense_category_predictor.dart';
 
 class SmsParserService {
   static final Map<String, String> knownBanks = {
@@ -189,9 +190,6 @@ class SmsParserService {
     // 5. Extract Payee / Merchant / Recipient Name
     final String payee = _extractPayee(body, type);
 
-    // 6. Automatically Determine Category
-    final String category = _determineCategory(payee, body);
-
     final DateTime timestamp = DateTime.fromMillisecondsSinceEpoch(timestampMillis);
     final String id = 'sms_${timestamp.millisecondsSinceEpoch}_${amount.toInt()}';
 
@@ -213,7 +211,7 @@ class SmsParserService {
       payee: payee,
       timestamp: timestamp,
       isVerified: false,
-      category: category,
+      category: 'Untagged',
       notes: body,
       source: 'sms',
       sourceApp: bankName,
@@ -589,46 +587,8 @@ class SmsParserService {
   }
 
   /// Automatically classifies payee and body keywords into standard categories
-  static String _determineCategory(String payee, String body) {
-    final String pLower = payee.toLowerCase();
-    final String bLower = body.toLowerCase();
-
-    // 1. Self Transfer Check
-    if (pLower.contains('self transfer') || bLower.contains('self transfer') || (bLower.contains('transfer from') && bLower.contains('a/c'))) {
-      return 'Self Transfer';
-    }
-
-    // 2. Food & Dining
-    if (RegExp(r'\b(swiggy|zomato|food|coffee|hotel|restaurant|cocktail|dining|bakery|tea|cafe|eats|dominos|pizza|mcdonalds|kfc|starbucks|biryani)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
-      return 'Food & Dining';
-    }
-
-    // 3. Fuel & Travel
-    if (RegExp(r'\b(rapido|uber|ola|fuel|pump|petrol|diesel|travel|bus|train|irctc|toll|fastag|flight|redbus|namma metro|metro)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
-      return 'Fuel & Travel';
-    }
-
-    // 4. Bills & Utilities
-    if (RegExp(r'\b(google cloud|autopay|bill|recharge|electricity|wifi|broadband|airtel|jio|vi|bescom|tneb|water|gas|dth)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
-      return 'Bills & Utilities';
-    }
-
-    // 5. Groceries
-    if (RegExp(r'\b(grocery|mart|store|supermarket|milk|zepto|blinkit|instamart|bigbasket|provision|vegetable|fruit)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
-      return 'Groceries';
-    }
-
-    // 6. Shopping
-    if (RegExp(r'\b(amazon|flipkart|myntra|meesho|ajio|shopping|fashion|trends|decathlon)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
-      return 'Shopping';
-    }
-
-    // 7. Entertainment
-    if (RegExp(r'\b(netflix|prime|spotify|hotstar|bookmyshow|cinema|movie|youtube|pvr|inox)\b', caseSensitive: false).hasMatch('$pLower $bLower')) {
-      return 'Entertainment';
-    }
-
-    return 'Untagged';
+  static String determineCategory(String payee, String body) {
+    return ExpenseCategoryPredictor.predictCategory(payee: payee, rawBody: body);
   }
 
   static String _cleanPayeeCandidate(String raw) {

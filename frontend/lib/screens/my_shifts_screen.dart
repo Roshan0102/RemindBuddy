@@ -672,59 +672,97 @@ class _MyShiftsScreenState extends State<MyShiftsScreen> {
                             'morning', 'day', 'afternoon', 'night', 'general', 'week_off'
                           ].contains(shift.shiftType) ? (shift.shiftType == 'general' ? 'day' : shift.shiftType) : 'week_off';
 
-                          return ListTile(
-                            dense: true,
-                            leading: Icon(
-                              _getShiftIcon(shift.shiftType),
-                              color: _getShiftColor(shift.shiftType),
-                              size: 20,
-                            ),
-                            title: Text(
-                              shift.date,
-                              style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
-                            ),
-                            trailing: DropdownButton<String>(
-                              value: validShiftType,
-                              underline: const SizedBox(),
-                              items: const [
-                                DropdownMenuItem(value: 'morning', child: Text('Morning')),
-                                DropdownMenuItem(value: 'day', child: Text('Day (09:00 - 17:00)')),
-                                DropdownMenuItem(value: 'afternoon', child: Text('Afternoon')),
-                                DropdownMenuItem(value: 'night', child: Text('Night')),
-                                DropdownMenuItem(value: 'week_off', child: Text('Week Off')),
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: _getShiftColor(shift.shiftType).withValues(alpha: 0.12),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    _getShiftIcon(shift.shiftType),
+                                    color: _getShiftColor(shift.shiftType),
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    shift.date,
+                                    style: GoogleFonts.outfit(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade300,
+                                    ),
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: validShiftType,
+                                      isDense: true,
+                                      style: GoogleFonts.outfit(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? Colors.white : Colors.black87,
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(value: 'morning', child: Text('Morning')),
+                                        DropdownMenuItem(value: 'day', child: Text('Day')),
+                                        DropdownMenuItem(value: 'afternoon', child: Text('Afternoon')),
+                                        DropdownMenuItem(value: 'night', child: Text('Night')),
+                                        DropdownMenuItem(value: 'week_off', child: Text('Week Off')),
+                                      ],
+                                      onChanged: (newType) {
+                                        if (newType != null) {
+                                          setDialogState(() {
+                                            final isOff = newType == 'week_off';
+                                            String? start;
+                                            String? end;
+                                            if (newType == 'morning') {
+                                              start = '06:00';
+                                              end = '14:00';
+                                            } else if (newType == 'day') {
+                                              start = '09:00';
+                                              end = '17:00';
+                                            } else if (newType == 'afternoon') {
+                                              start = '14:00';
+                                              end = '22:00';
+                                            } else if (newType == 'night') {
+                                              start = '22:00';
+                                              end = '06:00';
+                                            } else if (newType == 'general') {
+                                              start = '09:00';
+                                              end = '17:00';
+                                            }
+                                            parsedShifts[index] = Shift(
+                                              date: shift.date,
+                                              shiftType: newType,
+                                              startTime: start,
+                                              endTime: end,
+                                              isWeekOff: isOff,
+                                            );
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
                               ],
-                              onChanged: (newType) {
-                                if (newType != null) {
-                                  setDialogState(() {
-                                    final isOff = newType == 'week_off';
-                                    String? start;
-                                    String? end;
-                                    if (newType == 'morning') {
-                                      start = '06:00';
-                                      end = '14:00';
-                                    } else if (newType == 'day') {
-                                      start = '09:00';
-                                      end = '17:00';
-                                    } else if (newType == 'afternoon') {
-                                      start = '14:00';
-                                      end = '22:00';
-                                    } else if (newType == 'night') {
-                                      start = '22:00';
-                                      end = '06:00';
-                                    } else if (newType == 'general') {
-                                      start = '09:00';
-                                      end = '17:00';
-                                    }
-                                    parsedShifts[index] = Shift(
-                                      date: shift.date,
-                                      shiftType: newType,
-                                      startTime: start,
-                                      endTime: end,
-                                      isWeekOff: isOff,
-                                    );
-                                  });
-                                }
-                              },
                             ),
                           );
                         },

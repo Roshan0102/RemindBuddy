@@ -8,6 +8,7 @@ import '../models/group_split.dart';
 import '../models/sms_transaction.dart';
 import '../services/finance_service.dart';
 import '../services/home_widget_service.dart';
+import '../services/expense_category_predictor.dart';
 
 class NightlyExpenseTagSheet extends StatefulWidget {
   final List<SmsTransaction> pendingTransactions;
@@ -64,9 +65,16 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
     _items = List.from(widget.pendingTransactions);
     for (var tx in _items) {
       final catLower = tx.category.trim().toLowerCase();
-      _selectedCategories[tx.id] = (catLower == 'uncategorized' || catLower == 'untagged' || catLower == 'upi transfer') 
-          ? 'Food & Dining' 
-          : tx.category;
+      if (catLower == 'uncategorized' || catLower == 'untagged' || catLower == 'upi transfer' || !tx.isVerified) {
+        _selectedCategories[tx.id] = ExpenseCategoryPredictor.predictCategory(
+          payee: tx.payee,
+          notes: tx.notes,
+          rawBody: tx.rawBody,
+          rawTitle: tx.rawTitle,
+        );
+      } else {
+        _selectedCategories[tx.id] = tx.category;
+      }
       _noteControllers[tx.id] = TextEditingController(text: '');
       _selectedBankNames[tx.id] = tx.bankName;
       _personNameControllers[tx.id] = TextEditingController(text: tx.payee.isNotEmpty ? tx.payee : '');
@@ -556,9 +564,36 @@ class _NightlyExpenseTagSheetState extends State<NightlyExpenseTagSheet> {
                       const SizedBox(height: 14),
 
                       // Category Selector Chips
-                      Text(
-                        'Select Category:',
-                        style: TextStyle(color: subtextColor, fontSize: 12, fontWeight: FontWeight.w600),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Select Category:',
+                            style: TextStyle(color: subtextColor, fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blueAccent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.auto_awesome, size: 11, color: Colors.blueAccent),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Default: $selectedCat',
+                                  style: const TextStyle(
+                                    color: Colors.blueAccent,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
 

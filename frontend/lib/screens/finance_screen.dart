@@ -20,6 +20,7 @@ import '../services/app_permission_service.dart';
 import '../widgets/nightly_expense_tag_sheet.dart';
 import '../widgets/voice_expense_logger_sheet.dart';
 import '../services/home_widget_service.dart';
+import '../services/expense_category_predictor.dart';
 
 class FinanceScreen extends StatefulWidget {
   final int? initialFeatureIndex;
@@ -3176,7 +3177,7 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                                 borderRadius: BorderRadius.circular(8),
                                               ),
                                               child: Text(
-                                                !isItemUntagged ? tx.category : 'Untagged (Tap to tag)',
+                                                !isItemUntagged ? tx.category : 'Untagged • Suggested: ${ExpenseCategoryPredictor.predictCategory(payee: tx.payee, notes: tx.notes, rawBody: tx.rawBody, rawTitle: tx.rawTitle)}',
                                                 style: TextStyle(
                                                   color: !isItemUntagged ? (isDark ? Colors.greenAccent : Colors.green.shade800) : (isDark ? Colors.amberAccent : Colors.amber.shade900),
                                                   fontSize: 10,
