@@ -357,8 +357,8 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                   recipientEmail: a.recipientEmail,
                   senderNameOrEmail: a.replySender ?? a.recipientEmail,
                   subject: a.replySubject ?? a.generatedSubject,
-                  responseType: isBounced ? 'bounced' : (a.responseType ?? 'hr_query'),
-                  summary: a.replySnippet ?? (isBounced ? 'Mail delivery failure: Address not found.' : 'Recruiter replied to your application.'),
+                  responseType: isBounced ? (a.responseType ?? 'bounced') : (a.responseType ?? 'hr_query'),
+                  summary: a.replySnippet ?? (isBounced ? 'Mail delivery failure.' : 'Recruiter replied to your application.'),
                   bodyPreview: a.replyBodyPreview ?? '',
                   actionRequired: isBounced ? 'Check recipient email or find company careers contact' : (a.actionRequired ?? 'Check your email'),
                   receivedAt: a.replyReceivedAt ?? a.appliedAt,
@@ -377,8 +377,8 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                   recipientEmail: l.email ?? '',
                   senderNameOrEmail: l.replySender ?? l.name,
                   subject: l.replySubject ?? l.emailSubject ?? 'Re: Pitch',
-                  responseType: isBounced ? 'bounced' : (l.responseType ?? 'founder_chat'),
-                  summary: l.replySnippet ?? (isBounced ? 'Delivery failed: Recipient email address was not found by mail server.' : 'Founder replied to your pitch.'),
+                  responseType: isBounced ? (l.responseType ?? 'bounced') : (l.responseType ?? 'founder_chat'),
+                  summary: l.replySnippet ?? (isBounced ? 'Mail delivery failure.' : 'Founder replied to your pitch.'),
                   bodyPreview: l.replyBodyPreview ?? '',
                   actionRequired: isBounced ? 'Connect directly on LinkedIn using pre-written note' : (l.actionRequired ?? 'Reply via email'),
                   receivedAt: l.replyReceivedAt ?? l.discoveredAt,
@@ -868,34 +868,50 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.deepOrange.withValues(alpha: 0.3)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+              child: Builder(
+                builder: (context) {
+                  final combined = '${item.responseType} ${item.summary} ${item.bodyPreview}'.toLowerCase();
+                  final bool isMailboxFull = item.responseType == 'mailbox_full' ||
+                      combined.contains('mailbox full') ||
+                      combined.contains('552') ||
+                      combined.contains('quota');
+                  final String bounceTitle = isMailboxFull
+                      ? 'Mailbox Full (552) / Delivery Failure'
+                      : 'Delivery Failure / Address Not Found';
+                  final String bounceDesc = isMailboxFull
+                      ? 'The destination mail server reported that recipient mailbox storage quota is full (552) or cannot receive new mail.'
+                      : 'The mail server reported that recipient address "${item.recipientEmail.isNotEmpty ? item.recipientEmail : 'target mailbox'}" does not exist or is unable to receive email.';
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.warning_amber_rounded, color: Colors.deepOrange, size: 18),
-                      const SizedBox(width: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: Colors.deepOrange, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            bounceTitle,
+                            style: GoogleFonts.outfit(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.deepOrange,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
                       Text(
-                        'Address Not Found / Delivery Failure',
-                        style: GoogleFonts.outfit(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepOrange,
-                        ),
+                        bounceDesc,
+                        style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black87, height: 1.3),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '💡 Recommendation: Connect directly with the founder/hiring lead on LinkedIn using your tailored connection note below.',
+                        style: TextStyle(fontSize: 11.5, color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF047857), fontWeight: FontWeight.w600),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'The mail server reported that recipient address "${item.recipientEmail.isNotEmpty ? item.recipientEmail : 'target mailbox'}" does not exist or is unable to receive email.',
-                    style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black87, height: 1.3),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '💡 Recommendation: Connect directly with the founder/hiring lead on LinkedIn using your tailored connection note below.',
-                    style: TextStyle(fontSize: 11.5, color: isDark ? const Color(0xFF6EE7B7) : const Color(0xFF047857), fontWeight: FontWeight.w600),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
             const SizedBox(height: 12),

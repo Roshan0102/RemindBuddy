@@ -2966,6 +2966,30 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
+  String _getBounceLabel(dynamic item) {
+    String respType = '';
+    String snippet = '';
+    String bodyPreview = '';
+    if (item is JobApplication) {
+      respType = item.responseType ?? '';
+      snippet = item.replySnippet ?? '';
+      bodyPreview = item.replyBodyPreview ?? '';
+    } else if (item is NetworkingLead) {
+      respType = item.responseType ?? '';
+      snippet = item.replySnippet ?? '';
+      bodyPreview = item.replyBodyPreview ?? '';
+    }
+    final combined = '$respType $snippet $bodyPreview'.toLowerCase();
+    if (respType == 'mailbox_full' || combined.contains('mailbox full') || combined.contains('552') || combined.contains('quota')) {
+      return 'Mailbox Full (552)';
+    } else if (respType == 'address_not_found' || combined.contains('address not found') || combined.contains('550') || combined.contains('user unknown') || combined.contains('does not exist')) {
+      return 'Address Not Found';
+    } else if (respType == 'delivery_rejected' || combined.contains('rejected') || combined.contains('policy')) {
+      return 'Delivery Rejected';
+    }
+    return 'Delivery Failed';
+  }
+
   Widget _buildResponseBadge(JobApplication app, bool isDark) {
     final bool isBounce = app.isBounced || app.status == 'bounced' || app.responseType == 'bounced';
     final type = isBounce ? 'bounced' : (app.responseType ?? 'reply');
@@ -2976,10 +3000,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
     switch (type) {
       case 'bounced':
+      case 'mailbox_full':
+      case 'address_not_found':
+      case 'delivery_rejected':
         bgColor = const Color(0xFFEF4444).withValues(alpha: 0.18);
         textColor = isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626);
         icon = Icons.error_outline_rounded;
-        label = '⚠️ Address Not Found';
+        label = '⚠️ ${_getBounceLabel(app)}';
         break;
       case 'interview_invite':
         bgColor = const Color(0xFF8B5CF6).withValues(alpha: 0.2);
@@ -3086,7 +3113,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    isBounce ? 'Delivery Failure: Address Not Found' : 'Recruiter Response',
+                    isBounce ? 'Delivery Failure: ${_getBounceLabel(app)}' : 'Recruiter Response',
                     style: GoogleFonts.outfit(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
@@ -5163,14 +5190,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.45)),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.error_outline_rounded, size: 10, color: Color(0xFFEF4444)),
-                        SizedBox(width: 3),
+                        const Icon(Icons.error_outline_rounded, size: 10, color: Color(0xFFEF4444)),
+                        const SizedBox(width: 3),
                         Text(
-                          'Address Not Found',
-                          style: TextStyle(fontSize: 9.5, color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                          _getBounceLabel(app),
+                          style: const TextStyle(fontSize: 9.5, color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -7522,14 +7549,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                       borderRadius: BorderRadius.circular(5),
                       border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.45)),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.error_outline_rounded, size: 10, color: Color(0xFFEF4444)),
-                        SizedBox(width: 3),
+                        const Icon(Icons.error_outline_rounded, size: 10, color: Color(0xFFEF4444)),
+                        const SizedBox(width: 3),
                         Text(
-                          'Address Not Found',
-                          style: TextStyle(fontSize: 9.5, color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                          _getBounceLabel(app),
+                          style: const TextStyle(fontSize: 9.5, color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -8947,7 +8974,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     if (isBounced) {
       statusBg = const Color(0xFFEF4444).withValues(alpha: 0.15);
       statusFg = const Color(0xFFEF4444);
-      statusDisplay = 'Address Not Found';
+      statusDisplay = _getBounceLabel(lead);
     } else if (isReplied) {
       statusBg = Colors.purple.withValues(alpha: 0.15);
       statusFg = Colors.purpleAccent;
@@ -9202,7 +9229,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Delivery Failure: Address not found for ${lead.email ?? 'recipient'}. Connect on LinkedIn instead.',
+                      'Delivery Failure (${_getBounceLabel(lead)}) for ${lead.email ?? 'recipient'}. Connect on LinkedIn instead.',
                       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFEF4444)),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,

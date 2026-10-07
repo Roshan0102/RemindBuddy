@@ -316,11 +316,28 @@ class SharedIntentService {
     return url;
   }
 
+  String _cleanPostUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      if (uri.host.contains('linkedin.com')) {
+        // Strip tracking query parameters (highlightedUpdateUrn, utm_source, rcm, etc.)
+        return Uri(
+          scheme: uri.scheme,
+          host: uri.host,
+          port: uri.hasPort ? uri.port : null,
+          path: uri.path,
+        ).toString();
+      }
+    } catch (_) {}
+    return url;
+  }
+
   Future<void> _processSharedUrl(String url, {required String originalText}) async {
     final jobService = JobAssistantService();
 
-    // 1. Expand shortened lnkd.in links to full destination URL
-    final expandedUrl = (url.contains('lnkd.in') || url.length < 35) ? await _expandUrl(url) : url;
+    // 1. Expand shortened lnkd.in links to full destination URL and clean tracking query parameters
+    final rawExpandedUrl = (url.contains('lnkd.in') || url.length < 35) ? await _expandUrl(url) : url;
+    final expandedUrl = _cleanPostUrl(rawExpandedUrl);
     debugPrint('[SharedIntentService] Processing URL: $expandedUrl (original: $url)');
 
     final isLinkedIn = url.toLowerCase().contains('linkedin') ||
@@ -355,91 +372,50 @@ class SharedIntentService {
       final html = response.body;
       final effectiveUrl = response.request?.url.toString() ?? expandedUrl;
 
-      // Check if page redirected to LinkedIn login/join wall
-      final isLoginWall = html.contains('p_registration-cold-join') ||
-          html.contains('cold-join') ||
-          html.contains('authwall') ||
-          html.contains('Join LinkedIn') ||
-          html.contains('Sign in to LinkedIn') ||
-          effectiveUrl.contains('cold-join') ||
-          effectiveUrl.contains('signup') ||
+      // Extract OpenGraph tags
+      final ogImageUrl = _extractMetaTag(html, 'og:image') ?? _extractMetaTag(html, 'twitter:image');
+      final ogDescription = _extractMetaTag(html, 'og:description') ?? _extractMetaTag(html, 'description');
+
+      final hasSubstantiveDescription = ogDescription != null &&
+          ogDescription.trim().length > 25 &&
+          !ogDescription.contains('500 million+ members') &&
+          !ogDescription.contains('Manage your professional identity') &&
+          !ogDescription.toLowerCase().contains('sign in to linkedin to view') &&
+          !ogDescription.toLowerCase().contains('join linkedin to view');
+
+      final hasPostFlyerImage = ogImageUrl != null &&
+          ogImageUrl.isNotEmpty &&
+          !ogImageUrl.contains('profile') &&
+          !ogImageUrl.contains('ghost') &&
+          !ogImageUrl.contains('static.licdn.com/aero-v1') &&
+          !ogImageUrl.contains('favicon');
+
+      // True authwall only if no substantive content was returned and URL or status indicates a hard wall
+      final isTrueAuthWall = (!hasSubstantiveDescription && !hasPostFlyerImage) && (
+          effectiveUrl.contains('/authwall') ||
+          effectiveUrl.contains('/checkpoint') ||
+          effectiveUrl.contains('/signup') ||
           response.statusCode == 401 ||
           response.statusCode == 403 ||
-          response.statusCode == 404;
+          response.statusCode == 404
+      );
 
-      if (!isLoginWall && response.statusCode == 200) {
-        final ogImageUrl = _extractMetaTag(html, 'og:image') ?? _extractMetaTag(html, 'twitter:image');
-        final ogDescription = _extractMetaTag(html, 'og:description') ?? _extractMetaTag(html, 'description');
-
-        if (ogImageUrl != null && ogImageUrl.isNotEmpty) {
+      if (!isTrueAuthWall && response.statusCode == 200 && (hasPostFlyerImage || hasSubstantiveDescription)) {
+        if (hasPostFlyerImage) {
           final imgUrl = ogImageUrl;
-          if (!imgUrl.contains('profile') && !imgUrl.contains('ghost') && !imgUrl.contains('static.licdn.com/aero-v1') && !imgUrl.contains('favicon')) {
-            final imgRes = await http.get(
-              Uri.parse(imgUrl),
-              headers: {
-                'User-Agent':
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              },
-            ).timeout(const Duration(seconds: 10));
-            if (imgRes.statusCode == 200 && imgRes.bodyBytes.isNotEmpty) {
-              final base64Img = base64Encode(imgRes.bodyBytes);
-              final parsed = await jobService.parseJobPostersWithAI(
-                [base64Img],
-                'single_job',
-                jobText: ogDescription,
-                customPrompt: 'Extract hiring post details, company, role, recruiter email, and write a high-converting application.',
-              );
-              if (parsed.isNotEmpty) {
-                successfullyParsed = true;
-                final rawJob = parsed.first;
-                final job = JobApplication(
-                  id: rawJob.id,
-                  jobTitle: rawJob.jobTitle,
-                  companyName: rawJob.companyName,
-                  recipientEmail: rawJob.recipientEmail,
-                  extractedSkills: rawJob.extractedSkills,
-                  generatedSubject: rawJob.generatedSubject,
-                  generatedCoverLetter: rawJob.generatedCoverLetter,
-                  status: rawJob.recipientEmail.trim().isNotEmpty ? 'sent' : 'needs_review',
-                  appliedAt: DateTime.now(),
-                  sourcePlatform: isLinkedIn ? 'LinkedIn Share' : 'Shared Link',
-                  source: isLinkedIn ? 'linkedin_share' : 'shared_link',
-                  sourceUrl: expandedUrl,
-                  posterImageUrls: [imgUrl],
-                  errorMessage: rawJob.recipientEmail.trim().isEmpty ? 'No recruiter email found in flyer. Saved in Drafts.' : null,
-                );
-
-                if (job.recipientEmail.isNotEmpty) {
-                  await jobService.sendJobApplicationEmail(job);
-                  await NotificationService().showNotification(
-                    id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-                    title: '🎯 1-Click Applied: ${job.jobTitle}',
-                    body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared post flyer.',
-                    channelId: 'job_assistant_share_channel',
-                    channelName: 'Job Assistant Auto-Apply',
-                    payload: 'JOB_APPLICATION',
-                  );
-                } else {
-                  await jobService.saveJobApplication(job);
-                  await NotificationService().showNotification(
-                    id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-                    title: '📋 Job Flyer Analyzed: ${job.jobTitle}',
-                    body: 'Found for ${job.companyName}. No email detected in flyer — saved in Drafts.',
-                    channelId: 'job_assistant_share_channel',
-                    channelName: 'Job Assistant Auto-Apply',
-                    payload: 'JOB_APPLICATION',
-                  );
-                }
-              }
-            }
-          }
-        }
-
-        if (!successfullyParsed && ogDescription != null && ogDescription.isNotEmpty) {
-          final descText = ogDescription;
-          if (descText.trim().length > 30 && !descText.contains('500 million+ members') && !descText.contains('Manage your professional identity')) {
-            final parsed = await jobService.parseJobTextWithAI(
-              descText,
+          final imgRes = await http.get(
+            Uri.parse(imgUrl),
+            headers: {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+          ).timeout(const Duration(seconds: 10));
+          if (imgRes.statusCode == 200 && imgRes.bodyBytes.isNotEmpty) {
+            final base64Img = base64Encode(imgRes.bodyBytes);
+            final parsed = await jobService.parseJobPostersWithAI(
+              [base64Img],
+              'single_job',
+              jobText: ogDescription,
               customPrompt: 'Extract hiring post details, company, role, recruiter email, and write a high-converting application.',
             );
             if (parsed.isNotEmpty) {
@@ -455,10 +431,12 @@ class SharedIntentService {
                 generatedCoverLetter: rawJob.generatedCoverLetter,
                 status: rawJob.recipientEmail.trim().isNotEmpty ? 'sent' : 'needs_review',
                 appliedAt: DateTime.now(),
-                sourcePlatform: isLinkedIn ? 'LinkedIn Share' : 'Shared Text',
-                source: isLinkedIn ? 'linkedin_share' : 'shared_text',
+                sourcePlatform: isLinkedIn ? 'LinkedIn Share' : 'Shared Link',
+                source: isLinkedIn ? 'linkedin_share' : 'shared_link',
                 sourceUrl: expandedUrl,
-                errorMessage: rawJob.recipientEmail.trim().isEmpty ? 'No email found in post. Saved in Drafts.' : null,
+                posterImageUrls: [imgUrl],
+                postExcerpt: ogDescription != null && ogDescription.length > 200 ? '${ogDescription.substring(0, 200)}...' : ogDescription,
+                errorMessage: rawJob.recipientEmail.trim().isEmpty ? 'No direct recruiter email found in flyer. Saved in History drafts.' : null,
               );
 
               if (job.recipientEmail.isNotEmpty) {
@@ -466,7 +444,7 @@ class SharedIntentService {
                 await NotificationService().showNotification(
                   id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
                   title: '🎯 1-Click Applied: ${job.jobTitle}',
-                  body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared post text.',
+                  body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared post flyer.',
                   channelId: 'job_assistant_share_channel',
                   channelName: 'Job Assistant Auto-Apply',
                   payload: 'JOB_APPLICATION',
@@ -475,13 +453,63 @@ class SharedIntentService {
                 await jobService.saveJobApplication(job);
                 await NotificationService().showNotification(
                   id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-                  title: '📋 Job Post Analyzed: ${job.jobTitle}',
-                  body: 'Found for ${job.companyName}. No email found — saved in Drafts.',
+                  title: '📋 Job Flyer Analyzed: ${job.jobTitle}',
+                  body: 'Found for ${job.companyName}. No email detected in flyer — saved in Drafts.',
                   channelId: 'job_assistant_share_channel',
                   channelName: 'Job Assistant Auto-Apply',
                   payload: 'JOB_APPLICATION',
                 );
               }
+            }
+          }
+        }
+
+        if (!successfullyParsed && hasSubstantiveDescription) {
+          final descText = ogDescription;
+          final parsed = await jobService.parseJobTextWithAI(
+            descText,
+            customPrompt: 'Extract hiring post details, company, role, recruiter email, and write a high-converting application.',
+          );
+          if (parsed.isNotEmpty) {
+            successfullyParsed = true;
+            final rawJob = parsed.first;
+            final job = JobApplication(
+              id: rawJob.id,
+              jobTitle: rawJob.jobTitle,
+              companyName: rawJob.companyName,
+              recipientEmail: rawJob.recipientEmail,
+              extractedSkills: rawJob.extractedSkills,
+              generatedSubject: rawJob.generatedSubject,
+              generatedCoverLetter: rawJob.generatedCoverLetter,
+              status: rawJob.recipientEmail.trim().isNotEmpty ? 'sent' : 'needs_review',
+              appliedAt: DateTime.now(),
+              sourcePlatform: isLinkedIn ? 'LinkedIn Share' : 'Shared Text',
+              source: isLinkedIn ? 'linkedin_share' : 'shared_text',
+              sourceUrl: expandedUrl,
+              postExcerpt: descText.length > 200 ? '${descText.substring(0, 200)}...' : descText,
+              errorMessage: rawJob.recipientEmail.trim().isEmpty ? 'No direct recruiter email found in post. Saved in History drafts.' : null,
+            );
+
+            if (job.recipientEmail.isNotEmpty) {
+              await jobService.sendJobApplicationEmail(job);
+              await NotificationService().showNotification(
+                id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                title: '🎯 1-Click Applied: ${job.jobTitle}',
+                body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared post text.',
+                channelId: 'job_assistant_share_channel',
+                channelName: 'Job Assistant Auto-Apply',
+                payload: 'JOB_APPLICATION',
+              );
+            } else {
+              await jobService.saveJobApplication(job);
+              await NotificationService().showNotification(
+                id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                title: '📋 Job Post Analyzed: ${job.jobTitle}',
+                body: 'Found for ${job.companyName}. No email found — saved in Drafts.',
+                channelId: 'job_assistant_share_channel',
+                channelName: 'Job Assistant Auto-Apply',
+                payload: 'JOB_APPLICATION',
+              );
             }
           }
         }
@@ -634,12 +662,13 @@ class SharedIntentService {
         final maskedToken = token.length > 8 ? '${token.substring(0, 4)}...${token.substring(token.length - 4)}' : '***';
         debugPrint('[SharedIntentService] Trying Apify token #${i + 1} ($maskedToken)...');
 
+        final cleanScrapeUrl = _cleanPostUrl(url);
         try {
           http.Response response = await http.post(
             Uri.parse('https://api.apify.com/v2/acts/thirdwatch~linkedin-post-scraper/run-sync-get-dataset-items?token=${Uri.encodeComponent(token)}'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'postUrls': [url],
+              'postUrls': [cleanScrapeUrl],
               'maxPosts': 1,
             }),
           ).timeout(const Duration(seconds: 40));
@@ -649,8 +678,9 @@ class SharedIntentService {
               Uri.parse('https://api.apify.com/v2/acts/supreme_coder~linkedin-post/run-sync-get-dataset-items?token=${Uri.encodeComponent(token)}'),
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode({
-                'urls': [url],
-                'postUrls': [url],
+                'urls': [cleanScrapeUrl],
+                'postUrls': [cleanScrapeUrl],
+                'deepScrape': true,
               }),
             ).timeout(const Duration(seconds: 40));
           }

@@ -382,19 +382,72 @@ export async function checkUserJobReplies(uid: string): Promise<{ checked: numbe
                 if (isBounce) {
                     console.log(`[ReplyTracker] ⚠️ Detected mail delivery bounce for '${matchedApp.companyName}' (${matchedApp.recipientEmail || ''})`);
                     const replyTime = envelope.date || new Date();
+
+                    // Categorize specific bounce reason from subject and snippet
+                    const fullBounceContext = `${subject} ${cleanBodySnippet}`.toLowerCase();
+                    let specificResponseType = "bounced";
+                    let specificSnippet = "Delivery failure: Recipient email address was not found or cannot receive mail.";
+                    let notificationTitle = `⚠️ Email Delivery Failed: ${matchedApp.companyName}`;
+                    let notificationBody = `Delivery failed for ${matchedApp.companyName}. You can connect on LinkedIn instead.`;
+
+                    if (
+                        fullBounceContext.includes("552") ||
+                        fullBounceContext.includes("5.2.2") ||
+                        fullBounceContext.includes("quota") ||
+                        fullBounceContext.includes("mailbox is full") ||
+                        fullBounceContext.includes("mailbox full") ||
+                        fullBounceContext.includes("storage limit") ||
+                        fullBounceContext.includes("exceeded storage") ||
+                        fullBounceContext.includes("disk quota") ||
+                        fullBounceContext.includes("over quota")
+                    ) {
+                        specificResponseType = "mailbox_full";
+                        specificSnippet = "Mailbox full (552): Recipient storage quota is full or mailbox is over quota.";
+                        notificationTitle = `⚠️ Recipient Mailbox Full: ${matchedApp.companyName}`;
+                        notificationBody = `Recipient mailbox is full (552) for ${matchedApp.companyName}. You can connect on LinkedIn instead.`;
+                    } else if (
+                        fullBounceContext.includes("550") ||
+                        fullBounceContext.includes("5.1.1") ||
+                        fullBounceContext.includes("user unknown") ||
+                        fullBounceContext.includes("user does not exist") ||
+                        fullBounceContext.includes("does not exist") ||
+                        fullBounceContext.includes("address not found") ||
+                        fullBounceContext.includes("address couldn't be found") ||
+                        fullBounceContext.includes("address could not be found") ||
+                        fullBounceContext.includes("no such user") ||
+                        fullBounceContext.includes("mailbox unavailable")
+                    ) {
+                        specificResponseType = "address_not_found";
+                        specificSnippet = "Address not found (550): Recipient email address does not exist or was rejected.";
+                        notificationTitle = `⚠️ Address Not Found: ${matchedApp.companyName}`;
+                        notificationBody = `Address not found for ${matchedApp.companyName}. You can connect on LinkedIn instead.`;
+                    } else if (
+                        fullBounceContext.includes("blocked") ||
+                        fullBounceContext.includes("spam") ||
+                        fullBounceContext.includes("policy")
+                    ) {
+                        specificResponseType = "delivery_rejected";
+                        specificSnippet = "Delivery rejected: Message was rejected by recipient security policy or mail filter.";
+                        notificationTitle = `⚠️ Delivery Rejected: ${matchedApp.companyName}`;
+                        notificationBody = `Delivery rejected for ${matchedApp.companyName}. You can connect on LinkedIn instead.`;
+                    }
+
                     const updateData: any = {
                         status: "bounced",
                         isBounced: true,
                         emailBounced: true,
-                        responseType: "bounced",
+                        responseType: specificResponseType,
+                        bounceReason: specificResponseType,
                         replyReceivedAt: admin.firestore.Timestamp.fromDate(replyTime),
                         replySender: senderName ? `${senderName} <${senderAddress}>` : senderAddress,
                         replySubject: subject,
-                        replySnippet: "Delivery failure: Recipient email address was not found or cannot receive mail.",
+                        replySnippet: specificSnippet,
                         replyBodyPreview: cleanBodySnippet.substring(0, 500),
                         actionRequired: matchedApp.isNetworkingLead
                             ? "Connect directly on LinkedIn using your connection note"
-                            : "Check recipient email or find company careers contact",
+                            : (specificResponseType === "mailbox_full"
+                                ? "Mailbox is full. Try again later or connect on LinkedIn"
+                                : "Check recipient email or find company careers contact"),
                         replyMessageId: envelope.messageId || "",
                         replyDismissed: false,
                         isReplyDismissed: false,
@@ -404,9 +457,9 @@ export async function checkUserJobReplies(uid: string): Promise<{ checked: numbe
                     await matchedApp.ref.update(updateData);
                     repliesFound++;
 
-                    // Automatically blacklist this bounced address globally
+                    // Automatically blacklist this bounced address globally only if the address truly does not exist
                     const bouncedEmail = (matchedApp.recipientEmail || "").toLowerCase().trim();
-                    if (bouncedEmail && bouncedEmail.includes("@")) {
+                    if (specificResponseType === "address_not_found" && bouncedEmail && bouncedEmail.includes("@")) {
                         try {
                             await db.collection("system_bounced_emails").doc(encodeURIComponent(bouncedEmail)).set({
                                 email: bouncedEmail,
@@ -436,8 +489,8 @@ export async function checkUserJobReplies(uid: string): Promise<{ checked: numbe
                             await admin.messaging().send({
                                 token: fcmToken,
                                 notification: {
-                                    title: `⚠️ Email Delivery Failed: ${matchedApp.companyName}`,
-                                    body: `Address not found for ${matchedApp.companyName}. You can connect on LinkedIn instead.`
+                                    title: notificationTitle,
+                                    body: notificationBody
                                 },
                                 webpush: {
                                     notification: {
