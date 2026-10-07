@@ -55,10 +55,14 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
 
   Future<void> _loadSavedViewMode() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedMode = prefs.getString('vault_view_mode') ?? 'all';
+    // Ensure default on opening vault is always 'all' (All Docs) as requested
+    final savedMode = prefs.getString('vault_view_mode');
+    if (savedMode == null || savedMode == 'family') {
+      await prefs.setString('vault_view_mode', 'all');
+    }
     if (mounted) {
       setState(() {
-        _vaultViewMode = savedMode;
+        _vaultViewMode = 'all';
       });
     }
   }
@@ -1123,9 +1127,9 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                 padding: const EdgeInsets.all(3),
                                 child: Row(
                                   children: [
+                                    _buildViewModeSegment('all', 'All Docs', Icons.auto_awesome_rounded),
                                     _buildViewModeSegment('family', 'Family', Icons.people_alt_rounded),
                                     _buildViewModeSegment('private', 'Private', Icons.lock_rounded),
-                                    _buildViewModeSegment('all', 'All Docs', Icons.auto_awesome_rounded),
                                   ],
                                 ),
                               ),

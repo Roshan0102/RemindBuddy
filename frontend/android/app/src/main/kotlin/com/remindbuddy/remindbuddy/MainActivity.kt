@@ -40,6 +40,12 @@ class MainActivity: FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val action = intent?.action
+        val isShareAction = (Intent.ACTION_SEND == action || Intent.ACTION_SEND_MULTIPLE == action)
+        if (isShareAction) {
+            overridePendingTransition(0, 0)
+            moveTaskToBack(true)
+        }
         window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         handleSendIntent(intent, isInitial = true)
     }
@@ -47,6 +53,12 @@ class MainActivity: FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        val action = intent.action
+        val isShareAction = (Intent.ACTION_SEND == action || Intent.ACTION_SEND_MULTIPLE == action)
+        if (isShareAction) {
+            overridePendingTransition(0, 0)
+            moveTaskToBack(true)
+        }
         handleSendIntent(intent, isInitial = false)
     }
 
@@ -54,6 +66,17 @@ class MainActivity: FlutterActivity() {
         if (intent == null) return
         val action = intent.action
         val type = intent.type ?: ""
+
+        if (Intent.ACTION_SEND == action || Intent.ACTION_SEND_MULTIPLE == action) {
+            runOnUiThread {
+                android.widget.Toast.makeText(
+                    applicationContext,
+                    "SmartBuddy: Analyzing job post in background...",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+            moveTaskToBack(true)
+        }
 
         if (Intent.ACTION_SEND == action) {
             val sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()

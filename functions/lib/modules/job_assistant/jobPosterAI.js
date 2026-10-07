@@ -94,8 +94,9 @@ Respond ONLY with a JSON object matching this schema:
 }`;
         }
         else if (isSingleJob) {
-            prompt = `Analyze the provided screenshot(s) and candidate Resume (PDF). These screenshot(s) belong to the SAME SINGLE job posting.
-Stitch the text and context together. Extract structured job details.
+            prompt = `Analyze the provided screenshot(s), accompanying post text (if any), and candidate Resume (PDF). These screenshot(s) belong to the SAME SINGLE job posting.
+Stitch the image flyer graphic, post text, and context together. Extract structured job details and recruiter email.
+${hasText ? `\nAccompanying Post Text / Link Context:\n"""\n${jobText.trim()}\n"""\n` : ''}
 ${userDirective}
 CRITICAL INSTRUCTIONS FOR COVER LETTER & SUBJECT:
 1. Candidate's Full Name is: "${promptName}".

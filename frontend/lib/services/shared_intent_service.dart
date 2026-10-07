@@ -291,8 +291,42 @@ class SharedIntentService {
     return false;
   }
 
+  Future<String> _expandUrl(String url) async {
+    try {
+      final client = http.Client();
+      final uri = Uri.parse(url);
+      final request = http.Request('GET', uri)
+        ..followRedirects = false
+        ..headers['User-Agent'] =
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+      final streamedResponse =
+          await client.send(request).timeout(const Duration(seconds: 8));
+      if (streamedResponse.isRedirect ||
+          (streamedResponse.statusCode >= 300 &&
+              streamedResponse.statusCode < 400)) {
+        final location = streamedResponse.headers['location'];
+        if (location != null && location.isNotEmpty) {
+          debugPrint('[SharedIntentService] Expanded short URL $url -> $location');
+          return location;
+        }
+      }
+    } catch (e) {
+      debugPrint('[SharedIntentService] Error expanding URL $url: $e');
+    }
+    return url;
+  }
+
   Future<void> _processSharedUrl(String url, {required String originalText}) async {
     final jobService = JobAssistantService();
+
+    // 1. Expand shortened lnkd.in links to full destination URL
+    final expandedUrl = (url.contains('lnkd.in') || url.length < 35) ? await _expandUrl(url) : url;
+    debugPrint('[SharedIntentService] Processing URL: $expandedUrl (original: $url)');
+
+    final isLinkedIn = url.toLowerCase().contains('linkedin') ||
+        url.toLowerCase().contains('lnkd.in') ||
+        expandedUrl.toLowerCase().contains('linkedin') ||
+        expandedUrl.toLowerCase().contains('lnkd.in');
 
     // Notify user that link processing has begun in background
     await NotificationService().showNotification(
@@ -304,19 +338,22 @@ class SharedIntentService {
       payload: 'JOB_APPLICATION',
     );
 
-    // 1. Try public fetch of the URL to see if OpenGraph metadata or public HTML is available
+    // 2. Try public fetch of the URL with desktop headers to capture OpenGraph flyer image and text
     bool successfullyParsed = false;
     try {
       final response = await http.get(
-        Uri.parse(url),
+        Uri.parse(expandedUrl),
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept':
+              'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
         },
-      ).timeout(const Duration(seconds: 8));
+      ).timeout(const Duration(seconds: 12));
 
       final html = response.body;
-      final effectiveUrl = response.request?.url.toString() ?? '';
+      final effectiveUrl = response.request?.url.toString() ?? expandedUrl;
 
       // Check if page redirected to LinkedIn login/join wall
       final isLoginWall = html.contains('p_registration-cold-join') ||
@@ -331,19 +368,27 @@ class SharedIntentService {
           response.statusCode == 404;
 
       if (!isLoginWall && response.statusCode == 200) {
-        // Check for og:image
         final ogImageUrl = _extractMetaTag(html, 'og:image') ?? _extractMetaTag(html, 'twitter:image');
-
-        // Check for og:description
         final ogDescription = _extractMetaTag(html, 'og:description') ?? _extractMetaTag(html, 'description');
 
         if (ogImageUrl != null && ogImageUrl.isNotEmpty) {
           final imgUrl = ogImageUrl;
           if (!imgUrl.contains('profile') && !imgUrl.contains('ghost') && !imgUrl.contains('static.licdn.com/aero-v1') && !imgUrl.contains('favicon')) {
-            final imgRes = await http.get(Uri.parse(imgUrl)).timeout(const Duration(seconds: 8));
+            final imgRes = await http.get(
+              Uri.parse(imgUrl),
+              headers: {
+                'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              },
+            ).timeout(const Duration(seconds: 10));
             if (imgRes.statusCode == 200 && imgRes.bodyBytes.isNotEmpty) {
               final base64Img = base64Encode(imgRes.bodyBytes);
-              final parsed = await jobService.parseJobPostersWithAI([base64Img], 'single_job');
+              final parsed = await jobService.parseJobPostersWithAI(
+                [base64Img],
+                'single_job',
+                jobText: ogDescription,
+                customPrompt: 'Extract hiring post details, company, role, recruiter email, and write a high-converting application.',
+              );
               if (parsed.isNotEmpty) {
                 successfullyParsed = true;
                 final rawJob = parsed.first;
@@ -357,9 +402,10 @@ class SharedIntentService {
                   generatedCoverLetter: rawJob.generatedCoverLetter,
                   status: rawJob.recipientEmail.trim().isNotEmpty ? 'sent' : 'needs_review',
                   appliedAt: DateTime.now(),
-                  sourcePlatform: 'LinkedIn Share',
-                  source: 'linkedin_share',
-                  sourceUrl: url,
+                  sourcePlatform: isLinkedIn ? 'LinkedIn Share' : 'Shared Link',
+                  source: isLinkedIn ? 'linkedin_share' : 'shared_link',
+                  sourceUrl: expandedUrl,
+                  posterImageUrls: [imgUrl],
                   errorMessage: rawJob.recipientEmail.trim().isEmpty ? 'No recruiter email found in flyer. Saved in Drafts.' : null,
                 );
 
@@ -392,7 +438,10 @@ class SharedIntentService {
         if (!successfullyParsed && ogDescription != null && ogDescription.isNotEmpty) {
           final descText = ogDescription;
           if (descText.trim().length > 30 && !descText.contains('500 million+ members') && !descText.contains('Manage your professional identity')) {
-            final parsed = await jobService.parseJobTextWithAI(descText);
+            final parsed = await jobService.parseJobTextWithAI(
+              descText,
+              customPrompt: 'Extract hiring post details, company, role, recruiter email, and write a high-converting application.',
+            );
             if (parsed.isNotEmpty) {
               successfullyParsed = true;
               final rawJob = parsed.first;
@@ -406,9 +455,9 @@ class SharedIntentService {
                 generatedCoverLetter: rawJob.generatedCoverLetter,
                 status: rawJob.recipientEmail.trim().isNotEmpty ? 'sent' : 'needs_review',
                 appliedAt: DateTime.now(),
-                sourcePlatform: 'LinkedIn Share',
-                source: 'linkedin_share',
-                sourceUrl: url,
+                sourcePlatform: isLinkedIn ? 'LinkedIn Share' : 'Shared Text',
+                source: isLinkedIn ? 'linkedin_share' : 'shared_text',
+                sourceUrl: expandedUrl,
                 errorMessage: rawJob.recipientEmail.trim().isEmpty ? 'No email found in post. Saved in Drafts.' : null,
               );
 
@@ -441,16 +490,14 @@ class SharedIntentService {
       debugPrint('[SharedIntentService] Public URL fetch notice: $e');
     }
 
-    // 2. If unauthenticated fetch was blocked by login wall, attempt Apify residential post scraper if configured
-    if (!successfullyParsed && url.toLowerCase().contains('linkedin')) {
-      final apifySuccess = await _tryScrapeWithApify(url);
+    // 3. If unauthenticated fetch was blocked by login wall, attempt Apify residential post scraper if configured
+    if (!successfullyParsed && isLinkedIn) {
+      final apifySuccess = await _tryScrapeWithApify(expandedUrl);
       if (apifySuccess) return;
     }
 
-    // 3. If unauthenticated fetch failed or is behind login wall and Apify is unavailable:
-    // Store in Unified Apply History with the exact post link and notify user to open & screenshot!
+    // 4. Fallback: Save in Unified Apply History with the exact post link and notify user
     if (!successfullyParsed) {
-      final isLinkedIn = url.toLowerCase().contains('linkedin');
       final failedApp = JobApplication(
         id: '',
         jobTitle: isLinkedIn ? 'Shared LinkedIn Post' : 'Shared Job Link',
@@ -463,23 +510,23 @@ class SharedIntentService {
         appliedAt: DateTime.now(),
         sourcePlatform: isLinkedIn ? 'LinkedIn Share' : 'Shared Link',
         source: isLinkedIn ? 'linkedin_share' : 'shared_link',
-        sourceUrl: url,
+        sourceUrl: expandedUrl,
         errorMessage: isLinkedIn
-            ? 'This post is behind LinkedIn\'s sign-in wall. Tap "View Original LinkedIn Post" below to open it in LinkedIn, snap a screenshot, and share the screenshot to SmartBuddy for 1-click apply!'
-            : 'Could not automatically extract job details from link. Tap "View Job URL" below to inspect or share a screenshot!',
+            ? 'This post is behind LinkedIn\'s sign-in wall. Saved in History drafts.'
+            : 'Could not automatically extract job details from link. Saved in History drafts.',
       );
 
       await jobService.saveJobApplication(failedApp);
 
       await NotificationService().showNotification(
         id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        title: isLinkedIn ? '⚠️ Shared Post Requires Screenshot' : '⚠️ Gemini Could Not Analyze Link',
+        title: isLinkedIn ? '📋 Post Link Saved in Drafts' : '⚠️ Link Saved in Drafts',
         body: isLinkedIn
-            ? 'Post requires login. Tap to open in LinkedIn, snap screenshot & share to auto-apply!'
-            : 'Tap to open the link, snap screenshot & share to auto-apply!',
+            ? 'Post link saved in History drafts. You can review or apply anytime!'
+            : 'Link saved in History drafts.',
         channelId: 'job_assistant_share_channel',
         channelName: 'Job Assistant Auto-Apply',
-        payload: 'OPEN_URL|$url',
+        payload: 'OPEN_URL|$expandedUrl',
       );
     }
   }
@@ -588,14 +635,25 @@ class SharedIntentService {
         debugPrint('[SharedIntentService] Trying Apify token #${i + 1} ($maskedToken)...');
 
         try {
-          final response = await http.post(
-            Uri.parse('https://api.apify.com/v2/acts/supreme_coder~linkedin-post/run-sync-get-dataset-items?token=${Uri.encodeComponent(token)}'),
+          http.Response response = await http.post(
+            Uri.parse('https://api.apify.com/v2/acts/thirdwatch~linkedin-post-scraper/run-sync-get-dataset-items?token=${Uri.encodeComponent(token)}'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'urls': [url],
               'postUrls': [url],
+              'maxPosts': 1,
             }),
-          ).timeout(const Duration(seconds: 50));
+          ).timeout(const Duration(seconds: 40));
+
+          if ((response.statusCode != 200 && response.statusCode != 201) || response.body.trim() == '[]') {
+            response = await http.post(
+              Uri.parse('https://api.apify.com/v2/acts/supreme_coder~linkedin-post/run-sync-get-dataset-items?token=${Uri.encodeComponent(token)}'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'urls': [url],
+                'postUrls': [url],
+              }),
+            ).timeout(const Duration(seconds: 40));
+          }
 
           if (response.statusCode == 200 || response.statusCode == 201) {
             final List<dynamic> items = jsonDecode(response.body) as List<dynamic>? ?? [];
@@ -712,6 +770,17 @@ class SharedIntentService {
     return false;
   }
 
+  String? _unescapeHtml(String? text) {
+    if (text == null) return null;
+    return text
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .trim();
+  }
+
   String? _extractMetaTag(String html, String propertyName) {
     final patterns = [
       RegExp('<meta[^>]+property=["\']$propertyName["\'][^>]+content=["\']([^"\']+)["\']', caseSensitive: false),
@@ -722,7 +791,7 @@ class SharedIntentService {
     for (final p in patterns) {
       final match = p.firstMatch(html);
       if (match != null && match.group(1) != null) {
-        return match.group(1)!.trim();
+        return _unescapeHtml(match.group(1));
       }
     }
     return null;
