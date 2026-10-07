@@ -13,6 +13,7 @@ const nodemailer = require("nodemailer");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
+const techEvents_1 = require("./techEvents");
 async function fetchAndStoreWalkInsForUserInternal(uid, triggerNotification, customPrefs) {
     var _a;
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
@@ -283,6 +284,7 @@ Respond ONLY with a JSON array matching this schema:
     });
     await batch.commit();
     let newCount = 0;
+    const newlyAddedWalkins = [];
     const writeBatch = firebase_1.db.batch();
     for (const walkin of uniqueWalkIns) {
         const normTitle = walkin.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
@@ -293,9 +295,13 @@ Respond ONLY with a JSON array matching this schema:
             const docRef = walkinsCol.doc(docId);
             writeBatch.set(docRef, Object.assign(Object.assign({}, walkin), { isNew: true, createdAt: firebase_1.admin.firestore.FieldValue.serverTimestamp() }));
             newCount++;
+            newlyAddedWalkins.push(walkin);
         }
     }
     await writeBatch.commit();
+    // Format distinct months of newly added walk-in drives (e.g., 'October', 'October & November')
+    const monthsStr = (0, techEvents_1.formatDistinctEventMonths)(newlyAddedWalkins.map(w => w.date));
+    const monthText = monthsStr ? ` for ${monthsStr}` : '';
     // Update last updated timestamp on user doc
     const updateData = {
         walkinsLastRan: firebase_1.admin.firestore.FieldValue.serverTimestamp()
@@ -311,7 +317,7 @@ Respond ONLY with a JSON array matching this schema:
         status: newCount > 0 ? 'success' : 'no_results',
         count: newCount,
         message: newCount > 0
-            ? `Found ${newCount} new walk-in drive(s) in ${location || 'your area'}: ${driveTitles.slice(0, 3).join(', ')}`
+            ? `Found ${newCount} new walk-in drive(s)${monthText} in ${location || 'your area'}: ${driveTitles.slice(0, 3).join(', ')}`
             : `0 new walk-in drives found in ${location || 'your area'} for this run.`,
         details: driveTitles,
         isManual: !triggerNotification
@@ -327,7 +333,7 @@ Respond ONLY with a JSON array matching this schema:
                 const token = usernameDoc.docs[0].data().fcmToken;
                 if (token) {
                     const title = "New Walk-In Drives Found";
-                    const body = `Found ${newCount} new walk-in drive(s) in ${location || 'your area'}.`;
+                    const body = `Found ${newCount} new walk-in drive(s)${monthText} in ${location || 'your area'}.`;
                     await firebase_1.admin.messaging().send({
                         token,
                         notification: { title, body },
@@ -380,7 +386,7 @@ Respond ONLY with a JSON array matching this schema:
             }
         }
     }
-    return { success: true, count: newCount };
+    return { success: true, count: newCount, months: monthsStr };
 }
 const lastFetchWalkInsMap = new Map();
 exports.fetchUserWalkIns = functions.runWith({ timeoutSeconds: 120, memory: "256MB" }).https.onCall(async (data, context) => {

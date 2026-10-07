@@ -246,9 +246,12 @@ class _TechEventsScreenState extends State<TechEventsScreen> {
         'eventMode': _eventMode,
       });
       if (mounted) {
+        final count = result.data['count'] ?? 0;
+        final months = result.data['months'] as String?;
+        final monthsText = (months != null && months.isNotEmpty) ? ' for $months' : '';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Successfully loaded ${result.data['count'] ?? 0} tech events'),
+            content: Text('✅ Successfully loaded $count tech event${count == 1 ? '' : 's'}$monthsText'),
             backgroundColor: Colors.green,
           ),
         );

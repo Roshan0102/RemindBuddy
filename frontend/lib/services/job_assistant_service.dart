@@ -1068,6 +1068,14 @@ class JobAssistantService {
       status: 'sent',
       appliedAt: DateTime.now(),
       posterImageUrls: app.posterImageUrls,
+      sourcePlatform: app.sourcePlatform,
+      source: app.source,
+      sourceUrl: app.sourceUrl,
+      authorName: app.authorName,
+      postExcerpt: app.postExcerpt,
+      modelUsed: app.modelUsed,
+      resumeProfileName: app.resumeProfileName,
+      isAutoApplied: app.isAutoApplied,
     ));
   }
 

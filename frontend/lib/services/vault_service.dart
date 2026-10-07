@@ -749,6 +749,7 @@ class VaultService {
     final docId = id ?? _firestore.collection('users').doc(effectiveTargetUid).collection('secure_documents').doc().id;
 
     final List<String> uploadedPaths = List.from(existingAttachmentPaths);
+    final List<Future<void>> uploadFutures = [];
 
     for (int i = 0; i < rawImagesToUpload.length; i++) {
       final rawBytes = rawImagesToUpload[i];
@@ -763,13 +764,18 @@ class VaultService {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final storagePath = 'users/$uid/vault_attachments/$docId/${safeOwner}_-_${safeTitle}_${timestamp}_$i.$ext';
       
+      uploadedPaths.add(storagePath);
+      cacheAttachment(storagePath, rawBytes);
+
       final ref = _storage.ref().child(storagePath);
-      await ref.putData(
+      uploadFutures.add(ref.putData(
         encryptedBytes,
         SettableMetadata(contentType: 'application/octet-stream'),
-      );
-      
-      uploadedPaths.add(storagePath);
+      ));
+    }
+
+    if (uploadFutures.isNotEmpty) {
+      await Future.wait(uploadFutures);
     }
 
     final doc = SecureDocument(
@@ -807,6 +813,7 @@ class VaultService {
     }
 
     for (var path in doc.encryptedAttachmentPaths) {
+      _attachmentCache.remove(path);
       try {
         await _storage.ref().child(path).delete();
       } catch (e) {
@@ -822,8 +829,22 @@ class VaultService {
         .delete();
   }
 
-  /// Downloads and decrypts an image attachment
+  // In-memory decrypted attachment cache for instant loading
+  static final Map<String, Uint8List> _attachmentCache = {};
+
+  static bool hasCachedAttachment(String path) => _attachmentCache.containsKey(path);
+  static Uint8List? getCachedAttachment(String path) => _attachmentCache[path];
+  static void cacheAttachment(String path, Uint8List bytes) {
+    if (bytes.isNotEmpty) {
+      _attachmentCache[path] = bytes;
+    }
+  }
+
+  /// Downloads and decrypts an image attachment with in-memory caching
   Future<Uint8List?> downloadAndDecryptAttachment(String storagePath) async {
+    if (_attachmentCache.containsKey(storagePath)) {
+      return _attachmentCache[storagePath];
+    }
     try {
       final ref = _storage.ref().child(storagePath);
       final encryptedBytes = await ref.getData(10 * 1024 * 1024); // max 10MB
@@ -831,6 +852,9 @@ class VaultService {
       if (encryptedBytes == null) return null;
 
       final decryptedBytes = await EncryptionService().decryptBytes(encryptedBytes);
+      if (decryptedBytes.isNotEmpty) {
+        _attachmentCache[storagePath] = decryptedBytes;
+      }
       return decryptedBytes;
     } catch (e) {
       debugPrint("VaultService: Error downloading/decrypting attachment: $e");

@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.internalCheckInterestedEventsNotifications = exports.fetchUserTechEventsTrigger = exports.processTechEventsUserTask = exports.fetchUserTechEvents = void 0;
+exports.formatDistinctEventMonths = formatDistinctEventMonths;
 exports.fetchAndStoreEventsForUserInternal = fetchAndStoreEventsForUserInternal;
 exports.internalDailyTechEventsFetcher = internalDailyTechEventsFetcher;
 exports.internalCheckInterestedTechEventsNotifications = internalCheckInterestedTechEventsNotifications;
@@ -13,6 +14,38 @@ const nodemailer = require("nodemailer");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
+function formatDistinctEventMonths(dates) {
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+    const orderMap = new Map();
+    for (const d of dates) {
+        if (!d)
+            continue;
+        const parts = String(d).split(',').map(s => s.trim());
+        for (const p of parts) {
+            const m = moment(p, [
+                'YYYY-MM-DD', 'YYYY/MM/DD', 'DD-MM-YYYY', 'DD/MM/YYYY',
+                'MMMM D, YYYY', 'D MMMM YYYY', 'MMM D, YYYY', 'D MMM YYYY',
+                'MM/DD/YYYY', 'YYYY-M-D', 'YYYY.MM.DD'
+            ]);
+            if (m.isValid()) {
+                const key = m.year() * 12 + m.month();
+                orderMap.set(key, monthNames[m.month()]);
+            }
+        }
+    }
+    const sortedKeys = Array.from(orderMap.keys()).sort((a, b) => a - b);
+    const months = sortedKeys.map(k => orderMap.get(k));
+    if (months.length === 0)
+        return '';
+    if (months.length === 1)
+        return months[0];
+    if (months.length === 2)
+        return `${months[0]} & ${months[1]}`;
+    return `${months.slice(0, -1).join(', ')} & ${months[months.length - 1]}`;
+}
 async function fetchAndStoreEventsForUserInternal(uid, triggerNotification, customPrefs) {
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     let interests = [];
@@ -264,6 +297,7 @@ Respond ONLY with a JSON array matching this schema:
     });
     await batch.commit();
     let newCount = 0;
+    const newlyAddedEvents = [];
     const writeBatch = firebase_1.db.batch();
     for (const event of uniqueEvents) {
         const normTitle = event.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
@@ -286,9 +320,13 @@ Respond ONLY with a JSON array matching this schema:
             writeBatch.set(docRef, Object.assign(Object.assign({}, event), { isNew: true, createdAt: firebase_1.admin.firestore.FieldValue.serverTimestamp() }));
             existingMap.set(normTitle, { id: docId, ref: docRef, date: event.date });
             newCount++;
+            newlyAddedEvents.push(event);
         }
     }
     await writeBatch.commit();
+    // Format distinct months of newly added events (e.g., 'October', 'October & November')
+    const monthsStr = formatDistinctEventMonths(newlyAddedEvents.map(e => e.date));
+    const monthText = monthsStr ? ` for ${monthsStr}` : '';
     // Update last updated timestamp on user doc
     const updateData = {
         eventsLastRan: firebase_1.admin.firestore.FieldValue.serverTimestamp()
@@ -304,7 +342,7 @@ Respond ONLY with a JSON array matching this schema:
         status: newCount > 0 ? 'success' : 'no_results',
         count: newCount,
         message: newCount > 0
-            ? `Found ${newCount} new tech event(s) in ${location || 'your area'}: ${eventTitles.slice(0, 3).join(', ')}`
+            ? `Found ${newCount} new tech event(s)${monthText} in ${location || 'your area'}: ${eventTitles.slice(0, 3).join(', ')}`
             : `0 new tech events found in ${location || 'your area'} for this run.`,
         details: eventTitles,
         isManual: !triggerNotification
@@ -320,7 +358,7 @@ Respond ONLY with a JSON array matching this schema:
                 const token = usernameDoc.docs[0].data().fcmToken;
                 if (token) {
                     const title = "New Tech Events Found";
-                    const body = `Found ${newCount} new tech event(s) and meetup(s) in ${location || 'your area'}.`;
+                    const body = `Found ${newCount} new tech event(s)${monthText} in ${location || 'your area'}.`;
                     await firebase_1.admin.messaging().send({
                         token,
                         notification: { title, body },
@@ -374,7 +412,7 @@ Respond ONLY with a JSON array matching this schema:
             }
         }
     }
-    return { success: true, count: newCount };
+    return { success: true, count: newCount, months: monthsStr };
 }
 const lastFetchTechEventsMap = new Map();
 exports.fetchUserTechEvents = functions.runWith({ timeoutSeconds: 120, memory: "256MB" }).https.onCall(async (data, context) => {

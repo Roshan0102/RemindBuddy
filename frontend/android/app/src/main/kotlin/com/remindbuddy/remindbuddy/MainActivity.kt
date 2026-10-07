@@ -25,19 +25,158 @@ import android.provider.Telephony
 import androidx.core.app.NotificationManagerCompat
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
+import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.remindbuddy/battery"
     private var permissionResult: MethodChannel.Result? = null
     private val ACTIVITY_RECOGNITION_REQUEST_CODE = 1001
 
+    companion object {
+        var initialSharedData: Map<String, Any>? = null
+        var shareEventSink: EventChannel.EventSink? = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        handleSendIntent(intent, isInitial = true)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleSendIntent(intent, isInitial = false)
+    }
+
+    private fun handleSendIntent(intent: Intent?, isInitial: Boolean) {
+        if (intent == null) return
+        val action = intent.action
+        val type = intent.type ?: ""
+
+        if (Intent.ACTION_SEND == action) {
+            val sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+                ?: intent.getStringExtra(Intent.EXTRA_TEXT)
+                ?: (if (intent.clipData != null && intent.clipData!!.itemCount > 0) intent.clipData!!.getItemAt(0).text?.toString() else null)
+                ?: ""
+
+            if (type.startsWith("image/") || intent.hasExtra(Intent.EXTRA_STREAM)) {
+                val imageUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                } ?: (if (intent.clipData != null && intent.clipData!!.itemCount > 0) intent.clipData!!.getItemAt(0).uri else null)
+
+                if (imageUri != null) {
+                    val filePath = copyUriToCache(imageUri)
+                    if (filePath != null) {
+                        val data = mapOf(
+                            "type" to "image",
+                            "imagePaths" to listOf(filePath)
+                        )
+                        dispatchSharedData(data, isInitial)
+                        return
+                    }
+                }
+            }
+
+            if (sharedText.isNotBlank()) {
+                val data = mapOf(
+                    "type" to "text",
+                    "text" to sharedText
+                )
+                dispatchSharedData(data, isInitial)
+            }
+        } else if (Intent.ACTION_SEND_MULTIPLE == action) {
+            val imageUris = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+            }
+            val paths = mutableListOf<String>()
+            if (imageUris != null && imageUris.isNotEmpty()) {
+                for (u in imageUris) {
+                    val p = copyUriToCache(u)
+                    if (p != null) paths.add(p)
+                }
+            } else if (intent.clipData != null && intent.clipData!!.itemCount > 0) {
+                for (i in 0 until intent.clipData!!.itemCount) {
+                    val u = intent.clipData!!.getItemAt(i).uri
+                    if (u != null) {
+                        val p = copyUriToCache(u)
+                        if (p != null) paths.add(p)
+                    }
+                }
+            }
+            if (paths.isNotEmpty()) {
+                val data = mapOf(
+                    "type" to "image",
+                    "imagePaths" to paths
+                )
+                dispatchSharedData(data, isInitial)
+            }
+        }
+    }
+
+    private fun copyUriToCache(uri: Uri): String? {
+        return try {
+            val fileName = "shared_job_${System.currentTimeMillis()}_${(100..999).random()}.jpg"
+            val file = File(cacheDir, fileName)
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(file).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            file.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun dispatchSharedData(data: Map<String, Any>, isInitial: Boolean) {
+        if (shareEventSink != null) {
+            runOnUiThread {
+                shareEventSink?.success(data)
+            }
+        } else {
+            initialSharedData = data
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Share Target Channels
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/share_receiver").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getInitialSharedData" -> {
+                    val data = initialSharedData
+                    initialSharedData = null
+                    result.success(data)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/shared_data_stream").setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    shareEventSink = events
+                    if (initialSharedData != null) {
+                        events?.success(initialSharedData)
+                        initialSharedData = null
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    shareEventSink = null
+                }
+            }
+        )
 
         // Payment Notification Stream EventChannel
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/payment_notification_stream").setStreamHandler(

@@ -7535,7 +7535,27 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ),
                   )
                 else if (hasReplied)
-                  _buildResponseBadge(app, isDark),
+                  _buildResponseBadge(app, isDark)
+                else if (app.status == 'needs_review' || app.status == 'failed')
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.45)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.warning_amber_rounded, size: 10, color: Color(0xFFF59E0B)),
+                        SizedBox(width: 3),
+                        Text(
+                          'Action Needed / Draft',
+                          style: TextStyle(fontSize: 9.5, color: Color(0xFFF59E0B), fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (app.resumeProfileName != null && app.resumeProfileName!.isNotEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -7596,24 +7616,64 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         ),
         children: [
           const Divider(height: 16),
+          // Action required / Error notice banner
+          if (app.errorMessage != null && app.errorMessage!.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.35)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFFF59E0B)),
+                      SizedBox(width: 6),
+                      Text(
+                        'Attention / Action Required:',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFF59E0B)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    app.errorMessage!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      color: isDark ? Colors.amber.shade100 : Colors.amber.shade900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           // Links & Author if available
           if (app.sourceUrl != null && app.sourceUrl!.isNotEmpty) ...[
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
+                  child: ElevatedButton.icon(
                     onPressed: () => UrlLauncherHelper.openInNewTabOrExternal(app.sourceUrl!),
                     icon: const Icon(Icons.open_in_new_rounded, size: 14),
                     label: Text(
                       isPortal
                           ? 'Open ${app.companyName} Portal'
                           : (isLinkedIn ? 'View Original LinkedIn Post' : 'View Job URL'),
-                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                       overflow: TextOverflow.ellipsis,
                     ),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isLinkedIn ? const Color(0xFF0A66C2) : null,
+                      foregroundColor: isLinkedIn ? Colors.white : null,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       visualDensity: VisualDensity.compact,
+                      elevation: 0,
                     ),
                   ),
                 ),

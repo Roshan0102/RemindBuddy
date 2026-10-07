@@ -37,7 +37,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
   String _searchQuery = '';
   String? _selectedMemberId; // null means "All Members"
   String _selectedCategory = 'All'; // "All" or a specific category
-  String _vaultViewMode = 'family'; // 'family' (Family Shared), 'private' (My Private), 'all' (All)
+  String _vaultViewMode = 'all'; // 'all' (All), 'family' (Family Shared), 'private' (My Private)
 
   Map<String, VaultMemberProfile> _profilesMap = {};
 
@@ -55,7 +55,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
 
   Future<void> _loadSavedViewMode() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedMode = prefs.getString('vault_view_mode') ?? 'family';
+    final savedMode = prefs.getString('vault_view_mode') ?? 'all';
     if (mounted) {
       setState(() {
         _vaultViewMode = savedMode;

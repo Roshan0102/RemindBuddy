@@ -134,11 +134,11 @@ async function generateGoldChitRecommendation(priceHistory, newsItems) {
     if (dayOfMonth >= 26) {
         return {
             recommendation: "WAIT",
-            shortReason: "Chit payment window closed. Next month-uku 1st lendhu pay pannunga.",
-            fullAnalysis: "Monthly gold chit payment cycle (1st - 25th) ippo closed. Next month window 1st date thaan open aagum. Adhuvarai wait pannunga."
+            shortReason: "Chit window close aayiduchu pa! Next month 1st varaikkum chill pannunga ☕",
+            fullAnalysis: "Monthly gold chit payment cycle (1st - 25th) ippo tata-bye bye soliduchu. Next month window 1st date thaan open aagum. Adhuvarai purse-ai pathiram-ah vachikittu jolly-ah wait pannunga!"
         };
     }
-    const prompt = `You are a financial advisor helping an investor who deposits ₹10,000 monthly in a gold chit.
+    const prompt = `You are a hilarious, witty Tamil financial buddy (with cinema comedy vibes like Vadivelu/Santhanam style) helping an investor who deposits monthly in a gold chit.
 The chit payment must be made between the 1st and the 25th of every month. The chit company purchases gold on the exact day the payment is received.
 Your goal is to recommend whether the investor should pay today to lock in today's gold rate, or wait for a potentially lower rate later in the month (up to the 25th).
 
@@ -151,16 +151,19 @@ ${JSON.stringify(priceHistory, null, 2)}
 Latest Gold News Headlines:
 ${JSON.stringify(newsItems, null, 2)}
 
-Task:
-Determine if today is a good day to buy (i.e. we are at or near a short-term low, or prices are expected to rise significantly before the 25th) or if they should wait.
-Write the 'shortReason' and 'fullAnalysis' in clear, friendly Tanglish (Tamil language written using the English/Latin alphabet, mixing Tamil and English naturally. E.g., 'Iniku gold price romba low-ah iruku, pay pannalam!' or 'Price inum kuraiyuradhuku chance iruku, so waiting list la irunga.').
-Do NOT use Tamil script (characters like தமிழ்), only use English letters.
+Task & Comedy Tanglish Rules:
+1. Determine if today is a good day to buy (rate dip / near short-term low, or prices expected to shoot up before the 25th) or if they should wait.
+2. The core financial reasoning MUST BE 100% ACCURATE AND SOLID (reference the price trend, recent dips/spikes, and time remaining until the 25th).
+3. Deliver the advice in a SUPER FUN, COMEDY, JOLLY Tanglish style (spoken Tamil mixed with English, written purely in Latin/English alphabet). Use relatable Tamil comedy expressions, funny cinema punches, or jolly everyday Tamil slang.
+   - For BUY (Good Day to Pay): Use punchy, jolly hype (e.g., "Iniku rate semma dip-u thalaiva! Ippove swipe panni lock pannidunga 🚀", "Rate paatha kannu verkudhu boss! Vitta sema offer poirum, pay pannidunga 💰", "Market cool-ah iruku, gap-la goal podra maadhiri ippo pay panni gold-ai allidunga!").
+   - For WAIT (Hold Payment): Use hilarious calm-down comedy punches (e.g., "Avasara padatheenga Kumaru! Price innum irangum, wait pannunga ☕", "Rate innum sky-la fly pannudhu boss! Purse-ai lock panni konjam wait pannuvom ⏳", "Ippo pay panna heart attack thaan varum, wait pannunga thala!").
+4. Strictly NO Tamil script characters (like தமிழ்). Use ONLY English letters for Tanglish.
 
 Respond ONLY with a JSON object matching this schema:
 {
   "recommendation": "BUY" | "WAIT",
-  "shortReason": "string (A concise notification/alert message in Tanglish, max 80 characters, summarizing the recommendation. E.g., 'Iniku rate low-ah iruku, pay pannunga!' or 'Price high-ah iruku, konjam wait pannalam.')",
-  "fullAnalysis": "string (A detailed 2-3 sentence analysis in Tanglish explaining why, referencing the trend or news.)"
+  "shortReason": "string (A punchy, hilarious comedy Tanglish alert message, max 80 characters. E.g., 'Iniku rate semma dip-u boss! Ippove lock pannidunga 🚀' or 'Avasara padatheenga Kumaru! Rate innum irangum, wait pannunga ☕')",
+  "fullAnalysis": "string (A funny, witty yet financially rock-solid 2-3 sentence analysis in comedy Tanglish explaining today's trend, news sentiment, and why to lock or wait before the 25th.)"
 }`;
     const payload = {
         contents: [

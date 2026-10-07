@@ -32,6 +32,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
   // Track hidden state of each field by key
   final Map<String, bool> _fieldVisibility = {};
+  final Map<String, Future<Uint8List?>> _attachmentFutures = {};
 
   @override
   void initState() {
@@ -42,6 +43,11 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     // Default all fields to visible for easier readability by elderly parents
     for (var key in _decDoc.fields.keys) {
       _fieldVisibility[key] = true;
+    }
+
+    // Preload all attachments in parallel for fast loading
+    for (var path in _rawDoc.encryptedAttachmentPaths) {
+      _attachmentFutures[path] = _vaultService.downloadAndDecryptAttachment(path);
     }
   }
 
@@ -393,13 +399,14 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
                               itemBuilder: (context, index) {
                                 final storagePath = _rawDoc.encryptedAttachmentPaths[index];
                                 final isPdf = storagePath.toLowerCase().endsWith('.pdf');
+                                final isDark = Theme.of(context).brightness == Brightness.dark;
                                 return FutureBuilder<Uint8List?>(
-                                  future: _vaultService.downloadAndDecryptAttachment(storagePath),
+                                  future: _attachmentFutures[storagePath] ??= _vaultService.downloadAndDecryptAttachment(storagePath),
                                   builder: (context, snapshot) {
                                     if (snapshot.connectionState == ConnectionState.waiting) {
                                       return Container(
                                         decoration: BoxDecoration(
-                                          color: Colors.grey.shade100,
+                                          color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade100,
                                           borderRadius: BorderRadius.circular(12),
                                         ),
                                         child: const Center(

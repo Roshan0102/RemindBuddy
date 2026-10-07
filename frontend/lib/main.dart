@@ -9,6 +9,7 @@ import 'services/notification_service.dart';
 import 'services/job_assistant_service.dart';
 import 'services/location_reminder_service.dart';
 import 'services/update_service.dart';
+import 'services/shared_intent_service.dart';
 import 'firebase_options.dart';
 import 'services/web_plugin_init/web_plugin_init.dart';
 
@@ -55,6 +56,12 @@ void main() async {
     UpdateService.cleanOldApksAndCaches();
   } catch (e) {
     debugPrint('Error cleaning old update APKs: $e');
+  }
+
+  try {
+    SharedIntentService().init();
+  } catch (e) {
+    debugPrint('Error initializing SharedIntentService: $e');
   }
   
   runApp(const SmartBuddyApp());

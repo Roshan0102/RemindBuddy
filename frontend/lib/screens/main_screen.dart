@@ -38,6 +38,7 @@ import '../main.dart';
 import 'alarm_ringing_screen.dart';
 import '../models/calendar_reminder.dart';
 import 'in_app_call_screen.dart';
+import '../services/url_launcher_helper/url_launcher_helper.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -304,6 +305,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ),
         ),
       );
+      return;
+    }
+
+    if (type.startsWith('OPEN_URL|')) {
+      final url = type.substring('OPEN_URL|'.length).trim();
+      if (url.isNotEmpty) {
+        UrlLauncherHelper.openInNewTabOrExternal(url);
+      }
+      return;
+    }
+
+    if (type.startsWith('JOB_APPLICATION') || type.startsWith('LINKEDIN_SHARE') || type == 'job_assistant_share') {
+      _selectTabOrPush('job_assistant');
       return;
     }
 
@@ -1794,7 +1808,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'SmartBuddy v1.10.48',
+                  'SmartBuddy v1.10.49',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

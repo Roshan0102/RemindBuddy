@@ -29,6 +29,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   final _categoryController = TextEditingController();
 
   String? _selectedMemberId;
+  List<VaultMemberProfile> _latestProfiles = [];
 
   // List of custom field controllers
   final List<Map<String, TextEditingController>> _fieldControllers = [];
@@ -100,15 +101,27 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final picked = await AppFilePicker.pickImage(
-        fromCamera: source == ImageSource.camera,
-      );
+      if (source == ImageSource.gallery) {
+        final pickedList = await AppFilePicker.pickMultipleImages();
+        if (pickedList.isNotEmpty) {
+          setState(() {
+            for (final picked in pickedList) {
+              _newAttachmentsBytes.add(picked.bytes);
+              _newAttachmentsNames.add(picked.name);
+            }
+          });
+        }
+      } else {
+        final picked = await AppFilePicker.pickImage(
+          fromCamera: true,
+        );
 
-      if (picked != null) {
-        setState(() {
-          _newAttachmentsBytes.add(picked.bytes);
-          _newAttachmentsNames.add(picked.name);
-        });
+        if (picked != null) {
+          setState(() {
+            _newAttachmentsBytes.add(picked.bytes);
+            _newAttachmentsNames.add(picked.name);
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -182,7 +195,9 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       String ownerName = 'Me';
       String? targetOwnerUid;
 
-      final profiles = await _vaultService.getUnifiedMemberProfiles().first;
+      final profiles = _latestProfiles.isNotEmpty
+          ? _latestProfiles
+          : await _vaultService.getUnifiedMemberProfiles().first;
       final matchedProfile = profiles.firstWhere(
         (p) => p.id == targetMemberId,
         orElse: () => VaultMemberProfile(
@@ -253,21 +268,27 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isSaving) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
       return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF0F172A) : null,
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const CircularProgressIndicator(color: Colors.blueAccent),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 '🔒 Zero-Knowledge Cryptography active',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: isDark ? Colors.blue.shade300 : Colors.blue,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
                 _savingStatus,
-                style: const TextStyle(color: Colors.grey),
+                style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -323,6 +344,9 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                 stream: _vaultService.getUnifiedMemberProfiles(),
                 builder: (context, snapshot) {
                   final profiles = snapshot.data ?? [];
+                  if (profiles.isNotEmpty) {
+                    _latestProfiles = profiles;
+                  }
                   final currentUid = FirebaseAuth.instance.currentUser?.uid;
                   final activeValue = _selectedMemberId ?? currentUid;
 
@@ -494,13 +518,16 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                             itemCount: _fieldControllers.length,
                             itemBuilder: (context, index) {
                               final controllers = _fieldControllers[index];
+                              final isDark = Theme.of(context).brightness == Brightness.dark;
                               return Container(
                                 margin: const EdgeInsets.only(bottom: 16.0),
                                 padding: const EdgeInsets.all(14.0),
                                 decoration: BoxDecoration(
-                                  color: Colors.grey.shade50,
+                                  color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade50,
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: Colors.grey.shade300),
+                                  border: Border.all(
+                                    color: isDark ? const Color(0xFF334155) : Colors.grey.shade300,
+                                  ),
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -513,7 +540,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 13,
-                                            color: Colors.blueGrey.shade700,
+                                            color: isDark ? Colors.blue.shade300 : Colors.blueGrey.shade700,
                                           ),
                                         ),
                                         IconButton(
@@ -529,13 +556,27 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                                     // 1. Label Field (Full Width)
                                     TextField(
                                       controller: controllers['key'],
+                                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                                       decoration: InputDecoration(
                                         labelText: 'Field Label / Name',
+                                        labelStyle: TextStyle(color: isDark ? Colors.grey.shade300 : null),
                                         hintText: 'e.g. Account Number, Password, Policy ID',
-                                        prefixIcon: const Icon(Icons.label_outlined, size: 20),
-                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                        hintStyle: TextStyle(color: isDark ? Colors.grey.shade500 : null),
+                                        prefixIcon: Icon(Icons.label_outlined, size: 20, color: isDark ? Colors.blue.shade300 : null),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: isDark ? const Color(0xFF475569) : Colors.grey.shade300),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: isDark ? const Color(0xFF475569) : Colors.grey.shade300),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: const BorderSide(color: Colors.blueAccent, width: 1.5),
+                                        ),
                                         filled: true,
-                                        fillColor: Colors.white,
+                                        fillColor: isDark ? const Color(0xFF0F172A) : Colors.white,
                                         isDense: true,
                                       ),
                                     ),
@@ -546,13 +587,27 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                                       maxLines: null,
                                       minLines: 2,
                                       keyboardType: TextInputType.multiline,
+                                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                                       decoration: InputDecoration(
                                         labelText: 'Field Value / Secret Content',
+                                        labelStyle: TextStyle(color: isDark ? Colors.grey.shade300 : null),
                                         hintText: 'Enter secret value or details...',
-                                        prefixIcon: const Icon(Icons.key_outlined, size: 20),
-                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                        hintStyle: TextStyle(color: isDark ? Colors.grey.shade500 : null),
+                                        prefixIcon: Icon(Icons.key_outlined, size: 20, color: isDark ? Colors.blue.shade300 : null),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: isDark ? const Color(0xFF475569) : Colors.grey.shade300),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: isDark ? const Color(0xFF475569) : Colors.grey.shade300),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: const BorderSide(color: Colors.blueAccent, width: 1.5),
+                                        ),
                                         filled: true,
-                                        fillColor: Colors.white,
+                                        fillColor: isDark ? const Color(0xFF0F172A) : Colors.white,
                                       ),
                                     ),
                                   ],

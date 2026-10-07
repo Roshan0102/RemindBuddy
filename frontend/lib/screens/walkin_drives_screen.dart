@@ -275,9 +275,12 @@ class _WalkInDrivesScreenState extends State<WalkInDrivesScreen> {
       }
 
       if (mounted) {
+        final count = result.data?['count'] ?? 0;
+        final months = result.data?['months'] as String?;
+        final monthsText = (months != null && months.isNotEmpty) ? ' for $months' : '';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Successfully loaded ${result.data?['count'] ?? 0} walk-in drives'),
+            content: Text('✅ Successfully loaded $count walk-in drive${count == 1 ? '' : 's'}$monthsText'),
             backgroundColor: Colors.green,
           ),
         );

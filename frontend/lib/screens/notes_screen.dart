@@ -54,8 +54,9 @@ class _NotesScreenState extends State<NotesScreen> {
   Future<void> _loadCustomOrder() async {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
     final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('notes_custom_order_$uid');
     setState(() {
-      _customOrderIds = prefs.getStringList('notes_custom_order_$uid') ?? [];
+      _customOrderIds = [];
     });
   }
 
@@ -65,36 +66,30 @@ class _NotesScreenState extends State<NotesScreen> {
     await prefs.setStringList('notes_custom_order_$uid', order);
   }
 
+  DateTime _parseNoteDate(String dateStr) {
+    if (dateStr.isEmpty) return DateTime.fromMillisecondsSinceEpoch(0);
+    try {
+      return DateTime.parse(dateStr);
+    } catch (_) {}
+    try {
+      return DateFormat('yyyy-MM-dd HH:mm:ss').parse(dateStr);
+    } catch (_) {}
+    try {
+      return DateFormat('yyyy-MM-dd HH:mm').parse(dateStr);
+    } catch (_) {}
+    try {
+      return DateFormat('yyyy-MM-dd').parse(dateStr);
+    } catch (_) {}
+    return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
   List<Note> _sortNotesWithCustomOrder(List<Note> notes) {
     final starredNotes = notes.where((n) => n.isStarred).toList();
     final unstarredNotes = notes.where((n) => !n.isStarred).toList();
 
-    if (_customOrderIds.isNotEmpty) {
-      starredNotes.sort((a, b) {
-        final aIndex = _customOrderIds.indexOf(a.id ?? '');
-        final bIndex = _customOrderIds.indexOf(b.id ?? '');
-        if (aIndex != -1 && bIndex != -1) {
-          return aIndex.compareTo(bIndex);
-        }
-        if (aIndex != -1) return 1;
-        if (bIndex != -1) return -1;
-        return b.date.compareTo(a.date);
-      });
-
-      unstarredNotes.sort((a, b) {
-        final aIndex = _customOrderIds.indexOf(a.id ?? '');
-        final bIndex = _customOrderIds.indexOf(b.id ?? '');
-        if (aIndex != -1 && bIndex != -1) {
-          return aIndex.compareTo(bIndex);
-        }
-        if (aIndex != -1) return 1;
-        if (bIndex != -1) return -1;
-        return b.date.compareTo(a.date);
-      });
-    } else {
-      starredNotes.sort((a, b) => b.date.compareTo(a.date));
-      unstarredNotes.sort((a, b) => b.date.compareTo(a.date));
-    }
+    // Sort both pinned and unpinned notes by last edited date descending
+    starredNotes.sort((a, b) => _parseNoteDate(b.date).compareTo(_parseNoteDate(a.date)));
+    unstarredNotes.sort((a, b) => _parseNoteDate(b.date).compareTo(_parseNoteDate(a.date)));
 
     return [...starredNotes, ...unstarredNotes];
   }
@@ -279,7 +274,7 @@ class _NotesScreenState extends State<NotesScreen> {
                       final newNote = Note(
                         title: title,
                         content: content,
-                        date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                        date: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
                         isLocked: isLocked,
                         sharedWith: [],
                         isChecklist: isChecklist,
@@ -316,7 +311,7 @@ class _NotesScreenState extends State<NotesScreen> {
                         id: note.id,
                         title: title,
                         content: content,
-                        date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                        date: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
                         isLocked: isLocked,
                         ownerUid: note.ownerUid,
                         sharedWith: note.sharedWith,
@@ -531,7 +526,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                     id: note?.id,
                                     title: title,
                                     content: content,
-                                    date: DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                                    date: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
                                     isLocked: isLocked,
                                     ownerUid: note?.ownerUid,
                                     sharedWith: note?.sharedWith ?? [],
@@ -1626,7 +1621,7 @@ class _NotesScreenState extends State<NotesScreen> {
                           id: note.id,
                           title: note.title,
                           content: note.content,
-                          date: note.date,
+                          date: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
                           isLocked: note.isLocked,
                           ownerUid: note.ownerUid,
                           sharedWith: note.sharedWith,
