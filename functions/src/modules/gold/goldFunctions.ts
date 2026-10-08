@@ -269,10 +269,13 @@ export async function sendChitNotificationToAllUsers(recommendation: string, mes
             }
         }
     }
-    if (tokens.length > 0) {
+    const uniqueTokens = Array.from(new Set(tokens.filter(t => typeof t === "string" && t.trim().length > 0)));
+    const uniqueTargetUids = Array.from(new Set(targetUids.filter(Boolean)));
+
+    if (uniqueTokens.length > 0) {
         const title = recommendation === 'BUY' ? '💰 Gold Chit: Perfect Day to Pay!' : '⏳ Gold Chit: Hold Payments';
         await admin.messaging().sendEachForMulticast({
-            tokens,
+            tokens: uniqueTokens,
             notification: { title, body: message },
             android: { 
                 notification: { 
@@ -282,7 +285,7 @@ export async function sendChitNotificationToAllUsers(recommendation: string, mes
             },
             data: { type: "GOLD_CHIT_ADVICE", recommendation }
         });
-        for (const uid of targetUids) {
+        for (const uid of uniqueTargetUids) {
             await logNotification(uid, title, message, "GOLD_CHIT_ADVICE");
         }
     }
@@ -400,7 +403,10 @@ export async function internalCheckPendingGoldChitNotifications() {
                 }
             }
 
-            if (tokens.length > 0) {
+            const uniqueTokens = Array.from(new Set(tokens.filter(t => typeof t === "string" && t.trim().length > 0)));
+            const uniqueTargetUids = Array.from(new Set(targetUids.filter(Boolean)));
+
+            if (uniqueTokens.length > 0) {
                 // Calculate total accumulated grams across paid installments for this plan
                 let totalGrams = 0;
                 try {
@@ -422,7 +428,7 @@ export async function internalCheckPendingGoldChitNotifications() {
                 const body = `You have paid the ${formattedMonth} gold installment. Currently, you have ${gramsFormatted} of gold in plan "${planName}".`;
 
                 await admin.messaging().sendEachForMulticast({
-                    tokens,
+                    tokens: uniqueTokens,
                     notification: { title, body },
                     android: {
                         notification: {
@@ -437,12 +443,12 @@ export async function internalCheckPendingGoldChitNotifications() {
                     }
                 });
 
-                for (const targetUid of targetUids) {
+                for (const targetUid of uniqueTargetUids) {
                     await logNotification(targetUid, title, body, 'GOLD_CHIT_UPDATE');
                 }
             }
 
-            await doc.ref.update({ status: 'sent', notifiedUids: targetUids });
+            await doc.ref.update({ status: 'sent', notifiedUids: uniqueTargetUids });
         } catch (err: any) {
             console.error(`Error sending delayed notification for pending doc ${doc.id}:`, err);
             await doc.ref.update({ status: 'failed', error: err.message || err.toString() });

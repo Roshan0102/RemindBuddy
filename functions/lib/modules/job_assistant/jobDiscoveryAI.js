@@ -266,22 +266,79 @@ async function discoverAndApplyForUser(uid, options) {
     const minExp = (options === null || options === void 0 ? void 0 : options.minExpYears) !== undefined ? Number(options.minExpYears) : Number((_d = autoApplySettings.minExpYears) !== null && _d !== void 0 ? _d : 0);
     const maxExp = (options === null || options === void 0 ? void 0 : options.maxExpYears) !== undefined ? Number(options.maxExpYears) : Number((_e = autoApplySettings.maxExpYears) !== null && _e !== void 0 ? _e : 3);
     const maxApplyLimit = Math.min(Math.max(1, (options === null || options === void 0 ? void 0 : options.maxApplications) || autoApplySettings.maxPerRun || 6), 10);
-    // Fetch previously applied emails/companies/roles to avoid duplicate applications across all features
-    const existingAppsSnap = await firebase_1.db.collection("users").doc(uid).collection("job_applications").get();
+    // Fetch previously applied emails/companies/roles within last 30 days across ALL modules
+    // (Applications applied >30 days ago are eligible for re-applying)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const appliedEmailRoles = new Set();
     const appliedCompanyRoles = new Set();
-    existingAppsSnap.forEach((doc) => {
-        const d = doc.data();
-        const email = (d.recipientEmail || "").toLowerCase().trim();
-        const role = normalizeJobRole(d.jobTitle || "");
-        const comp = (d.companyName || "").toLowerCase().trim();
-        if (email && role) {
-            appliedEmailRoles.add(`${email}|${role}`);
-        }
-        if (comp && role) {
-            appliedCompanyRoles.add(`${comp}|${role}`);
-        }
-    });
+    // 1. job_applications
+    try {
+        const existingAppsSnap = await firebase_1.db.collection("users").doc(uid).collection("job_applications").get();
+        existingAppsSnap.forEach((doc) => {
+            var _a;
+            const d = doc.data();
+            const appliedTime = ((_a = d.appliedAt) === null || _a === void 0 ? void 0 : _a.toDate) ? d.appliedAt.toDate() : (d.appliedAt ? new Date(d.appliedAt) : null);
+            if (appliedTime && appliedTime < thirtyDaysAgo) {
+                // Applied more than 30 days ago -> eligible to re-apply!
+                return;
+            }
+            const email = (d.recipientEmail || "").toLowerCase().trim();
+            const role = normalizeJobRole(d.jobTitle || "");
+            const comp = (d.companyName || "").toLowerCase().trim();
+            if (email && role) {
+                appliedEmailRoles.add(`${email}|${role}`);
+            }
+            if (comp && role) {
+                appliedCompanyRoles.add(`${comp}|${role}`);
+            }
+        });
+    }
+    catch (e) {
+        console.warn(`[JobDiscovery] Error loading job_applications: ${e.message}`);
+    }
+    // 2. networking_leads
+    try {
+        const networkingSnap = await firebase_1.db.collection("users").doc(uid).collection("networking_leads").get();
+        networkingSnap.forEach((doc) => {
+            var _a, _b;
+            const d = doc.data();
+            const leadTime = ((_a = d.emailSentAt) === null || _a === void 0 ? void 0 : _a.toDate) ? d.emailSentAt.toDate() : (((_b = d.discoveredAt) === null || _b === void 0 ? void 0 : _b.toDate) ? d.discoveredAt.toDate() : null);
+            if (leadTime && leadTime < thirtyDaysAgo)
+                return;
+            const email = (d.email || d.recipientEmail || "").toLowerCase().trim();
+            const role = normalizeJobRole(d.currentRole || "");
+            const comp = (d.companyName || "").toLowerCase().trim();
+            if (email && role)
+                appliedEmailRoles.add(`${email}|${role}`);
+            if (comp && role)
+                appliedCompanyRoles.add(`${comp}|${role}`);
+        });
+    }
+    catch (e) {
+        console.warn(`[JobDiscovery] Error loading networking_leads: ${e.message}`);
+    }
+    // 3. career_portal_jobs
+    try {
+        const portalSnap = await firebase_1.db.collection("users").doc(uid).collection("career_portal_jobs").get();
+        portalSnap.forEach((doc) => {
+            var _a, _b;
+            const d = doc.data();
+            const portalTime = ((_a = d.appliedAt) === null || _a === void 0 ? void 0 : _a.toDate) ? d.appliedAt.toDate() : (((_b = d.discoveredAt) === null || _b === void 0 ? void 0 : _b.toDate) ? d.discoveredAt.toDate() : null);
+            if (portalTime && portalTime < thirtyDaysAgo)
+                return;
+            const email = (d.recipientEmail || "").toLowerCase().trim();
+            const role = normalizeJobRole(d.jobTitle || "");
+            const comp = (d.companyName || "").toLowerCase().trim();
+            if (email && role)
+                appliedEmailRoles.add(`${email}|${role}`);
+            if (comp && role)
+                appliedCompanyRoles.add(`${comp}|${role}`);
+        });
+    }
+    catch (e) {
+        console.warn(`[JobDiscovery] Error loading career_portal_jobs: ${e.message}`);
+    }
     // Fetch User BYOK API Keys from user document
     const userApiKeys = userData.userApiKeys || {};
     const userTavilyKey = (userApiKeys.tavilyApiKey || userData.tavilyApiKey || "").trim();

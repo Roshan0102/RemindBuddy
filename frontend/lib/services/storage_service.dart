@@ -48,6 +48,7 @@ class StorageService {
     String alarmSound = 'digital',
     String? customAudioPath,
     String? customAudioName,
+    bool isSticky = false,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return '';
@@ -81,6 +82,7 @@ class StorageService {
       'alarmSound': alarmSound,
       if (customAudioPath != null) 'customAudioPath': customAudioPath,
       if (customAudioName != null) 'customAudioName': customAudioName,
+      'isSticky': isSticky,
     };
 
     if (destinationUid != user.uid) {

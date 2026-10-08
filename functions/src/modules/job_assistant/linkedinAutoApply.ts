@@ -253,6 +253,10 @@ export async function processLinkedInAutoApplyForUser(
         }
 
         // 6. Check UNIFIED APPLIED JOB HISTORY across ALL modules (job_applications, networking_leads, career_portal_jobs, system_bounced_emails)
+        // Applications contacted >30 days ago are eligible for re-applying
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
         const appliedEmails = new Set<string>();
         const appliedUrls = new Set<string>();
         const appliedEmailRoles = new Set<string>();
@@ -262,6 +266,11 @@ export async function processLinkedInAutoApplyForUser(
             const existingAppsSnap = await db.collection("users").doc(uid).collection("job_applications").get();
             existingAppsSnap.forEach((doc) => {
                 const d = doc.data();
+                const appliedTime = d.appliedAt?.toDate ? d.appliedAt.toDate() : (d.appliedAt ? new Date(d.appliedAt) : null);
+                if (appliedTime && appliedTime < thirtyDaysAgo) {
+                    // Applied more than 30 days ago -> eligible to re-apply!
+                    return;
+                }
                 const email = (d.recipientEmail || "").toLowerCase().trim();
                 const role = normalizeJobRole(d.jobTitle || "");
                 const url = (d.sourceUrl || "").toLowerCase().trim();
@@ -278,6 +287,11 @@ export async function processLinkedInAutoApplyForUser(
             const networkingSnap = await db.collection("users").doc(uid).collection("networking_leads").get();
             networkingSnap.forEach((doc) => {
                 const d = doc.data();
+                const leadTime = d.emailSentAt?.toDate ? d.emailSentAt.toDate() : (d.discoveredAt?.toDate ? d.discoveredAt.toDate() : null);
+                if (leadTime && leadTime < thirtyDaysAgo) {
+                    // Contacted more than 30 days ago -> eligible to re-contact!
+                    return;
+                }
                 const email = (d.email || d.recipientEmail || "").toLowerCase().trim();
                 const pUrl = (d.linkedinUrl || d.postUrl || "").toLowerCase().trim();
                 if (email) appliedEmails.add(email);
@@ -292,6 +306,10 @@ export async function processLinkedInAutoApplyForUser(
             const portalSnap = await db.collection("users").doc(uid).collection("career_portal_jobs").get();
             portalSnap.forEach((doc) => {
                 const d = doc.data();
+                const portalTime = d.appliedAt?.toDate ? d.appliedAt.toDate() : (d.discoveredAt?.toDate ? d.discoveredAt.toDate() : null);
+                if (portalTime && portalTime < thirtyDaysAgo) {
+                    return;
+                }
                 const email = (d.recipientEmail || "").toLowerCase().trim();
                 const jUrl = (d.jobUrl || d.applyUrl || "").toLowerCase().trim();
                 if (email) appliedEmails.add(email);
@@ -312,7 +330,7 @@ export async function processLinkedInAutoApplyForUser(
             console.warn(`[LinkedInAutoApply] Error loading system_bounced_emails: ${e.message}`);
         }
 
-        console.log(`[LinkedInAutoApply] User ${uid} has ${appliedEmails.size} previously contacted email(s) and ${appliedUrls.size} processed post URL(s) in unified history.`);
+        console.log(`[LinkedInAutoApply] User ${uid} has ${appliedEmails.size} previously contacted email(s) and ${appliedUrls.size} processed post URL(s) within the last 30 days in unified history.`);
 
         // 7. Scrape Real-Time LinkedIn Posts via Apify (Multi-role & Location Filtered)
         let searchResult;

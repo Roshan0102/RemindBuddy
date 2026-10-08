@@ -884,6 +884,93 @@ class JobAssistantService {
     }
   }
 
+  /// Checks if an application was already sent/recorded for this job/company/email within the last [withinDays] (default 30).
+  /// Returns the matching JobApplication if applied within the window, or null if never applied or applied >30 days ago.
+  Future<JobApplication?> findRecentApplication({
+    String? recipientEmail,
+    String? companyName,
+    String? jobTitle,
+    String? sourceUrl,
+    int withinDays = 30,
+  }) async {
+    final doc = _userDoc;
+    if (doc == null) return null;
+
+    final cleanEmail = recipientEmail?.toLowerCase().trim() ?? '';
+    final cleanComp = companyName?.toLowerCase().trim() ?? '';
+    final cleanTitle = jobTitle?.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim() ?? '';
+    final cleanUrl = sourceUrl != null ? _cleanJobUrl(sourceUrl) : '';
+
+    final now = DateTime.now();
+
+    // 1. Check in-memory cache first if populated
+    for (final app in _cachedApplications) {
+      if (app.status == 'sent' || app.status == 'applied') {
+        final daysAgo = now.difference(app.appliedAt).inDays;
+        if (daysAgo < withinDays) {
+          if (cleanEmail.isNotEmpty && app.recipientEmail.toLowerCase().trim() == cleanEmail) {
+            return app;
+          }
+          if (cleanComp.isNotEmpty && cleanTitle.isNotEmpty) {
+            final existingComp = app.companyName.toLowerCase().trim();
+            final existingTitle = app.jobTitle.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
+            if (existingComp == cleanComp && (existingTitle.contains(cleanTitle) || cleanTitle.contains(existingTitle))) {
+              return app;
+            }
+          }
+          if (cleanUrl.isNotEmpty && app.sourceUrl != null && _cleanJobUrl(app.sourceUrl!) == cleanUrl) {
+            return app;
+          }
+        }
+      }
+    }
+
+    // 2. Query Firestore directly as authoritative check
+    try {
+      final cutoff = now.subtract(Duration(days: withinDays));
+      final snap = await doc
+          .collection('job_applications')
+          .where('appliedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
+          .get();
+
+      for (final docSnap in snap.docs) {
+        final d = docSnap.data();
+        final status = d['status']?.toString() ?? '';
+        if (status != 'sent' && status != 'applied') continue;
+
+        final exEmail = (d['recipientEmail']?.toString() ?? '').toLowerCase().trim();
+        final exComp = (d['companyName']?.toString() ?? '').toLowerCase().trim();
+        final exTitle = (d['jobTitle']?.toString() ?? '').toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
+        final exUrl = d['sourceUrl'] != null ? _cleanJobUrl(d['sourceUrl'].toString()) : '';
+
+        if (cleanEmail.isNotEmpty && exEmail == cleanEmail) {
+          return JobApplication.fromFirestore(docSnap);
+        }
+        if (cleanComp.isNotEmpty && cleanTitle.isNotEmpty && exComp == cleanComp && (exTitle.contains(cleanTitle) || cleanTitle.contains(exTitle))) {
+          return JobApplication.fromFirestore(docSnap);
+        }
+        if (cleanUrl.isNotEmpty && exUrl.isNotEmpty && exUrl == cleanUrl) {
+          return JobApplication.fromFirestore(docSnap);
+        }
+      }
+    } catch (e) {
+      debugPrint('[JobAssistantService] Notice checking recent applications: $e');
+    }
+
+    return null;
+  }
+
+  String _cleanJobUrl(String url) {
+    try {
+      var clean = url.trim();
+      clean = clean.replaceAll(RegExp(r'([?&])(utm_[a-zA-Z0-9_]+|rcm|highlightedUpdateUrn|lipi|midSig|trk)=[^&]*', caseSensitive: false), '');
+      clean = clean.replaceAll('?&', '?').replaceAll('&&', '&').replaceAll(RegExp(r'[?&]$'), '');
+      return clean;
+    } catch (_) {
+      return url;
+    }
+  }
+
   // ============================================================================
   // AI PARSING & EMAIL DISPATCH
   // ============================================================================

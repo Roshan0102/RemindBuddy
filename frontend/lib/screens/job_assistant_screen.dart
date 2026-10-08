@@ -1761,7 +1761,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     if (cleanEmail.isEmpty && cleanComp.isEmpty) return null;
 
     final allApps = _service.cachedApplications;
+    final now = DateTime.now();
     for (final app in allApps) {
+      // Re-applying allowed after 30 days
+      if (now.difference(app.appliedAt).inDays >= 30) {
+        continue;
+      }
+
       final appEmail = app.recipientEmail.toLowerCase().trim();
       final appRole = app.jobTitle.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
       final appComp = app.companyName.toLowerCase().trim();

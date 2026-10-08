@@ -440,7 +440,10 @@ export async function discoverNetworkingLeadsForUser(
         });
     }
 
-    // Fetch existing leads to avoid duplicate outreach
+    // Fetch existing leads to avoid duplicate outreach within last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
     const existingLeadsSnap = await db.collection("users").doc(uid).collection("networking_leads").get();
     const existingUrls = new Set<string>();
     const existingNames = new Set<string>();
@@ -448,6 +451,11 @@ export async function discoverNetworkingLeadsForUser(
 
     existingLeadsSnap.forEach(doc => {
         const d = doc.data();
+        const leadTime = d.emailSentAt?.toDate ? d.emailSentAt.toDate() : (d.discoveredAt?.toDate ? d.discoveredAt.toDate() : null);
+        if (leadTime && leadTime < thirtyDaysAgo) {
+            // Reached out > 30 days ago -> eligible to re-reach out!
+            return;
+        }
         if (d.linkedinUrl) existingUrls.add(d.linkedinUrl.toLowerCase().trim());
         if (d.name && d.companyName) existingNames.add(`${d.name.toLowerCase().trim()}|${d.companyName.toLowerCase().trim()}`);
         if (d.companyName) existingCompanies.add(d.companyName.toLowerCase().trim());

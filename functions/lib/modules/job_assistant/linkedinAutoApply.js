@@ -223,6 +223,9 @@ async function processLinkedInAutoApplyForUser(uid, options) {
             return { success: false, appliedCount: 0, message: msg, jobs: [] };
         }
         // 6. Check UNIFIED APPLIED JOB HISTORY across ALL modules (job_applications, networking_leads, career_portal_jobs, system_bounced_emails)
+        // Applications contacted >30 days ago are eligible for re-applying
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         const appliedEmails = new Set();
         const appliedUrls = new Set();
         const appliedEmailRoles = new Set();
@@ -230,7 +233,13 @@ async function processLinkedInAutoApplyForUser(uid, options) {
         try {
             const existingAppsSnap = await firebase_1.db.collection("users").doc(uid).collection("job_applications").get();
             existingAppsSnap.forEach((doc) => {
+                var _a;
                 const d = doc.data();
+                const appliedTime = ((_a = d.appliedAt) === null || _a === void 0 ? void 0 : _a.toDate) ? d.appliedAt.toDate() : (d.appliedAt ? new Date(d.appliedAt) : null);
+                if (appliedTime && appliedTime < thirtyDaysAgo) {
+                    // Applied more than 30 days ago -> eligible to re-apply!
+                    return;
+                }
                 const email = (d.recipientEmail || "").toLowerCase().trim();
                 const role = normalizeJobRole(d.jobTitle || "");
                 const url = (d.sourceUrl || "").toLowerCase().trim();
@@ -249,7 +258,13 @@ async function processLinkedInAutoApplyForUser(uid, options) {
         try {
             const networkingSnap = await firebase_1.db.collection("users").doc(uid).collection("networking_leads").get();
             networkingSnap.forEach((doc) => {
+                var _a, _b;
                 const d = doc.data();
+                const leadTime = ((_a = d.emailSentAt) === null || _a === void 0 ? void 0 : _a.toDate) ? d.emailSentAt.toDate() : (((_b = d.discoveredAt) === null || _b === void 0 ? void 0 : _b.toDate) ? d.discoveredAt.toDate() : null);
+                if (leadTime && leadTime < thirtyDaysAgo) {
+                    // Contacted more than 30 days ago -> eligible to re-contact!
+                    return;
+                }
                 const email = (d.email || d.recipientEmail || "").toLowerCase().trim();
                 const pUrl = (d.linkedinUrl || d.postUrl || "").toLowerCase().trim();
                 if (email)
@@ -265,7 +280,12 @@ async function processLinkedInAutoApplyForUser(uid, options) {
         try {
             const portalSnap = await firebase_1.db.collection("users").doc(uid).collection("career_portal_jobs").get();
             portalSnap.forEach((doc) => {
+                var _a, _b;
                 const d = doc.data();
+                const portalTime = ((_a = d.appliedAt) === null || _a === void 0 ? void 0 : _a.toDate) ? d.appliedAt.toDate() : (((_b = d.discoveredAt) === null || _b === void 0 ? void 0 : _b.toDate) ? d.discoveredAt.toDate() : null);
+                if (portalTime && portalTime < thirtyDaysAgo) {
+                    return;
+                }
                 const email = (d.recipientEmail || "").toLowerCase().trim();
                 const jUrl = (d.jobUrl || d.applyUrl || "").toLowerCase().trim();
                 if (email)
@@ -290,7 +310,7 @@ async function processLinkedInAutoApplyForUser(uid, options) {
         catch (e) {
             console.warn(`[LinkedInAutoApply] Error loading system_bounced_emails: ${e.message}`);
         }
-        console.log(`[LinkedInAutoApply] User ${uid} has ${appliedEmails.size} previously contacted email(s) and ${appliedUrls.size} processed post URL(s) in unified history.`);
+        console.log(`[LinkedInAutoApply] User ${uid} has ${appliedEmails.size} previously contacted email(s) and ${appliedUrls.size} processed post URL(s) within the last 30 days in unified history.`);
         // 7. Scrape Real-Time LinkedIn Posts via Apify (Multi-role & Location Filtered)
         let searchResult;
         try {

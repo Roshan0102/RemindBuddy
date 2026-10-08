@@ -555,11 +555,28 @@ export async function executeCareerPortalDiscovery(
         return true;
     });
 
-    // 6. Deduplicate by URL
+    // 6. Deduplicate by URL (and against previously tailored/applied jobs within last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const existingJobUrls = new Set<string>();
+    try {
+        const portalSnap = await db.collection("users").doc(uid).collection("career_portal_jobs").get();
+        portalSnap.forEach(d => {
+            const data = d.data();
+            const time = data.discoveredAt?.toDate ? data.discoveredAt.toDate() : (data.discoveredAt ? new Date(data.discoveredAt) : null);
+            if (time && time < thirtyDaysAgo) return; // More than 30 days ago -> allow re-discovery
+            if (data.portalUrl) existingJobUrls.add(data.portalUrl.toLowerCase().trim());
+        });
+    } catch (e: any) {
+        console.warn(`[CareerPortalATS] Error checking existing career_portal_jobs: ${e.message}`);
+    }
+
     const seenUrls = new Set<string>();
     const uniqueCandidates = eligibleCandidates.filter(job => {
-        if (!job.url || seenUrls.has(job.url)) return false;
-        seenUrls.add(job.url);
+        if (!job.url) return false;
+        const normUrl = job.url.toLowerCase().trim();
+        if (seenUrls.has(normUrl) || existingJobUrls.has(normUrl)) return false;
+        seenUrls.add(normUrl);
         return true;
     });
 

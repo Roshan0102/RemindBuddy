@@ -60,6 +60,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   String? _customAudioPath;
   String? _customAudioName;
   bool _isPreviewPlaying = false;
+  bool _isSticky = false;
 
   List<Map<String, dynamic>> _approvedBuddies = [];
   bool _isLoadingBuddies = true;
@@ -103,6 +104,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _alarmSound = r.alarmSound;
       _customAudioPath = r.customAudioPath;
       _customAudioName = r.customAudioName;
+      _isSticky = r.isSticky;
       if (_occurrencesLimit != null) {
         _occurrencesController.text = _occurrencesLimit.toString();
       }
@@ -122,6 +124,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _triggerCondition = 'enter';
       _isAlarmMode = false;
       _alarmSound = 'digital';
+      _isSticky = false;
       if (_myUid != null) {
         _selectedRecipients.add(_myUid!);
       }
@@ -341,6 +344,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             alarmSound: _alarmSound,
             customAudioPath: _customAudioPath,
             customAudioName: _customAudioName,
+            isSticky: _isSticky,
           );
           await storage.updateCalendarReminder(updated);
         } else {
@@ -380,6 +384,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               alarmSound: _alarmSound,
               customAudioPath: _customAudioPath,
               customAudioName: _customAudioName,
+              isSticky: _isSticky,
             );
           }
         }
@@ -601,6 +606,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               ],
               const SizedBox(height: 16),
               _buildAlarmCard(context),
+              const SizedBox(height: 16),
+              _buildStickyNotificationCard(context),
               if (!_isLocationBased) ...[
               const SizedBox(height: 16),
               Card(
@@ -1271,6 +1278,72 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ],
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStickyNotificationCard(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: _isSticky 
+              ? const Color(0xFF6366F1).withValues(alpha: 0.5)
+              : (isDark ? Colors.white12 : Colors.black12),
+          width: _isSticky ? 1.5 : 1,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _isSticky
+                    ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                    : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _isSticky ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                color: _isSticky ? const Color(0xFF6366F1) : Colors.grey,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Sticky Notification',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  Text(
+                    'Stays pinned in drawer; won\'t clear on "Clear All" until dismissed',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.white60 : Colors.black54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Switch.adaptive(
+              value: _isSticky,
+              activeTrackColor: const Color(0xFF6366F1),
+              onChanged: (val) {
+                setState(() {
+                  _isSticky = val;
+                });
+              },
+            ),
           ],
         ),
       ),

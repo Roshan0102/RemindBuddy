@@ -104,16 +104,7 @@ class SharedIntentService {
         return;
       }
 
-      // Notify user that analysis started in background
-      await NotificationService().showNotification(
-        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        title: '📸 Analyzing Job Poster with Gemini AI...',
-        body: 'Extracting role, recruiter email, and preparing application in background.',
-        channelId: 'job_assistant_share_channel',
-        channelName: 'Job Assistant Auto-Apply',
-        payload: 'JOB_APPLICATION',
-      );
-
+      // Proceed with background AI analysis silently (intermediate notification removed to avoid notification spam)
       final jobService = JobAssistantService();
       final mode = base64Images.length > 1 ? 'multiple_jobs' : 'single_job';
       final List<JobApplication> parsedJobs = await jobService.parseJobPostersWithAI(
@@ -153,6 +144,24 @@ class SharedIntentService {
         );
 
         if (job.recipientEmail.trim().isNotEmpty) {
+          final recentApp = await jobService.findRecentApplication(
+            recipientEmail: job.recipientEmail,
+            companyName: job.companyName,
+            jobTitle: job.jobTitle,
+            withinDays: 30,
+          );
+          if (recentApp != null) {
+            await NotificationService().showNotification(
+              id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+              title: 'ℹ️ Already Applied: ${job.jobTitle}',
+              body: 'You applied to ${job.companyName} on ${_formatDate(recentApp.appliedAt)}. Re-applying allowed after 30 days.',
+              channelId: 'job_assistant_share_channel',
+              channelName: 'Job Assistant Auto-Apply',
+              payload: 'JOB_APPLICATION',
+            );
+            continue;
+          }
+
           // Valid recipient email found -> auto-apply directly in background!
           try {
             await jobService.sendJobApplicationEmail(job);
@@ -263,6 +272,25 @@ class SharedIntentService {
         );
 
         if (job.recipientEmail.isNotEmpty) {
+          final recentApp = await jobService.findRecentApplication(
+            recipientEmail: job.recipientEmail,
+            companyName: job.companyName,
+            jobTitle: job.jobTitle,
+            sourceUrl: sourceUrl,
+            withinDays: 30,
+          );
+          if (recentApp != null) {
+            await NotificationService().showNotification(
+              id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+              title: 'ℹ️ Already Applied: ${job.jobTitle}',
+              body: 'You applied to ${job.companyName} on ${_formatDate(recentApp.appliedAt)}. Re-applying allowed after 30 days.',
+              channelId: 'job_assistant_share_channel',
+              channelName: 'Job Assistant Auto-Apply',
+              payload: 'JOB_APPLICATION',
+            );
+            return true;
+          }
+
           await jobService.sendJobApplicationEmail(job);
           await NotificationService().showNotification(
             id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
@@ -345,16 +373,7 @@ class SharedIntentService {
         expandedUrl.toLowerCase().contains('linkedin') ||
         expandedUrl.toLowerCase().contains('lnkd.in');
 
-    // Notify user that link processing has begun in background
-    await NotificationService().showNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title: '🔗 Processing Shared Post...',
-      body: 'Checking job details and recruiter contact in background.',
-      channelId: 'job_assistant_share_channel',
-      channelName: 'Job Assistant Auto-Apply',
-      payload: 'JOB_APPLICATION',
-    );
-
+    // Proceed silently in background (intermediate progress notification removed to prevent spam)
     // 2. Try public fetch of the URL with desktop headers to capture OpenGraph flyer image and text
     bool successfullyParsed = false;
     try {
@@ -440,15 +459,33 @@ class SharedIntentService {
               );
 
               if (job.recipientEmail.isNotEmpty) {
-                await jobService.sendJobApplicationEmail(job);
-                await NotificationService().showNotification(
-                  id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-                  title: '🎯 1-Click Applied: ${job.jobTitle}',
-                  body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared post flyer.',
-                  channelId: 'job_assistant_share_channel',
-                  channelName: 'Job Assistant Auto-Apply',
-                  payload: 'JOB_APPLICATION',
+                final recentApp = await jobService.findRecentApplication(
+                  recipientEmail: job.recipientEmail,
+                  companyName: job.companyName,
+                  jobTitle: job.jobTitle,
+                  sourceUrl: expandedUrl,
+                  withinDays: 30,
                 );
+                if (recentApp != null) {
+                  await NotificationService().showNotification(
+                    id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                    title: 'ℹ️ Already Applied: ${job.jobTitle}',
+                    body: 'You applied to ${job.companyName} on ${_formatDate(recentApp.appliedAt)}. Re-applying allowed after 30 days.',
+                    channelId: 'job_assistant_share_channel',
+                    channelName: 'Job Assistant Auto-Apply',
+                    payload: 'JOB_APPLICATION',
+                  );
+                } else {
+                  await jobService.sendJobApplicationEmail(job);
+                  await NotificationService().showNotification(
+                    id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                    title: '🎯 1-Click Applied: ${job.jobTitle}',
+                    body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared post flyer.',
+                    channelId: 'job_assistant_share_channel',
+                    channelName: 'Job Assistant Auto-Apply',
+                    payload: 'JOB_APPLICATION',
+                  );
+                }
               } else {
                 await jobService.saveJobApplication(job);
                 await NotificationService().showNotification(
@@ -491,15 +528,33 @@ class SharedIntentService {
             );
 
             if (job.recipientEmail.isNotEmpty) {
-              await jobService.sendJobApplicationEmail(job);
-              await NotificationService().showNotification(
-                id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-                title: '🎯 1-Click Applied: ${job.jobTitle}',
-                body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared post text.',
-                channelId: 'job_assistant_share_channel',
-                channelName: 'Job Assistant Auto-Apply',
-                payload: 'JOB_APPLICATION',
+              final recentApp = await jobService.findRecentApplication(
+                recipientEmail: job.recipientEmail,
+                companyName: job.companyName,
+                jobTitle: job.jobTitle,
+                sourceUrl: expandedUrl,
+                withinDays: 30,
               );
+              if (recentApp != null) {
+                await NotificationService().showNotification(
+                  id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                  title: 'ℹ️ Already Applied: ${job.jobTitle}',
+                  body: 'You applied to ${job.companyName} on ${_formatDate(recentApp.appliedAt)}. Re-applying allowed after 30 days.',
+                  channelId: 'job_assistant_share_channel',
+                  channelName: 'Job Assistant Auto-Apply',
+                  payload: 'JOB_APPLICATION',
+                );
+              } else {
+                await jobService.sendJobApplicationEmail(job);
+                await NotificationService().showNotification(
+                  id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                  title: '🎯 1-Click Applied: ${job.jobTitle}',
+                  body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared post text.',
+                  channelId: 'job_assistant_share_channel',
+                  channelName: 'Job Assistant Auto-Apply',
+                  payload: 'JOB_APPLICATION',
+                );
+              }
             } else {
               await jobService.saveJobApplication(job);
               await NotificationService().showNotification(
@@ -581,15 +636,32 @@ class SharedIntentService {
         );
 
         if (job.recipientEmail.isNotEmpty) {
-          await jobService.sendJobApplicationEmail(job);
-          await NotificationService().showNotification(
-            id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-            title: '🎯 1-Click Applied: ${job.jobTitle}',
-            body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared text.',
-            channelId: 'job_assistant_share_channel',
-            channelName: 'Job Assistant Auto-Apply',
-            payload: 'JOB_APPLICATION',
+          final recentApp = await jobService.findRecentApplication(
+            recipientEmail: job.recipientEmail,
+            companyName: job.companyName,
+            jobTitle: job.jobTitle,
+            withinDays: 30,
           );
+          if (recentApp != null) {
+            await NotificationService().showNotification(
+              id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+              title: 'ℹ️ Already Applied: ${job.jobTitle}',
+              body: 'You applied to ${job.companyName} on ${_formatDate(recentApp.appliedAt)}. Re-applying allowed after 30 days.',
+              channelId: 'job_assistant_share_channel',
+              channelName: 'Job Assistant Auto-Apply',
+              payload: 'JOB_APPLICATION',
+            );
+          } else {
+            await jobService.sendJobApplicationEmail(job);
+            await NotificationService().showNotification(
+              id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+              title: '🎯 1-Click Applied: ${job.jobTitle}',
+              body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared text.',
+              channelId: 'job_assistant_share_channel',
+              channelName: 'Job Assistant Auto-Apply',
+              payload: 'JOB_APPLICATION',
+            );
+          }
         } else {
           await jobService.saveJobApplication(job);
           await NotificationService().showNotification(
@@ -646,17 +718,7 @@ class SharedIntentService {
         return false;
       }
 
-      // Notify user that Apify scraping has started
-      await NotificationService().showNotification(
-        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        title: '🤖 Fetching LinkedIn Post via Apify...',
-        body: 'Bypassing login wall using residential proxies. Please wait a moment...',
-        channelId: 'job_assistant_share_channel',
-        channelName: 'Job Assistant Auto-Apply',
-        payload: 'JOB_APPLICATION',
-      );
-
-      // Multi-Token Failover: Try Token 1 -> Token 2 -> Token 3
+      // Multi-Token Failover: Try Token 1 -> Token 2 -> Token 3 (silently without intermediate progress notifications)
       for (int i = 0; i < apifyTokens.length; i++) {
         final token = apifyTokens[i];
         final maskedToken = token.length > 8 ? '${token.substring(0, 4)}...${token.substring(token.length - 4)}' : '***';
@@ -761,15 +823,33 @@ class SharedIntentService {
                   );
 
                   if (job.recipientEmail.isNotEmpty) {
-                    await jobService.sendJobApplicationEmail(job);
-                    await NotificationService().showNotification(
-                      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-                      title: '🎯 1-Click Applied: ${job.jobTitle}',
-                      body: 'Applied to ${job.companyName} (${job.recipientEmail}) via Apify post extraction.',
-                      channelId: 'job_assistant_share_channel',
-                      channelName: 'Job Assistant Auto-Apply',
-                      payload: 'JOB_APPLICATION',
+                    final recentApp = await jobService.findRecentApplication(
+                      recipientEmail: job.recipientEmail,
+                      companyName: job.companyName,
+                      jobTitle: job.jobTitle,
+                      sourceUrl: url,
+                      withinDays: 30,
                     );
+                    if (recentApp != null) {
+                      await NotificationService().showNotification(
+                        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                        title: 'ℹ️ Already Applied: ${job.jobTitle}',
+                        body: 'You applied to ${job.companyName} on ${_formatDate(recentApp.appliedAt)}. Re-applying allowed after 30 days.',
+                        channelId: 'job_assistant_share_channel',
+                        channelName: 'Job Assistant Auto-Apply',
+                        payload: 'JOB_APPLICATION',
+                      );
+                    } else {
+                      await jobService.sendJobApplicationEmail(job);
+                      await NotificationService().showNotification(
+                        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                        title: '🎯 1-Click Applied: ${job.jobTitle}',
+                        body: 'Applied to ${job.companyName} (${job.recipientEmail}) via Apify post extraction.',
+                        channelId: 'job_assistant_share_channel',
+                        channelName: 'Job Assistant Auto-Apply',
+                        payload: 'JOB_APPLICATION',
+                      );
+                    }
                   } else {
                     await jobService.saveJobApplication(job);
                     await NotificationService().showNotification(
@@ -825,5 +905,11 @@ class SharedIntentService {
       }
     }
     return null;
+  }
+
+  String _formatDate(DateTime dt) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final m = (dt.month >= 1 && dt.month <= 12) ? months[dt.month - 1] : '';
+    return '${dt.day} $m ${dt.year}';
   }
 }

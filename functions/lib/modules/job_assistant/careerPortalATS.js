@@ -443,12 +443,33 @@ async function executeCareerPortalDiscovery(uid, options) {
         }
         return true;
     });
-    // 6. Deduplicate by URL
+    // 6. Deduplicate by URL (and against previously tailored/applied jobs within last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const existingJobUrls = new Set();
+    try {
+        const portalSnap = await firebase_1.db.collection("users").doc(uid).collection("career_portal_jobs").get();
+        portalSnap.forEach(d => {
+            var _a;
+            const data = d.data();
+            const time = ((_a = data.discoveredAt) === null || _a === void 0 ? void 0 : _a.toDate) ? data.discoveredAt.toDate() : (data.discoveredAt ? new Date(data.discoveredAt) : null);
+            if (time && time < thirtyDaysAgo)
+                return; // More than 30 days ago -> allow re-discovery
+            if (data.portalUrl)
+                existingJobUrls.add(data.portalUrl.toLowerCase().trim());
+        });
+    }
+    catch (e) {
+        console.warn(`[CareerPortalATS] Error checking existing career_portal_jobs: ${e.message}`);
+    }
     const seenUrls = new Set();
     const uniqueCandidates = eligibleCandidates.filter(job => {
-        if (!job.url || seenUrls.has(job.url))
+        if (!job.url)
             return false;
-        seenUrls.add(job.url);
+        const normUrl = job.url.toLowerCase().trim();
+        if (seenUrls.has(normUrl) || existingJobUrls.has(normUrl))
+            return false;
+        seenUrls.add(normUrl);
         return true;
     });
     console.log(`[CareerPortalATS] Total unique candidates discovered: ${uniqueCandidates.length}. Verifying URLs (no 404s)...`);

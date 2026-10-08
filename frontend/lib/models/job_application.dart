@@ -119,6 +119,10 @@ class JobApplication {
     return JobApplication.fromMap(json, (json['id'] ?? '').toString());
   }
 
+  factory JobApplication.fromFirestore(DocumentSnapshot doc) {
+    return JobApplication.fromMap(doc.data() as Map<String, dynamic>? ?? {}, doc.id);
+  }
+
   factory JobApplication.fromMap(Map<String, dynamic> map, String docId) {
     DateTime parsedDate = DateTime.now();
     final timeVal = map['appliedAt'];

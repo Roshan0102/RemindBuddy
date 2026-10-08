@@ -322,23 +322,74 @@ export async function discoverAndApplyForUser(
 
     const maxApplyLimit = Math.min(Math.max(1, options?.maxApplications || autoApplySettings.maxPerRun || 6), 10);
 
-    // Fetch previously applied emails/companies/roles to avoid duplicate applications across all features
-    const existingAppsSnap = await db.collection("users").doc(uid).collection("job_applications").get();
+    // Fetch previously applied emails/companies/roles within last 30 days across ALL modules
+    // (Applications applied >30 days ago are eligible for re-applying)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
     const appliedEmailRoles = new Set<string>();
     const appliedCompanyRoles = new Set<string>();
 
-    existingAppsSnap.forEach((doc) => {
-        const d = doc.data();
-        const email = (d.recipientEmail || "").toLowerCase().trim();
-        const role = normalizeJobRole(d.jobTitle || "");
-        const comp = (d.companyName || "").toLowerCase().trim();
-        if (email && role) {
-            appliedEmailRoles.add(`${email}|${role}`);
-        }
-        if (comp && role) {
-            appliedCompanyRoles.add(`${comp}|${role}`);
-        }
-    });
+    // 1. job_applications
+    try {
+        const existingAppsSnap = await db.collection("users").doc(uid).collection("job_applications").get();
+        existingAppsSnap.forEach((doc) => {
+            const d = doc.data();
+            const appliedTime = d.appliedAt?.toDate ? d.appliedAt.toDate() : (d.appliedAt ? new Date(d.appliedAt) : null);
+            if (appliedTime && appliedTime < thirtyDaysAgo) {
+                // Applied more than 30 days ago -> eligible to re-apply!
+                return;
+            }
+
+            const email = (d.recipientEmail || "").toLowerCase().trim();
+            const role = normalizeJobRole(d.jobTitle || "");
+            const comp = (d.companyName || "").toLowerCase().trim();
+            if (email && role) {
+                appliedEmailRoles.add(`${email}|${role}`);
+            }
+            if (comp && role) {
+                appliedCompanyRoles.add(`${comp}|${role}`);
+            }
+        });
+    } catch (e: any) {
+        console.warn(`[JobDiscovery] Error loading job_applications: ${e.message}`);
+    }
+
+    // 2. networking_leads
+    try {
+        const networkingSnap = await db.collection("users").doc(uid).collection("networking_leads").get();
+        networkingSnap.forEach((doc) => {
+            const d = doc.data();
+            const leadTime = d.emailSentAt?.toDate ? d.emailSentAt.toDate() : (d.discoveredAt?.toDate ? d.discoveredAt.toDate() : null);
+            if (leadTime && leadTime < thirtyDaysAgo) return;
+
+            const email = (d.email || d.recipientEmail || "").toLowerCase().trim();
+            const role = normalizeJobRole(d.currentRole || "");
+            const comp = (d.companyName || "").toLowerCase().trim();
+            if (email && role) appliedEmailRoles.add(`${email}|${role}`);
+            if (comp && role) appliedCompanyRoles.add(`${comp}|${role}`);
+        });
+    } catch (e: any) {
+        console.warn(`[JobDiscovery] Error loading networking_leads: ${e.message}`);
+    }
+
+    // 3. career_portal_jobs
+    try {
+        const portalSnap = await db.collection("users").doc(uid).collection("career_portal_jobs").get();
+        portalSnap.forEach((doc) => {
+            const d = doc.data();
+            const portalTime = d.appliedAt?.toDate ? d.appliedAt.toDate() : (d.discoveredAt?.toDate ? d.discoveredAt.toDate() : null);
+            if (portalTime && portalTime < thirtyDaysAgo) return;
+
+            const email = (d.recipientEmail || "").toLowerCase().trim();
+            const role = normalizeJobRole(d.jobTitle || "");
+            const comp = (d.companyName || "").toLowerCase().trim();
+            if (email && role) appliedEmailRoles.add(`${email}|${role}`);
+            if (comp && role) appliedCompanyRoles.add(`${comp}|${role}`);
+        });
+    } catch (e: any) {
+        console.warn(`[JobDiscovery] Error loading career_portal_jobs: ${e.message}`);
+    }
 
     // Fetch User BYOK API Keys from user document
     const userApiKeys = userData.userApiKeys || {};

@@ -359,13 +359,21 @@ async function discoverNetworkingLeadsForUser(uid, options) {
             }
         });
     }
-    // Fetch existing leads to avoid duplicate outreach
+    // Fetch existing leads to avoid duplicate outreach within last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const existingLeadsSnap = await firebase_1.db.collection("users").doc(uid).collection("networking_leads").get();
     const existingUrls = new Set();
     const existingNames = new Set();
     const existingCompanies = new Set();
     existingLeadsSnap.forEach(doc => {
+        var _a, _b;
         const d = doc.data();
+        const leadTime = ((_a = d.emailSentAt) === null || _a === void 0 ? void 0 : _a.toDate) ? d.emailSentAt.toDate() : (((_b = d.discoveredAt) === null || _b === void 0 ? void 0 : _b.toDate) ? d.discoveredAt.toDate() : null);
+        if (leadTime && leadTime < thirtyDaysAgo) {
+            // Reached out > 30 days ago -> eligible to re-reach out!
+            return;
+        }
         if (d.linkedinUrl)
             existingUrls.add(d.linkedinUrl.toLowerCase().trim());
         if (d.name && d.companyName)

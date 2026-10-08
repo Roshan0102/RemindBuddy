@@ -84,20 +84,25 @@ exports.processCalendarReminderTask = functions.tasks
                     rawSound = 'alarm_siren';
                 if (alarmSound === 'chime')
                     rawSound = 'alarm_chime';
+                const isSticky = (rData === null || rData === void 0 ? void 0 : rData.isSticky) === true;
                 const message = {
                     token,
                     notification: { title, body },
                     android: {
                         notification: {
-                            channelId: isAlarmMode ? `alarm_reminder_channel_${rawSound}` : "calendar_reminder_channel",
+                            channelId: isAlarmMode
+                                ? `alarm_reminder_channel_${rawSound}`
+                                : (isSticky ? "sticky_reminder_channel" : "calendar_reminder_channel"),
                             tag: `calendar_reminder_${reminderId}`,
-                            sound: isAlarmMode ? rawSound : undefined
+                            sound: isAlarmMode ? rawSound : undefined,
+                            sticky: isSticky ? true : undefined,
                         }
                     },
                     data: {
                         type: "CALENDAR_REMINDER",
                         reminderId: reminderId,
                         isAlarmMode: isAlarmMode ? "true" : "false",
+                        isSticky: isSticky ? "true" : "false",
                         alarmSound: alarmSound,
                         customAudioPath: (rData === null || rData === void 0 ? void 0 : rData.customAudioPath) || "",
                         customAudioName: (rData === null || rData === void 0 ? void 0 : rData.customAudioName) || "",

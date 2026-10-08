@@ -34,6 +34,7 @@ class CalendarReminder {
   final String alarmSound; // 'digital', 'siren', 'chime', 'custom'
   final String? customAudioPath;
   final String? customAudioName;
+  final bool isSticky;
 
   CalendarReminder({
     this.id,
@@ -69,6 +70,7 @@ class CalendarReminder {
     this.alarmSound = 'digital',
     this.customAudioPath,
     this.customAudioName,
+    this.isSticky = false,
   });
 
   factory CalendarReminder.fromMap(Map<String, dynamic> json, String docId) {
@@ -106,6 +108,7 @@ class CalendarReminder {
       alarmSound: json['alarmSound'] as String? ?? 'digital',
       customAudioPath: json['customAudioPath'] as String?,
       customAudioName: json['customAudioName'] as String?,
+      isSticky: json['isSticky'] ?? false,
     );
   }
 
@@ -146,6 +149,7 @@ class CalendarReminder {
       'alarmSound': alarmSound,
       if (customAudioPath != null) 'customAudioPath': customAudioPath,
       if (customAudioName != null) 'customAudioName': customAudioName,
+      'isSticky': isSticky,
     };
   }
 
@@ -183,6 +187,7 @@ class CalendarReminder {
     String? alarmSound,
     String? customAudioPath,
     String? customAudioName,
+    bool? isSticky,
   }) {
     return CalendarReminder(
       id: id ?? this.id,
@@ -218,6 +223,7 @@ class CalendarReminder {
       alarmSound: alarmSound ?? this.alarmSound,
       customAudioPath: customAudioPath ?? this.customAudioPath,
       customAudioName: customAudioName ?? this.customAudioName,
+      isSticky: isSticky ?? this.isSticky,
     );
   }
 }

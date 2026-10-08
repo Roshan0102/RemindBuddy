@@ -91,12 +91,14 @@ async function notifyAllUsers(price, oldPrice) {
             }
         }
     }
-    if (tokens.length > 0) {
+    const uniqueTokens = Array.from(new Set(tokens.filter(t => typeof t === "string" && t.trim().length > 0)));
+    const uniqueTargetUids = Array.from(new Set(targetUids.filter(Boolean)));
+    if (uniqueTokens.length > 0) {
         const title = `Gold Rate: ₹${price}/g`;
         const body = diffText;
         const diffNumber = oldPrice ? (price - oldPrice) : 0;
         await firebase_1.admin.messaging().sendEachForMulticast({
-            tokens,
+            tokens: uniqueTokens,
             notification: { title, body },
             android: {
                 priority: "high",
@@ -114,7 +116,7 @@ async function notifyAllUsers(price, oldPrice) {
                 timestamp: new Date().toISOString()
             }
         });
-        for (const uid of targetUids) {
+        for (const uid of uniqueTargetUids) {
             await (0, logger_1.logNotification)(uid, title, body, "GOLD_PRICE");
         }
     }

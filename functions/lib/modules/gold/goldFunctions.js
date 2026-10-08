@@ -246,10 +246,12 @@ async function sendChitNotificationToAllUsers(recommendation, message) {
             }
         }
     }
-    if (tokens.length > 0) {
+    const uniqueTokens = Array.from(new Set(tokens.filter(t => typeof t === "string" && t.trim().length > 0)));
+    const uniqueTargetUids = Array.from(new Set(targetUids.filter(Boolean)));
+    if (uniqueTokens.length > 0) {
         const title = recommendation === 'BUY' ? '💰 Gold Chit: Perfect Day to Pay!' : '⏳ Gold Chit: Hold Payments';
         await firebase_1.admin.messaging().sendEachForMulticast({
-            tokens,
+            tokens: uniqueTokens,
             notification: { title, body: message },
             android: {
                 notification: {
@@ -259,7 +261,7 @@ async function sendChitNotificationToAllUsers(recommendation, message) {
             },
             data: { type: "GOLD_CHIT_ADVICE", recommendation }
         });
-        for (const uid of targetUids) {
+        for (const uid of uniqueTargetUids) {
             await (0, logger_1.logNotification)(uid, title, message, "GOLD_CHIT_ADVICE");
         }
     }
@@ -361,7 +363,9 @@ async function internalCheckPendingGoldChitNotifications() {
                     targetUids.push(uData.uid);
                 }
             }
-            if (tokens.length > 0) {
+            const uniqueTokens = Array.from(new Set(tokens.filter(t => typeof t === "string" && t.trim().length > 0)));
+            const uniqueTargetUids = Array.from(new Set(targetUids.filter(Boolean)));
+            if (uniqueTokens.length > 0) {
                 // Calculate total accumulated grams across paid installments for this plan
                 let totalGrams = 0;
                 try {
@@ -381,7 +385,7 @@ async function internalCheckPendingGoldChitNotifications() {
                 const title = `💰 Gold Chit Payment Confirmed`;
                 const body = `You have paid the ${formattedMonth} gold installment. Currently, you have ${gramsFormatted} of gold in plan "${planName}".`;
                 await firebase_1.admin.messaging().sendEachForMulticast({
-                    tokens,
+                    tokens: uniqueTokens,
                     notification: { title, body },
                     android: {
                         notification: {
@@ -395,11 +399,11 @@ async function internalCheckPendingGoldChitNotifications() {
                         monthKey
                     }
                 });
-                for (const targetUid of targetUids) {
+                for (const targetUid of uniqueTargetUids) {
                     await (0, logger_1.logNotification)(targetUid, title, body, 'GOLD_CHIT_UPDATE');
                 }
             }
-            await doc.ref.update({ status: 'sent', notifiedUids: targetUids });
+            await doc.ref.update({ status: 'sent', notifiedUids: uniqueTargetUids });
         }
         catch (err) {
             console.error(`Error sending delayed notification for pending doc ${doc.id}:`, err);

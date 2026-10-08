@@ -92,7 +92,7 @@ void notificationTapBackground(NotificationResponse notificationResponse) async 
           .collection('calendar_reminders')
           .doc(reminderId);
           
-      if (actionId == 'action_alarm_dismiss' || actionId == 'action_yes') {
+      if (actionId == 'action_alarm_dismiss' || actionId == 'action_yes' || actionId == 'action_dismiss_sticky') {
         try {
           await AlarmAudioService().stopAlarm();
         } catch (_) {}
@@ -350,7 +350,7 @@ class NotificationService {
                   .collection('calendar_reminders')
                   .doc(reminderId);
                   
-              if (actionId == 'action_alarm_dismiss' || actionId == 'action_yes') {
+              if (actionId == 'action_alarm_dismiss' || actionId == 'action_yes' || actionId == 'action_dismiss_sticky') {
                 try {
                   await AlarmAudioService().stopAlarm();
                 } catch (_) {}
@@ -476,6 +476,13 @@ class NotificationService {
           'calendar_reminder_channel',
           'Calendar Reminders',
           description: 'Notifications for tasks scheduled on specific dates',
+          importance: Importance.max,
+          playSound: true,
+        ),
+        AndroidNotificationChannel(
+          'sticky_reminder_channel',
+          'Sticky Reminders',
+          description: 'Persistent reminder notifications that stay in the tray until dismissed',
           importance: Importance.max,
           playSound: true,
         ),
@@ -795,39 +802,57 @@ class NotificationService {
             );
           }
         } else {
+          final isSticky = message.data['isSticky'] == 'true';
           _localNotifications.show(
             notification.hashCode,
             notification.title,
             notification.body,
             NotificationDetails(
               android: AndroidNotificationDetails(
-                android.channelId ?? 'gold_price_channel',
-                'Default Notifications',
+                isSticky ? 'sticky_reminder_channel' : (android.channelId ?? 'calendar_reminder_channel'),
+                isSticky ? 'Sticky Reminders' : 'Default Notifications',
                 importance: Importance.max,
                 priority: Priority.high,
                 icon: android.smallIcon,
-                actions: (payload != null && payload.startsWith("DAILY_REMINDER|"))
+                ongoing: isSticky,
+                autoCancel: !isSticky,
+                actions: isSticky
                     ? <AndroidNotificationAction>[
                         const AndroidNotificationAction(
-                          'action_done',
-                          'Mark Done',
-                          showsUserInterface: true,
+                          'action_dismiss_sticky',
+                          'Dismiss ✕',
+                          showsUserInterface: false,
+                          cancelNotification: true,
                         ),
+                        if (payload != null && payload.startsWith("CALENDAR_REMINDER|") && isSnoozeEnabled)
+                          const AndroidNotificationAction(
+                            'action_no',
+                            'Snooze',
+                            showsUserInterface: true,
+                          ),
                       ]
-                    : (payload != null && payload.startsWith("CALENDAR_REMINDER|") && isSnoozeEnabled)
+                    : (payload != null && payload.startsWith("DAILY_REMINDER|"))
                         ? <AndroidNotificationAction>[
                             const AndroidNotificationAction(
-                              'action_yes',
-                              'Done',
-                              showsUserInterface: true,
-                            ),
-                            const AndroidNotificationAction(
-                              'action_no',
-                              'Snooze',
+                              'action_done',
+                              'Mark Done',
                               showsUserInterface: true,
                             ),
                           ]
-                        : null,
+                        : (payload != null && payload.startsWith("CALENDAR_REMINDER|") && isSnoozeEnabled)
+                            ? <AndroidNotificationAction>[
+                                const AndroidNotificationAction(
+                                  'action_yes',
+                                  'Done',
+                                  showsUserInterface: true,
+                                ),
+                                const AndroidNotificationAction(
+                                  'action_no',
+                                  'Snooze',
+                                  showsUserInterface: true,
+                                ),
+                              ]
+                            : null,
               ),
             ),
             payload: payload,
@@ -911,6 +936,7 @@ class NotificationService {
     String channelId = 'calendar_reminder_channel',
     String channelName = 'Calendar Reminders',
     String? payload,
+    bool isSticky = false,
   }) async {
     if (kIsWeb) {
       WebDesktopNotificationService.showNotification(
@@ -926,11 +952,23 @@ class NotificationService {
       body,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          channelId,
-          channelName,
+          isSticky ? 'sticky_reminder_channel' : channelId,
+          isSticky ? 'Sticky Reminders' : channelName,
           importance: Importance.max,
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
+          ongoing: isSticky,
+          autoCancel: !isSticky,
+          actions: isSticky
+              ? <AndroidNotificationAction>[
+                  const AndroidNotificationAction(
+                    'action_dismiss_sticky',
+                    'Dismiss ✕',
+                    showsUserInterface: false,
+                    cancelNotification: true,
+                  ),
+                ]
+              : null,
         ),
       ),
       payload: payload,
@@ -1017,6 +1055,18 @@ class NotificationService {
       if (query.docs.isNotEmpty) {
         await query.docs.first.reference.update({'fcmToken': token});
       }
+
+      // 3. Guarantee 1:1 mapping: disassociate this physical device token from any other accounts
+      final staleTokensQuery = await FirebaseFirestore.instance
+          .collection('usernames')
+          .where('fcmToken', isEqualTo: token)
+          .get();
+      for (final doc in staleTokensQuery.docs) {
+        if (doc.data()['uid'] != user.uid) {
+          await doc.reference.update({'fcmToken': FieldValue.delete()});
+        }
+      }
+
       LogService.staticLog("FCM Token saved in Firestore for ${user.uid}: ${token.substring(0, token.length > 10 ? 10 : token.length)}...");
     } catch (e) {
       LogService.staticLog("Error saving FCM token to Firestore: $e");

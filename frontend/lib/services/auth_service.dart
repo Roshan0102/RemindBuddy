@@ -188,6 +188,27 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+          'fcmToken': FieldValue.delete(),
+          'webFcmToken': FieldValue.delete(),
+        });
+        final query = await FirebaseFirestore.instance
+            .collection('usernames')
+            .where('uid', isEqualTo: user.uid)
+            .limit(1)
+            .get();
+        if (query.docs.isNotEmpty) {
+          await query.docs.first.reference.update({
+            'fcmToken': FieldValue.delete(),
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Notice clearing FCM token on logout: $e');
+    }
     await _auth.signOut();
     final storage = StorageService();
     await storage.logoutAndClearData();
