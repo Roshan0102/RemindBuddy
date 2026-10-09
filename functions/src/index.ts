@@ -103,7 +103,8 @@ export {
 } from "./modules/job_assistant/networkingDiscoveryAI";
 
 export {
-    runLinkedInAutoApplyNow
+    runLinkedInAutoApplyNow,
+    processLinkedInAutoApplyUserTask
 } from "./modules/job_assistant/linkedinAutoApply";
 
 export {

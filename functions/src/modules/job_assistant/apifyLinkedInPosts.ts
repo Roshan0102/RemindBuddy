@@ -35,7 +35,7 @@ export async function searchLinkedInPostsViaApify(
         apiToken,
         apiTokens,
         roles = ["Software Engineer", "Developer"],
-        locations = [],
+        locations: _locations = [],
         datePosted = "past-24h",
         maxPosts = 25
     } = options;
@@ -58,39 +58,27 @@ export async function searchLinkedInPostsViaApify(
     // Limit to max 4 target roles
     const safeRoles = roles.slice(0, 4);
 
-    // Expand location synonyms (e.g. Bengaluru <-> Bangalore) and build location clause
-    const expandedLocs: string[] = [];
-    for (const loc of (locations || []).slice(0, 5)) {
-        const trimmed = (loc || "").trim();
-        if (!trimmed) continue;
-        if (!expandedLocs.some(x => x.toLowerCase() === trimmed.toLowerCase())) {
-            expandedLocs.push(trimmed);
-        }
-        if (trimmed.toLowerCase() === 'bengaluru' && !expandedLocs.some(x => x.toLowerCase() === 'bangalore')) {
-            expandedLocs.push('Bangalore');
-        } else if (trimmed.toLowerCase() === 'bangalore' && !expandedLocs.some(x => x.toLowerCase() === 'bengaluru')) {
-            expandedLocs.push('Bengaluru');
+
+    // Dedicated, high-conversion search queries per target role compatible with LinkedIn search engine
+    // (LinkedIn search engine fails when complex nested boolean clauses like (A OR B) (C OR D) are used)
+    const searchQueries: string[] = [];
+    for (const role of safeRoles) {
+        const clean = role.replace(/["\\]/g, '').trim();
+        if (clean) {
+            searchQueries.push(`hiring "${clean}" email`);
         }
     }
-
-    // Ensure Remote / India are included in location synonyms if Indian locations or general locations are specified
-    if (!expandedLocs.some(x => x.toLowerCase() === 'remote')) {
-        expandedLocs.push('Remote');
+    // If fewer than 3 roles, include alternative phrasing for maximum depth
+    if (safeRoles.length <= 2) {
+        for (const role of safeRoles) {
+            const clean = role.replace(/["\\]/g, '').trim();
+            if (clean) {
+                searchQueries.push(`"${clean}" hiring email`);
+            }
+        }
     }
-    if (!expandedLocs.some(x => x.toLowerCase() === 'india')) {
-        expandedLocs.push('India');
-    }
 
-    const locClause = expandedLocs.length > 0
-        ? `(${expandedLocs.map(l => l.includes(' ') ? `"${l}"` : l).join(' OR ')})`
-        : "";
-
-    // Dedicated search query per target role to guarantee equal, deep coverage for every role
-    const searchQueries: string[] = safeRoles.map(role => 
-        `hiring "${role}" (email OR "send resume" OR "share CV" OR "mail your resume" OR CV)${locClause ? ` ${locClause}` : ''}`
-    );
-
-    console.log(`[ApifyLinkedIn] Executing dedicated search queries for ${safeRoles.length} role(s) with location clause: "${locClause || 'Any'}"...`);
+    console.log(`[ApifyLinkedIn] Executing ${searchQueries.length} clean query(ies) for ${safeRoles.length} role(s)...`);
 
     let response: any = null;
     let usedTokenIndex = 0;

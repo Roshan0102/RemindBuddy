@@ -8,6 +8,7 @@ import { logFeatureExecution } from "../../utils/featureLogger";
 import { logNotification } from "../../utils/logger";
 import { formatEmailContent } from "../../utils/emailFormatter";
 import { isExperienceExceeded } from "../../utils/experienceMatcher";
+import { enqueueUserCloudTask } from "../../utils/cloudTasksHelper";
 
 function normalizeJobRole(role: string): string {
     return (role || "").toLowerCase()
@@ -862,10 +863,22 @@ export async function internalLinkedInPostAutoApplyDispatcher(): Promise<void> {
             dispatchedCount++;
             console.log(`[LinkedInAutoApply] Dispatching LinkedIn Auto-Apply for user ${userDoc.id}...`);
             
-            // Execute safely without crashing dispatcher
-            processLinkedInAutoApplyForUser(userDoc.id, { isManual: false }).catch(err => {
-                console.error(`[LinkedInAutoApply] Background dispatch error for user ${userDoc.id}:`, err);
-            });
+            // Try enqueuing to Cloud Tasks for background isolated execution
+            const taskId = await enqueueUserCloudTask(
+                "processLinkedInAutoApplyUserTask",
+                "processLinkedInAutoApplyUserTask",
+                { uid: userDoc.id }
+            );
+
+            // Sequential fallback if Cloud Tasks is not configured (must await so Cloud Functions container does not terminate pending execution)
+            if (!taskId) {
+                console.log(`[LinkedInAutoApply] Cloud Tasks queue not available for user ${userDoc.id}. Running directly with await fallback...`);
+                try {
+                    await processLinkedInAutoApplyForUser(userDoc.id, { isManual: false });
+                } catch (err) {
+                    console.error(`[LinkedInAutoApply] Background execution error for user ${userDoc.id}:`, err);
+                }
+            }
         }
 
         console.log(`[LinkedInAutoApply] Dispatcher completed. Triggered for ${dispatchedCount} enabled user(s).`);
@@ -873,6 +886,29 @@ export async function internalLinkedInPostAutoApplyDispatcher(): Promise<void> {
         console.error("[LinkedInAutoApply] Error in scheduled dispatcher:", e);
     }
 }
+
+/**
+ * Cloud Task HTTP Handler: processLinkedInAutoApplyUserTask
+ */
+export const processLinkedInAutoApplyUserTask = functions
+    .runWith({ timeoutSeconds: 540, memory: "1GB" })
+    .https.onRequest(async (req, res) => {
+        try {
+            const bodyData = req.body?.data || req.body || {};
+            const uid = bodyData.uid;
+            if (!uid) {
+                res.status(400).send("Missing uid in task payload.");
+                return;
+            }
+
+            console.log(`[processLinkedInAutoApplyUserTask] Executing LinkedIn auto-apply task for user ${uid}`);
+            const result = await processLinkedInAutoApplyForUser(uid, { isManual: false });
+            res.status(200).json(result);
+        } catch (err: any) {
+            console.error("[processLinkedInAutoApplyUserTask] Fatal task execution error:", err);
+            res.status(500).send(err.message || "Internal server error");
+        }
+    });
 
 /**
  * Callable Cloud Function: Allows users to trigger LinkedIn Auto-Apply on-demand from the UI.

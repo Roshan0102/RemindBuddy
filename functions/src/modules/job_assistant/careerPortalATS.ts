@@ -7,6 +7,7 @@ import { searchTavily, TavilySearchResult } from "../../utils/tavilyHelper";
 import { generateAtsResumePdf, TailoredResumeData } from "../../utils/pdfResumeGenerator";
 import { enqueueUserCloudTask } from "../../utils/cloudTasksHelper";
 import { isExperienceExceeded } from "../../utils/experienceMatcher";
+import { scrapeJobPosting } from "../../utils/jobScraper";
 
 export interface CareerPortalJobRecord {
     id: string;
@@ -580,17 +581,38 @@ export async function executeCareerPortalDiscovery(
         return true;
     });
 
-    console.log(`[CareerPortalATS] Total unique candidates discovered: ${uniqueCandidates.length}. Verifying URLs (no 404s)...`);
+    console.log(`[CareerPortalATS] Total unique candidates discovered: ${uniqueCandidates.length}. Fetching live job pages & verifying full requirements...`);
 
-    // 7. Strict URL Validation: Filter out broken links, 404s, or error redirects
+    // 7. Full Job Page Scraping & Experience Gate: Open live link (Workday, Greenhouse, Lever, Ashby, etc.)
     const validatedJobs: typeof uniqueCandidates = [];
     for (const cand of uniqueCandidates) {
-        const isValid = await verifyJobUrl(cand.url);
-        if (isValid) {
-            validatedJobs.push(cand);
-        } else {
-            console.log(`[CareerPortalATS] Discarded broken / 404 job link: ${cand.url}`);
+        console.log(`[CareerPortalATS] Opening & scraping live job page: ${cand.url}...`);
+        const scraped = await scrapeJobPosting(cand.url);
+        if (!scraped) {
+            console.log(`[CareerPortalATS] Discarded broken / 404 / closed job link: ${cand.url}`);
+            continue;
         }
+
+        // Overwrite snippet with authentic, complete official JD text and verified title/company
+        cand.jd = scraped.content;
+        if (scraped.title && scraped.title.length > 3) {
+            cand.title = scraped.title;
+        }
+        if (scraped.company && scraped.company.length > 1) {
+            cand.company = scraped.company;
+        }
+        if (scraped.location) {
+            cand.location = scraped.location;
+        }
+
+        // Strict deterministic experience gate on scraped full text
+        const expCheck = isExperienceExceeded(`${cand.title} ${cand.jd}`, maxExpYears, minExpYears);
+        if (expCheck.exceeded) {
+            console.log(`[CareerPortalATS] Experience gate skipped job '${cand.title}' @ '${cand.company}': ${expCheck.reason}`);
+            continue;
+        }
+
+        validatedJobs.push(cand);
         if (validatedJobs.length >= 6) break; // Select top 6 high-quality fresh jobs
     }
 
@@ -637,23 +659,29 @@ JOB OPENING:
 ${job.jd}
 
 CRITICAL SCREENING & ATS EVALUATION RULES:
-1. Strict Experience & Seniority Gate:
-   - Check the Job Description for required years of experience or seniority tier.
-   - If the JD requires more than ${Math.max(maxExpYears + 1, 3)} years of experience (e.g. 4+ years, 5+ years, 7+ years, 10+ years), or requires senior/staff/principal/managerial leadership, set "isQualified": false and "atsScore": 40.
-   - If the job discipline does not fit the candidate's target roles (e.g. Product Management, AI/ML Research, Non-technical), set "isQualified": false and "atsScore": 40.
+1. STRICT EXPERIENCE REQUIREMENT (NON-NEGOTIABLE MUST CONDITION):
+   - Candidate target experience range: ${minExpYears} - ${maxExpYears} years ${isFresher ? '(Fresher / Recent Graduate)' : ''}. The candidate's maximum experience is strictly ${maxExpYears} years.
+   - Inspect the entire Job Description and extract the exact required years of experience into "experienceRequired".
+   - If the job explicitly requires experience exceeding candidate maximum of ${maxExpYears} years (e.g. requires ${maxExpYears + 1}+ years, ranges like ${maxExpYears}-${maxExpYears + 3} years, "minimum of ${maxExpYears + 1} years", "above ${maxExpYears} years", or senior/lead/staff/principal/architect roles), you MUST IMMEDIATELY disqualify the role:
+     Set "isQualified": false, "atsScore": 30, and clearly specify in "disqualificationReason" (e.g. "Job requires X years, exceeding candidate maximum of ${maxExpYears} years").
+   - If the job discipline does not fit the candidate's target roles, set "isQualified": false and "atsScore": 30.
+   - ONLY jobs whose stated experience falls within or at the candidate's target range (${minExpYears} - ${maxExpYears} years, or entry-level) can have "isQualified": true.
+
 2. Rigorous ATS Match Scoring:
    - Compare the candidate's real skills & experience from the resume against this JD.
    - Assign an ATS Match Score (0 - 100).
    - ONLY assign an atsScore >= 80 if the candidate is a strong, genuine match for this role at their experience level.
    - If "isQualified" is false, atsScore MUST be strictly below 80.
-3. Resume Tailoring & ATS Keyword Enrichment (ONLY performed if candidate is qualified and atsScore >= 80):
+
+3. Resume Completeness & Anti-Stub Rules (ONLY performed if candidate is qualified and atsScore >= 80):
    - Authenticity Preservation: KEEP all authentic companies, official job titles, employment periods, education institutions, and certifications from the candidate's attached resume. Do not invent fake employers or fake degrees.
    - Comprehensive ATS Keyword Integration:
      * Carefully analyze the Job Description to extract all required technical skills, tools, frameworks, platforms, and methodologies.
      * When the candidate is a strong fit for the role (e.g. 80-95%+ domain alignment), AUTOMATICALLY BRIDGE ANY KEYWORD GAPS by including the missing JD skills, tools, and industry keywords into the tailored resume so the resume achieves a top-tier ATS match (95%+).
-     * Technical Skills: Group them into comprehensive, high-impact categories appropriate for the candidate's domain (e.g. Languages & Frameworks, Cloud & Infrastructure, CI/CD & DevOps, Databases & Caching, Monitoring & Security, Architecture & Tools). Seamlessly add the missing relevant tools and technologies required by the JD.
-     * Professional Summary: Craft a targeted 2-3 sentence summary that directly addresses the employer's needs and incorporates the primary keywords from the JD.
-     * Professional Experience & Key Projects: Refine the achievement bullet points to highlight measurable outcomes and naturally weave in the relevant JD keywords, tools, and methodologies that the candidate utilized in their domain.
+     * Technical Skills: Group them into 3-5 comprehensive categories (e.g. Languages & Frameworks, Cloud & Infrastructure, CI/CD & DevOps, Databases & Caching, Monitoring & Security, Tools).
+     * Professional Summary: Craft a targeted 3-4 sentence summary that directly addresses the employer's needs and incorporates primary keywords from the JD.
+     * Professional Experience & Key Projects: Include 3-4 rich, quantified STAR bullet points per position with measurable metrics and JD keywords. Include 2 detailed projects each with 2-3 technical bullet points describing architecture, implementation, and impact.
+     * Ensure the tailored resume has rich, complete content so it gracefully occupies a full page without appearing sparse or half-empty.
      * Return all keywords and skills that were incorporated from the JD into the "injectedKeywords" array.
      * Re-evaluate "atsScore" (0 - 100) reflecting the enhanced keyword match of the tailored resume (typically 90 - 98%).
 
@@ -744,6 +772,13 @@ OUTPUT STRICT JSON FORMAT:
             // USER REQUIREMENT: Only create resume and save if ATS Score >= 80% and matches experience
             if (atsScore < 80 || !isQualified) {
                 console.log(`[CareerPortalATS] Discarding ${job.title} @ ${job.company}: ATS Score ${atsScore}% (< 80%) or not qualified (${parsed.disqualificationReason || 'Score below 80%'}). No resume created.`);
+                continue;
+            }
+
+            // Extra deterministic safety gate: double-check experience returned by Gemini
+            const parsedExpCheck = isExperienceExceeded(parsed.experienceRequired || "", maxExpYears, minExpYears);
+            if (parsedExpCheck.exceeded) {
+                console.log(`[CareerPortalATS] Discarding ${job.title} @ ${job.company}: Gemini extracted experience "${parsed.experienceRequired}" exceeding candidate max of ${maxExpYears} years.`);
                 continue;
             }
 

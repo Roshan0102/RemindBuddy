@@ -68,6 +68,45 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       payload: 'INCOMING_CALL|$sessionId|$company|$job|$recruiter|$actionReq',
     );
   }
+
+  // Handle Sticky Reminders in background (Ongoing FLAG_ONGOING_EVENT notification that cannot be cleared by Clear All)
+  if (message.data['isSticky'] == 'true' ||
+      (message.data['type'] == 'CALENDAR_REMINDER' && message.data['isSticky'] == 'true')) {
+    final title = message.data['title'] ?? message.notification?.title ?? '📌 Reminder';
+    final body = message.data['body'] ?? message.notification?.body ?? '';
+    final reminderId = message.data['reminderId'] ?? '';
+    final uid = message.data['uid'] ?? '';
+    final payload = "CALENDAR_REMINDER|$reminderId|$uid";
+
+    final FlutterLocalNotificationsPlugin localNotifs = FlutterLocalNotificationsPlugin();
+    const androidDetails = AndroidNotificationDetails(
+      'sticky_reminder_channel',
+      'Sticky Reminders',
+      channelDescription: 'Persistent reminder notifications that stay in the tray until dismissed',
+      importance: Importance.max,
+      priority: Priority.high,
+      ongoing: true,
+      autoCancel: false,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          'action_dismiss_sticky',
+          'Dismiss ✕',
+          showsUserInterface: false,
+          cancelNotification: true,
+        ),
+      ],
+    );
+
+    final notifId = reminderId.isNotEmpty ? reminderId.hashCode : 777777;
+    await localNotifs.show(
+      notifId,
+      title,
+      body,
+      const NotificationDetails(android: androidDetails),
+      payload: payload,
+    );
+    LogService.staticLog("FCM BG: Displayed ongoing sticky notification for reminder $reminderId");
+  }
 }
 
 @pragma('vm:entry-point')
@@ -741,22 +780,30 @@ class NotificationService {
         }
       }
 
-      if (notification != null && android != null) {
+      final isStickyMsg = message.data['isSticky'] == 'true';
+      if ((notification != null && android != null) || isStickyMsg) {
         String? payload = message.data['type'] ?? message.data['click_action'];
         
         bool isSnoozeEnabled = false;
+        String reminderId = '';
         if (payload == 'CALENDAR_REMINDER') {
-          final reminderId = message.data['reminderId'] ?? '';
+          reminderId = message.data['reminderId'] ?? '';
           final user = FirebaseAuth.instance.currentUser;
           final uid = user?.uid ?? message.data['uid'] ?? '';
           isSnoozeEnabled = message.data['snoozeEnabled'] == 'true';
           payload = "CALENDAR_REMINDER|$reminderId|$uid";
         } else if (payload == 'daily_reminder') {
-          final reminderId = message.data['reminderId'] ?? '';
+          reminderId = message.data['reminderId'] ?? '';
           final user = FirebaseAuth.instance.currentUser;
           final uid = user?.uid ?? message.data['uid'] ?? '';
           payload = "DAILY_REMINDER|$reminderId|$uid";
         }
+
+        final notifTitle = notification?.title ?? message.data['title'] ?? '📌 Reminder';
+        final notifBody = notification?.body ?? message.data['body'] ?? '';
+        final int notifId = notification != null
+            ? notification.hashCode
+            : (reminderId.isNotEmpty ? reminderId.hashCode : 777777);
 
         final isAlarmMode = message.data['isAlarmMode'] == 'true';
         final alarmSound = message.data['alarmSound'] ?? 'digital';
@@ -765,9 +812,9 @@ class NotificationService {
         if (isAlarmMode) {
           final reminderId = message.data['reminderId'];
           showAlarmNotification(
-            id: notification.hashCode,
-            title: notification.title ?? 'Reminder Alarm',
-            body: notification.body ?? '',
+            id: notifId,
+            title: notifTitle,
+            body: notifBody,
             payload: payload ?? '',
             sound: alarmSound,
           );
@@ -802,18 +849,18 @@ class NotificationService {
             );
           }
         } else {
-          final isSticky = message.data['isSticky'] == 'true';
+          final isSticky = isStickyMsg;
           _localNotifications.show(
-            notification.hashCode,
-            notification.title,
-            notification.body,
+            notifId,
+            notifTitle,
+            notifBody,
             NotificationDetails(
               android: AndroidNotificationDetails(
-                isSticky ? 'sticky_reminder_channel' : (android.channelId ?? 'calendar_reminder_channel'),
+                isSticky ? 'sticky_reminder_channel' : (android?.channelId ?? 'calendar_reminder_channel'),
                 isSticky ? 'Sticky Reminders' : 'Default Notifications',
                 importance: Importance.max,
                 priority: Priority.high,
-                icon: android.smallIcon,
+                icon: android?.smallIcon ?? '@mipmap/ic_launcher',
                 ongoing: isSticky,
                 autoCancel: !isSticky,
                 actions: isSticky

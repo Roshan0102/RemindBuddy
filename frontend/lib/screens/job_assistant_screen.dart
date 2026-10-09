@@ -3973,6 +3973,30 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
+  Future<void> _ignoreCareerPortalJob(CareerPortalJob job) async {
+    try {
+      await _service.updateCareerPortalJobStatus(job.id, 'dismissed', job: job);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ignored "${job.jobTitle}" at ${job.companyName}'),
+            action: SnackBarAction(
+              label: 'Undo',
+              textColor: const Color(0xFF10B981),
+              onPressed: () => _service.updateCareerPortalJobStatus(job.id, 'discovered', job: job),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error ignoring opening: $e')),
+        );
+      }
+    }
+  }
+
   Widget _buildCareerPortalsTab() {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color textColor = isDark ? Colors.white : const Color(0xFF0F172A);
@@ -3989,9 +4013,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           if (_portalFilter == 'applied') {
             if (j.status != 'applied') return false;
           } else {
-            // Default view (all, greenhouse, lever, ashby, high_match):
-            // Exclude already applied jobs so user only sees unapplied / newly fetched openings
-            if (j.status == 'applied') return false;
+            // Default unapplied view (all, greenhouse, lever, ashby, high_match):
+            // Exclude already applied jobs and ignored/dismissed openings
+            if (j.status == 'applied' || j.status == 'dismissed') return false;
           }
 
           if (_portalFilter == 'greenhouse' && j.portalType != 'greenhouse') return false;
@@ -4009,6 +4033,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           }
           return true;
         }).toList();
+
+        // Sort applied jobs so the most recently applied opening is at the very top
+        if (_portalFilter == 'applied') {
+          filteredJobs.sort((a, b) {
+            final aTime = a.appliedAt ?? a.discoveredAt;
+            final bTime = b.appliedAt ?? b.discoveredAt;
+            return bTime.compareTo(aTime);
+          });
+        }
 
         return ListView(
           padding: const EdgeInsets.all(16),
@@ -4505,6 +4538,22 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             // Action Buttons
             Row(
               children: [
+                if (!isApplied) ...[
+                  OutlinedButton.icon(
+                    onPressed: () => _ignoreCareerPortalJob(job),
+                    icon: const Icon(Icons.visibility_off_outlined, size: 15, color: Colors.grey),
+                    label: const Text(
+                      'Ignore',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      side: BorderSide(color: isDark ? Colors.blueGrey.shade800 : Colors.grey.shade400),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _downloadTailoredPdf(job),
@@ -6029,11 +6078,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               stream: _applicationsStream,
               builder: (context, snapshot) {
                 final allApps = snapshot.data ?? [];
-                // Filter for LinkedIn Posts from Apify
+                // Filter for LinkedIn Posts (both shared from LinkedIn app and auto-fetched via Apify)
                 final linkedInApps = allApps.where((a) {
-                  final isLinkedIn = a.sourcePlatform?.contains('LinkedIn Post') == true ||
-                      a.sourcePlatform?.contains('Apify') == true ||
-                      a.source == 'linkedin_post_apify';
+                  final isLinkedIn = _isLinkedInApp(a);
                   final matchesMonth = a.appliedAt.year == _linkedInMonth.year && a.appliedAt.month == _linkedInMonth.month;
                   return isLinkedIn && matchesMonth;
                 }).toList();
@@ -6175,23 +6222,37 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.check_circle_rounded, size: 12, color: Colors.green),
-                    SizedBox(width: 4),
-                    Text(
-                      'Sent via Apify',
-                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.green),
+              Builder(
+                builder: (context) {
+                  final isSharedFromApp = app.source == 'linkedin_share' ||
+                      app.sourcePlatform?.toLowerCase().contains('share') == true;
+                  final badgeBg = isSharedFromApp
+                      ? const Color(0xFF8B5CF6).withValues(alpha: 0.15)
+                      : Colors.green.withValues(alpha: 0.15);
+                  final badgeColor = isSharedFromApp ? const Color(0xFF8B5CF6) : Colors.green;
+                  final badgeIcon = isSharedFromApp ? Icons.share_rounded : Icons.check_circle_rounded;
+                  final badgeLabel = isSharedFromApp ? '📲 Shared from LinkedIn' : '💼 Auto-Fetched (Apify)';
+
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: badgeBg,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
                     ),
-                  ],
-                ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(badgeIcon, size: 12, color: badgeColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          badgeLabel,
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: badgeColor),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -7362,7 +7423,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   bool _isLinkedInApp(JobApplication a) {
     return a.sourcePlatform?.toLowerCase().contains('linkedin') == true ||
         a.sourcePlatform?.toLowerCase().contains('apify') == true ||
-        a.source == 'linkedin_post_apify';
+        a.source == 'linkedin_post_apify' ||
+        a.source == 'linkedin_share';
   }
 
   bool _isCareerPortalApp(JobApplication a) {
@@ -7484,9 +7546,17 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           ? app.sourcePlatform!
           : '🏢 Career Portal';
     } else if (isLinkedIn) {
-      badgeColor = const Color(0xFF0A66C2);
-      leadingIcon = Icons.dynamic_feed_rounded;
-      sourceLabel = '💼 LinkedIn Post';
+      final isSharedFromApp = app.source == 'linkedin_share' ||
+          app.sourcePlatform?.toLowerCase().contains('share') == true;
+      if (isSharedFromApp) {
+        badgeColor = const Color(0xFF8B5CF6);
+        leadingIcon = Icons.share_rounded;
+        sourceLabel = '📲 Shared from LinkedIn';
+      } else {
+        badgeColor = const Color(0xFF0A66C2);
+        leadingIcon = Icons.dynamic_feed_rounded;
+        sourceLabel = '💼 Auto-Fetched (Apify)';
+      }
     } else {
       badgeColor = const Color(0xFFA855F7);
       leadingIcon = Icons.add_photo_alternate_rounded;
