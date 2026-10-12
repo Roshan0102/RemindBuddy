@@ -42,10 +42,11 @@ export async function internalPerformGoldFetch(force: boolean = false) {
                 return { success: true, status: 'already_executed', price: currentPrice };
             }
         } 
-        // Rule 2: Strict deduplication for 7:00 PM runs (Hour 19) - max ONCE per day
+        // Rule 2: 7:00 PM - 7:30 PM runs (Hour 19) - update if price changed from 11 AM, or if late evening revision occurs
         else if (currentHour === 19) {
             let alreadyProcessedAt19 = false;
             let priceAt11: number | null = null;
+            let recordedPriceAt19: number | null = null;
 
             todayPricesSnap.forEach(doc => {
                 const data = doc.data();
@@ -53,6 +54,7 @@ export async function internalPerformGoldFetch(force: boolean = false) {
                     const docHour = moment(data.timestamp).tz('Asia/Kolkata').hour();
                     if (docHour === 19) {
                         alreadyProcessedAt19 = true;
+                        recordedPriceAt19 = data.price;
                     }
                     if (docHour === 11 && priceAt11 === null) {
                         priceAt11 = data.price;
@@ -64,18 +66,23 @@ export async function internalPerformGoldFetch(force: boolean = false) {
             });
 
             if (alreadyProcessedAt19) {
-                console.log(`[GoldFetch] 7:00 PM gold price already processed for today (${todayStr}). Skipping duplicate run.`);
-                return { success: true, status: 'already_executed', price: currentPrice };
-            }
+                // If a later evening revision occurred (e.g. LiveChennai updated closing rate after 7:00 PM)
+                if (recordedPriceAt19 !== null && currentPrice !== recordedPriceAt19) {
+                    console.log(`[GoldFetch] Later evening price revision detected (${recordedPriceAt19} -> ${currentPrice}). Updating record.`);
+                } else {
+                    console.log(`[GoldFetch] Evening gold price already recorded for today (${todayStr}) with same price (${currentPrice}). Skipping duplicate run.`);
+                    return { success: true, status: 'already_executed', price: currentPrice };
+                }
+            } else {
+                // Fallback: use first price of today if 11:00 AM price was not found
+                if (priceAt11 === null && !todayPricesSnap.empty) {
+                    priceAt11 = todayPricesSnap.docs[0].data().price;
+                }
 
-            // Fallback: use first price of today if 11:00 AM price was not found
-            if (priceAt11 === null && !todayPricesSnap.empty) {
-                priceAt11 = todayPricesSnap.docs[0].data().price;
-            }
-
-            if (priceAt11 !== null && currentPrice === priceAt11) {
-                console.log(`[GoldFetch] 7:00 PM price (${currentPrice}) is same as 11:00 AM price (${priceAt11}). Skipping insert and notifications.`);
-                return { success: true, status: 'no_change', price: currentPrice };
+                if (priceAt11 !== null && currentPrice === priceAt11) {
+                    console.log(`[GoldFetch] 7:00 PM price (${currentPrice}) is same as 11:00 AM price (${priceAt11}). Skipping insert and notifications.`);
+                    return { success: true, status: 'no_change', price: currentPrice };
+                }
             }
         } 
         // Rule 3: Any other hour safeguard to prevent rapid duplicates (within 15 minutes)

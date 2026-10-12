@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.processCareerPortalDiscoveryTask = exports.triggerCareerPortalDiscovery = void 0;
+exports.processCareerPortalDiscoveryPubSub = exports.processCareerPortalDiscoveryTask = exports.triggerCareerPortalDiscovery = void 0;
 exports.verifyJobUrl = verifyJobUrl;
 exports.executeCareerPortalDiscovery = executeCareerPortalDiscovery;
 exports.internalCareerPortalDiscoveryDispatcher = internalCareerPortalDiscoveryDispatcher;
@@ -12,6 +12,7 @@ const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const pdfResumeGenerator_1 = require("../../utils/pdfResumeGenerator");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
+const pubsubHelper_1 = require("../../utils/pubsubHelper");
 const experienceMatcher_1 = require("../../utils/experienceMatcher");
 const jobScraper_1 = require("../../utils/jobScraper");
 // Curated top tech companies utilizing public Greenhouse job boards
@@ -527,12 +528,20 @@ async function executeCareerPortalDiscovery(uid, options) {
             continue;
         }
         try {
+            const userLinks = {
+                linkedin: (userData.linkedinUrl || userData.linkedin || "").toString().trim(),
+                github: (userData.githubUrl || userData.github || "").toString().trim(),
+                portfolio: (userData.portfolioUrl || userData.portfolio || userData.website || "").toString().trim(),
+            };
             const prompt = `You are a Principal Technical Recruiter and ATS Optimization Expert.
 Analyze the candidate's attached resume PDF and the following fresh job opening from an official company career portal.
 
 CANDIDATE TARGET PROFILE:
 - Target Roles: ${targetRoles.join(', ')}
 - Target Experience Level: ${minExpYears} - ${maxExpYears} years ${isFresher ? '(Fresher / Recent Graduate)' : ''}
+${userLinks.linkedin ? `- Known LinkedIn Profile: ${userLinks.linkedin}` : ''}
+${userLinks.github ? `- Known GitHub Profile: ${userLinks.github}` : ''}
+${userLinks.portfolio ? `- Known Portfolio Website: ${userLinks.portfolio}` : ''}
 
 JOB OPENING:
 - Company: ${job.company}
@@ -559,6 +568,13 @@ CRITICAL SCREENING & ATS EVALUATION RULES:
 
 3. Resume Completeness & Anti-Stub Rules (ONLY performed if candidate is qualified and atsScore >= 80):
    - Authenticity Preservation: KEEP all authentic companies, official job titles, employment periods, education institutions, and certifications from the candidate's attached resume. Do not invent fake employers or fake degrees.
+   - Contact Line & Online Presence:
+     * Extract the candidate's authentic contact details directly from the attached resume PDF into "contactLine".
+     * Format: "City, Country | Phone | Email | LinkedIn URL | Portfolio / GitHub URL"
+     * STRICT MANDATE FOR PORTFOLIO & SOCIAL LINKS:
+       Always output the ACTUAL, full destination URL or profile path (e.g. "linkedin.com/in/username", "portfolio.dev", "username.github.io", or "github.com/username").
+       DO NOT output generic placeholder words like "Portfolio", "Website", "LinkedIn", or "GitHub" without their real destination URL.
+       If the candidate's resume contains a portfolio link, personal website, or project showcase URL, include that exact URL. If no portfolio website is provided but a GitHub profile exists, use their GitHub URL. If neither exists, omit the portfolio entry rather than writing the plain text word "Portfolio".
    - Comprehensive ATS Keyword Integration:
      * Carefully analyze the Job Description to extract all required technical skills, tools, frameworks, platforms, and methodologies.
      * When the candidate is a strong fit for the role (e.g. 80-95%+ domain alignment), AUTOMATICALLY BRIDGE ANY KEYWORD GAPS by including the missing JD skills, tools, and industry keywords into the tailored resume so the resume achieves a top-tier ATS match (95%+).
@@ -581,7 +597,7 @@ OUTPUT STRICT JSON FORMAT:
   "tailoredSummary": "Results-driven Developer with...",
   "tailoredResume": {
     "fullName": "Candidate Name",
-    "contactLine": "City, Country | +91 ... | email@... | linkedin.com/in/... | github.com/...",
+    "contactLine": "City, Country | +91 ... | candidate@email.com | linkedin.com/in/... | portfolio-or-github-url...",
     "professionalSummary": "...",
     "skills": [
       { "category": "Languages & Frameworks", "items": "Relevant candidate languages & frameworks" },
@@ -669,6 +685,22 @@ OUTPUT STRICT JSON FORMAT:
                 contactLine: "India | Phone | Email",
                 professionalSummary: tailoredSummary
             };
+            // Sanitize contactLine to guarantee bare placeholder words like "Portfolio" without URLs are resolved or removed
+            if (tailoredResumeData.contactLine) {
+                const segs = tailoredResumeData.contactLine.split(/[|•]/).map(s => s.trim()).filter(Boolean);
+                const cleanedSegs = segs.map(seg => {
+                    const isBareWord = /^(portfolio|website|personal website)$/i.test(seg);
+                    if (isBareWord) {
+                        if (userLinks.portfolio)
+                            return userLinks.portfolio;
+                        if (userLinks.github)
+                            return userLinks.github;
+                        return ""; // strip bare orphan label
+                    }
+                    return seg;
+                }).filter(Boolean);
+                tailoredResumeData.contactLine = cleanedSegs.join(" | ");
+            }
             // 8. Generate Clean ATS Resume PDF using PDFKit
             let pdfBase64 = "";
             let storageUrl = "";
@@ -835,14 +867,19 @@ async function internalCareerPortalDiscoveryDispatcher() {
             }
             dispatchedCount++;
             console.log(`[CareerPortalATS] Dispatching scheduled Career Portal discovery for user ${uid}...`);
-            const taskName = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("career-portals-queue", "processCareerPortalDiscoveryTask", {
-                uid,
-                forceRefresh: false
-            });
-            if (!taskName) {
-                executeCareerPortalDiscovery(uid, { forceRefresh: false }).catch(err => {
-                    console.error(`[CareerPortalATS] Background execution error for user ${uid}:`, err);
+            // Primary: Asynchronous Pub/Sub fan-out (isolated container per user)
+            const pubsubMsgId = await (0, pubsubHelper_1.publishUserPubSubMessage)("run-career-portal-discovery", { uid, forceRefresh: false });
+            // Secondary Fallback: Cloud Tasks queue
+            if (!pubsubMsgId) {
+                const taskName = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("career-portals-queue", "processCareerPortalDiscoveryTask", {
+                    uid,
+                    forceRefresh: false
                 });
+                if (!taskName) {
+                    executeCareerPortalDiscovery(uid, { forceRefresh: false }).catch(err => {
+                        console.error(`[CareerPortalATS] Background execution error for user ${uid}:`, err);
+                    });
+                }
             }
         }
         console.log(`[CareerPortalATS] Dispatcher finished. Queued for ${dispatchedCount} user(s).`);
@@ -851,4 +888,31 @@ async function internalCareerPortalDiscoveryDispatcher() {
         console.error("[CareerPortalATS] Error in scheduled career portal dispatcher:", e);
     }
 }
+/**
+ * Pub/Sub Cloud Function Trigger: processCareerPortalDiscoveryPubSub
+ * Listens to 'run-career-portal-discovery' topic. Auto-provisions on deploy.
+ * Runs in an isolated 540s container per user.
+ */
+exports.processCareerPortalDiscoveryPubSub = functions
+    .runWith({ timeoutSeconds: 540, memory: "1GB" })
+    .pubsub.topic("run-career-portal-discovery")
+    .onPublish(async (message) => {
+    const payload = message.json || {};
+    const uid = payload.uid;
+    if (!uid) {
+        console.error("[processCareerPortalDiscoveryPubSub] Missing uid in message payload.");
+        return;
+    }
+    console.log(`[processCareerPortalDiscoveryPubSub] Starting Career Portal discovery for user ${uid}...`);
+    try {
+        const result = await executeCareerPortalDiscovery(uid, {
+            forceRefresh: payload.forceRefresh || false,
+            customRole: payload.customRole
+        });
+        console.log(`[processCareerPortalDiscoveryPubSub] Completed for user ${uid}. Result:`, result.message);
+    }
+    catch (err) {
+        console.error(`[processCareerPortalDiscoveryPubSub] Fatal error for user ${uid}:`, err.message || err);
+    }
+});
 //# sourceMappingURL=careerPortalATS.js.map

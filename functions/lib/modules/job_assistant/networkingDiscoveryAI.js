@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.triggerNetworkingDiscovery = exports.processNetworkingDiscoveryUserTask = void 0;
+exports.triggerNetworkingDiscovery = exports.processNetworkingDiscoveryPubSub = exports.processNetworkingDiscoveryUserTask = void 0;
 exports.sanitizeConnectionNote = sanitizeConnectionNote;
 exports.resolveUserResumeGroundTruth = resolveUserResumeGroundTruth;
 exports.discoverNetworkingLeadsForUser = discoverNetworkingLeadsForUser;
@@ -16,6 +16,7 @@ const featureLogger_1 = require("../../utils/featureLogger");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
+const pubsubHelper_1 = require("../../utils/pubsubHelper");
 const emailFormatter_1 = require("../../utils/emailFormatter");
 const IT_SERVICES_MNC_BLACKLIST = [
     "cognizant", "cognizant technology solutions", "cts",
@@ -937,25 +938,50 @@ async function internalNetworkingDiscoveryDispatcher() {
         const nowUnix = moment().tz('Asia/Kolkata').unix();
         for (let i = 0; i < eligibleUids.length; i++) {
             const uid = eligibleUids[i];
-            const etaUnix = nowUnix + (i * 30); // Stagger by 30s
-            const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processNetworkingDiscoveryUserTask", "processNetworkingDiscoveryUserTask", { uid }, etaUnix);
-            // Fallback if Cloud Tasks queue fails: process directly
-            if (!taskId) {
-                console.warn(`[internalNetworkingDiscoveryDispatcher] Cloud Tasks queue unavailable for ${uid}. Running directly with lock...`);
-                try {
-                    await discoverNetworkingLeadsForUser(uid, { isManualTrigger: false });
+            // Primary: Asynchronous Pub/Sub fan-out (isolated container per user)
+            const pubsubMsgId = await (0, pubsubHelper_1.publishUserPubSubMessage)("run-networking-discovery", { uid });
+            // Secondary Fallback: Cloud Tasks queue
+            if (!pubsubMsgId) {
+                const etaUnix = nowUnix + (i * 30);
+                const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processNetworkingDiscoveryUserTask", "processNetworkingDiscoveryUserTask", { uid }, etaUnix);
+                if (!taskId) {
+                    console.warn(`[internalNetworkingDiscoveryDispatcher] Fallback queue unavailable for ${uid}. Running in background promise...`);
+                    discoverNetworkingLeadsForUser(uid, { isManualTrigger: false }).catch(err => {
+                        console.error(`[internalNetworkingDiscoveryDispatcher] Error for user ${uid}:`, err);
+                    });
                 }
-                catch (err) {
-                    console.error(`[internalNetworkingDiscoveryDispatcher] Error for user ${uid}:`, err.message || err);
-                }
-                await new Promise(res => setTimeout(res, 5000));
             }
         }
+        console.log(`[internalNetworkingDiscoveryDispatcher] Dispatched for ${eligibleUids.length} user(s).`);
     }
     catch (e) {
         console.error("[internalNetworkingDiscoveryDispatcher] Daily dispatcher error:", e.message || e);
     }
 }
+/**
+ * Pub/Sub Cloud Function Trigger: processNetworkingDiscoveryPubSub
+ * Listens to 'run-networking-discovery' topic. Auto-provisions on deploy.
+ * Runs in an isolated 540s container per user.
+ */
+exports.processNetworkingDiscoveryPubSub = functions
+    .runWith({ timeoutSeconds: 540, memory: "1GB" })
+    .pubsub.topic("run-networking-discovery")
+    .onPublish(async (message) => {
+    const payload = message.json || {};
+    const uid = payload.uid;
+    if (!uid) {
+        console.error("[processNetworkingDiscoveryPubSub] Missing uid in message payload.");
+        return;
+    }
+    console.log(`[processNetworkingDiscoveryPubSub] Starting Startup Radar / Cold Outreach for user ${uid}...`);
+    try {
+        const result = await discoverNetworkingLeadsForUser(uid, { isManualTrigger: false });
+        console.log(`[processNetworkingDiscoveryPubSub] Completed for user ${uid}. Result:`, result.message);
+    }
+    catch (err) {
+        console.error(`[processNetworkingDiscoveryPubSub] Fatal error for user ${uid}:`, err.message || err);
+    }
+});
 /**
  * On-Demand HTTPS Callable for Flutter App
  */

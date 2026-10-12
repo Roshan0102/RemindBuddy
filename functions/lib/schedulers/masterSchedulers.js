@@ -116,15 +116,9 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
                 console.error("Error in internalAutoJobDiscoveryAndApply inside masterHalfHourlyRunner:", err);
             }
         }
-        // 11:00 AM IST (Hour 11): Morning LinkedIn Real-Time Recruiter Post Scraper & Auto-Apply, plus Gold Fetch
+        // 11:00 AM IST (Hour 11): Gold Fetch (Priority 1), Gold AI Forecast (Priority 2), Morning LinkedIn Auto-Apply via PubSub
         if (hour === 11) {
-            console.log("[masterHalfHourlyRunner] Executing 11:00 AM tasks: LinkedIn Recruiter Posts Scraper & Auto-Apply, Gold Fetch...");
-            try {
-                await (0, linkedinAutoApply_1.internalLinkedInPostAutoApplyDispatcher)();
-            }
-            catch (err) {
-                console.error("Error in internalLinkedInPostAutoApplyDispatcher at 11:00 inside masterHalfHourlyRunner:", err);
-            }
+            console.log("[masterHalfHourlyRunner] Executing 11:00 AM tasks: Gold Fetch (Priority 1), AI Forecast, LinkedIn Auto-Apply...");
             try {
                 await (0, goldFunctions_1.internalPerformGoldFetch)();
             }
@@ -136,6 +130,12 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
             }
             catch (err) {
                 console.error("Error in scheduledMarketForecast inside masterHalfHourlyRunner:", err);
+            }
+            try {
+                await (0, linkedinAutoApply_1.internalLinkedInPostAutoApplyDispatcher)();
+            }
+            catch (err) {
+                console.error("Error in internalLinkedInPostAutoApplyDispatcher at 11:00 inside masterHalfHourlyRunner:", err);
             }
         }
         // 02:00 PM IST (Hour 14): Midday Recruiter Reply & Assessment Check
@@ -231,6 +231,16 @@ exports.masterHalfHourlyRunner = functions.runWith({ timeoutSeconds: 300, memory
             }
             catch (err) {
                 console.error("Error in internalNetworkingDiscoveryDispatcher inside masterHalfHourlyRunner:", err);
+            }
+        }
+        // 07:30 PM IST (Hour 19, Minute 30): Evening Gold Price Late Revision Check (handles LiveChennai closing updates)
+        if (hour === 19) {
+            console.log("[masterHalfHourlyRunner] Executing 07:30 PM tasks: Evening Gold Late Revision Check...");
+            try {
+                await (0, goldFunctions_1.internalPerformGoldFetch)();
+            }
+            catch (err) {
+                console.error("Error in internalPerformGoldFetch at 19:30 inside masterHalfHourlyRunner:", err);
             }
         }
         // 09:30 PM IST (Hour 21, Minute 30): Daily Bank Tracker & Untagged Expense Tagging Notifier

@@ -26,6 +26,7 @@ import 'feature_logs_screen.dart';
 import '../services/notification_service.dart';
 import '../services/web_clipboard_drag/web_clipboard_drag.dart';
 import 'in_app_call_screen.dart';
+import 'document_detail_screen.dart';
 
 class JobAssistantScreen extends StatefulWidget {
   final int? initialFeatureIndex;
@@ -3395,7 +3396,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       stream: _service.streamCareerPortalJobs(),
       builder: (context, portalSnap) {
         final portalPendingCount = (portalSnap.data ?? [])
-            .where((j) => j.status != 'applied')
+            .where((j) => j.status != 'applied' && j.status != 'dismissed')
             .length;
 
         return StreamBuilder<List<NetworkingLead>>(
@@ -3403,7 +3404,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           stream: _networkingLeadsStream,
           builder: (context, leadSnap) {
             final outreachPendingCount = (leadSnap.data ?? [])
-                .where((l) => l.status != 'note_sent' && l.status != 'connected' && l.status != 'replied')
+                .where((l) =>
+                    (l.status == 'discovered' || l.status == 'email_sent') &&
+                    !l.isBounced &&
+                    l.status != 'lead_dismissed')
                 .length;
 
             return LayoutBuilder(
@@ -3912,22 +3916,54 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           return;
         }
 
-        final tempDir = await getTemporaryDirectory();
-        final filePath = '${tempDir.path}/$fileName';
+        Directory? downloadsDir;
+        try {
+          if (Platform.isAndroid) {
+            downloadsDir = Directory('/storage/emulated/0/Download');
+            if (!await downloadsDir.exists()) {
+              downloadsDir = await getExternalStorageDirectory();
+            }
+          } else {
+            downloadsDir = await getDownloadsDirectory();
+          }
+        } catch (_) {}
+        downloadsDir ??= await getApplicationDocumentsDirectory();
+
+        final filePath = '${downloadsDir.path}/$fileName';
         final file = File(filePath);
         await file.writeAsBytes(bytes);
-
-        await Share.shareXFiles(
-          [XFile(filePath, mimeType: 'application/pdf', name: fileName)],
-          text: 'Tailored ATS Resume for ${job.jobTitle} at ${job.companyName}',
-          subject: fileName,
-        );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Tailored PDF ready for ${job.companyName}! Attach it on the portal.'),
+              content: Text('Saved $fileName to Downloads!'),
               backgroundColor: const Color(0xFF10B981),
+              action: SnackBarAction(
+                label: 'OPEN',
+                textColor: Colors.white,
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => FullscreenFileViewer(
+                        fileBytes: bytes,
+                        title: fileName,
+                        isPdf: true,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+
+          // Open the resume preview immediately so the user can review and share it directly
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => FullscreenFileViewer(
+                fileBytes: bytes,
+                title: fileName,
+                isPdf: true,
+              ),
             ),
           );
         }
@@ -3992,6 +4028,31 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error ignoring opening: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _markCareerPortalJobAsUnapplied(CareerPortalJob job) async {
+    try {
+      await _service.updateCareerPortalJobStatus(job.id, 'discovered', job: job);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Moved "${job.jobTitle}" at ${job.companyName} back to Unapplied'),
+            backgroundColor: const Color(0xFF10B981),
+            action: SnackBarAction(
+              label: 'Undo',
+              textColor: Colors.white,
+              onPressed: () => _service.updateCareerPortalJobStatus(job.id, 'applied', job: job),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error moving opening to unapplied: $e')),
         );
       }
     }
@@ -4549,6 +4610,22 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                       side: BorderSide(color: isDark ? Colors.blueGrey.shade800 : Colors.grey.shade400),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if (isApplied) ...[
+                  OutlinedButton.icon(
+                    onPressed: () => _markCareerPortalJobAsUnapplied(job),
+                    icon: const Icon(Icons.undo_rounded, size: 15, color: Color(0xFFF59E0B)),
+                    label: const Text(
+                      'Move to Unapplied',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFF59E0B)),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      side: BorderSide(color: const Color(0xFFF59E0B).withValues(alpha: 0.6)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                   ),

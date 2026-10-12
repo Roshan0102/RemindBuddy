@@ -26,6 +26,7 @@ class _GoldScreenState extends State<GoldScreen> {
   String? _uid;
   bool _askGeminiEnabled = false;
   bool _goldChitEnabled = false;
+  bool _goldUpdateEnabled = false;
   StreamSubscription? _userSubscription;
   late Stream<List<GoldPrice>> _goldPricesStream;
   Set<String> _paidChitDateKeys = {};
@@ -52,6 +53,7 @@ class _GoldScreenState extends State<GoldScreen> {
             setState(() {
               _askGeminiEnabled = enabledModules.contains('ask_gemini');
               _goldChitEnabled = enabledModules.contains('gold_chit');
+              _goldUpdateEnabled = enabledModules.contains('gold_update');
             });
           }
         }
@@ -127,6 +129,7 @@ class _GoldScreenState extends State<GoldScreen> {
     showDialog(
       context: context,
       builder: (context) {
+        bool isUpdating = false;
         return StatefulBuilder(
           builder: (context, setInternalState) {
             return AlertDialog(
@@ -157,6 +160,50 @@ class _GoldScreenState extends State<GoldScreen> {
                 ],
               ),
               actions: [
+                if (_goldUpdateEnabled)
+                  TextButton.icon(
+                    onPressed: isUpdating
+                        ? null
+                        : () async {
+                            setInternalState(() => isUpdating = true);
+                            try {
+                              final res = await _goldService.triggerForceFetch();
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(res['success'] == true || res['status'] == 'changed'
+                                        ? 'Gold price updated to ₹${res['price'] ?? ''} and all users notified!'
+                                        : 'Gold update: ${res['message'] ?? res['status'] ?? 'Checked and updated'}'),
+                                    backgroundColor: const Color(0xFF10B981),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to update gold price: $e'),
+                                    backgroundColor: Colors.red[700],
+                                  ),
+                                );
+                                setInternalState(() => isUpdating = false);
+                              }
+                            }
+                          },
+                    icon: isUpdating
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.sync_rounded, size: 16),
+                    label: Text(isUpdating ? 'Updating...' : 'Update'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFEAB308),
+                      textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Done'),

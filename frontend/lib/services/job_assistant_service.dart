@@ -1627,6 +1627,7 @@ class JobAssistantService {
         .update({
       'status': status,
       if (status == 'applied') 'appliedAt': FieldValue.serverTimestamp(),
+      if (status != 'applied') 'appliedAt': FieldValue.delete(),
     });
 
     if (status == 'applied') {

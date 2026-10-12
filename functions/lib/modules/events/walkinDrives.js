@@ -13,6 +13,7 @@ const nodemailer = require("nodemailer");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
+const pubsubHelper_1 = require("../../utils/pubsubHelper");
 const techEvents_1 = require("./techEvents");
 async function fetchAndStoreWalkInsForUserInternal(uid, triggerNotification, customPrefs) {
     var _a;
@@ -468,30 +469,30 @@ async function internalDailyWalkInsFetcher() {
         const nowUnix = moment().tz('Asia/Kolkata').unix();
         for (let i = 0; i < eligibleUids.length; i++) {
             const uid = eligibleUids[i];
-            const userSnap = await firebase_1.db.collection("users").doc(uid).get();
-            const uData = userSnap.data() || {};
-            const userRoles = (Array.isArray(uData.walkinRoles) && uData.walkinRoles.length > 0)
-                ? uData.walkinRoles
-                : (Array.isArray((_a = uData.autoApplySettings) === null || _a === void 0 ? void 0 : _a.targetRoles) && uData.autoApplySettings.targetRoles.length > 0)
-                    ? uData.autoApplySettings.targetRoles
-                    : ["Software Engineer", "Developer"];
-            const userLocation = (typeof uData.walkinLocation === 'string' && uData.walkinLocation.trim().length > 0)
-                ? uData.walkinLocation.trim()
-                : "Bengaluru";
-            const etaUnix = nowUnix + (i * 25); // Stagger by 25s for safe RPM rate limits
-            const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processWalkInUserTask", "processWalkInUserTask", { uid, roles: userRoles, location: userLocation }, etaUnix);
-            // Fallback: If Cloud Tasks queue enqueue fails, process directly with safe delay
-            if (!taskId) {
-                console.warn(`[internalDailyWalkInsFetcher] Cloud Tasks queue unavailable for ${uid}. Running directly as fallback...`);
-                try {
-                    await fetchAndStoreWalkInsForUserInternal(uid, true, { roles: userRoles, location: userLocation });
+            // Primary: Asynchronous Pub/Sub fan-out (isolated execution)
+            const pubsubMsgId = await (0, pubsubHelper_1.publishUserPubSubMessage)("fetch-user-walkins", { uid });
+            // Secondary Fallback: Cloud Tasks queue
+            if (!pubsubMsgId) {
+                const userSnap = await firebase_1.db.collection("users").doc(uid).get();
+                const uData = userSnap.data() || {};
+                const userRoles = (Array.isArray(uData.walkinRoles) && uData.walkinRoles.length > 0)
+                    ? uData.walkinRoles
+                    : (Array.isArray((_a = uData.autoApplySettings) === null || _a === void 0 ? void 0 : _a.targetRoles) && uData.autoApplySettings.targetRoles.length > 0)
+                        ? uData.autoApplySettings.targetRoles
+                        : ["Software Engineer", "Developer"];
+                const userLocation = (typeof uData.walkinLocation === 'string' && uData.walkinLocation.trim().length > 0)
+                    ? uData.walkinLocation.trim()
+                    : "Bengaluru";
+                const etaUnix = nowUnix + (i * 25);
+                const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processWalkInUserTask", "processWalkInUserTask", { uid, roles: userRoles, location: userLocation }, etaUnix);
+                if (!taskId) {
+                    fetchAndStoreWalkInsForUserInternal(uid, true, { roles: userRoles, location: userLocation }).catch(e => {
+                        console.error(`[internalDailyWalkInsFetcher] Fallback error for ${uid}:`, e);
+                    });
                 }
-                catch (e) {
-                    console.error(`[internalDailyWalkInsFetcher] Error in fallback execution for ${uid}:`, e.message || e);
-                }
-                await new Promise((r) => setTimeout(r, 5000));
             }
         }
+        console.log(`[internalDailyWalkInsFetcher] Dispatched Walk-In Drives for ${eligibleUids.length} user(s).`);
     }
     catch (e) {
         console.error("Error in internalDailyWalkInsFetcher:", e.message || e);

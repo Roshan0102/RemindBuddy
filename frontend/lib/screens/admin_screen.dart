@@ -121,6 +121,12 @@ class _AdminScreenState extends State<AdminScreen> {
       'color': const Color(0xFF0284C7),
     },
     {
+      'id': 'gold_update',
+      'label': 'Gold Price Update Button',
+      'icon': Icons.sync_rounded,
+      'color': const Color(0xFFEAB308),
+    },
+    {
       'id': 'gcp_cost',
       'label': 'GCP Cost Tracker',
       'icon': Icons.cloud_outlined,

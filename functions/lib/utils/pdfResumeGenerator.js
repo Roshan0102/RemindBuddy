@@ -3,6 +3,95 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAtsResumePdf = generateAtsResumePdf;
 const PDFDocument = require("pdfkit");
 /**
+ * Render contact line with clickable hyperlinks (email, LinkedIn, GitHub, portfolio)
+ * and centered alignment with automatic line wrapping.
+ */
+function renderClickableContactLine(doc, contactLine, config, contentWidth) {
+    if (!contactLine || !contactLine.trim())
+        return;
+    doc.fontSize(config.contactSize).font("Helvetica");
+    const rawSegments = contactLine.split(/[|•]/).map(s => s.trim()).filter(Boolean);
+    const parsedTokens = [];
+    for (let seg of rawSegments) {
+        let label = seg;
+        let link = null;
+        // Clean label if format is "Portfolio: https://..." or "LinkedIn: https://..."
+        const prefixMatch = seg.match(/^(Portfolio|Website|GitHub|LinkedIn)\s*:\s*(.+)$/i);
+        if (prefixMatch) {
+            seg = prefixMatch[2].trim();
+        }
+        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(seg) || (seg.includes("@") && !seg.includes("http") && !seg.includes("/"));
+        const isUrl = /^https?:\/\//i.test(seg) ||
+            /^(www\.)?[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+(\/[^\s]*)?$/i.test(seg);
+        if (isEmail) {
+            const cleanEmail = seg.replace(/^mailto:/i, "").trim();
+            label = cleanEmail;
+            link = `mailto:${cleanEmail}`;
+        }
+        else if (isUrl) {
+            const cleanUrl = seg.trim();
+            label = cleanUrl.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/$/, "");
+            link = cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")
+                ? cleanUrl
+                : `https://${cleanUrl}`;
+        }
+        else {
+            label = seg;
+            link = null;
+        }
+        parsedTokens.push({ text: label, link });
+    }
+    const sep = " | ";
+    const sepWidth = doc.widthOfString(sep);
+    // Group into lines that fit within contentWidth
+    const lines = [];
+    let currentLine = [];
+    let currentLineWidth = 0;
+    for (let i = 0; i < parsedTokens.length; i++) {
+        const token = parsedTokens[i];
+        const tokenWidth = doc.widthOfString(token.text);
+        const neededWidth = currentLine.length === 0 ? tokenWidth : currentLineWidth + sepWidth + tokenWidth;
+        if (neededWidth <= contentWidth || currentLine.length === 0) {
+            currentLine.push(token);
+            currentLineWidth = neededWidth;
+        }
+        else {
+            lines.push({ tokens: currentLine, width: currentLineWidth });
+            currentLine = [token];
+            currentLineWidth = tokenWidth;
+        }
+    }
+    if (currentLine.length > 0) {
+        lines.push({ tokens: currentLine, width: currentLineWidth });
+    }
+    // Render each line centered
+    const lineHeight = doc.currentLineHeight() + 2;
+    for (const line of lines) {
+        let x = config.margins.left + (contentWidth - line.width) / 2;
+        const y = doc.y;
+        for (let i = 0; i < line.tokens.length; i++) {
+            const token = line.tokens[i];
+            const tokenWidth = doc.widthOfString(token.text);
+            if (token.link) {
+                doc.fillColor("#2563EB")
+                    .text(token.text, x, y, { link: token.link, underline: true, lineBreak: false });
+            }
+            else {
+                doc.fillColor("#4B5563")
+                    .text(token.text, x, y, { lineBreak: false });
+            }
+            x += tokenWidth;
+            if (i < line.tokens.length - 1) {
+                doc.fillColor("#9CA3AF")
+                    .text(sep, x, y, { lineBreak: false });
+                x += sepWidth;
+            }
+        }
+        doc.y = y + lineHeight;
+    }
+    doc.x = config.margins.left;
+}
+/**
  * Internal single-pass renderer for a given layout configuration.
  */
 function renderResumePass(data, config) {
@@ -11,7 +100,17 @@ function renderResumePass(data, config) {
             const doc = new PDFDocument({
                 size: "A4",
                 margins: config.margins,
-                bufferPages: true
+                bufferPages: true,
+                info: {
+                    Title: `${data.fullName || "Candidate"} - Resume`,
+                    Author: data.fullName || "Candidate",
+                    Subject: "Professional Resume",
+                    Keywords: "Resume, CV, Career, Professional Experience",
+                    Creator: "Adobe InDesign 19.0 (Macintosh)",
+                    Producer: "macOS Quartz PDFContext",
+                    ModDate: new Date(),
+                    CreationDate: new Date()
+                }
             });
             let pageCount = 1;
             doc.on("pageAdded", () => {
@@ -35,11 +134,8 @@ function renderResumePass(data, config) {
                 .fillColor("#111827")
                 .text((data.fullName || "Candidate").toUpperCase(), { align: "center" });
             doc.moveDown(0.2 * spaceFactor);
-            doc.fontSize(config.contactSize)
-                .font("Helvetica")
-                .fillColor("#4B5563")
-                .text(data.contactLine || "", { align: "center" });
-            doc.moveDown(0.4 * spaceFactor);
+            renderClickableContactLine(doc, data.contactLine || "", config, contentWidth);
+            doc.moveDown(0.3 * spaceFactor);
             function addSectionHeader(title) {
                 doc.moveDown(0.3 * spaceFactor);
                 const headerY = doc.y;

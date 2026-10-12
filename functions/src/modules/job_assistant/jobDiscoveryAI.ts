@@ -8,6 +8,7 @@ import { logFeatureExecution } from "../../utils/featureLogger";
 import { callGeminiAPI } from "../../utils/geminiHelper";
 import { searchTavily, TavilySearchResult } from "../../utils/tavilyHelper";
 import { enqueueUserCloudTask } from "../../utils/cloudTasksHelper";
+import { publishUserPubSubMessage } from "../../utils/pubsubHelper";
 import { formatEmailContent } from "../../utils/emailFormatter";
 import { isExperienceExceeded } from "../../utils/experienceMatcher";
 
@@ -1059,29 +1060,58 @@ export async function internalAutoJobDiscoveryAndApply(): Promise<void> {
         const nowUnix = moment().tz('Asia/Kolkata').unix();
         for (let i = 0; i < eligibleUids.length; i++) {
             const uid = eligibleUids[i];
-            const etaUnix = nowUnix + (i * 30); // Stagger by 30s for safe AI + email throughput
-            const taskId = await enqueueUserCloudTask(
-                "processAutoApplyUserTask",
-                "processAutoApplyUserTask",
-                { uid },
-                etaUnix
-            );
 
-            // Fallback: If Cloud Tasks queue enqueue fails, process directly with safe delay
-            if (!taskId) {
-                console.warn(`[internalAutoJobDiscoveryAndApply] Cloud Tasks queue unavailable for ${uid}. Running directly as fallback...`);
-                try {
-                    await discoverAndApplyForUser(uid, { isManualTrigger: false });
-                } catch (e: any) {
-                    console.error(`[internalAutoJobDiscoveryAndApply] Error in fallback execution for ${uid}:`, e.message || e);
+            // Primary: Asynchronous Pub/Sub fan-out (isolated 540s per user)
+            const pubsubMsgId = await publishUserPubSubMessage("run-auto-job-discovery", { uid });
+
+            // Secondary Fallback: Cloud Tasks queue if Pub/Sub client is unavailable
+            if (!pubsubMsgId) {
+                const etaUnix = nowUnix + (i * 30);
+                const taskId = await enqueueUserCloudTask(
+                    "processAutoApplyUserTask",
+                    "processAutoApplyUserTask",
+                    { uid },
+                    etaUnix
+                );
+
+                if (!taskId) {
+                    console.warn(`[internalAutoJobDiscoveryAndApply] Fallback queue unavailable for ${uid}. Running in background promise...`);
+                    discoverAndApplyForUser(uid, { isManualTrigger: false }).catch(err => {
+                        console.error(`[internalAutoJobDiscoveryAndApply] Error for ${uid}:`, err);
+                    });
                 }
-                await new Promise((r) => setTimeout(r, 5000));
             }
         }
+        console.log(`[internalAutoJobDiscoveryAndApply] Dispatch completed for ${eligibleUids.length} user(s).`);
     } catch (err) {
         console.error("[internalAutoJobDiscoveryAndApply] Error in scheduled job runner:", err);
     }
 }
+
+/**
+ * Pub/Sub Cloud Function Trigger: processAutoApplyUserPubSub
+ * Listens to 'run-auto-job-discovery' topic. Auto-provisions on deploy.
+ * Runs in an isolated 540s container per user.
+ */
+export const processAutoApplyUserPubSub = functions
+    .runWith({ timeoutSeconds: 540, memory: "1GB" })
+    .pubsub.topic("run-auto-job-discovery")
+    .onPublish(async (message) => {
+        const payload = message.json || {};
+        const uid = payload.uid;
+        if (!uid) {
+            console.error("[processAutoApplyUserPubSub] Missing uid in message payload.");
+            return;
+        }
+
+        console.log(`[processAutoApplyUserPubSub] Starting Auto Job Discovery & Apply for user ${uid}...`);
+        try {
+            const result = await discoverAndApplyForUser(uid, { isManualTrigger: false });
+            console.log(`[processAutoApplyUserPubSub] Completed for user ${uid}. Result:`, result.message);
+        } catch (err: any) {
+            console.error(`[processAutoApplyUserPubSub] Fatal error for user ${uid}:`, err.message || err);
+        }
+    });
 
 /**
  * On-Demand HTTPS Callable Function triggered from Flutter App

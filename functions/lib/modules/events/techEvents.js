@@ -14,6 +14,7 @@ const nodemailer = require("nodemailer");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
+const pubsubHelper_1 = require("../../utils/pubsubHelper");
 function formatDistinctEventMonths(dates) {
     const monthNames = [
         "January", "February", "March", "April", "May", "June",
@@ -500,34 +501,34 @@ async function internalDailyTechEventsFetcher() {
         const nowUnix = moment().tz('Asia/Kolkata').unix();
         for (let i = 0; i < eligibleUids.length; i++) {
             const uid = eligibleUids[i];
-            const userSnap = await firebase_1.db.collection("users").doc(uid).get();
-            const uData = userSnap.data() || {};
-            const userInterests = uData.eventInterests || [];
-            const userLoc = uData.eventLocation || "";
-            const userMode = uData.eventMode || "In-Person";
-            const etaUnix = nowUnix + (i * 25); // Stagger by 25s for safe RPM rate limits
-            const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processTechEventsUserTask", "processTechEventsUserTask", {
-                uid,
-                interests: userInterests,
-                location: userLoc,
-                eventMode: userMode
-            }, etaUnix);
-            // Fallback: If Cloud Tasks queue enqueue fails, process directly with safe delay
-            if (!taskId) {
-                console.warn(`[internalDailyTechEventsFetcher] Cloud Tasks queue unavailable for ${uid}. Running directly as fallback...`);
-                try {
-                    await fetchAndStoreEventsForUserInternal(uid, true, {
+            // Primary: Asynchronous Pub/Sub fan-out (isolated execution)
+            const pubsubMsgId = await (0, pubsubHelper_1.publishUserPubSubMessage)("fetch-user-tech-events", { uid });
+            // Secondary Fallback: Cloud Tasks queue
+            if (!pubsubMsgId) {
+                const userSnap = await firebase_1.db.collection("users").doc(uid).get();
+                const uData = userSnap.data() || {};
+                const userInterests = uData.eventInterests || [];
+                const userLoc = uData.eventLocation || "";
+                const userMode = uData.eventMode || "In-Person";
+                const etaUnix = nowUnix + (i * 25);
+                const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processTechEventsUserTask", "processTechEventsUserTask", {
+                    uid,
+                    interests: userInterests,
+                    location: userLoc,
+                    eventMode: userMode
+                }, etaUnix);
+                if (!taskId) {
+                    fetchAndStoreEventsForUserInternal(uid, true, {
                         interests: userInterests,
                         location: userLoc,
                         eventMode: userMode
+                    }).catch(e => {
+                        console.error(`[internalDailyTechEventsFetcher] Fallback error for ${uid}:`, e);
                     });
                 }
-                catch (e) {
-                    console.error(`[internalDailyTechEventsFetcher] Error in fallback execution for ${uid}:`, e.message || e);
-                }
-                await new Promise((r) => setTimeout(r, 5000));
             }
         }
+        console.log(`[internalDailyTechEventsFetcher] Dispatched Tech Events for ${eligibleUids.length} user(s).`);
     }
     catch (e) {
         console.error("Error in internalDailyTechEventsFetcher:", e.message || e);

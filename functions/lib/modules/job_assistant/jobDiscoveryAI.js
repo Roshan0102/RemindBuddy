@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.triggerAutoJobDiscoveryAndApply = exports.processAutoApplyUserTask = void 0;
+exports.triggerAutoJobDiscoveryAndApply = exports.processAutoApplyUserPubSub = exports.processAutoApplyUserTask = void 0;
 exports.getBestMatchingResumeProfile = getBestMatchingResumeProfile;
 exports.discoverAndApplyForUser = discoverAndApplyForUser;
 exports.internalAutoJobDiscoveryAndApply = internalAutoJobDiscoveryAndApply;
@@ -14,6 +14,7 @@ const featureLogger_1 = require("../../utils/featureLogger");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 const tavilyHelper_1 = require("../../utils/tavilyHelper");
 const cloudTasksHelper_1 = require("../../utils/cloudTasksHelper");
+const pubsubHelper_1 = require("../../utils/pubsubHelper");
 const emailFormatter_1 = require("../../utils/emailFormatter");
 const experienceMatcher_1 = require("../../utils/experienceMatcher");
 /**
@@ -956,25 +957,50 @@ async function internalAutoJobDiscoveryAndApply() {
         const nowUnix = moment().tz('Asia/Kolkata').unix();
         for (let i = 0; i < eligibleUids.length; i++) {
             const uid = eligibleUids[i];
-            const etaUnix = nowUnix + (i * 30); // Stagger by 30s for safe AI + email throughput
-            const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processAutoApplyUserTask", "processAutoApplyUserTask", { uid }, etaUnix);
-            // Fallback: If Cloud Tasks queue enqueue fails, process directly with safe delay
-            if (!taskId) {
-                console.warn(`[internalAutoJobDiscoveryAndApply] Cloud Tasks queue unavailable for ${uid}. Running directly as fallback...`);
-                try {
-                    await discoverAndApplyForUser(uid, { isManualTrigger: false });
+            // Primary: Asynchronous Pub/Sub fan-out (isolated 540s per user)
+            const pubsubMsgId = await (0, pubsubHelper_1.publishUserPubSubMessage)("run-auto-job-discovery", { uid });
+            // Secondary Fallback: Cloud Tasks queue if Pub/Sub client is unavailable
+            if (!pubsubMsgId) {
+                const etaUnix = nowUnix + (i * 30);
+                const taskId = await (0, cloudTasksHelper_1.enqueueUserCloudTask)("processAutoApplyUserTask", "processAutoApplyUserTask", { uid }, etaUnix);
+                if (!taskId) {
+                    console.warn(`[internalAutoJobDiscoveryAndApply] Fallback queue unavailable for ${uid}. Running in background promise...`);
+                    discoverAndApplyForUser(uid, { isManualTrigger: false }).catch(err => {
+                        console.error(`[internalAutoJobDiscoveryAndApply] Error for ${uid}:`, err);
+                    });
                 }
-                catch (e) {
-                    console.error(`[internalAutoJobDiscoveryAndApply] Error in fallback execution for ${uid}:`, e.message || e);
-                }
-                await new Promise((r) => setTimeout(r, 5000));
             }
         }
+        console.log(`[internalAutoJobDiscoveryAndApply] Dispatch completed for ${eligibleUids.length} user(s).`);
     }
     catch (err) {
         console.error("[internalAutoJobDiscoveryAndApply] Error in scheduled job runner:", err);
     }
 }
+/**
+ * Pub/Sub Cloud Function Trigger: processAutoApplyUserPubSub
+ * Listens to 'run-auto-job-discovery' topic. Auto-provisions on deploy.
+ * Runs in an isolated 540s container per user.
+ */
+exports.processAutoApplyUserPubSub = functions
+    .runWith({ timeoutSeconds: 540, memory: "1GB" })
+    .pubsub.topic("run-auto-job-discovery")
+    .onPublish(async (message) => {
+    const payload = message.json || {};
+    const uid = payload.uid;
+    if (!uid) {
+        console.error("[processAutoApplyUserPubSub] Missing uid in message payload.");
+        return;
+    }
+    console.log(`[processAutoApplyUserPubSub] Starting Auto Job Discovery & Apply for user ${uid}...`);
+    try {
+        const result = await discoverAndApplyForUser(uid, { isManualTrigger: false });
+        console.log(`[processAutoApplyUserPubSub] Completed for user ${uid}. Result:`, result.message);
+    }
+    catch (err) {
+        console.error(`[processAutoApplyUserPubSub] Fatal error for user ${uid}:`, err.message || err);
+    }
+});
 /**
  * On-Demand HTTPS Callable Function triggered from Flutter App
  */

@@ -90,7 +90,8 @@ export {
 
 export {
     triggerAutoJobDiscoveryAndApply,
-    processAutoApplyUserTask
+    processAutoApplyUserTask,
+    processAutoApplyUserPubSub
 } from "./modules/job_assistant/jobDiscoveryAI";
 
 export {
@@ -99,17 +100,20 @@ export {
 
 export {
     triggerNetworkingDiscovery,
-    processNetworkingDiscoveryUserTask
+    processNetworkingDiscoveryUserTask,
+    processNetworkingDiscoveryPubSub
 } from "./modules/job_assistant/networkingDiscoveryAI";
 
 export {
     runLinkedInAutoApplyNow,
-    processLinkedInAutoApplyUserTask
+    processLinkedInAutoApplyUserTask,
+    processLinkedInAutoApplyPubSub
 } from "./modules/job_assistant/linkedinAutoApply";
 
 export {
     triggerCareerPortalDiscovery,
-    processCareerPortalDiscoveryTask
+    processCareerPortalDiscoveryTask,
+    processCareerPortalDiscoveryPubSub
 } from "./modules/job_assistant/careerPortalATS";
 
 // Finance & Expense Tracking

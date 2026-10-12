@@ -3158,36 +3158,115 @@ class _FinanceScreenState extends State<FinanceScreen> with SingleTickerProvider
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 3),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(
-                                            DateFormat('dd MMM, hh:mm a').format(tx.timestamp),
-                                            style: TextStyle(color: subtextColor, fontSize: 11),
-                                          ),
-                                          Builder(builder: (context) {
-                                            final bool isItemUntagged = !tx.isVerified ||
-                                                tx.category.trim().toLowerCase() == 'untagged' ||
-                                                tx.category.trim().toLowerCase() == 'uncategorized' ||
-                                                tx.category.trim().toLowerCase() == 'upi transfer';
-                                            return Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: !isItemUntagged ? Colors.green.withValues(alpha: 0.2) : Colors.amber.withValues(alpha: 0.2),
-                                                borderRadius: BorderRadius.circular(8),
+                                      Builder(builder: (context) {
+                                        final bool isItemUntagged = !tx.isVerified ||
+                                            tx.category.trim().toLowerCase() == 'untagged' ||
+                                            tx.category.trim().toLowerCase() == 'uncategorized' ||
+                                            tx.category.trim().toLowerCase() == 'upi transfer';
+
+                                        if (!isItemUntagged) {
+                                          return Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                DateFormat('dd MMM, hh:mm a').format(tx.timestamp),
+                                                style: TextStyle(color: subtextColor, fontSize: 11),
                                               ),
-                                              child: Text(
-                                                !isItemUntagged ? tx.category : 'Untagged • Suggested: ${ExpenseCategoryPredictor.predictCategory(payee: tx.payee, notes: tx.notes, rawBody: tx.rawBody, rawTitle: tx.rawTitle)}',
-                                                style: TextStyle(
-                                                  color: !isItemUntagged ? (isDark ? Colors.greenAccent : Colors.green.shade800) : (isDark ? Colors.amberAccent : Colors.amber.shade900),
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.green.withValues(alpha: 0.2),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Text(
+                                                  tx.category,
+                                                  style: TextStyle(
+                                                    color: isDark ? Colors.greenAccent : Colors.green.shade800,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
                                                 ),
                                               ),
-                                            );
-                                          }),
-                                        ],
-                                      ),
+                                            ],
+                                          );
+                                        }
+
+                                        final suggestedCat = ExpenseCategoryPredictor.predictCategory(
+                                          payee: tx.payee,
+                                          notes: tx.notes,
+                                          rawBody: tx.rawBody,
+                                          rawTitle: tx.rawTitle,
+                                        );
+
+                                        return Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Text(
+                                                  DateFormat('dd MMM, hh:mm a').format(tx.timestamp),
+                                                  style: TextStyle(color: subtextColor, fontSize: 11),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.amber.withValues(alpha: 0.2),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: Text(
+                                                    'Untagged',
+                                                    style: TextStyle(
+                                                      color: isDark ? Colors.amberAccent : Colors.amber.shade900,
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 3),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: isDark
+                                                    ? const Color(0xFF334155).withValues(alpha: 0.45)
+                                                    : const Color(0xFFF1F5F9),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: isDark
+                                                      ? Colors.amberAccent.withValues(alpha: 0.3)
+                                                      : Colors.amber.shade300,
+                                                  width: 0.7,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.auto_awesome_rounded,
+                                                    size: 11,
+                                                    color: isDark ? Colors.amberAccent : Colors.amber.shade800,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Flexible(
+                                                    child: Text(
+                                                      'Suggested: $suggestedCat',
+                                                      style: TextStyle(
+                                                        color: isDark ? Colors.amberAccent : Colors.amber.shade900,
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      }),
                                       if (tx.isSplit && tx.personalShare != null) ...[
                                         const SizedBox(height: 4),
                                         Container(

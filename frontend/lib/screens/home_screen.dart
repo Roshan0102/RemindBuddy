@@ -365,15 +365,78 @@ class _HomeScreenState extends State<HomeScreen> {
     // 5-minute cache throttle to prevent re-fetching on tab/screen switch
     if (!force && _lastWeatherFetchTime != null) {
       final diff = DateTime.now().difference(_lastWeatherFetchTime!);
-      if (diff < const Duration(minutes: 5) && _weatherTemp != '--' && _weatherTemp != '--°C') {
+      if (diff < const Duration(minutes: 5) && _weatherTemp != '--' && _weatherTemp != '--°C' && _weatherCity != '--') {
         return;
       }
     }
 
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) {
+      double? lat;
+      double? lon;
+      String city = '--';
+
+      // 1. Attempt GPS / Browser Geolocation
+      bool serviceEnabled = false;
+      try {
+        serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      } catch (_) {}
+
+      LocationPermission permission = LocationPermission.denied;
+      try {
+        permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+      } catch (_) {}
+
+      if (serviceEnabled && permission != LocationPermission.denied && permission != LocationPermission.deniedForever) {
+        try {
+          final position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.medium,
+              timeLimit: Duration(seconds: 8),
+            ),
+          );
+          lat = position.latitude;
+          lon = position.longitude;
+        } catch (_) {
+          try {
+            final lastPos = await Geolocator.getLastKnownPosition();
+            if (lastPos != null) {
+              lat = lastPos.latitude;
+              lon = lastPos.longitude;
+            }
+          } catch (_) {}
+        }
+      }
+
+      // 2. Fallback to IP Geolocation if GPS unavailable (crucial for Web / international users)
+      if (lat == null || lon == null) {
+        try {
+          final ipGeoUrl = Uri.parse('https://api.bigdatacloud.net/data/reverse-geocode-client');
+          final ipRes = await http.get(ipGeoUrl).timeout(const Duration(seconds: 4));
+          if (ipRes.statusCode == 200) {
+            final ipData = json.decode(ipRes.body);
+            if (ipData['latitude'] != null && ipData['longitude'] != null) {
+              lat = (ipData['latitude'] as num).toDouble();
+              lon = (ipData['longitude'] as num).toDouble();
+              final rawCity = ipData['city']?.toString().trim();
+              final rawLoc = ipData['locality']?.toString().trim();
+              final rawSub = ipData['principalSubdivision']?.toString().trim();
+              if (rawCity != null && rawCity.isNotEmpty) {
+                city = rawCity;
+              } else if (rawLoc != null && rawLoc.isNotEmpty) {
+                city = rawLoc;
+              } else if (rawSub != null && rawSub.isNotEmpty) {
+                city = rawSub;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (lat == null || lon == null) {
+        if (mounted && (_weatherTemp == '--' || _weatherTemp == '--°C')) {
           setState(() {
             _weatherCity = '--';
             _weatherTemp = '--';
@@ -384,65 +447,58 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) {
-            setState(() {
-              _weatherCity = '--';
-              _weatherTemp = '--';
-              _weatherCondition = 'Permission Denied';
-              _weatherIcon = Icons.location_off_rounded;
-            });
+      // 3. Resolve City Name if not already resolved
+      if (city == '--' || city.isEmpty || city == 'My Location') {
+        try {
+          final geoUrl = Uri.parse(
+            'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lon&localityLanguage=en',
+          );
+          final geoRes = await http.get(geoUrl).timeout(const Duration(seconds: 4));
+          if (geoRes.statusCode == 200) {
+            final geoData = json.decode(geoRes.body);
+            final rawCity = geoData['city']?.toString().trim();
+            final rawLoc = geoData['locality']?.toString().trim();
+            final rawSub = geoData['principalSubdivision']?.toString().trim();
+            if (rawCity != null && rawCity.isNotEmpty) {
+              city = rawCity;
+            } else if (rawLoc != null && rawLoc.isNotEmpty) {
+              city = rawLoc;
+            } else if (rawSub != null && rawSub.isNotEmpty) {
+              city = rawSub;
+            }
           }
-          return;
-        }
+        } catch (_) {}
       }
 
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          setState(() {
-            _weatherCity = '--';
-            _weatherTemp = '--';
-            _weatherCondition = 'Permission Denied';
-            _weatherIcon = Icons.location_off_rounded;
-          });
-        }
-        return;
+      // Secondary fallback for reverse geocoding via OpenStreetMap Nominatim
+      if (city == '--' || city.isEmpty || city == 'My Location') {
+        try {
+          final nomUrl = Uri.parse(
+            'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon&zoom=10',
+          );
+          final nomRes = await http.get(nomUrl, headers: {'User-Agent': 'RemindBuddyApp/1.0'}).timeout(const Duration(seconds: 3));
+          if (nomRes.statusCode == 200) {
+            final nomData = json.decode(nomRes.body);
+            final addr = nomData['address'] as Map<String, dynamic>? ?? {};
+            city = addr['city']?.toString() ??
+                addr['town']?.toString() ??
+                addr['municipality']?.toString() ??
+                addr['village']?.toString() ??
+                addr['county']?.toString() ??
+                addr['state']?.toString() ??
+                'My Location';
+          }
+        } catch (_) {}
       }
 
-      // Live coordinates from GPS/Browser
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 4),
-        ),
-      );
-
-      final lat = position.latitude;
-      final lon = position.longitude;
-
-      String city = '--';
-      try {
-        final geoUrl = Uri.parse(
-          'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lon&localityLanguage=en',
-        );
-        final geoRes = await http.get(geoUrl).timeout(const Duration(seconds: 3));
-        if (geoRes.statusCode == 200) {
-          final geoData = json.decode(geoRes.body);
-          city = geoData['city']?.toString() ??
-              geoData['locality']?.toString() ??
-              geoData['principalSubdivision']?.toString() ??
-              'My Location';
-        }
-      } catch (_) {
+      if (city.isEmpty || city == '--') {
         city = 'My Location';
       }
 
+      // 4. Fetch Live Weather via Open-Meteo
       final response = await http
           .get(Uri.parse('https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current_weather=true'))
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);

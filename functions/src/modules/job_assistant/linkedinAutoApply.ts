@@ -9,6 +9,7 @@ import { logNotification } from "../../utils/logger";
 import { formatEmailContent } from "../../utils/emailFormatter";
 import { isExperienceExceeded } from "../../utils/experienceMatcher";
 import { enqueueUserCloudTask } from "../../utils/cloudTasksHelper";
+import { publishUserPubSubMessage } from "../../utils/pubsubHelper";
 
 function normalizeJobRole(role: string): string {
     return (role || "").toLowerCase()
@@ -862,21 +863,24 @@ export async function internalLinkedInPostAutoApplyDispatcher(): Promise<void> {
 
             dispatchedCount++;
             console.log(`[LinkedInAutoApply] Dispatching LinkedIn Auto-Apply for user ${userDoc.id}...`);
-            
-            // Try enqueuing to Cloud Tasks for background isolated execution
-            const taskId = await enqueueUserCloudTask(
-                "processLinkedInAutoApplyUserTask",
-                "processLinkedInAutoApplyUserTask",
-                { uid: userDoc.id }
-            );
 
-            // Sequential fallback if Cloud Tasks is not configured (must await so Cloud Functions container does not terminate pending execution)
-            if (!taskId) {
-                console.log(`[LinkedInAutoApply] Cloud Tasks queue not available for user ${userDoc.id}. Running directly with await fallback...`);
-                try {
-                    await processLinkedInAutoApplyForUser(userDoc.id, { isManual: false });
-                } catch (err) {
-                    console.error(`[LinkedInAutoApply] Background execution error for user ${userDoc.id}:`, err);
+            // Primary: Asynchronous Pub/Sub fan-out (isolated 540s per user, 0s scheduler blocking)
+            const pubsubMsgId = await publishUserPubSubMessage("run-linkedin-auto-apply", { uid: userDoc.id });
+
+            // Secondary Fallback: Cloud Tasks queue if Pub/Sub client is unavailable
+            if (!pubsubMsgId) {
+                console.log(`[LinkedInAutoApply] PubSub dispatch unavailable for ${userDoc.id}. Falling back to Cloud Tasks...`);
+                const taskId = await enqueueUserCloudTask(
+                    "processLinkedInAutoApplyUserTask",
+                    "processLinkedInAutoApplyUserTask",
+                    { uid: userDoc.id }
+                );
+
+                if (!taskId) {
+                    console.log(`[LinkedInAutoApply] Cloud Tasks also unavailable for ${userDoc.id}. Processing in background promise...`);
+                    processLinkedInAutoApplyForUser(userDoc.id, { isManual: false }).catch(err => {
+                        console.error(`[LinkedInAutoApply] Background execution error for user ${userDoc.id}:`, err);
+                    });
                 }
             }
         }
@@ -886,6 +890,31 @@ export async function internalLinkedInPostAutoApplyDispatcher(): Promise<void> {
         console.error("[LinkedInAutoApply] Error in scheduled dispatcher:", e);
     }
 }
+
+/**
+ * Pub/Sub Cloud Function Trigger: processLinkedInAutoApplyPubSub
+ * Listens to 'run-linkedin-auto-apply' topic. Auto-provisions on deploy.
+ * Runs in an isolated 540s container per user.
+ */
+export const processLinkedInAutoApplyPubSub = functions
+    .runWith({ timeoutSeconds: 540, memory: "1GB" })
+    .pubsub.topic("run-linkedin-auto-apply")
+    .onPublish(async (message) => {
+        const payload = message.json || {};
+        const uid = payload.uid;
+        if (!uid) {
+            console.error("[processLinkedInAutoApplyPubSub] Missing uid in message payload.");
+            return;
+        }
+
+        console.log(`[processLinkedInAutoApplyPubSub] Starting LinkedIn Auto-Apply for user ${uid}...`);
+        try {
+            const result = await processLinkedInAutoApplyForUser(uid, { isManual: false });
+            console.log(`[processLinkedInAutoApplyPubSub] Completed for user ${uid}. Result:`, result.message);
+        } catch (err: any) {
+            console.error(`[processLinkedInAutoApplyPubSub] Fatal error for user ${uid}:`, err.message || err);
+        }
+    });
 
 /**
  * Cloud Task HTTP Handler: processLinkedInAutoApplyUserTask
