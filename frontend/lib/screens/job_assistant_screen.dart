@@ -6111,6 +6111,20 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         icon: const Icon(Icons.tune_rounded, size: 18),
                         label: const Text('Settings & 3 Tokens'),
                       ),
+                      const SizedBox(width: 10),
+                      OutlinedButton.icon(
+                        onPressed: () => _showIosShortcutGuideDialog(
+                          'https://us-central1-remindbuddy-b68f9.cloudfunctions.net/importSharedJob?userId=${FirebaseAuth.instance.currentUser?.uid ?? ''}',
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          foregroundColor: const Color(0xFF8B5CF6),
+                          side: const BorderSide(color: Color(0xFF8B5CF6)),
+                        ),
+                        icon: const Icon(Icons.apple_rounded, size: 18),
+                        label: const Text('iOS Share Sheet'),
+                      ),
                     ],
                   ),
                   if (_isRunningLinkedInAutoApply || _linkedInAutoApplyStatusMessage.isNotEmpty) ...[
@@ -6132,6 +6146,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 ],
               ),
             ),
+
+            // iOS 1-Tap Background Webhook Card
+            _buildIosShareWebhookCard(isDark),
 
             const SizedBox(height: 20),
 
@@ -6496,6 +6513,440 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildIosShareWebhookCard(bool isDark) {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final webhookUrl = 'https://us-central1-remindbuddy-b68f9.cloudfunctions.net/importSharedJob?userId=$uid';
+
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isDark
+              ? [const Color(0xFF1E1E2E), const Color(0xFF2A203F)]
+              : [const Color(0xFFF5F3FF), const Color(0xFFEDE9FE)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF8B5CF6).withValues(alpha: 0.35),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.apple_rounded, color: Color(0xFF8B5CF6), size: 22),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  'iPhone LinkedIn 1-Tap Share Sheet',
+                                  style: GoogleFonts.outfit(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text(
+                                  'Background Webhook',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF10B981),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Share posts directly from the LinkedIn iOS App with 0 Safari popups',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Share any job or recruiter hiring post straight from the LinkedIn iOS app into SmartBuddy. Apple Shortcuts runs silently in the background, extracts post details with Gemini, validates experience with your profile, and logs the job application.',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.grey[300] : const Color(0xFF374151),
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF0F172A) : Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isDark ? Colors.white12 : Colors.grey.shade300,
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.link_rounded, size: 18, color: Color(0xFF8B5CF6)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    webhookUrl,
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 11,
+                      color: isDark ? Colors.grey[300] : Colors.grey[800],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy_rounded, size: 18, color: Color(0xFF8B5CF6)),
+                  tooltip: 'Copy Personal Webhook URL',
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: webhookUrl));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Personal Webhook URL copied to clipboard!'),
+                        behavior: SnackBarBehavior.floating,
+                        backgroundColor: Color(0xFF8B5CF6),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () => _showIosShortcutGuideDialog(webhookUrl),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF8B5CF6),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                ),
+                icon: const Icon(Icons.menu_book_rounded, size: 16),
+                label: const Text(
+                  '1-Minute iPhone Setup Guide',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _showTestWebhookDialog(webhookUrl),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF8B5CF6),
+                  side: const BorderSide(color: Color(0xFF8B5CF6)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                ),
+                icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                label: const Text(
+                  'Test Webhook Online',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showIosShortcutGuideDialog(String webhookUrl) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.apple_rounded, color: Color(0xFF8B5CF6), size: 24),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'iPhone Share Sheet Setup (1 Min)',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Configure Apple Shortcuts once to share directly from the LinkedIn iOS app without Safari popping up:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.grey[300] : Colors.grey[700],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _buildGuideStep(
+                  step: '1',
+                  title: 'Open Shortcuts app on iPhone',
+                  desc: 'Tap "+" at the top right to create a new shortcut. Rename it to "Share to SmartBuddy".',
+                  isDark: isDark,
+                ),
+                _buildGuideStep(
+                  step: '2',
+                  title: 'Enable "Show in Share Sheet"',
+                  desc: 'Tap the circle (i) info icon at the bottom, and toggle ON "Show in Share Sheet". Set Share Sheet Types to: URLs, Text, and Safari web pages.',
+                  isDark: isDark,
+                ),
+                _buildGuideStep(
+                  step: '3',
+                  title: 'Add "Get Contents of URL" action',
+                  desc: 'Search for "Get Contents of URL" and add it. Configure the action as follows:',
+                  isDark: isDark,
+                  extra: Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('• URL: (Your personal webhook URL)', style: GoogleFonts.jetBrainsMono(fontSize: 11)),
+                        const SizedBox(height: 4),
+                        Text('• Method: POST', style: GoogleFonts.jetBrainsMono(fontSize: 11, fontWeight: FontWeight.bold, color: const Color(0xFF8B5CF6))),
+                        const SizedBox(height: 4),
+                        Text('• Request Body: JSON', style: GoogleFonts.jetBrainsMono(fontSize: 11)),
+                        const SizedBox(height: 4),
+                        Text('• Key: sharedText  →  Value: Shortcut Input', style: GoogleFonts.jetBrainsMono(fontSize: 11, color: const Color(0xFF10B981))),
+                      ],
+                    ),
+                  ),
+                ),
+                _buildGuideStep(
+                  step: '4',
+                  title: '(Optional) Show Notification',
+                  desc: 'Add a "Show Notification" action with text: "Job Sent to SmartBuddy!" so iOS alerts you immediately upon sharing.',
+                  isDark: isDark,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Done! Whenever you browse LinkedIn on your iPhone, tap Share -> "Share to SmartBuddy" and it imports in background.',
+                          style: TextStyle(fontSize: 11.5, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.copy_rounded, size: 16),
+            label: const Text('Copy Webhook URL'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: webhookUrl));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Personal Webhook URL copied!'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6)),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuideStep({
+    required String step,
+    required String title,
+    required String desc,
+    required bool isDark,
+    Widget? extra,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 12,
+            backgroundColor: const Color(0xFF8B5CF6),
+            child: Text(step, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  desc,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[700],
+                    height: 1.35,
+                  ),
+                ),
+                if (extra != null) extra,
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTestWebhookDialog(String webhookUrl) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final curlCmd = 'curl -X POST "$webhookUrl" -H "Content-Type: application/json" -d \'{"sharedText": "https://www.linkedin.com/jobs/view/12345678"}\'';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.network_check_rounded, color: Color(0xFF8B5CF6)),
+            const SizedBox(width: 8),
+            Text('Webhook Health & Test', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Your background webhook endpoint is deployed and isolated to your user credentials:',
+              style: TextStyle(fontSize: 13, color: isDark ? Colors.grey[300] : Colors.grey[700]),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
+              ),
+              child: SelectableText(
+                curlCmd,
+                style: GoogleFonts.jetBrainsMono(fontSize: 11, color: isDark ? Colors.grey[300] : Colors.grey[800]),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'You can open the webhook URL in your browser to check its live JSON status directly.',
+              style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.copy_rounded, size: 16),
+            label: const Text('Copy cURL'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: curlCmd));
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Test cURL command copied!'), behavior: SnackBarBehavior.floating),
+              );
+            },
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6), foregroundColor: Colors.white),
+            icon: const Icon(Icons.open_in_new_rounded, size: 16),
+            label: const Text('Open Status in Browser'),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final uri = Uri.parse(webhookUrl);
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            },
+          ),
+        ],
       ),
     );
   }

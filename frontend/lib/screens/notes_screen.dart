@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import '../services/url_launcher_helper/url_launcher_helper.dart';
 import '../services/home_widget_service.dart';
+import '../services/notes_ai_service.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
@@ -224,6 +225,43 @@ class _NotesScreenState extends State<NotesScreen> {
     bool isSaving = false;
     bool hasSaved = false;
 
+    MathResult? activeMathResult;
+    TextEditingController? activeMathController;
+
+    void updateMath(TextEditingController ctrl, void Function(void Function()) setDialogState) {
+      final sel = ctrl.selection;
+      final pos = sel.isValid ? sel.baseOffset : ctrl.text.length;
+      final res = NotesAiService.findLastMathExpression(ctrl.text, pos);
+      if (res?.result != activeMathResult?.result || res?.expression != activeMathResult?.expression || activeMathController != ctrl) {
+        setDialogState(() {
+          activeMathResult = res;
+          activeMathController = ctrl;
+        });
+      }
+    }
+
+    void applyMath(void Function(void Function()) setDialogState) {
+      if (activeMathResult == null || activeMathController == null) return;
+      final ctrl = activeMathController!;
+      final res = activeMathResult!;
+      final text = ctrl.text;
+      if (res.matchEndIndex <= text.length) {
+        final before = text.substring(0, res.matchEndIndex);
+        final after = text.substring(res.matchEndIndex);
+        final insertStr = ' ${res.result} ';
+        final newText = '$before$insertStr$after';
+        final newCursor = before.length + insertStr.length;
+        ctrl.value = TextEditingValue(
+          text: newText,
+          selection: TextSelection.collapsed(offset: newCursor),
+        );
+      }
+      setDialogState(() {
+        activeMathResult = null;
+        activeMathController = null;
+      });
+    }
+
     if (!mounted) return;
 
     await Navigator.of(context).push(
@@ -421,6 +459,29 @@ class _NotesScreenState extends State<NotesScreen> {
                         });
                       },
                     ),
+                    IconButton(
+                      icon: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF6366F1), Color(0xFFA855F7)],
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 16),
+                      ),
+                      tooltip: 'AI Writing & Math Tools',
+                      onPressed: () => _openNoteAiTools(
+                        context: context,
+                        isChecklist: isChecklist,
+                        titleController: titleController,
+                        contentController: contentController,
+                        checklistItems: checklistItems,
+                        itemControllers: itemControllers,
+                        itemFocusNodes: itemFocusNodes,
+                        setDialogState: setDialogState,
+                      ),
+                    ),
                     if (isChecklist)
                       IconButton(
                         icon: const Icon(Icons.widgets_outlined, size: 20),
@@ -581,6 +642,81 @@ class _NotesScreenState extends State<NotesScreen> {
                         color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
                         height: 20,
                       ),
+                      if (activeMathResult != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF6366F1).withValues(alpha: 0.35),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.calculate_rounded, color: Colors.white, size: 16),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${activeMathResult!.expression} = ${activeMathResult!.result}',
+                                  style: GoogleFonts.outfit(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: () => applyMath(setDialogState),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.add_rounded, size: 14, color: Color(0xFF4F46E5)),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          'Insert ${activeMathResult!.result}',
+                                          style: GoogleFonts.outfit(
+                                            color: const Color(0xFF4F46E5),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                InkWell(
+                                  onTap: () {
+                                    setDialogState(() {
+                                      activeMathResult = null;
+                                      activeMathController = null;
+                                    });
+                                  },
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(4.0),
+                                    child: Icon(Icons.close_rounded, color: Colors.white70, size: 16),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       Expanded(
                         child: isChecklist
                             ? Column(
@@ -653,6 +789,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                                         keyboardType: TextInputType.multiline,
                                                         onChanged: (val) {
                                                           item['text'] = val;
+                                                          updateMath(itemControllers[index], setDialogState);
                                                           setDialogState(() {});
                                                         },
                                                       ),
@@ -836,7 +973,10 @@ class _NotesScreenState extends State<NotesScreen> {
                                       textAlignVertical: TextAlignVertical.top,
                                       keyboardType: TextInputType.multiline,
                                       textCapitalization: TextCapitalization.sentences,
-                                      onChanged: (val) => setDialogState(() {}),
+                                      onChanged: (val) {
+                                        updateMath(contentController, setDialogState);
+                                        setDialogState(() {});
+                                      },
                                     ),
                                   ),
                                 ],
@@ -861,6 +1001,481 @@ class _NotesScreenState extends State<NotesScreen> {
     for (var node in itemFocusNodes) {
       node.dispose();
     }
+  }
+
+  Future<void> _openNoteAiTools({
+    required BuildContext context,
+    required bool isChecklist,
+    required TextEditingController titleController,
+    required TextEditingController contentController,
+    required List<Map<String, dynamic>> checklistItems,
+    required List<TextEditingController> itemControllers,
+    required List<FocusNode> itemFocusNodes,
+    required void Function(void Function()) setDialogState,
+  }) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final selectedAction = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF6366F1), Color(0xFFA855F7)],
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Notes AI & Math Tools',
+                            style: GoogleFonts.outfit(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                              color: isDark ? Colors.white : const Color(0xFF0F172A),
+                            ),
+                          ),
+                          Text(
+                            'Instant 0ms Math & Gemini AI Assistant',
+                            style: GoogleFonts.outfit(
+                              fontSize: 12,
+                              color: isDark ? Colors.white60 : Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildAiToolOption(
+                    ctx,
+                    action: 'solve_all_math',
+                    title: 'Solve All Math in Note',
+                    subtitle: 'Instantly calculate all formulas and expressions ending with =',
+                    icon: Icons.calculate_rounded,
+                    iconColor: const Color(0xFF8B5CF6),
+                    isDark: isDark,
+                  ),
+                  _buildAiToolOption(
+                    ctx,
+                    action: 'fix_grammar',
+                    title: 'Fix Grammar & Spelling',
+                    subtitle: 'Correct typos and punctuation while keeping your original tone',
+                    icon: Icons.spellcheck_rounded,
+                    iconColor: const Color(0xFF10B981),
+                    isDark: isDark,
+                  ),
+                  _buildAiToolOption(
+                    ctx,
+                    action: 'polish',
+                    title: 'Polish & Professionalize',
+                    subtitle: 'Elevate tone, sentence flow, and clarity for a pristine finish',
+                    icon: Icons.auto_awesome_rounded,
+                    iconColor: const Color(0xFFF59E0B),
+                    isDark: isDark,
+                  ),
+                  _buildAiToolOption(
+                    ctx,
+                    action: 'summarize',
+                    title: 'Summarize Key Points',
+                    subtitle: 'Generate bulleted summary of key ideas and action points',
+                    icon: Icons.format_list_bulleted_rounded,
+                    iconColor: const Color(0xFF3B82F6),
+                    isDark: isDark,
+                  ),
+                  _buildAiToolOption(
+                    ctx,
+                    action: 'to_checklist',
+                    title: 'Convert to Checklist',
+                    subtitle: 'Transform notes into actionable checkable to-do items',
+                    icon: Icons.playlist_add_check_rounded,
+                    iconColor: const Color(0xFFEC4899),
+                    isDark: isDark,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selectedAction == null || !context.mounted) return;
+
+    if (selectedAction == 'solve_all_math') {
+      if (isChecklist) {
+        int count = 0;
+        setDialogState(() {
+          for (int i = 0; i < itemControllers.length; i++) {
+            final original = itemControllers[i].text;
+            final solved = NotesAiService.solveAllMathInText(original);
+            if (solved != original) {
+              itemControllers[i].text = solved;
+              checklistItems[i]['text'] = solved;
+              count++;
+            }
+          }
+        });
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(count > 0 ? 'Solved math in $count checklist items!' : 'No unsolved equations found (e.g. 100 + 30 =)'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: const Color(0xFF8B5CF6),
+            ),
+          );
+        }
+      } else {
+        final original = contentController.text;
+        final solved = NotesAiService.solveAllMathInText(original);
+        if (solved != original) {
+          setDialogState(() {
+            contentController.text = solved;
+          });
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('All math expressions solved!'),
+                behavior: SnackBarBehavior.floating,
+                backgroundColor: Color(0xFF8B5CF6),
+              ),
+            );
+          }
+        } else {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No unsolved equations found (e.g. 100 + 30 =)'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      }
+      return;
+    }
+
+    final rawText = isChecklist
+        ? checklistItems.map((it) => (it['text'] as String? ?? '').trim()).where((t) => t.isNotEmpty).join('\n')
+        : contentController.text;
+
+    if (rawText.trim().isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please add some content to your note first!'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (loadingCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12.0),
+          child: Row(
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF6366F1)),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  'AI is processing your note...',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final aiResult = await NotesAiService.callNotesAI(
+        action: selectedAction,
+        text: rawText,
+        title: titleController.text,
+      );
+      if (context.mounted) {
+        Navigator.pop(context); // Close loading dialog
+      }
+
+      if (!context.mounted) return;
+
+      await _showAiResultPreviewDialog(
+        context: context,
+        action: selectedAction,
+        originalText: rawText,
+        aiResult: aiResult,
+        isChecklist: isChecklist,
+        contentController: contentController,
+        checklistItems: checklistItems,
+        itemControllers: itemControllers,
+        itemFocusNodes: itemFocusNodes,
+        setDialogState: setDialogState,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Notes AI error: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildAiToolOption(
+    BuildContext context, {
+    required String action,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color iconColor,
+    required bool isDark,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => Navigator.pop(context, action),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: isDark ? 0.2 : 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.outfit(
+                      fontSize: 12,
+                      color: isDark ? Colors.white60 : Colors.black54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Colors.grey, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAiResultPreviewDialog({
+    required BuildContext context,
+    required String action,
+    required String originalText,
+    required String aiResult,
+    required bool isChecklist,
+    required TextEditingController contentController,
+    required List<Map<String, dynamic>> checklistItems,
+    required List<TextEditingController> itemControllers,
+    required List<FocusNode> itemFocusNodes,
+    required void Function(void Function()) setDialogState,
+  }) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final actionTitles = {
+      'fix_grammar': 'Grammar & Spelling Fixed',
+      'polish': 'Polished Note',
+      'summarize': 'Key Points Summary',
+      'to_checklist': 'Checklist Created',
+    };
+
+    final title = actionTitles[action] ?? 'AI Suggestion';
+
+    await showDialog(
+      context: context,
+      builder: (dlgCtx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6366F1), Color(0xFFA855F7)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              title,
+              style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                constraints: const BoxConstraints(maxHeight: 280),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark ? Colors.white12 : Colors.black12,
+                  ),
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    aiResult,
+                    style: GoogleFonts.outfit(
+                      fontSize: 14,
+                      height: 1.5,
+                      color: isDark ? Colors.white : const Color(0xFF1E293B),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dlgCtx),
+            child: const Text('Cancel'),
+          ),
+          if (action != 'to_checklist')
+            OutlinedButton.icon(
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Append to Note'),
+              onPressed: () {
+                setDialogState(() {
+                  if (isChecklist) {
+                    final lines = aiResult.split('\n').where((l) => l.trim().isNotEmpty);
+                    for (final l in lines) {
+                      checklistItems.add({'text': l.trim(), 'isChecked': false});
+                      itemControllers.add(LinkTextEditingController(text: l.trim()));
+                      itemFocusNodes.add(FocusNode());
+                    }
+                  } else {
+                    final curr = contentController.text.trim();
+                    contentController.text = curr.isEmpty ? aiResult : '$curr\n\n$aiResult';
+                  }
+                });
+                Navigator.pop(dlgCtx);
+              },
+            ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.check_rounded, size: 16),
+            label: Text(action == 'to_checklist' ? 'Apply Checklist' : 'Replace Note'),
+            onPressed: () {
+              setDialogState(() {
+                if (action == 'to_checklist' || isChecklist) {
+                  final lines = aiResult.split('\n').where((l) => l.trim().isNotEmpty).toList();
+                  checklistItems.clear();
+                  for (final c in itemControllers) {
+                    c.dispose();
+                  }
+                  for (final f in itemFocusNodes) {
+                    f.dispose();
+                  }
+                  itemControllers.clear();
+                  itemFocusNodes.clear();
+
+                  for (final l in lines) {
+                    var cleaned = l.trim();
+                    if (cleaned.startsWith('- [ ] ') || cleaned.startsWith('- [x] ')) {
+                      cleaned = cleaned.substring(6).trim();
+                    } else if (cleaned.startsWith('- ') || cleaned.startsWith('* ')) {
+                      cleaned = cleaned.substring(2).trim();
+                    } else if (RegExp(r'^\d+\.\s+').hasMatch(cleaned)) {
+                      cleaned = cleaned.replaceFirst(RegExp(r'^\d+\.\s+'), '').trim();
+                    }
+                    if (cleaned.isNotEmpty) {
+                      checklistItems.add({'text': cleaned, 'isChecked': false});
+                      itemControllers.add(LinkTextEditingController(text: cleaned));
+                      itemFocusNodes.add(FocusNode());
+                    }
+                  }
+                  if (checklistItems.isEmpty) {
+                    checklistItems.add({'text': '', 'isChecked': false});
+                    itemControllers.add(LinkTextEditingController(text: ''));
+                    itemFocusNodes.add(FocusNode());
+                  }
+                } else {
+                  contentController.text = aiResult;
+                }
+              });
+              Navigator.pop(dlgCtx);
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool> _ensureNotesPin(BuildContext context) async {

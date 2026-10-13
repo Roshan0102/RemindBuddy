@@ -130,3 +130,13 @@ export {
     masterHalfHourlyRunner
 } from "./schedulers/masterSchedulers";
 
+// iOS & External Share Sheet Webhook
+export {
+    importSharedJob
+} from "./modules/job_assistant/sharedJobWebhook";
+
+// Notes AI Assistant
+export {
+    processNoteWithAI
+} from "./modules/notes/notesAI";
+

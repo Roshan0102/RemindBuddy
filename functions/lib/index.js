@@ -5,7 +5,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseVoiceExpensesWithAI = exports.triggerNightlyExpenseNotifier = exports.processCareerPortalDiscoveryPubSub = exports.processCareerPortalDiscoveryTask = exports.triggerCareerPortalDiscovery = exports.processLinkedInAutoApplyPubSub = exports.processLinkedInAutoApplyUserTask = exports.runLinkedInAutoApplyNow = exports.processNetworkingDiscoveryPubSub = exports.processNetworkingDiscoveryUserTask = exports.triggerNetworkingDiscovery = exports.checkJobRepliesCallable = exports.processAutoApplyUserPubSub = exports.processAutoApplyUserTask = exports.triggerAutoJobDiscoveryAndApply = exports.sendJobApplicationEmail = exports.refineCoverLetterWithAI = exports.generateManualJobApplicationWithAI = exports.parseJobPostersWithAI = exports.sendVoiceCallApprovedReply = exports.voiceCallChatTurn = exports.simulateRecruiterVoiceCall = exports.voiceAssistantQuery = exports.processWalkInUserTask = exports.fetchUserWalkInsTrigger = exports.fetchUserWalkInDrives = exports.fetchUserWalkIns = exports.processTechEventsUserTask = exports.fetchUserTechEventsTrigger = exports.fetchUserTechEvents = exports.getGcpMonthlyCost = exports.adminUpdateAllowedCollaborators = exports.adminUpdateUserModules = exports.adminDeleteUser = exports.adminChangePassword = exports.adminCreateUser = exports.analyzeRosterImage = exports.onInstallmentUpdated = exports.onGoldPriceCreated = exports.forceGoldFetch = exports.checkGoldSources = exports.generateGoldChitAdvice = exports.generateGoldAIInsights = exports.onCollaborationRequestUpdated = exports.onCollaborationRequestCreated = exports.onCalendarReminderCreated = exports.onCalendarReminderUpdated = exports.onCalendarReminderDeleted = exports.autoSnoozeReminderCheckTask = exports.processCalendarReminderTask = void 0;
-exports.masterHalfHourlyRunner = exports.masterMinuteRunner = void 0;
+exports.processNoteWithAI = exports.importSharedJob = exports.masterHalfHourlyRunner = exports.masterMinuteRunner = void 0;
 // Reminders & Tasks
 var calendarReminders_1 = require("./modules/reminders/calendarReminders");
 Object.defineProperty(exports, "processCalendarReminderTask", { enumerable: true, get: function () { return calendarReminders_1.processCalendarReminderTask; } });
@@ -90,4 +90,10 @@ Object.defineProperty(exports, "parseVoiceExpensesWithAI", { enumerable: true, g
 var masterSchedulers_1 = require("./schedulers/masterSchedulers");
 Object.defineProperty(exports, "masterMinuteRunner", { enumerable: true, get: function () { return masterSchedulers_1.masterMinuteRunner; } });
 Object.defineProperty(exports, "masterHalfHourlyRunner", { enumerable: true, get: function () { return masterSchedulers_1.masterHalfHourlyRunner; } });
+// iOS & External Share Sheet Webhook
+var sharedJobWebhook_1 = require("./modules/job_assistant/sharedJobWebhook");
+Object.defineProperty(exports, "importSharedJob", { enumerable: true, get: function () { return sharedJobWebhook_1.importSharedJob; } });
+// Notes AI Assistant
+var notesAI_1 = require("./modules/notes/notesAI");
+Object.defineProperty(exports, "processNoteWithAI", { enumerable: true, get: function () { return notesAI_1.processNoteWithAI; } });
 //# sourceMappingURL=index.js.map
