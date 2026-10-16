@@ -40,6 +40,7 @@ class _AdminScreenState extends State<AdminScreen> {
   bool _isAdminUserActionLoading = false;
   String _adminUserSuccessMessage = '';
   String _adminUserErrorMessage = '';
+  String? _selectedPermissionUsername;
 
   final List<Map<String, dynamic>> _availableModules = [
     {
@@ -2751,738 +2752,1221 @@ $firebaseApkUrl
                     );
                   }
 
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: docs.length,
-                    itemBuilder: (context, index) {
-                      final usernameDoc = docs[index];
-                      final username = usernameDoc.id;
-                      final usernameData =
-                          usernameDoc.data() as Map<String, dynamic>;
-                      final userId = usernameData['uid'] ?? '';
-                      final email = usernameData['email'] ?? '';
+                  QueryDocumentSnapshot? selectedDoc;
+                  if (_selectedPermissionUsername != null) {
+                    try {
+                      selectedDoc = docs.firstWhere(
+                        (d) =>
+                            d.id.toLowerCase() ==
+                            _selectedPermissionUsername!.toLowerCase(),
+                      );
+                    } catch (_) {
+                      selectedDoc = null;
+                    }
+                  }
 
-                      if (userId.isEmpty) return const SizedBox.shrink();
-
-                      return StreamBuilder<DocumentSnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(userId)
-                            .snapshots(),
-                        builder: (context, userSnap) {
-                          final userData =
-                              userSnap.data?.data() as Map<String, dynamic>?;
-                          final enabledModules = List<String>.from(
-                            userData?['enabledModules'] ?? [
-                              'reminders',
-                              'gold',
-                              'notes',
-                              'daily_reminders',
-                            ],
-                          );
-                          final rawSubPermissions = userData?['jobAssistantSubPermissions'];
-                          final Map<String, dynamic> jobSubPerms = rawSubPermissions is Map
-                              ? Map<String, dynamic>.from(rawSubPermissions)
-                              : {
-                                  'auto_apply': true,
-                                  'career_portals': true,
-                                  'linkedin_auto_apply': true,
-                                  'cold_outreach': true,
-                                  'manual_apply': true,
-                                  'ai_recruiter_call': false,
-                                };
-                          final int activeSubCount = [
-                            'auto_apply',
-                            'career_portals',
-                            'linkedin_auto_apply',
-                            'cold_outreach',
-                            'manual_apply',
-                            'ai_recruiter_call',
-                          ].where((k) => jobSubPerms[k] == true || (k != 'ai_recruiter_call' && jobSubPerms[k] != false)).length;
-
-                          return Container(
-                            margin: const EdgeInsets.symmetric(vertical: 7),
-                            decoration: BoxDecoration(
-                              color: cardBg,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: cardBorder),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: isDark
-                                      ? Colors.black.withValues(alpha: 0.2)
-                                      : Colors.black.withValues(alpha: 0.02),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Modern User Selector Card
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: cardBg,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: cardBorder),
+                          boxShadow: [
+                            BoxShadow(
+                              color: isDark
+                                  ? Colors.black.withValues(alpha: 0.2)
+                                  : Colors.black.withValues(alpha: 0.02),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: selectedDoc?.id,
+                            isExpanded: true,
+                            icon: const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: Color(0xFF4F46E5),
+                            ),
+                            hint: Row(
+                              children: [
+                                const Icon(
+                                  Icons.person_search_rounded,
+                                  color: Color(0xFF4F46E5),
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Select a user to configure permissions...',
+                                  style: GoogleFonts.outfit(
+                                    color: subtextColor,
+                                    fontSize: 13.5,
+                                  ),
                                 ),
                               ],
                             ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Theme(
-                              data: Theme.of(context).copyWith(
-                                dividerColor: Colors.transparent,
-                              ),
-                              child: ExpansionTile(
-                                leading: Container(
-                                  width: 42,
-                                  height: 42,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: const LinearGradient(
-                                      colors: [
-                                        Color(0xFF6366F1),
-                                        Color(0xFF8B5CF6),
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: const Color(
-                                          0xFF6366F1,
-                                        ).withValues(alpha: 0.3),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 3),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      username.isNotEmpty
-                                          ? username
-                                                .substring(0, 1)
-                                                .toUpperCase()
-                                          : 'U',
-                                      style: GoogleFonts.outfit(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                title: Row(
+                            dropdownColor: cardBg,
+                            items: docs.map((doc) {
+                              final uName = doc.id;
+                              final uData =
+                                  doc.data() as Map<String, dynamic>;
+                              final uEmail =
+                                  (uData['email'] ?? '').toString();
+                              return DropdownMenuItem<String>(
+                                value: uName,
+                                child: Row(
                                   children: [
-                                    Text(
-                                      '@$username',
-                                      style: GoogleFonts.outfit(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15.5,
-                                        color: textColor,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(width: 8),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 7,
-                                        vertical: 2,
+                                      width: 28,
+                                      height: 28,
+                                      decoration: const BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Color(0xFF6366F1),
+                                            Color(0xFF8B5CF6),
+                                          ],
+                                        ),
                                       ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(
-                                          0xFF10B981,
-                                        ).withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(6),
+                                      child: Center(
+                                        child: Text(
+                                          uName.isNotEmpty
+                                              ? uName[0].toUpperCase()
+                                              : 'U',
+                                          style: GoogleFonts.outfit(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
                                       ),
-                                      child: Text(
-                                        '${enabledModules.length} Active',
-                                        style: GoogleFonts.outfit(
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: const Color(0xFF10B981),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: RichText(
+                                        overflow: TextOverflow.ellipsis,
+                                        text: TextSpan(
+                                          children: [
+                                            TextSpan(
+                                              text: '@$uName ',
+                                              style: GoogleFonts.outfit(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13.5,
+                                                color: textColor,
+                                              ),
+                                            ),
+                                            if (uEmail.isNotEmpty)
+                                              TextSpan(
+                                                text: '($uEmail)',
+                                                style: GoogleFonts.outfit(
+                                                  fontSize: 12,
+                                                  color: subtextColor,
+                                                ),
+                                              ),
+                                          ],
                                         ),
                                       ),
                                     ),
                                   ],
                                 ),
-                                subtitle: Text(
-                                  email.isNotEmpty
-                                      ? email
-                                      : 'No email associated',
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 12.5,
-                                    color: subtextColor,
-                                  ),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              setState(() {
+                                _selectedPermissionUsername = val;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      if (selectedDoc == null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 36,
+                          ),
+                          decoration: BoxDecoration(
+                            color: cardBg,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: cardBorder),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFF4F46E5,
+                                  ).withValues(alpha: 0.1),
+                                  shape: BoxShape.circle,
                                 ),
-                                children: [
-                                  Divider(
-                                    height: 1,
-                                    color: isDark
-                                        ? Colors.white.withValues(alpha: 0.07)
-                                        : Colors.black.withValues(alpha: 0.05),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 18,
-                                      vertical: 12,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.extension_rounded,
-                                          size: 18,
-                                          color: Color(0xFF4F46E5),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Feature Permissions (${_availableModules.length} Modules)',
-                                          style: GoogleFonts.outfit(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13.5,
-                                            color: const Color(0xFF4F46E5),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                                child: const Icon(
+                                  Icons.manage_accounts_rounded,
+                                  size: 36,
+                                  color: Color(0xFF4F46E5),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                'Select a User to Manage Permissions',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: textColor,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Pick any user from the dropdown above to configure their individual feature permissions, granular AI Job Assistant tools, and partner authorizations.',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 12.5,
+                                  color: subtextColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Builder(
+                          builder: (context) {
+                            final usernameDoc = selectedDoc!;
+                            final username = usernameDoc.id;
+                            final usernameData =
+                                usernameDoc.data() as Map<String, dynamic>;
+                            final userId = usernameData['uid'] ?? '';
+                            final email = usernameData['email'] ?? '';
 
-                                  // Compact Responsive Grid for Modules
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                    ),
-                                    child: LayoutBuilder(
-                                      builder: (context, constraints) {
-                                        final double width =
-                                            constraints.maxWidth;
-                                        final int cols = width > 750
-                                            ? 3
-                                            : (width > 480 ? 2 : 1);
-                                        return GridView.builder(
-                                          shrinkWrap: true,
-                                          physics:
-                                              const NeverScrollableScrollPhysics(),
-                                          gridDelegate:
-                                              SliverGridDelegateWithFixedCrossAxisCount(
-                                                crossAxisCount: cols,
-                                                crossAxisSpacing: 8,
-                                                mainAxisSpacing: 8,
-                                                childAspectRatio: cols == 1
-                                                    ? 5.8
-                                                    : 4.2,
-                                              ),
-                                          itemCount: _availableModules.length,
-                                          itemBuilder: (context, idx) {
-                                            final mod = _availableModules[idx];
-                                            final modId =
-                                                mod['id']! as String;
-                                            final modLabel =
-                                                mod['label']! as String;
-                                            final modIcon =
-                                                mod['icon'] as IconData;
-                                            final modColor =
-                                                mod['color'] as Color;
-                                            final isEnabled = enabledModules
-                                                .contains(modId);
+                            if (userId.isEmpty) {
+                              return Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: cardBg,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: cardBorder),
+                                ),
+                                child: Text(
+                                  'User profile has no associated UID.',
+                                  style: GoogleFonts.outfit(color: subtextColor),
+                                ),
+                              );
+                            }
 
-                                            return Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 10,
-                                                    vertical: 4,
-                                                  ),
+                            return StreamBuilder<DocumentSnapshot>(
+                              stream: FirebaseFirestore.instance
+                                  .collection('users')
+                                  .doc(userId)
+                                  .snapshots(),
+                              builder: (context, userSnap) {
+                                final userData =
+                                    userSnap.data?.data()
+                                        as Map<String, dynamic>?;
+                                final enabledModules = List<String>.from(
+                                  userData?['enabledModules'] ?? [
+                                    'reminders',
+                                    'gold',
+                                    'notes',
+                                    'daily_reminders',
+                                  ],
+                                );
+                                final rawSubPermissions =
+                                    userData?['jobAssistantSubPermissions'];
+                                final Map<String, dynamic> jobSubPerms =
+                                    rawSubPermissions is Map
+                                        ? Map<String, dynamic>.from(
+                                            rawSubPermissions,
+                                          )
+                                        : {
+                                            'auto_apply': true,
+                                            'career_portals': true,
+                                            'linkedin_auto_apply': true,
+                                            'cold_outreach': true,
+                                            'manual_apply': true,
+                                            'ai_recruiter_call': false,
+                                          };
+                                final int activeSubCount = [
+                                  'auto_apply',
+                                  'career_portals',
+                                  'linkedin_auto_apply',
+                                  'cold_outreach',
+                                  'manual_apply',
+                                  'ai_recruiter_call',
+                                ].where((k) =>
+                                    jobSubPerms[k] == true ||
+                                    (k != 'ai_recruiter_call' &&
+                                        jobSubPerms[k] != false)).length;
+
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: cardBg,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: cardBorder),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: isDark
+                                            ? Colors.black.withValues(alpha: 0.2)
+                                            : Colors.black.withValues(alpha: 0.02),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      // User Header
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 18,
+                                          vertical: 16,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              width: 44,
+                                              height: 44,
                                               decoration: BoxDecoration(
-                                                color: isEnabled
-                                                    ? modColor.withValues(
-                                                        alpha: isDark
-                                                            ? 0.12
-                                                            : 0.08,
-                                                      )
-                                                    : (isDark
-                                                          ? const Color(
-                                                              0xFF0F172A,
-                                                            )
-                                                          : const Color(
-                                                              0xFFF8FAFC,
-                                                            )),
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                                border: Border.all(
-                                                  color: isEnabled
-                                                      ? modColor.withValues(
-                                                          alpha: 0.35,
-                                                        )
-                                                      : (isDark
-                                                            ? Colors.white
-                                                                .withValues(
-                                                                  alpha: 0.05,
-                                                                )
-                                                            : Colors.black
-                                                                .withValues(
-                                                                  alpha: 0.05,
-                                                                )),
+                                                shape: BoxShape.circle,
+                                                gradient: const LinearGradient(
+                                                  colors: [
+                                                    Color(0xFF6366F1),
+                                                    Color(0xFF8B5CF6),
+                                                  ],
+                                                  begin: Alignment.topLeft,
+                                                  end: Alignment.bottomRight,
+                                                ),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: const Color(
+                                                      0xFF6366F1,
+                                                    ).withValues(alpha: 0.3),
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 3),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: Center(
+                                                child: Text(
+                                                  username.isNotEmpty
+                                                      ? username
+                                                            .substring(0, 1)
+                                                            .toUpperCase()
+                                                      : 'U',
+                                                  style: GoogleFonts.outfit(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 19,
+                                                  ),
                                                 ),
                                               ),
-                                              child: Row(
+                                            ),
+                                            const SizedBox(width: 14),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
                                                 children: [
-                                                  Container(
-                                                    padding:
-                                                        const EdgeInsets.all(6),
-                                                    decoration: BoxDecoration(
-                                                      color: modColor
-                                                          .withValues(
-                                                            alpha: 0.15,
-                                                          ),
-                                                      shape: BoxShape.circle,
-                                                    ),
-                                                    child: Icon(
-                                                      modIcon,
-                                                      size: 16,
-                                                      color: modColor,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Expanded(
-                                                    child: Text(
-                                                      modLabel,
-                                                      style: GoogleFonts.outfit(
-                                                        fontSize: 12.5,
-                                                        fontWeight: isEnabled
-                                                            ? FontWeight.bold
-                                                            : FontWeight.w500,
-                                                        color: isEnabled
-                                                            ? textColor
-                                                            : subtextColor,
+                                                  Row(
+                                                    children: [
+                                                      Text(
+                                                        '@$username',
+                                                        style:
+                                                            GoogleFonts.outfit(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              fontSize: 16,
+                                                              color: textColor,
+                                                            ),
+                                                        overflow:
+                                                            TextOverflow.ellipsis,
                                                       ),
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                    ),
+                                                      const SizedBox(width: 8),
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 7,
+                                                              vertical: 2,
+                                                            ),
+                                                        decoration:
+                                                            BoxDecoration(
+                                                              color: const Color(
+                                                                0xFF10B981,
+                                                              ).withValues(
+                                                                alpha: 0.12,
+                                                              ),
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                        6,
+                                                                      ),
+                                                            ),
+                                                        child: Text(
+                                                          '${enabledModules.length} Active',
+                                                          style:
+                                                              GoogleFonts.outfit(
+                                                                fontSize: 10.5,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                                color: const Color(
+                                                                  0xFF10B981,
+                                                                ),
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
-                                                  Transform.scale(
-                                                    scale: 0.8,
-                                                    child: Switch(
-                                                      value: isEnabled,
-                                                      activeThumbColor: modColor,
-                                                      activeTrackColor: modColor.withValues(alpha: 0.4),
-                                                      onChanged: (val) =>
-                                                          _toggleModule(
-                                                            userId,
-                                                            modId,
-                                                            val,
-                                                            enabledModules,
-                                                          ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    email.isNotEmpty
+                                                        ? email
+                                                        : 'No email associated',
+                                                    style: GoogleFonts.outfit(
+                                                      fontSize: 12.5,
+                                                      color: subtextColor,
                                                     ),
                                                   ),
                                                 ],
                                               ),
+                                            ),
+                                            IconButton(
+                                              tooltip: 'Clear selection',
+                                              icon: const Icon(
+                                                Icons.close_rounded,
+                                                size: 20,
+                                              ),
+                                              onPressed: () {
+                                                setState(() {
+                                                  _selectedPermissionUsername =
+                                                      null;
+                                                });
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Divider(
+                                        height: 1,
+                                        color: isDark
+                                            ? Colors.white.withValues(
+                                                alpha: 0.07,
+                                              )
+                                            : Colors.black.withValues(
+                                                alpha: 0.05,
+                                              ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 18,
+                                          vertical: 12,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.extension_rounded,
+                                              size: 18,
+                                              color: Color(0xFF4F46E5),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              'Feature Permissions (${_availableModules.length} Modules)',
+                                              style: GoogleFonts.outfit(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13.5,
+                                                color: const Color(0xFF4F46E5),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+
+                                      // Compact Responsive Grid for Modules
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                        ),
+                                        child: LayoutBuilder(
+                                          builder: (context, constraints) {
+                                            final double width =
+                                                constraints.maxWidth;
+                                            final int cols = width > 750
+                                                ? 3
+                                                : (width > 480 ? 2 : 1);
+                                            return GridView.builder(
+                                              shrinkWrap: true,
+                                              physics:
+                                                  const NeverScrollableScrollPhysics(),
+                                              gridDelegate:
+                                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                                    crossAxisCount: cols,
+                                                    crossAxisSpacing: 8,
+                                                    mainAxisSpacing: 8,
+                                                    childAspectRatio: cols == 1
+                                                        ? 5.8
+                                                        : 4.2,
+                                                  ),
+                                              itemCount: _availableModules.length,
+                                              itemBuilder: (context, idx) {
+                                                final mod =
+                                                    _availableModules[idx];
+                                                final modId =
+                                                    mod['id']! as String;
+                                                final modLabel =
+                                                    mod['label']! as String;
+                                                final modIcon =
+                                                    mod['icon'] as IconData;
+                                                final modColor =
+                                                    mod['color'] as Color;
+                                                final isEnabled = enabledModules
+                                                    .contains(modId);
+
+                                                return Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: isEnabled
+                                                        ? modColor.withValues(
+                                                            alpha: isDark
+                                                                ? 0.12
+                                                                : 0.08,
+                                                          )
+                                                        : (isDark
+                                                              ? const Color(
+                                                                  0xFF0F172A,
+                                                                )
+                                                              : const Color(
+                                                                  0xFFF8FAFC,
+                                                                )),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: isEnabled
+                                                          ? modColor.withValues(
+                                                              alpha: 0.35,
+                                                            )
+                                                          : (isDark
+                                                                ? Colors.white
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.05,
+                                                                    )
+                                                                : Colors.black
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.05,
+                                                                    )),
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.all(
+                                                              6,
+                                                            ),
+                                                        decoration:
+                                                            BoxDecoration(
+                                                              color: modColor
+                                                                  .withValues(
+                                                                    alpha: 0.15,
+                                                                  ),
+                                                              shape: BoxShape
+                                                                  .circle,
+                                                            ),
+                                                        child: Icon(
+                                                          modIcon,
+                                                          size: 16,
+                                                          color: modColor,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Expanded(
+                                                        child: Text(
+                                                          modLabel,
+                                                          style:
+                                                              GoogleFonts.outfit(
+                                                                fontSize: 12.5,
+                                                                fontWeight:
+                                                                    isEnabled
+                                                                        ? FontWeight
+                                                                            .bold
+                                                                        : FontWeight
+                                                                            .w500,
+                                                                color: isEnabled
+                                                                    ? textColor
+                                                                    : subtextColor,
+                                                              ),
+                                                          overflow:
+                                                              TextOverflow
+                                                                  .ellipsis,
+                                                        ),
+                                                      ),
+                                                      Transform.scale(
+                                                        scale: 0.8,
+                                                        child: Switch(
+                                                          value: isEnabled,
+                                                          activeThumbColor:
+                                                              modColor,
+                                                          activeTrackColor:
+                                                              modColor
+                                                                  .withValues(
+                                                                    alpha: 0.4,
+                                                                  ),
+                                                          onChanged: (val) =>
+                                                              _toggleModule(
+                                                                userId,
+                                                                modId,
+                                                                val,
+                                                                enabledModules,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                              },
                                             );
                                           },
-                                        );
-                                      },
-                                    ),
-                                  ),
+                                        ),
+                                      ),
 
-                                    // Granular Sub-feature Permissions for AI Job Assistant
-                                    if (enabledModules.contains('job_assistant')) ...[
-                                      const SizedBox(height: 10),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF6366F1).withValues(alpha: isDark ? 0.08 : 0.04),
-                                            borderRadius: BorderRadius.circular(16),
-                                            border: Border.all(
-                                              color: const Color(0xFF6366F1).withValues(alpha: isDark ? 0.3 : 0.22),
-                                            ),
+                                      // Granular Sub-feature Permissions for AI Job Assistant
+                                      if (enabledModules.contains('job_assistant')) ...[
+                                        const SizedBox(height: 10),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
                                           ),
-                                          child: Theme(
-                                            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                                            child: ExpansionTile(
-                                              initiallyExpanded: true,
-                                              tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-                                              childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                                              leading: Container(
-                                                padding: const EdgeInsets.all(7),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: const Icon(
-                                                  Icons.tune_rounded,
-                                                  size: 18,
-                                                  color: Color(0xFF6366F1),
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: const Color(
+                                                0xFF6366F1,
+                                              ).withValues(
+                                                alpha: isDark ? 0.08 : 0.04,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              border: Border.all(
+                                                color: const Color(
+                                                  0xFF6366F1,
+                                                ).withValues(
+                                                  alpha: isDark ? 0.3 : 0.22,
                                                 ),
                                               ),
-                                              title: Text(
-                                                'AI Job Assistant Permissions',
-                                                style: GoogleFonts.outfit(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 13.5,
-                                                  color: const Color(0xFF6366F1),
-                                                ),
+                                            ),
+                                            child: Theme(
+                                              data: Theme.of(context).copyWith(
+                                                dividerColor: Colors.transparent,
                                               ),
-                                              subtitle: Text(
-                                                '$activeSubCount of 6 Sub-features Active',
-                                                style: TextStyle(
-                                                  fontSize: 11.5,
-                                                  color: subtextColor,
+                                              child: ExpansionTile(
+                                                initiallyExpanded: true,
+                                                tilePadding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 14,
+                                                      vertical: 2,
+                                                    ),
+                                                childrenPadding:
+                                                    const EdgeInsets.fromLTRB(
+                                                      12,
+                                                      0,
+                                                      12,
+                                                      12,
+                                                    ),
+                                                leading: Container(
+                                                  padding: const EdgeInsets.all(7),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(
+                                                      0xFF6366F1,
+                                                    ).withValues(alpha: 0.15),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: const Icon(
+                                                    Icons.tune_rounded,
+                                                    size: 18,
+                                                    color: Color(0xFF6366F1),
+                                                  ),
                                                 ),
-                                              ),
-                                              children: [
-                                                // Quick Actions: Only LinkedIn, Enable All, Clear All
-                                                Row(
-                                                  children: [
-                                                    TextButton.icon(
-                                                      style: TextButton.styleFrom(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                        minimumSize: Size.zero,
-                                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                      ),
-                                                      icon: const Icon(Icons.bolt_rounded, size: 14, color: Color(0xFF0A66C2)),
-                                                      label: Text(
-                                                        'Only LinkedIn',
-                                                        style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, color: const Color(0xFF0A66C2)),
-                                                      ),
-                                                      onPressed: () => _setAllJobAssistantSubPermissions(
-                                                        userId,
-                                                        {
-                                                          'auto_apply': false,
-                                                          'career_portals': false,
-                                                          'linkedin_auto_apply': true,
-                                                          'cold_outreach': false,
-                                                          'manual_apply': false,
-                                                          'ai_recruiter_call': false,
-                                                        },
-                                                        enabledModules,
-                                                      ),
+                                                title: Text(
+                                                  'AI Job Assistant Permissions',
+                                                  style: GoogleFonts.outfit(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13.5,
+                                                    color: const Color(
+                                                      0xFF6366F1,
                                                     ),
-                                                    const SizedBox(width: 8),
-                                                    TextButton.icon(
-                                                      style: TextButton.styleFrom(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                        minimumSize: Size.zero,
-                                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                      ),
-                                                      icon: const Icon(Icons.select_all_rounded, size: 14, color: Color(0xFF10B981)),
-                                                      label: Text(
-                                                        'Enable All',
-                                                        style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, color: const Color(0xFF10B981)),
-                                                      ),
-                                                      onPressed: () => _setAllJobAssistantSubPermissions(
-                                                        userId,
-                                                        {
-                                                          'auto_apply': true,
-                                                          'career_portals': true,
-                                                          'linkedin_auto_apply': true,
-                                                          'cold_outreach': true,
-                                                          'manual_apply': true,
-                                                          'ai_recruiter_call': true,
-                                                        },
-                                                        enabledModules,
-                                                      ),
-                                                    ),
-                                                    const Spacer(),
-                                                    TextButton.icon(
-                                                      style: TextButton.styleFrom(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                        minimumSize: Size.zero,
-                                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                      ),
-                                                      icon: const Icon(Icons.clear_rounded, size: 14, color: Colors.grey),
-                                                      label: Text(
-                                                        'Clear All',
-                                                        style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
-                                                      ),
-                                                      onPressed: () => _setAllJobAssistantSubPermissions(
-                                                        userId,
-                                                        {
-                                                          'auto_apply': false,
-                                                          'career_portals': false,
-                                                          'linkedin_auto_apply': false,
-                                                          'cold_outreach': false,
-                                                          'manual_apply': false,
-                                                          'ai_recruiter_call': false,
-                                                        },
-                                                        enabledModules,
-                                                      ),
-                                                    ),
-                                                  ],
+                                                  ),
                                                 ),
-                                                const SizedBox(height: 6),
-                                                ...[
-                                                  {
-                                                    'key': 'auto_apply',
-                                                    'title': 'Auto-Apply Agent ⚡',
-                                                    'subtitle': 'Autonomous recruiter search & personalized email applications',
-                                                    'icon': Icons.bolt_rounded,
-                                                    'color': const Color(0xFF3B82F6),
-                                                  },
-                                                  {
-                                                    'key': 'linkedin_auto_apply',
-                                                    'title': 'LinkedIn Auto-Apply 💼',
-                                                    'subtitle': 'Real-time hiring posts scraping (Apify) & instant auto-apply',
-                                                    'icon': Icons.dynamic_feed_rounded,
-                                                    'color': const Color(0xFF0EA5E9),
-                                                  },
-                                                  {
-                                                    'key': 'career_portals',
-                                                    'title': 'Career Portals & ATS Matcher 🏢',
-                                                    'subtitle': 'Direct ATS jobs (<48h) + 1-Click Tailored PDF Resumes',
-                                                    'icon': Icons.apartment_rounded,
-                                                    'color': const Color(0xFF10B981),
-                                                  },
-                                                  {
-                                                    'key': 'cold_outreach',
-                                                    'title': 'Cold Outreach & Networking 👥',
-                                                    'subtitle': 'Startup founder & hiring manager lead discovery & pitch email',
-                                                    'icon': Icons.people_alt_rounded,
-                                                    'color': const Color(0xFFA855F7),
-                                                  },
-                                                  {
-                                                    'key': 'manual_apply',
-                                                    'title': 'Manual Scan & Apply 📸',
-                                                    'subtitle': 'Upload flyers, screenshots or paste JD for AI extraction',
-                                                    'icon': Icons.add_photo_alternate_rounded,
-                                                    'color': const Color(0xFFF59E0B),
-                                                  },
-                                                  {
-                                                    'key': 'ai_recruiter_call',
-                                                    'title': 'AI Recruiter Mock Call 📞',
-                                                    'subtitle': 'Interactive phone interview simulations with AI voice recruiter',
-                                                    'icon': Icons.phone_in_talk_rounded,
-                                                    'color': const Color(0xFF10B981),
-                                                  },
-                                                ].map((sub) {
-                                                  final subKey = sub['key'] as String;
-                                                  final subTitle = sub['title'] as String;
-                                                  final subSubtitle = sub['subtitle'] as String;
-                                                  final subIcon = sub['icon'] as IconData;
-                                                  final subColor = sub['color'] as Color;
-                                                  final isSubEnabled = subKey == 'ai_recruiter_call'
-                                                      ? (jobSubPerms[subKey] == true)
-                                                      : (jobSubPerms[subKey] != false);
-
-                                                  return Container(
-                                                    margin: const EdgeInsets.only(bottom: 6),
-                                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                                    decoration: BoxDecoration(
-                                                      color: isSubEnabled
-                                                          ? subColor.withValues(alpha: isDark ? 0.12 : 0.07)
-                                                          : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC)),
-                                                      borderRadius: BorderRadius.circular(10),
-                                                      border: Border.all(
-                                                        color: isSubEnabled
-                                                            ? subColor.withValues(alpha: 0.3)
-                                                            : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
-                                                      ),
-                                                    ),
-                                                    child: Row(
-                                                      children: [
-                                                        Container(
-                                                          padding: const EdgeInsets.all(6),
-                                                          decoration: BoxDecoration(
-                                                            color: subColor.withValues(alpha: 0.15),
-                                                            shape: BoxShape.circle,
-                                                          ),
-                                                          child: Icon(subIcon, size: 15, color: subColor),
-                                                        ),
-                                                        const SizedBox(width: 8),
-                                                        Expanded(
-                                                          child: Column(
-                                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                                            children: [
-                                                              Text(
-                                                                subTitle,
-                                                                style: GoogleFonts.outfit(
-                                                                  fontSize: 12.5,
-                                                                  fontWeight: isSubEnabled ? FontWeight.bold : FontWeight.w500,
-                                                                  color: isSubEnabled ? textColor : subtextColor,
-                                                                ),
+                                                subtitle: Text(
+                                                  '$activeSubCount of 6 Sub-features Active',
+                                                  style: TextStyle(
+                                                    fontSize: 11.5,
+                                                    color: subtextColor,
+                                                  ),
+                                                ),
+                                                children: [
+                                                  // Quick Actions: Only LinkedIn, Enable All, Clear All
+                                                  Row(
+                                                    children: [
+                                                      TextButton.icon(
+                                                        style: TextButton.styleFrom(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 4,
                                                               ),
-                                                              Text(
-                                                                subSubtitle,
-                                                                style: TextStyle(
-                                                                  fontSize: 10.5,
-                                                                  color: subtextColor,
-                                                                ),
-                                                                maxLines: 1,
-                                                                overflow: TextOverflow.ellipsis,
-                                                              ),
-                                                            ],
-                                                          ),
+                                                          minimumSize: Size.zero,
+                                                          tapTargetSize:
+                                                              MaterialTapTargetSize
+                                                                  .shrinkWrap,
                                                         ),
-                                                        Transform.scale(
-                                                          scale: 0.75,
-                                                          child: Switch(
-                                                            value: isSubEnabled,
-                                                            activeThumbColor: subColor,
-                                                            activeTrackColor: subColor.withValues(alpha: 0.4),
-                                                            onChanged: (val) => _toggleJobAssistantSubPermission(
-                                                              userId,
-                                                              subKey,
-                                                              val,
-                                                              jobSubPerms,
-                                                              enabledModules,
+                                                        icon: const Icon(
+                                                          Icons.bolt_rounded,
+                                                          size: 14,
+                                                          color: Color(0xFF0A66C2),
+                                                        ),
+                                                        label: Text(
+                                                          'Only LinkedIn',
+                                                          style: GoogleFonts.outfit(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: const Color(
+                                                              0xFF0A66C2,
                                                             ),
                                                           ),
                                                         ),
-                                                      ],
-                                                    ),
-                                                  );
-                                                }),
-                                              ],
+                                                        onPressed: () =>
+                                                            _setAllJobAssistantSubPermissions(
+                                                              userId,
+                                                              {
+                                                                'auto_apply':
+                                                                    false,
+                                                                'career_portals':
+                                                                    false,
+                                                                'linkedin_auto_apply':
+                                                                    true,
+                                                                'cold_outreach':
+                                                                    false,
+                                                                'manual_apply':
+                                                                    false,
+                                                                'ai_recruiter_call':
+                                                                    false,
+                                                              },
+                                                              enabledModules,
+                                                            ),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      TextButton.icon(
+                                                        style: TextButton.styleFrom(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 4,
+                                                              ),
+                                                          minimumSize: Size.zero,
+                                                          tapTargetSize:
+                                                              MaterialTapTargetSize
+                                                                  .shrinkWrap,
+                                                        ),
+                                                        icon: const Icon(
+                                                          Icons.select_all_rounded,
+                                                          size: 14,
+                                                          color: Color(0xFF10B981),
+                                                        ),
+                                                        label: Text(
+                                                          'Enable All',
+                                                          style: GoogleFonts.outfit(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: const Color(
+                                                              0xFF10B981,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        onPressed: () =>
+                                                            _setAllJobAssistantSubPermissions(
+                                                              userId,
+                                                              {
+                                                                'auto_apply': true,
+                                                                'career_portals':
+                                                                    true,
+                                                                'linkedin_auto_apply':
+                                                                    true,
+                                                                'cold_outreach':
+                                                                    true,
+                                                                'manual_apply':
+                                                                    true,
+                                                                'ai_recruiter_call':
+                                                                    true,
+                                                              },
+                                                              enabledModules,
+                                                            ),
+                                                      ),
+                                                      const Spacer(),
+                                                      TextButton.icon(
+                                                        style: TextButton.styleFrom(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 4,
+                                                              ),
+                                                          minimumSize: Size.zero,
+                                                          tapTargetSize:
+                                                              MaterialTapTargetSize
+                                                                  .shrinkWrap,
+                                                        ),
+                                                        icon: const Icon(
+                                                          Icons.clear_rounded,
+                                                          size: 14,
+                                                          color: Colors.grey,
+                                                        ),
+                                                        label: Text(
+                                                          'Clear All',
+                                                          style: GoogleFonts.outfit(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: Colors.grey,
+                                                          ),
+                                                        ),
+                                                        onPressed: () =>
+                                                            _setAllJobAssistantSubPermissions(
+                                                              userId,
+                                                              {
+                                                                'auto_apply':
+                                                                    false,
+                                                                'career_portals':
+                                                                    false,
+                                                                'linkedin_auto_apply':
+                                                                    false,
+                                                                'cold_outreach':
+                                                                    false,
+                                                                'manual_apply':
+                                                                    false,
+                                                                'ai_recruiter_call':
+                                                                    false,
+                                                              },
+                                                              enabledModules,
+                                                            ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  ...[
+                                                    {
+                                                      'key': 'auto_apply',
+                                                      'title': 'Auto-Apply Agent ⚡',
+                                                      'subtitle':
+                                                          'Autonomous recruiter search & personalized email applications',
+                                                      'icon': Icons.bolt_rounded,
+                                                      'color':
+                                                          const Color(0xFF3B82F6),
+                                                    },
+                                                    {
+                                                      'key': 'linkedin_auto_apply',
+                                                      'title':
+                                                          'LinkedIn Auto-Apply 💼',
+                                                      'subtitle':
+                                                          'Real-time hiring posts scraping (Apify) & instant auto-apply',
+                                                      'icon': Icons
+                                                          .dynamic_feed_rounded,
+                                                      'color':
+                                                          const Color(0xFF0EA5E9),
+                                                    },
+                                                    {
+                                                      'key': 'career_portals',
+                                                      'title':
+                                                          'Career Portals & ATS Matcher 🏢',
+                                                      'subtitle':
+                                                          'Direct ATS jobs (<48h) + 1-Click Tailored PDF Resumes',
+                                                      'icon':
+                                                          Icons.apartment_rounded,
+                                                      'color':
+                                                          const Color(0xFF10B981),
+                                                    },
+                                                    {
+                                                      'key': 'cold_outreach',
+                                                      'title':
+                                                          'Cold Outreach & Networking 👥',
+                                                      'subtitle':
+                                                          'Startup founder & hiring manager lead discovery & pitch email',
+                                                      'icon': Icons
+                                                          .people_alt_rounded,
+                                                      'color':
+                                                          const Color(0xFFA855F7),
+                                                    },
+                                                    {
+                                                      'key': 'manual_apply',
+                                                      'title':
+                                                          'Manual Scan & Apply 📸',
+                                                      'subtitle':
+                                                          'Upload flyers, screenshots or paste JD for AI extraction',
+                                                      'icon': Icons
+                                                          .add_photo_alternate_rounded,
+                                                      'color':
+                                                          const Color(0xFFF59E0B),
+                                                    },
+                                                    {
+                                                      'key': 'ai_recruiter_call',
+                                                      'title':
+                                                          'AI Recruiter Mock Call 📞',
+                                                      'subtitle':
+                                                          'Interactive phone interview simulations with AI voice recruiter',
+                                                      'icon': Icons
+                                                          .phone_in_talk_rounded,
+                                                      'color':
+                                                          const Color(0xFF10B981),
+                                                    },
+                                                  ].map((sub) {
+                                                    final subKey =
+                                                        sub['key'] as String;
+                                                    final subTitle =
+                                                        sub['title'] as String;
+                                                    final subSubtitle =
+                                                        sub['subtitle'] as String;
+                                                    final subIcon =
+                                                        sub['icon'] as IconData;
+                                                    final subColor =
+                                                        sub['color'] as Color;
+                                                    final isSubEnabled =
+                                                        subKey ==
+                                                                'ai_recruiter_call'
+                                                            ? (jobSubPerms[
+                                                                    subKey] ==
+                                                                true)
+                                                            : (jobSubPerms[
+                                                                    subKey] !=
+                                                                false);
+
+                                                    return Container(
+                                                      margin: const EdgeInsets.only(
+                                                        bottom: 6,
+                                                      ),
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 10,
+                                                            vertical: 6,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: isSubEnabled
+                                                            ? subColor.withValues(
+                                                                alpha: isDark
+                                                                    ? 0.12
+                                                                    : 0.07,
+                                                              )
+                                                            : (isDark
+                                                                  ? const Color(
+                                                                      0xFF0F172A,
+                                                                    )
+                                                                  : const Color(
+                                                                      0xFFF8FAFC,
+                                                                    )),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              10,
+                                                            ),
+                                                        border: Border.all(
+                                                          color: isSubEnabled
+                                                              ? subColor.withValues(
+                                                                  alpha: 0.3,
+                                                                )
+                                                              : (isDark
+                                                                    ? Colors.white
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.05,
+                                                                        )
+                                                                    : Colors.black
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.05,
+                                                                        )),
+                                                        ),
+                                                      ),
+                                                      child: Row(
+                                                        children: [
+                                                          Container(
+                                                            padding:
+                                                                const EdgeInsets.all(
+                                                                  6,
+                                                                ),
+                                                            decoration:
+                                                                BoxDecoration(
+                                                                  color: subColor
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.15,
+                                                                      ),
+                                                                  shape: BoxShape
+                                                                      .circle,
+                                                                ),
+                                                            child: Icon(
+                                                              subIcon,
+                                                              size: 15,
+                                                              color: subColor,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(width: 8),
+                                                          Expanded(
+                                                            child: Column(
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .start,
+                                                              children: [
+                                                                Text(
+                                                                  subTitle,
+                                                                  style:
+                                                                      GoogleFonts.outfit(
+                                                                        fontSize:
+                                                                            12.5,
+                                                                        fontWeight:
+                                                                            isSubEnabled
+                                                                                ? FontWeight.bold
+                                                                                : FontWeight.w500,
+                                                                        color: isSubEnabled
+                                                                            ? textColor
+                                                                            : subtextColor,
+                                                                      ),
+                                                                ),
+                                                                Text(
+                                                                  subSubtitle,
+                                                                  style:
+                                                                      TextStyle(
+                                                                        fontSize:
+                                                                            10.5,
+                                                                        color:
+                                                                            subtextColor,
+                                                                      ),
+                                                                  maxLines: 1,
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis,
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          Transform.scale(
+                                                            scale: 0.75,
+                                                            child: Switch(
+                                                              value: isSubEnabled,
+                                                              activeThumbColor:
+                                                                  subColor,
+                                                              activeTrackColor:
+                                                                  subColor.withValues(
+                                                                    alpha: 0.4,
+                                                                  ),
+                                                              onChanged: (val) =>
+                                                                  _toggleJobAssistantSubPermission(
+                                                                    userId,
+                                                                    subKey,
+                                                                    val,
+                                                                    jobSubPerms,
+                                                                    enabledModules,
+                                                                  ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  }),
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-
-                                    const SizedBox(height: 12),
-                                  Divider(
-                                    height: 1,
-                                    color: isDark
-                                        ? Colors.white.withValues(alpha: 0.07)
-                                        : Colors.black.withValues(alpha: 0.05),
-                                  ),
-
-                                  // Collaboration Partners Section
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 18,
-                                      vertical: 12,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.people_alt_rounded,
-                                          size: 18,
-                                          color: Color(0xFF8B5CF6),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Allowed Collaboration Partners',
-                                          style: GoogleFonts.outfit(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13.5,
-                                            color: const Color(0xFF8B5CF6),
                                           ),
                                         ),
                                       ],
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 18,
-                                      vertical: 2,
-                                    ),
-                                    child: Text(
-                                      'Select which registered users @$username can send collaboration requests to across all features.',
-                                      style: GoogleFonts.outfit(
-                                        fontSize: 11.5,
-                                        color: subtextColor,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 18,
-                                      vertical: 6,
-                                    ),
-                                    child: Builder(
-                                      builder: (context) {
-                                        final allowedCollaborators =
-                                            List<String>.from(
-                                              userData?['allowedCollaborators'] ??
-                                                  [],
-                                            );
-                                        final otherUsers = docs
-                                            .where(
-                                              (d) =>
-                                                  d.id.toLowerCase() !=
-                                                  username.toLowerCase(),
-                                            )
-                                            .toList();
 
-                                        if (otherUsers.isEmpty) {
-                                          return Padding(
-                                            padding: const EdgeInsets.all(8.0),
-                                            child: Text(
-                                              'No other registered users available to authorize.',
+                                      const SizedBox(height: 12),
+                                      Divider(
+                                        height: 1,
+                                        color: isDark
+                                            ? Colors.white.withValues(
+                                                alpha: 0.07,
+                                              )
+                                            : Colors.black.withValues(
+                                                alpha: 0.05,
+                                              ),
+                                      ),
+
+                                      // Collaboration Partners Section
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 18,
+                                          vertical: 12,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.people_alt_rounded,
+                                              size: 18,
+                                              color: Color(0xFF8B5CF6),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              'Allowed Collaboration Partners',
                                               style: GoogleFonts.outfit(
-                                                color: subtextColor,
-                                                fontSize: 12,
-                                                fontStyle: FontStyle.italic,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13.5,
+                                                color: const Color(0xFF8B5CF6),
                                               ),
                                             ),
-                                          );
-                                        }
-
-                                        return Wrap(
-                                          spacing: 8,
-                                          runSpacing: 8,
-                                          children: otherUsers.map((otherDoc) {
-                                            final otherUsername = otherDoc.id;
-                                            final otherData =
-                                                otherDoc.data()
-                                                    as Map<String, dynamic>;
-                                            final otherUid =
-                                                (otherData['uid'] ?? '')
-                                                    .toString();
-                                            final isAllowed =
-                                                allowedCollaborators.contains(
-                                                  otherUsername,
-                                                ) ||
-                                                allowedCollaborators.contains(
-                                                  otherUid,
+                                          ],
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 18,
+                                          vertical: 2,
+                                        ),
+                                        child: Text(
+                                          'Select which registered users @$username can send collaboration requests to across all features.',
+                                          style: GoogleFonts.outfit(
+                                            fontSize: 11.5,
+                                            color: subtextColor,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 18,
+                                          vertical: 6,
+                                        ),
+                                        child: Builder(
+                                          builder: (context) {
+                                            final allowedCollaborators =
+                                                List<String>.from(
+                                                  userData?['allowedCollaborators'] ??
+                                                      [],
                                                 );
+                                            final otherUsers = docs
+                                                .where(
+                                                  (d) =>
+                                                      d.id.toLowerCase() !=
+                                                      username.toLowerCase(),
+                                                )
+                                                .toList();
 
-                                            return FilterChip(
-                                              label: Text(
-                                                '@$otherUsername',
-                                                style: GoogleFonts.outfit(
-                                                  color: isAllowed
-                                                      ? Colors.white
-                                                      : (isDark
-                                                            ? Colors.white70
-                                                            : const Color(
-                                                                0xFF334155,
-                                                              )),
-                                                  fontWeight: isAllowed
-                                                      ? FontWeight.bold
-                                                      : FontWeight.w500,
-                                                  fontSize: 12,
+                                            if (otherUsers.isEmpty) {
+                                              return Padding(
+                                                padding: const EdgeInsets.all(
+                                                  8.0,
                                                 ),
-                                              ),
-                                              selected: isAllowed,
-                                              selectedColor: const Color(
-                                                0xFF7C3AED,
-                                              ),
-                                              backgroundColor: isDark
-                                                  ? const Color(0xFF0F172A)
-                                                  : const Color(0xFFF1F5F9),
-                                              checkmarkColor: Colors.white,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                              ),
-                                              side: BorderSide(
-                                                color: isAllowed
-                                                    ? const Color(0xFF8B5CF6)
-                                                    : cardBorder,
-                                              ),
-                                              onSelected: (val) =>
-                                                  _toggleAllowedCollaborator(
-                                                    userId,
-                                                    otherUsername,
-                                                    val,
-                                                    allowedCollaborators,
+                                                child: Text(
+                                                  'No other registered users available to authorize.',
+                                                  style: GoogleFonts.outfit(
+                                                    color: subtextColor,
+                                                    fontSize: 12,
+                                                    fontStyle: FontStyle.italic,
                                                   ),
+                                                ),
+                                              );
+                                            }
+
+                                            return Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              children: otherUsers.map((
+                                                otherDoc,
+                                              ) {
+                                                final otherUsername =
+                                                    otherDoc.id;
+                                                final otherData =
+                                                    otherDoc.data()
+                                                        as Map<String, dynamic>;
+                                                final otherUid =
+                                                    (otherData['uid'] ?? '')
+                                                        .toString();
+                                                final isAllowed =
+                                                    allowedCollaborators
+                                                        .contains(
+                                                          otherUsername,
+                                                        ) ||
+                                                    allowedCollaborators
+                                                        .contains(otherUid);
+
+                                                return FilterChip(
+                                                  label: Text(
+                                                    '@$otherUsername',
+                                                    style: GoogleFonts.outfit(
+                                                      color: isAllowed
+                                                          ? Colors.white
+                                                          : (isDark
+                                                                ? Colors.white70
+                                                                : const Color(
+                                                                    0xFF334155,
+                                                                  )),
+                                                      fontWeight: isAllowed
+                                                          ? FontWeight.bold
+                                                          : FontWeight.w500,
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  selected: isAllowed,
+                                                  selectedColor: const Color(
+                                                    0xFF7C3AED,
+                                                  ),
+                                                  backgroundColor: isDark
+                                                      ? const Color(0xFF0F172A)
+                                                      : const Color(0xFFF1F5F9),
+                                                  checkmarkColor: Colors.white,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          10,
+                                                        ),
+                                                  ),
+                                                  side: BorderSide(
+                                                    color: isAllowed
+                                                        ? const Color(
+                                                            0xFF8B5CF6,
+                                                          )
+                                                        : cardBorder,
+                                                  ),
+                                                  onSelected: (val) =>
+                                                      _toggleAllowedCollaborator(
+                                                        userId,
+                                                        otherUsername,
+                                                        val,
+                                                        allowedCollaborators,
+                                                      ),
+                                                );
+                                              }).toList(),
                                             );
-                                          }).toList(),
-                                        );
-                                      },
-                                    ),
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                    ],
                                   ),
-                                  const SizedBox(height: 16),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    },
+                                );
+                              },
+                            );
+                          },
+                        ),
+                    ],
                   );
+
                 },
               ),
               const SizedBox(height: 32),

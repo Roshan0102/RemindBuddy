@@ -227,12 +227,35 @@ class _NotesScreenState extends State<NotesScreen> {
 
     MathResult? activeMathResult;
     TextEditingController? activeMathController;
+    late void Function(void Function(void Function())) applyMath;
 
-    void updateMath(TextEditingController ctrl, void Function(void Function()) setDialogState) {
+    void updateMath(
+      TextEditingController ctrl,
+      void Function(void Function()) setDialogState,
+    ) {
       final sel = ctrl.selection;
       final pos = sel.isValid ? sel.baseOffset : ctrl.text.length;
       final res = NotesAiService.findLastMathExpression(ctrl.text, pos);
-      if (res?.result != activeMathResult?.result || res?.expression != activeMathResult?.expression || activeMathController != ctrl) {
+
+      // Clear any prior controller's inline suggestion if switching fields
+      if (activeMathController != null &&
+          activeMathController != ctrl &&
+          activeMathController is LinkTextEditingController) {
+        final prev = activeMathController as LinkTextEditingController;
+        prev.inlineMathSuggestion = null;
+        prev.inlineMathTargetIndex = null;
+        prev.onSuggestionTapped = null;
+      }
+
+      if (ctrl is LinkTextEditingController) {
+        ctrl.inlineMathSuggestion = res?.result;
+        ctrl.inlineMathTargetIndex = res?.matchEndIndex;
+        ctrl.onSuggestionTapped = () => applyMath(setDialogState);
+      }
+
+      if (res?.result != activeMathResult?.result ||
+          res?.expression != activeMathResult?.expression ||
+          activeMathController != ctrl) {
         setDialogState(() {
           activeMathResult = res;
           activeMathController = ctrl;
@@ -240,7 +263,7 @@ class _NotesScreenState extends State<NotesScreen> {
       }
     }
 
-    void applyMath(void Function(void Function()) setDialogState) {
+    applyMath = (void Function(void Function()) setDialogState) {
       if (activeMathResult == null || activeMathController == null) return;
       final ctrl = activeMathController!;
       final res = activeMathResult!;
@@ -251,6 +274,11 @@ class _NotesScreenState extends State<NotesScreen> {
         final insertStr = ' ${res.result} ';
         final newText = '$before$insertStr$after';
         final newCursor = before.length + insertStr.length;
+        if (ctrl is LinkTextEditingController) {
+          ctrl.inlineMathSuggestion = null;
+          ctrl.inlineMathTargetIndex = null;
+          ctrl.onSuggestionTapped = null;
+        }
         ctrl.value = TextEditingValue(
           text: newText,
           selection: TextSelection.collapsed(offset: newCursor),
@@ -260,7 +288,9 @@ class _NotesScreenState extends State<NotesScreen> {
         activeMathResult = null;
         activeMathController = null;
       });
-    }
+    };
+
+
 
     if (!mounted) return;
 
@@ -642,81 +672,6 @@ class _NotesScreenState extends State<NotesScreen> {
                         color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
                         height: 20,
                       ),
-                      if (activeMathResult != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF6366F1).withValues(alpha: 0.35),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.calculate_rounded, color: Colors.white, size: 16),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${activeMathResult!.expression} = ${activeMathResult!.result}',
-                                  style: GoogleFonts.outfit(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: () => applyMath(setDialogState),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.add_rounded, size: 14, color: Color(0xFF4F46E5)),
-                                        const SizedBox(width: 2),
-                                        Text(
-                                          'Insert ${activeMathResult!.result}',
-                                          style: GoogleFonts.outfit(
-                                            color: const Color(0xFF4F46E5),
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                InkWell(
-                                  onTap: () {
-                                    setDialogState(() {
-                                      activeMathResult = null;
-                                      activeMathController = null;
-                                    });
-                                  },
-                                  child: const Padding(
-                                    padding: EdgeInsets.all(4.0),
-                                    child: Icon(Icons.close_rounded, color: Colors.white70, size: 16),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
                       Expanded(
                         child: isChecklist
                             ? Column(
@@ -982,6 +937,86 @@ class _NotesScreenState extends State<NotesScreen> {
                                 ],
                               ),
                       ),
+                      if (activeMathResult != null)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 4, bottom: 6),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () => applyMath(setDialogState),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF6366F1).withValues(
+                                      alpha: isDark ? 0.22 : 0.1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: const Color(0xFF6366F1).withValues(
+                                        alpha: 0.4,
+                                      ),
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(
+                                          0xFF6366F1,
+                                        ).withValues(alpha: 0.15),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.auto_awesome_rounded,
+                                        size: 15,
+                                        color: Color(0xFF6366F1),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '= ${activeMathResult!.result}',
+                                        style: GoogleFonts.outfit(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13.5,
+                                          color: const Color(0xFF6366F1),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF6366F1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Tap to insert',
+                                          style: GoogleFonts.outfit(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -2709,7 +2744,16 @@ class _NotesScreenState extends State<NotesScreen> {
 }
 
 class LinkTextEditingController extends TextEditingController {
-  LinkTextEditingController({super.text});
+  String? inlineMathSuggestion;
+  int? inlineMathTargetIndex;
+  VoidCallback? onSuggestionTapped;
+
+  LinkTextEditingController({
+    super.text,
+    this.inlineMathSuggestion,
+    this.inlineMathTargetIndex,
+    this.onSuggestionTapped,
+  });
 
   @override
   TextSpan buildTextSpan({
@@ -2717,44 +2761,124 @@ class LinkTextEditingController extends TextEditingController {
     TextStyle? style,
     required bool withComposing,
   }) {
-    final RegExp urlRegExp = RegExp(r'(https?://[^\s]+|www\.[^\s]+)', caseSensitive: false);
+    final RegExp urlRegExp =
+        RegExp(r'(https?://[^\s]+|www\.[^\s]+)', caseSensitive: false);
     final String textStr = text;
 
     if (textStr.isEmpty) {
+      if (inlineMathSuggestion != null && inlineMathSuggestion!.isNotEmpty) {
+        return TextSpan(
+          children: [
+            TextSpan(
+              text: ' $inlineMathSuggestion',
+              style: (style ?? const TextStyle()).copyWith(
+                color: const Color(0xFF6366F1).withValues(alpha: 0.6),
+                fontStyle: FontStyle.italic,
+                fontWeight: FontWeight.bold,
+              ),
+              recognizer: onSuggestionTapped != null
+                  ? (TapGestureRecognizer()..onTap = onSuggestionTapped)
+                  : null,
+            ),
+          ],
+          style: style,
+        );
+      }
       return TextSpan(text: textStr, style: style);
     }
+
+    final int? targetIdx = inlineMathTargetIndex;
+    final String? suggestion = inlineMathSuggestion;
+    final bool hasInlineSuggestion = suggestion != null &&
+        suggestion.isNotEmpty &&
+        targetIdx != null &&
+        targetIdx >= 0 &&
+        targetIdx <= textStr.length;
 
     final List<TextSpan> children = [];
     final matches = urlRegExp.allMatches(textStr);
     int lastMatchEnd = 0;
 
+    void addTextSegment(int start, int end) {
+      if (start >= end) return;
+      if (hasInlineSuggestion && targetIdx >= start && targetIdx <= end) {
+        if (targetIdx > start) {
+          children.add(
+            TextSpan(
+              text: textStr.substring(start, targetIdx),
+              style: style,
+            ),
+          );
+        }
+        children.add(
+          TextSpan(
+            text: ' $suggestion',
+            style: (style ?? const TextStyle()).copyWith(
+              color: const Color(0xFF6366F1).withValues(alpha: 0.6),
+              fontStyle: FontStyle.italic,
+              fontWeight: FontWeight.bold,
+            ),
+            recognizer: onSuggestionTapped != null
+                ? (TapGestureRecognizer()..onTap = onSuggestionTapped)
+                : null,
+          ),
+        );
+        if (end > targetIdx) {
+          children.add(
+            TextSpan(
+              text: textStr.substring(targetIdx, end),
+              style: style,
+            ),
+          );
+        }
+      } else {
+        children.add(
+          TextSpan(
+            text: textStr.substring(start, end),
+            style: style,
+          ),
+        );
+      }
+    }
+
     for (final RegExpMatch match in matches) {
       if (match.start > lastMatchEnd) {
-        children.add(TextSpan(
-          text: textStr.substring(lastMatchEnd, match.start),
-          style: style,
-        ));
+        addTextSegment(lastMatchEnd, match.start);
       }
 
       final url = match.group(0)!;
-      children.add(TextSpan(
-        text: url,
-        style: (style ?? const TextStyle()).copyWith(
-          color: const Color(0xFF6366F1),
-          decoration: TextDecoration.underline,
+      children.add(
+        TextSpan(
+          text: url,
+          style: (style ?? const TextStyle()).copyWith(
+            color: const Color(0xFF6366F1),
+            decoration: TextDecoration.underline,
+          ),
         ),
-      ));
+      );
 
       lastMatchEnd = match.end;
     }
 
     if (lastMatchEnd < textStr.length) {
-      children.add(TextSpan(
-        text: textStr.substring(lastMatchEnd),
-        style: style,
-      ));
+      addTextSegment(lastMatchEnd, textStr.length);
+    } else if (hasInlineSuggestion && targetIdx == textStr.length) {
+      children.add(
+        TextSpan(
+          text: ' $suggestion',
+          style: (style ?? const TextStyle()).copyWith(
+            color: const Color(0xFF6366F1).withValues(alpha: 0.6),
+            fontStyle: FontStyle.italic,
+            fontWeight: FontWeight.bold,
+          ),
+          recognizer: onSuggestionTapped != null
+              ? (TapGestureRecognizer()..onTap = onSuggestionTapped)
+              : null,
+        ),
+      );
     }
 
     return TextSpan(children: children, style: style);
   }
 }
+

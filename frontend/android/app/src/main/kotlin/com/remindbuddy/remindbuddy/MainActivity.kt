@@ -40,30 +40,43 @@ class MainActivity: FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val action = intent?.action
+        val isFromHistory = (intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+        val action = if (isFromHistory) null else intent?.action
         val isShareAction = (Intent.ACTION_SEND == action || Intent.ACTION_SEND_MULTIPLE == action)
         if (isShareAction) {
             overridePendingTransition(0, 0)
-            moveTaskToBack(true)
+            window.decorView.post {
+                moveTaskToBack(true)
+            }
         }
         window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        handleSendIntent(intent, isInitial = true)
+        if (!isFromHistory) {
+            handleSendIntent(intent, isInitial = true)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val action = intent.action
+        val isFromHistory = (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        val action = if (isFromHistory) null else intent.action
         val isShareAction = (Intent.ACTION_SEND == action || Intent.ACTION_SEND_MULTIPLE == action)
         if (isShareAction) {
             overridePendingTransition(0, 0)
-            moveTaskToBack(true)
+            window.decorView.post {
+                moveTaskToBack(true)
+            }
         }
-        handleSendIntent(intent, isInitial = false)
+        if (!isFromHistory) {
+            handleSendIntent(intent, isInitial = false)
+        }
     }
 
     private fun handleSendIntent(intent: Intent?, isInitial: Boolean) {
         if (intent == null) return
+        val isFromHistory = (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        if (isFromHistory) return
+
         val action = intent.action
         val type = intent.type ?: ""
 
@@ -75,7 +88,9 @@ class MainActivity: FlutterActivity() {
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
             }
-            moveTaskToBack(true)
+            window.decorView.post {
+                moveTaskToBack(true)
+            }
         }
 
         if (Intent.ACTION_SEND == action) {
@@ -142,6 +157,9 @@ class MainActivity: FlutterActivity() {
                 dispatchSharedData(data, isInitial)
             }
         }
+        try {
+            intent.action = null
+        } catch (_: Exception) {}
     }
 
     private fun copyUriToCache(uri: Uri): String? {
