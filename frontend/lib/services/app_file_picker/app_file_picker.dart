@@ -44,4 +44,13 @@ class AppFilePicker {
         allowedExtensions: allowedExtensions,
         allowMultiple: allowMultiple,
       );
+
+  /// Picks a resume document (PDF, Word DOCX, DOC).
+  static Future<AppPickedFile?> pickResumeDocument() async {
+    final list = await pickFiles(
+      allowedExtensions: ['pdf', 'docx', 'doc'],
+      allowMultiple: false,
+    );
+    return list.isNotEmpty ? list.first : null;
+  }
 }

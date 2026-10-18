@@ -232,10 +232,31 @@ function renderResumePass(data, config) {
                 for (const proj of data.projects) {
                     doc.moveDown(0.18 * spaceFactor);
                     const projY = doc.y;
-                    doc.fontSize(bodySize + 0.5)
-                        .font("Helvetica-Bold")
-                        .fillColor("#111827")
-                        .text(proj.title || "Project", config.margins.left, projY, { continued: !!proj.techStack });
+                    let titleText = proj.title || "Project";
+                    let projectUrl = proj.link || null;
+                    if (!projectUrl) {
+                        const urlMatch = titleText.match(/\((https?:\/\/[^\s)]+)\)/i) || titleText.match(/https?:\/\/[^\s)]+/i);
+                        if (urlMatch) {
+                            projectUrl = urlMatch[1] || urlMatch[0];
+                            titleText = titleText.replace(/\(?https?:\/\/[^\s)]+\)?/i, "").trim();
+                        }
+                    }
+                    if (projectUrl) {
+                        doc.fontSize(bodySize + 0.5)
+                            .font("Helvetica-Bold")
+                            .fillColor("#2563EB")
+                            .text(titleText, config.margins.left, projY, {
+                            link: projectUrl,
+                            underline: true,
+                            continued: !!proj.techStack
+                        });
+                    }
+                    else {
+                        doc.fontSize(bodySize + 0.5)
+                            .font("Helvetica-Bold")
+                            .fillColor("#111827")
+                            .text(titleText, config.margins.left, projY, { continued: !!proj.techStack });
+                    }
                     if (proj.techStack) {
                         doc.font("Helvetica-Oblique")
                             .fillColor("#4B5563")
@@ -383,6 +404,24 @@ async function generateAtsResumePdf(data) {
         if (expanded.pageCount === 1) {
             console.log(`[ResumePDF] Gracefully expanded 1-page layout to fill page (new lastY: ${expanded.lastY.toFixed(1)}pt).`);
             return expanded.buffer;
+        }
+    }
+    // Case C: Multi-page resume exceeds 2 pages (3+ pages) -> compact layout to respect 2-page standard ceiling
+    if (standard.pageCount > 2) {
+        console.log(`[ResumePDF] Content exceeds 2 pages (pageCount: ${standard.pageCount}). Compacting to fit clean 2-page ceiling...`);
+        const compact2 = await renderResumePass(data, {
+            margins: { top: 26, bottom: 26, left: 30, right: 30 },
+            nameSize: 15,
+            contactSize: 8.0,
+            headerSize: 9.5,
+            bodySize: 8.0,
+            lineGap: 1.0,
+            bulletGap: 1.1,
+            spaceFactor: 0.75
+        });
+        if (compact2.pageCount <= 2) {
+            console.log(`[ResumePDF] Successfully condensed multi-page resume into ${compact2.pageCount} page(s).`);
+            return compact2.buffer;
         }
     }
     return standard.buffer;

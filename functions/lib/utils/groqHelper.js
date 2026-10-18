@@ -1,14 +1,18 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GROQ_MODELS = void 0;
+exports.GROQ_VISION_MODELS = exports.GROQ_MODELS = void 0;
 exports.callGroqAPI = callGroqAPI;
 const axios_1 = require("axios");
 exports.GROQ_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
     "qwen/qwen3.8-27b",
     "openai/gpt-oss-120b",
-    "openai/gpt-oss-20b",
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant"
+    "openai/gpt-oss-20b"
+];
+exports.GROQ_VISION_MODELS = [
+    "llama-3.2-11b-vision-preview",
+    "llama-3.2-90b-vision-preview"
 ];
 /**
  * Executes an AI completion against Groq's high-speed LPU inference engine.
@@ -20,12 +24,32 @@ async function callGroqAPI(options) {
     if (!apiKey) {
         throw new Error("Groq API key is missing or empty.");
     }
-    const candidateModels = options.model ? [options.model, ...exports.GROQ_MODELS] : exports.GROQ_MODELS;
     const messages = [];
-    if (options.systemPrompt && options.systemPrompt.trim()) {
-        messages.push({ role: "system", content: options.systemPrompt.trim() });
+    if (options.messages && options.messages.length > 0) {
+        messages.push(...options.messages);
     }
-    messages.push({ role: "user", content: options.prompt.trim() });
+    else {
+        if (options.systemPrompt && options.systemPrompt.trim()) {
+            messages.push({ role: "system", content: options.systemPrompt.trim() });
+        }
+        if (options.prompt) {
+            messages.push({ role: "user", content: options.prompt.trim() });
+        }
+    }
+    const hasImages = messages.some(m => Array.isArray(m.content) && m.content.some((p) => p.type === "image_url"));
+    let candidateModels;
+    if (options.models && options.models.length > 0) {
+        candidateModels = options.models;
+    }
+    else if (options.model) {
+        candidateModels = [options.model];
+    }
+    else if (hasImages) {
+        candidateModels = [...exports.GROQ_VISION_MODELS, ...exports.GROQ_MODELS];
+    }
+    else {
+        candidateModels = exports.GROQ_MODELS;
+    }
     let lastError = null;
     for (const model of candidateModels) {
         try {

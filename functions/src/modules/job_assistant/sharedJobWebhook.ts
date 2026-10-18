@@ -2,6 +2,8 @@ import * as functions from "firebase-functions";
 import { admin, db } from "../../config/firebase";
 import { callGeminiAPI } from "../../utils/geminiHelper";
 import { logFeatureExecution } from "../../utils/featureLogger";
+import { formatEmailContent } from "../../utils/emailFormatter";
+import * as nodemailer from "nodemailer";
 import axios from "axios";
 import * as cheerio from "cheerio";
 
@@ -213,8 +215,65 @@ OUTPUT STRICT JSON FORMAT ONLY:
         const location = (parsed.location || "Remote / On-site").trim();
         const generatedSubject = (parsed.generatedSubject || `${candidateName} - ${jobTitle}`).trim();
         const generatedCoverLetter = (parsed.generatedCoverLetter || "").trim();
+        const emailConfig = userData.emailConfig || {};
+        const userEmail = (emailConfig.email || "").toString().trim();
+        const appPassword = (emailConfig.appPassword || "").toString().trim();
 
-        // 8. Save into Firestore
+        // 8. Auto-send email application if recruiter email and user Gmail are configured
+        let isSent = false;
+        let emailMessageId: string | null = null;
+        let emailSendError: string | null = null;
+
+        if (recipientEmail && userEmail && appPassword) {
+            try {
+                const cleanPassword = appPassword.replace(/\s+/g, "");
+                const transporter = nodemailer.createTransport({
+                    service: "gmail",
+                    auth: {
+                        user: userEmail,
+                        pass: cleanPassword
+                    }
+                });
+
+                const attachments: any[] = [];
+                if (cleanResumeB64) {
+                    attachments.push({
+                        filename: `${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}_Resume.pdf`,
+                        content: Buffer.from(cleanResumeB64, "base64"),
+                        contentType: "application/pdf"
+                    });
+                }
+
+                const formatted = formatEmailContent(generatedCoverLetter);
+                const mailOptions = {
+                    from: `"${candidateName}" <${userEmail}>`,
+                    to: recipientEmail,
+                    subject: generatedSubject,
+                    text: formatted.text,
+                    html: formatted.html,
+                    attachments
+                };
+
+                const info = await transporter.sendMail(mailOptions);
+                console.log(`[SharedJobWebhook] Sent job application email to ${recipientEmail} for user ${targetUid}:`, info.messageId);
+                isSent = true;
+                emailMessageId = info.messageId;
+            } catch (err: any) {
+                console.error(`[SharedJobWebhook] Failed to send email to ${recipientEmail}:`, err);
+                emailSendError = err.message || "Failed to deliver email.";
+            }
+        }
+
+        // 9. Save into Firestore
+        const isLinkedIn = (targetUrl + " " + sharedText).toLowerCase().includes("linkedin");
+        const source = isLinkedIn ? "linkedin_share" : "ios_share_sheet";
+        const sourcePlatform = isLinkedIn ? "LinkedIn Post (iOS Share)" : "iOS Share Sheet (iPhone)";
+
+        const status = isSent
+            ? "sent"
+            : (recipientEmail ? (userEmail && appPassword ? "needs_review" : "extracted") : "needs_review");
+        const isAutoApplied = isSent;
+
         const appId = `ios_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         await db.collection("users").doc(targetUid).collection("job_applications").doc(appId).set({
             id: appId,
@@ -225,34 +284,48 @@ OUTPUT STRICT JSON FORMAT ONLY:
             extractedSkills,
             generatedSubject,
             generatedCoverLetter,
-            status: recipientEmail ? "extracted" : "needs_review",
+            status,
+            isAutoApplied,
             appliedAt: admin.firestore.FieldValue.serverTimestamp(),
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            sourcePlatform: "iOS Share Sheet (iPhone)",
-            source: "ios_share_sheet",
+            sourcePlatform,
+            source,
             sourceUrl: targetUrl || sharedText,
-            errorMessage: recipientEmail ? null : "No recruiter email detected in post. Saved in Drafts ready for portal submission."
+            messageId: emailMessageId || null,
+            errorMessage: isSent
+                ? null
+                : (!recipientEmail
+                    ? "No recruiter email detected in post. Saved in Drafts ready for portal submission."
+                    : (!userEmail || !appPassword
+                        ? "Recruiter email found, but Gmail App Password is not configured in Settings to auto-send."
+                        : `Email delivery error: ${emailSendError}`))
         });
 
-        // 9. Log Feature Execution
+        // 10. Log Feature Execution
         await logFeatureExecution(targetUid, {
             feature: "shared_intent",
             featureTitle: "iOS Share Sheet Auto-Import",
             status: "success",
             count: 1,
-            message: `Imported "${jobTitle}" at "${companyName}" from iPhone Share Sheet.`
+            message: isSent
+                ? `Auto-applied and emailed "${jobTitle}" at "${companyName}" (${recipientEmail}).`
+                : `Imported "${jobTitle}" at "${companyName}" from iPhone Share Sheet.`
         });
 
-        // 10. Send Push Notification to User Phone / Web
+        // 11. Send Push Notification to User Phone / Web
         try {
             const userTokenDoc = await db.collection("usernames").where("uid", "==", targetUid).limit(1).get();
             if (!userTokenDoc.empty) {
                 const fcmToken = userTokenDoc.docs[0].data()?.fcmToken;
                 if (fcmToken) {
-                    const notifTitle = `⚡ iOS Share: ${jobTitle} at ${companyName}`;
-                    const notifBody = recipientEmail
-                        ? `Recruiter email (${recipientEmail}) identified! Application drafted.`
-                        : `Job details extracted and saved to your Job Assistant drafts!`;
+                    const notifTitle = isSent
+                        ? `🚀 Application Sent: ${jobTitle} at ${companyName}`
+                        : `⚡ iOS Share: ${jobTitle} at ${companyName}`;
+                    const notifBody = isSent
+                        ? `Direct email with your resume was sent to ${recipientEmail}!`
+                        : (recipientEmail
+                            ? `Recruiter email (${recipientEmail}) identified! Saved to drafts.`
+                            : `Job details extracted and saved to your Job Assistant drafts!`);
 
                     await admin.messaging().send({
                         token: fcmToken,

@@ -22,6 +22,7 @@ export const parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 540, me
         }
 
         let userGeminiKey = (uData.userApiKeys?.geminiApiKey || uData.geminiApiKey || "").trim();
+        let userGroqKey = (uData.userApiKeys?.groqApiKey || uData.groqApiKey || "").trim();
         const { applicantName } = data;
         let promptName = (applicantName || uData.applicantName || uData.displayName || "").trim();
         if (!promptName) {
@@ -212,8 +213,12 @@ Respond ONLY with a JSON object matching this schema:
             }
         };
 
-        console.log(`[JobPosterAI] Calling Gemini (${payload.contents[0].parts.length - 1} attachments, mode: ${mode}) with 45s per-model cascade...`);
-        const geminiResult = await callGeminiAPI(payload, { apiKey: userGeminiKey, timeout: 45000 });
+        console.log(`[JobPosterAI] Calling Gemini/Groq (${payload.contents[0].parts.length - 1} attachments, mode: ${mode}) with fallback cascade...`);
+        const geminiResult = await callGeminiAPI(payload, { 
+            apiKey: userGeminiKey, 
+            groqApiKey: userGroqKey, 
+            timeout: 35000 
+        });
         console.log(`[JobPosterAI] Successfully analyzed job posters using ${geminiResult.modelUsed}`);
         const textResponse = geminiResult.text;
         if (!textResponse) {

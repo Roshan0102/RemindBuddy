@@ -9,6 +9,7 @@ import { enqueueUserCloudTask } from "../../utils/cloudTasksHelper";
 import { publishUserPubSubMessage } from "../../utils/pubsubHelper";
 import { isExperienceExceeded } from "../../utils/experienceMatcher";
 import { scrapeJobPosting } from "../../utils/jobScraper";
+import { ensureUserResumeParsed, ParsedResumeGroundTruth } from "../../utils/resumeParser";
 
 export interface CareerPortalJobRecord {
     id: string;
@@ -340,6 +341,52 @@ async function fetchTavilyCareerPortals(
 }
 
 /**
+ * Checks whether a job title is genuinely relevant to the candidate's target roles.
+ * Prevents discipline mismatch (e.g. Frontend Engineer jobs being matched to QA/SDET candidates).
+ */
+export function isJobTitleRelevantToRoles(jobTitle: string, targetRoles: string[]): boolean {
+    const titleLower = (jobTitle || "").toLowerCase();
+    
+    // 1. Direct role string containment
+    for (const role of targetRoles) {
+        const rLower = role.toLowerCase().trim();
+        if (rLower && (titleLower.includes(rLower) || rLower.includes(titleLower))) {
+            return true;
+        }
+    }
+
+    // 2. Identify candidate disciplines from target roles
+    const isQA = targetRoles.some(r => /qa|sdet|test|quality|automation/i.test(r));
+    const isFrontend = targetRoles.some(r => /frontend|front-end|react|angular|vue|ui|web developer/i.test(r));
+    const isBackend = targetRoles.some(r => /backend|back-end|node|java|\.net|python|golang|api/i.test(r));
+
+    // If candidate specifically targets QA/SDET:
+    if (isQA && !isFrontend) {
+        const hasQAWord = /qa|sdet|test|quality|automation/i.test(titleLower);
+        if (!hasQAWord) return false;
+    }
+
+    // If job title explicitly targets an unrelated discipline:
+    if (isQA && !isFrontend && /frontend|front-end|ui developer/i.test(titleLower)) {
+        return false;
+    }
+    if (isFrontend && !isBackend && /backend|back-end|java developer|\.net developer/i.test(titleLower)) {
+        return false;
+    }
+
+    // 3. Token match: at least one core role token (excluding generic 'engineer', 'developer', 'lead', etc.)
+    const genericTokens = new Set(["engineer", "developer", "lead", "associate", "intern", "trainee", "specialist", "consultant", "analyst", "member", "technical", "staff"]);
+    const roleTokens = targetRoles.flatMap(r => r.toLowerCase().split(/[\s/,-]+/).filter(w => w.length > 2 && !genericTokens.has(w)));
+    
+    if (roleTokens.length > 0) {
+        return roleTokens.some(tok => titleLower.includes(tok));
+    }
+
+    // Fallback if targetRoles only had generic terms like ["Engineer", "Developer"]
+    return titleLower.includes("engineer") || titleLower.includes("developer");
+}
+
+/**
  * Core engine for discovering, validating, and tailoring ATS Career Portal jobs.
  */
 export async function executeCareerPortalDiscovery(
@@ -388,11 +435,43 @@ export async function executeCareerPortalDiscovery(
     if (targetRoles.length === 0 && userData.targetRole) {
         targetRoles = [userData.targetRole];
     }
+    if (targetRoles.length === 0 && userData.extractedResumeProfile?.exactTitle) {
+        targetRoles = [userData.extractedResumeProfile.exactTitle];
+    }
+    if (targetRoles.length === 0) {
+        try {
+            const profilesSnap = await db.collection("users").doc(uid).collection("resume_profiles").get();
+            for (const doc of profilesSnap.docs) {
+                const p = doc.data() || {};
+                const rRoles = Array.isArray(p.targetRoles)
+                    ? p.targetRoles
+                    : (typeof p.targetRoles === 'string' ? p.targetRoles.split(',') : []);
+                for (const r of rRoles) {
+                    const cleanR = r.toString().trim();
+                    if (cleanR && !targetRoles.includes(cleanR)) {
+                        targetRoles.push(cleanR);
+                    }
+                }
+            }
+        } catch (e: any) {
+            console.warn(`[CareerPortalATS] Error loading roles from resume_profiles: ${e.message}`);
+        }
+    }
+    if (targetRoles.length === 0 && userData.masterResume?.targetRole) {
+        targetRoles = [userData.masterResume.targetRole];
+    }
+    if (targetRoles.length === 0 && userData.masterResume?.parsedRole) {
+        targetRoles = [userData.masterResume.parsedRole];
+    }
+    if (targetRoles.length === 0 && userData.jobPreferences?.targetRoles) {
+        const prefRoles = userData.jobPreferences.targetRoles;
+        targetRoles = Array.isArray(prefRoles) ? prefRoles : [prefRoles];
+    }
     if (targetRoles.length === 0) {
         targetRoles = ["Software Engineer", "Developer"];
     }
     if (options?.customRole) {
-        targetRoles = [options.customRole, ...targetRoles];
+        targetRoles = [options.customRole, ...targetRoles.filter(r => r.toLowerCase() !== options.customRole!.toLowerCase())];
     }
     const targetLocations: string[] = autoApplySettings.locations || autoApplySettings.targetLocations || ["India", "Remote", "Bengaluru", "Hyderabad", "Pune"];
     const targetRoleKeywords = Array.from(new Set(
@@ -545,12 +624,10 @@ export async function executeCareerPortalDiscovery(
             return false;
         }
 
-        // Ensure title has relevance to candidate target roles or engineering
-        const hasRelevance = targetRoleKeywords.some(kw => titleLower.includes(kw)) ||
-            titleLower.includes("engineer") ||
-            titleLower.includes("developer");
+        // Ensure title has genuine relevance to candidate target roles
+        const hasRelevance = isJobTitleRelevantToRoles(job.title, targetRoles);
         if (!hasRelevance) {
-            console.log(`[CareerPortalATS] Pre-filtered out irrelevant title: "${job.title}" @ ${job.company}`);
+            console.log(`[CareerPortalATS] Pre-filtered out irrelevant title: "${job.title}" @ ${job.company} (does not match target roles: ${targetRoles.join(', ')})`);
             return false;
         }
 
@@ -631,7 +708,17 @@ export async function executeCareerPortalDiscovery(
 
     console.log(`[CareerPortalATS] ${validatedJobs.length} verified jobs passed 72h check & 404 verification. Tailoring with Gemini...`);
 
-    // 7. Gemini ATS Matcher & Resume Tailoring (Process up to 4 top matched jobs per run)
+    // 7. Ground Truth Resolution & Gemini ATS Matcher & Resume Tailoring
+    console.log(`[CareerPortalATS] Resolving user resume ground truth for fast caching...`);
+    const groundTruth: ParsedResumeGroundTruth | null = await ensureUserResumeParsed(
+        uid,
+        userData,
+        cleanResumeB64,
+        geminiKey,
+        groqKey,
+        userData.masterResume?.fileName
+    );
+
     const finalizedRecords: CareerPortalJobRecord[] = [];
     const jobsToTailor = validatedJobs.slice(0, 4);
 
@@ -645,14 +732,17 @@ export async function executeCareerPortalDiscovery(
 
         try {
             const userLinks = {
-                linkedin: (userData.linkedinUrl || userData.linkedin || "").toString().trim(),
-                github: (userData.githubUrl || userData.github || "").toString().trim(),
-                portfolio: (userData.portfolioUrl || userData.portfolio || userData.website || "").toString().trim(),
+                linkedin: (userData.linkedinUrl || userData.linkedin || groundTruth?.links?.linkedin || "").toString().trim(),
+                github: (userData.githubUrl || userData.github || groundTruth?.links?.github || "").toString().trim(),
+                portfolio: (userData.portfolioUrl || userData.portfolio || userData.website || groundTruth?.links?.portfolio || "").toString().trim(),
             };
 
             const prompt = `You are a Principal Technical Recruiter and ATS Optimization Expert.
-Analyze the candidate's attached resume PDF and the following fresh job opening from an official company career portal.
+Analyze the candidate's verified resume and the following fresh job opening from an official company career portal.
 
+${groundTruth ? `CANDIDATE BASE RESUME GROUND TRUTH (PRE-PARSED & VERIFIED):
+${JSON.stringify(groundTruth, null, 2)}
+` : ''}
 CANDIDATE TARGET PROFILE:
 - Target Roles: ${targetRoles.join(', ')}
 - Target Experience Level: ${minExpYears} - ${maxExpYears} years ${isFresher ? '(Fresher / Recent Graduate)' : ''}
@@ -683,24 +773,39 @@ CRITICAL SCREENING & ATS EVALUATION RULES:
    - ONLY assign an atsScore >= 80 if the candidate is a strong, genuine match for this role at their experience level.
    - If "isQualified" is false, atsScore MUST be strictly below 80.
 
-3. Resume Completeness & Anti-Stub Rules (ONLY performed if candidate is qualified and atsScore >= 80):
-   - Authenticity Preservation: KEEP all authentic companies, official job titles, employment periods, education institutions, and certifications from the candidate's attached resume. Do not invent fake employers or fake degrees.
-   - Contact Line & Online Presence:
-     * Extract the candidate's authentic contact details directly from the attached resume PDF into "contactLine".
-     * Format: "City, Country | Phone | Email | LinkedIn URL | Portfolio / GitHub URL"
-     * STRICT MANDATE FOR PORTFOLIO & SOCIAL LINKS:
-       Always output the ACTUAL, full destination URL or profile path (e.g. "linkedin.com/in/username", "portfolio.dev", "username.github.io", or "github.com/username").
-       DO NOT output generic placeholder words like "Portfolio", "Website", "LinkedIn", or "GitHub" without their real destination URL.
-       If the candidate's resume contains a portfolio link, personal website, or project showcase URL, include that exact URL. If no portfolio website is provided but a GitHub profile exists, use their GitHub URL. If neither exists, omit the portfolio entry rather than writing the plain text word "Portfolio".
-   - Comprehensive ATS Keyword Integration:
-     * Carefully analyze the Job Description to extract all required technical skills, tools, frameworks, platforms, and methodologies.
-     * When the candidate is a strong fit for the role (e.g. 80-95%+ domain alignment), AUTOMATICALLY BRIDGE ANY KEYWORD GAPS by including the missing JD skills, tools, and industry keywords into the tailored resume so the resume achieves a top-tier ATS match (95%+).
-     * Technical Skills: Group them into 3-5 comprehensive categories (e.g. Languages & Frameworks, Cloud & Infrastructure, CI/CD & DevOps, Databases & Caching, Monitoring & Security, Tools).
-     * Professional Summary: Craft a targeted 3-4 sentence summary that directly addresses the employer's needs and incorporates primary keywords from the JD.
-     * Professional Experience & Key Projects: Include 3-4 rich, quantified STAR bullet points per position with measurable metrics and JD keywords. Include 2 detailed projects each with 2-3 technical bullet points describing architecture, implementation, and impact.
-     * Ensure the tailored resume has rich, complete content so it gracefully occupies a full page without appearing sparse or half-empty.
-     * Return all keywords and skills that were incorporated from the JD into the "injectedKeywords" array.
-     * Re-evaluate "atsScore" (0 - 100) reflecting the enhanced keyword match of the tailored resume (typically 90 - 98%).
+3. ZERO COMPRESSION / ABSOLUTE FIDELITY IN WORK EXPERIENCE:
+   - DO NOT SUMMARIZE OR TRUNCATE WORK EXPERIENCE BULLET POINTS.
+   - For every single position in the candidate's ground truth:
+     * If the candidate had 4, 5, or 6 bullet points, YOU MUST OUTPUT ALL 4, 5, OR 6 BULLET POINTS!
+     * DO NOT collapse 4-5 points into 2 generic points.
+     * Retain all authentic achievements, technologies, and metrics from the candidate's original points, and enrich them with keywords and phrases from the JD.
+     * Only omit an experience bullet point if it is completely irrelevant to the target discipline.
+     * You may add an additional technical bullet point if the JD requires specific methodologies or tools matching the candidate's background.
+
+4. COMPREHENSIVE SKILLS ENHANCEMENT:
+   - KEEP ALL authentic skills listed by the candidate in their ground truth. DO NOT wipe out or replace their core skills.
+   - Extract missing technical skills, frameworks, libraries, tools, and methodologies from the Job Description and seamlessly add them to the appropriate skill categories.
+   - Group skills into 3-5 comprehensive categories (e.g. Languages & Frameworks, Cloud & Infrastructure, CI/CD & DevOps, Databases & Caching, Tools).
+   - Only remove a skill if it is completely irrelevant to the domain.
+
+5. PROFESSIONAL SUMMARY:
+   - Craft a targeted 3-4 sentence summary that directly addresses the employer's needs and incorporates primary keywords from the JD.
+
+6. EDUCATION, CERTIFICATIONS & PROJECTS:
+   - Keep candidate's education and certifications 100% intact as listed in the ground truth.
+   - Keep candidate's projects intact, highlighting relevant technical stack components matching the JD.
+
+7. CONTACT LINE & LINKS:
+   - Extract the candidate's authentic contact details directly into "contactLine".
+   - Format: "City, Country | Phone | Email | LinkedIn URL | Portfolio / GitHub URL"
+   - STRICT MANDATE FOR PORTFOLIO & SOCIAL LINKS:
+     Always output the ACTUAL, full destination URL or profile path (e.g. "linkedin.com/in/username", "portfolio.dev", "username.github.io", or "github.com/username").
+     DO NOT output generic placeholder words like "Portfolio", "Website", "LinkedIn", or "GitHub" without their real destination URL.
+
+8. LENGTH & ATS FORMAT:
+   - 1 page or 2 pages is completely standard and acceptable. Never compress or drop rich experience just to fit into 1 page.
+   - Return all keywords and skills that were incorporated from the JD into the "injectedKeywords" array.
+   - Re-evaluate "atsScore" (0 - 100) reflecting the enhanced keyword match of the tailored resume (typically 90 - 98%).
 
 OUTPUT STRICT JSON FORMAT:
 {
@@ -727,8 +832,11 @@ OUTPUT STRICT JSON FORMAT:
         "period": "2023 - Present",
         "location": "City, Country",
         "bulletPoints": [
-          "Developed core features...",
-          "Optimized system performance..."
+          "Preserved Point 1 with JD keywords...",
+          "Preserved Point 2 with metrics...",
+          "Preserved Point 3...",
+          "Preserved Point 4...",
+          "Preserved Point 5..."
         ]
       }
     ],
@@ -750,7 +858,7 @@ OUTPUT STRICT JSON FORMAT:
       }
     ],
     "certifications": [
-      "Candidate Certifications (if present in resume)"
+      "Candidate Certifications"
     ]
   }
 }`;
@@ -759,15 +867,17 @@ OUTPUT STRICT JSON FORMAT:
                 contents: [
                     {
                         role: "user",
-                        parts: [
-                            { text: prompt },
-                            {
-                                inlineData: {
-                                    mimeType: "application/pdf",
-                                    data: cleanResumeB64
+                        parts: groundTruth
+                            ? [{ text: prompt }]
+                            : [
+                                { text: prompt },
+                                {
+                                    inlineData: {
+                                        mimeType: "application/pdf",
+                                        data: cleanResumeB64
+                                    }
                                 }
-                            }
-                        ]
+                            ]
                     }
                 ],
                 generationConfig: {
@@ -779,7 +889,7 @@ OUTPUT STRICT JSON FORMAT:
             const geminiResp = await callGeminiAPI(geminiPayload, { 
                 apiKey: geminiKey, 
                 groqApiKey: groqKey,
-                timeout: 90000 
+                timeout: 35000 
             });
             const parsed = JSON.parse(geminiResp.text || "{}");
 

@@ -5,7 +5,7 @@ const functions = require("firebase-functions");
 const firebase_1 = require("../../config/firebase");
 const geminiHelper_1 = require("../../utils/geminiHelper");
 exports.parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 540, memory: "1GB" }).https.onCall(async (data, context) => {
-    var _a, _b;
+    var _a, _b, _c;
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
     }
@@ -21,6 +21,7 @@ exports.parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 540, memory:
             throw new functions.https.HttpsError('permission-denied', 'Manual Scan & Apply module is disabled for your account.');
         }
         let userGeminiKey = (((_a = uData.userApiKeys) === null || _a === void 0 ? void 0 : _a.geminiApiKey) || uData.geminiApiKey || "").trim();
+        let userGroqKey = (((_b = uData.userApiKeys) === null || _b === void 0 ? void 0 : _b.groqApiKey) || uData.groqApiKey || "").trim();
         const { applicantName } = data;
         let promptName = (applicantName || uData.applicantName || uData.displayName || "").trim();
         if (!promptName) {
@@ -171,7 +172,7 @@ Respond ONLY with a JSON object matching this schema:
         }
         const inlineParts = [];
         // Attach Resume PDF if present (from data or user profile)
-        const effectiveResumeB64 = (resumeBase64 || ((_b = uData.masterResume) === null || _b === void 0 ? void 0 : _b.base64) || "").toString().trim();
+        const effectiveResumeB64 = (resumeBase64 || ((_c = uData.masterResume) === null || _c === void 0 ? void 0 : _c.base64) || "").toString().trim();
         if (effectiveResumeB64) {
             const cleanResumeB64 = effectiveResumeB64.replace(/^data:application\/pdf;base64,/, '');
             inlineParts.push({
@@ -206,8 +207,12 @@ Respond ONLY with a JSON object matching this schema:
                 responseMimeType: "application/json"
             }
         };
-        console.log(`[JobPosterAI] Calling Gemini (${payload.contents[0].parts.length - 1} attachments, mode: ${mode}) with 45s per-model cascade...`);
-        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, { apiKey: userGeminiKey, timeout: 45000 });
+        console.log(`[JobPosterAI] Calling Gemini/Groq (${payload.contents[0].parts.length - 1} attachments, mode: ${mode}) with fallback cascade...`);
+        const geminiResult = await (0, geminiHelper_1.callGeminiAPI)(payload, {
+            apiKey: userGeminiKey,
+            groqApiKey: userGroqKey,
+            timeout: 35000
+        });
         console.log(`[JobPosterAI] Successfully analyzed job posters using ${geminiResult.modelUsed}`);
         const textResponse = geminiResult.text;
         if (!textResponse) {

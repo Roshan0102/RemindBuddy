@@ -163,7 +163,7 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 80),
               children: [
                 // Info Banner
                 Container(
@@ -234,6 +234,7 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                         TextField(
                           controller: _geminiController,
                           obscureText: _obscureGemini,
+                          scrollPadding: const EdgeInsets.only(bottom: 120),
                           decoration: InputDecoration(
                             labelText: 'Gemini API Key',
                             hintText: 'AIzaSy...',
@@ -298,6 +299,7 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                         TextField(
                           controller: _groqController,
                           obscureText: _obscureGroq,
+                          scrollPadding: const EdgeInsets.only(bottom: 120),
                           decoration: InputDecoration(
                             labelText: 'Groq API Key',
                             hintText: 'gsk_...',
@@ -362,6 +364,7 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                         TextField(
                           controller: _tavilyController,
                           obscureText: _obscureTavily,
+                          scrollPadding: const EdgeInsets.only(bottom: 120),
                           decoration: InputDecoration(
                             labelText: 'Primary Tavily API Key',
                             hintText: 'tvly-dev-...',
@@ -387,6 +390,7 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                         TextField(
                           controller: _tavilySecondaryController,
                           obscureText: _obscureTavilySecondary,
+                          scrollPadding: const EdgeInsets.only(bottom: 120),
                           decoration: InputDecoration(
                             labelText: 'Secondary Tavily API Key (Optional Fallback)',
                             hintText: 'tvly-dev-... (Auto-fallback if Key 1 hits limit)',

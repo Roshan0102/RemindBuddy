@@ -187,6 +187,8 @@ class AuthService {
     }
   }
 
+  Future<void> signOut() => logout();
+
   Future<void> logout() async {
     try {
       final user = _auth.currentUser;
@@ -209,9 +211,21 @@ class AuthService {
     } catch (e) {
       debugPrint('Notice clearing FCM token on logout: $e');
     }
-    await _auth.signOut();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isAdminAuthenticated', false);
+      await prefs.remove('isAdminAuthenticated');
+      await prefs.remove('adminAuthenticatedUid');
+      await prefs.clear();
+    } catch (e) {
+      debugPrint('Notice clearing SharedPreferences on logout: $e');
+    }
+
     final storage = StorageService();
     await storage.logoutAndClearData();
-    debugPrint('User logged out natively via Firebase');
+
+    await _auth.signOut();
+    debugPrint('User logged out natively via Firebase with all cache and sessions purged');
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -24,6 +25,7 @@ class _VaultLockScreenState extends State<VaultLockScreen> {
 
   String? _userSalt;
   String? _userVerifier;
+  String? _userEncryptedMasterKey;
 
   String? get _currentUid => _auth.currentUser?.uid;
 
@@ -62,6 +64,7 @@ class _VaultLockScreenState extends State<VaultLockScreen> {
         final data = userPinDoc.data()!;
         _userSalt = data['salt'];
         _userVerifier = data['verifier'];
+        _userEncryptedMasterKey = data['encryptedMasterKey'];
         if (mounted) {
           setState(() {
             _isFirstTimeSetup = false;
@@ -119,7 +122,7 @@ class _VaultLockScreenState extends State<VaultLockScreen> {
         return;
       }
 
-      // Setup matches -> create salt & verifier and save to user's Firestore path
+      // Setup matches -> generate VMK, salt, and verifier
       setState(() => _isLoading = true);
       try {
         final uid = _currentUid;
@@ -127,9 +130,12 @@ class _VaultLockScreenState extends State<VaultLockScreen> {
 
         final encryptionService = EncryptionService();
         final salt = encryptionService.generateSalt();
+        final kek = encryptionService.deriveKeyFromPIN(pin, salt);
+        final masterKey = encryptionService.generateMasterKey();
+        final encryptedMasterKey = encryptionService.encryptMasterKey(masterKey, kek);
 
-        encryptionService.setKeyFromPIN(pin, salt);
-        final verifier = encryptionService.encryptVerifier();
+        encryptionService.setSessionKeyFromMasterKey(masterKey);
+        final verifier = encryptionService.encryptVerifierWithKey(kek);
 
         await _firestore
             .collection('users')
@@ -139,6 +145,7 @@ class _VaultLockScreenState extends State<VaultLockScreen> {
             .set({
           'salt': salt,
           'verifier': verifier,
+          'encryptedMasterKey': encryptedMasterKey,
           'createdAt': FieldValue.serverTimestamp(),
         });
 
@@ -163,7 +170,35 @@ class _VaultLockScreenState extends State<VaultLockScreen> {
     }
 
     if (isCorrect && _userSalt != null) {
-      encryptionService.setKeyFromPIN(pin, _userSalt!);
+      final kek = encryptionService.deriveKeyFromPIN(pin, _userSalt!);
+
+      if (_userEncryptedMasterKey != null) {
+        final masterKey = encryptionService.decryptMasterKey(_userEncryptedMasterKey!, kek);
+        if (masterKey != null) {
+          encryptionService.setSessionKeyFromMasterKey(masterKey);
+          encryptionService.addFallbackKey(kek);
+        } else {
+          encryptionService.setKeyFromPIN(pin, _userSalt!);
+        }
+      } else {
+        // Auto-upgrade legacy vault user
+        final masterKeyB64 = base64Url.encode(kek.bytes);
+        final newEncryptedMasterKey = encryptionService.encryptMasterKey(masterKeyB64, kek);
+
+        final uid = _currentUid;
+        if (uid != null) {
+          _firestore
+              .collection('users')
+              .doc(uid)
+              .collection('vault_config')
+              .doc('pin')
+              .set({'encryptedMasterKey': newEncryptedMasterKey}, SetOptions(merge: true))
+              .catchError((e) => debugPrint("Failed to auto-upgrade VMK: $e"));
+        }
+        encryptionService.setSessionKeyFromMasterKey(masterKeyB64);
+        encryptionService.addFallbackKey(kek);
+      }
+
       widget.onAuthenticated();
     } else {
       _pinController.clear();

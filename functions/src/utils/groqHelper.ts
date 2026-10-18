@@ -2,20 +2,30 @@ import axios from "axios";
 
 export interface GroqCallOptions {
     apiKey: string;
-    prompt: string;
+    prompt?: string;
+    messages?: Array<{
+        role: "system" | "user" | "assistant";
+        content: string | any[];
+    }>;
     systemPrompt?: string;
     model?: string;
+    models?: string[];
     temperature?: number;
     maxTokens?: number;
     responseFormat?: "json_object" | "text";
 }
 
 export const GROQ_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
     "qwen/qwen3.8-27b",
     "openai/gpt-oss-120b",
-    "openai/gpt-oss-20b",
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant"
+    "openai/gpt-oss-20b"
+];
+
+export const GROQ_VISION_MODELS = [
+    "llama-3.2-11b-vision-preview",
+    "llama-3.2-90b-vision-preview"
 ];
 
 /**
@@ -30,13 +40,31 @@ export async function callGroqAPI(
         throw new Error("Groq API key is missing or empty.");
     }
 
-    const candidateModels = options.model ? [options.model, ...GROQ_MODELS] : GROQ_MODELS;
-    const messages: Array<{ role: "system" | "user"; content: string }> = [];
+    const messages: Array<{ role: "system" | "user" | "assistant"; content: string | any[] }> = [];
 
-    if (options.systemPrompt && options.systemPrompt.trim()) {
-        messages.push({ role: "system", content: options.systemPrompt.trim() });
+    if (options.messages && options.messages.length > 0) {
+        messages.push(...options.messages);
+    } else {
+        if (options.systemPrompt && options.systemPrompt.trim()) {
+            messages.push({ role: "system", content: options.systemPrompt.trim() });
+        }
+        if (options.prompt) {
+            messages.push({ role: "user", content: options.prompt.trim() });
+        }
     }
-    messages.push({ role: "user", content: options.prompt.trim() });
+
+    const hasImages = messages.some(m => Array.isArray(m.content) && m.content.some((p: any) => p.type === "image_url"));
+    let candidateModels: string[];
+
+    if (options.models && options.models.length > 0) {
+        candidateModels = options.models;
+    } else if (options.model) {
+        candidateModels = [options.model];
+    } else if (hasImages) {
+        candidateModels = [...GROQ_VISION_MODELS, ...GROQ_MODELS];
+    } else {
+        candidateModels = GROQ_MODELS;
+    }
 
     let lastError: any = null;
 

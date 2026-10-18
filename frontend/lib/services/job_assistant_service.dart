@@ -429,6 +429,22 @@ class JobAssistantService {
         'updatedAt': FieldValue.serverTimestamp(),
       }
     }, SetOptions(merge: true));
+
+    // Asynchronously trigger Cloud Function to pre-parse and index resume ground truth into cache
+    if (base64Content.isNotEmpty) {
+      FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('parseUserResumeCallable')
+          .call({
+            'resumeBase64': base64Content,
+            'fileName': fileName,
+          })
+          .then((_) {
+            debugPrint('[JobAssistantService] Resume ground truth pre-parsed & indexed successfully.');
+          })
+          .catchError((err) {
+            debugPrint('[JobAssistantService] Notice background resume pre-parsing: $err');
+          });
+    }
   }
 
   // ============================================================================

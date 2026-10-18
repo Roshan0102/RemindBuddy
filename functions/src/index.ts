@@ -116,6 +116,10 @@ export {
     processCareerPortalDiscoveryPubSub
 } from "./modules/job_assistant/careerPortalATS";
 
+export {
+    parseUserResumeCallable
+} from "./utils/resumeParser";
+
 // Finance & Expense Tracking
 export {
     triggerNightlyExpenseNotifier

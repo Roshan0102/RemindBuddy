@@ -31,6 +31,7 @@ class VaultFamily {
   final List<String> collaboratorUids;
   final List<Map<String, dynamic>> pendingInvites;
   final List<VirtualProfile> virtualProfiles;
+  final String? familyKey;
   final DateTime? createdAt;
 
   VaultFamily({
@@ -40,6 +41,7 @@ class VaultFamily {
     required this.collaboratorUids,
     required this.pendingInvites,
     required this.virtualProfiles,
+    this.familyKey,
     this.createdAt,
   });
 
@@ -54,6 +56,7 @@ class VaultFamily {
       collaboratorUids: List<String>.from(map['collaboratorUids'] ?? []),
       pendingInvites: List<Map<String, dynamic>>.from(map['pendingInvites'] ?? []),
       virtualProfiles: profiles,
+      familyKey: map['familyKey'],
       createdAt: map['createdAt'] is Timestamp ? (map['createdAt'] as Timestamp).toDate() : null,
     );
   }

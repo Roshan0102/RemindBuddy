@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:encrypt/encrypt.dart' as enc;
 import '../services/encryption_service.dart';
 import '../models/secure_document.dart';
 import '../models/vault_collaborator.dart';
@@ -254,6 +255,18 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                       style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ],
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () {
+                      Navigator.pop(dialogCtx);
+                      _showOldPinRecoveryDialog();
+                    },
+                    child: const Text(
+                      'Lost access to older documents? Tap here to recover using your previous PIN.',
+                      style: TextStyle(color: Colors.blueAccent, fontSize: 12, decoration: TextDecoration.underline),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 ],
               ),
               actions: [
@@ -312,9 +325,29 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                               return;
                             }
 
+                            final currKek = encryptionService.deriveKeyFromPIN(curr, salt);
+                            String masterKeyB64;
+
+                            final existingEncMasterKey = doc.data()?['encryptedMasterKey'];
+                            if (existingEncMasterKey != null) {
+                              final decrypted = encryptionService.decryptMasterKey(existingEncMasterKey, currKek);
+                              masterKeyB64 = decrypted ?? (encryptionService.sessionKey != null
+                                  ? base64Url.encode(encryptionService.sessionKey!.bytes)
+                                  : base64Url.encode(currKek.bytes));
+                            } else {
+                              masterKeyB64 = encryptionService.sessionKey != null
+                                  ? base64Url.encode(encryptionService.sessionKey!.bytes)
+                                  : base64Url.encode(currKek.bytes);
+                            }
+
                             final newSalt = encryptionService.generateSalt();
-                            encryptionService.setKeyFromPIN(nPin, newSalt);
-                            final newVerifier = encryptionService.encryptVerifier();
+                            final newKek = encryptionService.deriveKeyFromPIN(nPin, newSalt);
+                            final newEncMasterKey = encryptionService.encryptMasterKey(masterKeyB64, newKek);
+                            final newVerifier = encryptionService.encryptVerifierWithKey(newKek);
+
+                            // Keep the active VMK in memory and record currKek as fallback
+                            encryptionService.setSessionKeyFromMasterKey(masterKeyB64);
+                            encryptionService.addFallbackKey(currKek);
 
                             await FirebaseFirestore.instance
                                 .collection('users')
@@ -324,8 +357,10 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                                 .set({
                               'salt': newSalt,
                               'verifier': newVerifier,
+                              'encryptedMasterKey': newEncMasterKey,
+                              'previousSalts': FieldValue.arrayUnion([salt]),
                               'updatedAt': FieldValue.serverTimestamp(),
-                            });
+                            }, SetOptions(merge: true));
 
                             if (dialogCtx.mounted) {
                               Navigator.pop(dialogCtx);
@@ -333,7 +368,7 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('🔑 Vault PIN changed successfully!'),
+                                  content: Text('🔑 Vault PIN changed successfully! Documents preserved.'),
                                   backgroundColor: Colors.green,
                                 ),
                               );
@@ -348,6 +383,257 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                   child: isSaving
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Text('Change PIN'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showOldPinRecoveryDialog() {
+    final oldPinController = TextEditingController();
+    final customSaltController = TextEditingController();
+    String errorMsg = '';
+    String successMsg = '';
+    bool isProcessing = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.build_circle_outlined, color: Colors.blueAccent),
+                  SizedBox(width: 8),
+                  Text('Recover Documents', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'If you previously changed your PIN and documents show "[Decryption Error]", enter your PREVIOUS PIN below. Your documents will be restored and re-encrypted with your current Vault Key.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: oldPinController,
+                      obscureText: true,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      decoration: InputDecoration(
+                        labelText: 'Previous Vault PIN',
+                        hintText: 'Enter old 4-digit PIN',
+                        counterText: '',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.history_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: customSaltController,
+                      decoration: InputDecoration(
+                        labelText: 'Previous Salt (Optional - if known)',
+                        hintText: 'Leave empty to auto-detect from vault history',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.security),
+                      ),
+                    ),
+                    if (errorMsg.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(errorMsg, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
+                    ],
+                    if (successMsg.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(successMsg, style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isProcessing
+                      ? null
+                      : () async {
+                          final oldPin = oldPinController.text.trim();
+                          if (oldPin.length < 4) {
+                            setDialogState(() => errorMsg = 'Please enter your previous 4-digit PIN.');
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isProcessing = true;
+                            errorMsg = '';
+                            successMsg = '';
+                          });
+
+                          try {
+                            final uid = FirebaseAuth.instance.currentUser?.uid;
+                            if (uid == null) throw Exception("User not authenticated.");
+
+                            final encryptionService = EncryptionService();
+                            if (encryptionService.sessionKey == null) {
+                              throw Exception("Vault is locked. Please unlock first.");
+                            }
+
+                            final configDoc = await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(uid)
+                                .collection('vault_config')
+                                .doc('pin')
+                                .get();
+
+                            final List<String> candidateSalts = [];
+                            if (configDoc.exists && configDoc.data() != null) {
+                              final data = configDoc.data()!;
+                              if (data['salt'] != null) candidateSalts.add(data['salt']);
+                              if (data['previousSalts'] != null) {
+                                candidateSalts.addAll(List<String>.from(data['previousSalts']));
+                              }
+                            }
+                            final manualSalt = customSaltController.text.trim();
+                            if (manualSalt.isNotEmpty && !candidateSalts.contains(manualSalt)) {
+                              candidateSalts.insert(0, manualSalt);
+                            }
+
+                            if (candidateSalts.isEmpty) {
+                              setDialogState(() {
+                                isProcessing = false;
+                                errorMsg = 'No previous salt found in vault history. If known, enter the salt manually.';
+                              });
+                              return;
+                            }
+
+                            final docsSnap = await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(uid)
+                                .collection('secure_documents')
+                                .get();
+
+                            if (docsSnap.docs.isEmpty) {
+                              setDialogState(() {
+                                isProcessing = false;
+                                errorMsg = 'No documents found in vault.';
+                              });
+                              return;
+                            }
+
+                            enc.Key? workingOldKey;
+                            for (final salt in candidateSalts) {
+                              final testKey = encryptionService.deriveKeyFromPIN(oldPin, salt);
+                              for (final doc in docsSnap.docs) {
+                                final encTitle = doc.data()['encryptedTitle'] ?? '';
+                                if (encTitle.isNotEmpty) {
+                                  try {
+                                    final combinedBytes = base64Url.decode(encTitle);
+                                    if (combinedBytes.length > 16) {
+                                      final iv = enc.IV(combinedBytes.sublist(0, 16));
+                                      final encrypter = enc.Encrypter(enc.AES(testKey, mode: enc.AESMode.cbc));
+                                      final decrypted = encrypter.decrypt(enc.Encrypted(combinedBytes.sublist(16)), iv: iv);
+                                      if (decrypted.isNotEmpty && decrypted != '[Decryption Error]') {
+                                        workingOldKey = testKey;
+                                        break;
+                                      }
+                                    }
+                                  } catch (_) {}
+                                }
+                              }
+                              if (workingOldKey != null) break;
+                            }
+
+                            if (workingOldKey == null) {
+                              setDialogState(() {
+                                isProcessing = false;
+                                errorMsg = 'Could not decrypt documents with this PIN and known salts. Verify PIN or enter the previous salt.';
+                              });
+                              return;
+                            }
+
+                            encryptionService.addFallbackKey(workingOldKey);
+
+                            int recoveredCount = 0;
+                            final currentKey = encryptionService.sessionKey!;
+                            for (final doc in docsSnap.docs) {
+                              final data = doc.data();
+                              final encTitle = data['encryptedTitle'] ?? '';
+                              final encFields = Map<String, dynamic>.from(data['encryptedFields'] ?? {});
+
+                              String? plainTitle;
+                              try {
+                                final combinedBytes = base64Url.decode(encTitle);
+                                if (combinedBytes.length > 16) {
+                                  final iv = enc.IV(combinedBytes.sublist(0, 16));
+                                  final encrypter = enc.Encrypter(enc.AES(workingOldKey, mode: enc.AESMode.cbc));
+                                  plainTitle = encrypter.decrypt(enc.Encrypted(combinedBytes.sublist(16)), iv: iv);
+                                }
+                              } catch (_) {}
+
+                              if (plainTitle != null && plainTitle.isNotEmpty && plainTitle != '[Decryption Error]') {
+                                final Map<String, String> plainFields = {};
+                                for (final entry in encFields.entries) {
+                                  try {
+                                    final valBytes = base64Url.decode(entry.value.toString());
+                                    if (valBytes.length > 16) {
+                                      final iv = enc.IV(valBytes.sublist(0, 16));
+                                      final encrypter = enc.Encrypter(enc.AES(workingOldKey, mode: enc.AESMode.cbc));
+                                      plainFields[entry.key] = encrypter.decrypt(enc.Encrypted(valBytes.sublist(16)), iv: iv);
+                                    }
+                                  } catch (_) {
+                                    plainFields[entry.key] = entry.value.toString();
+                                  }
+                                }
+
+                                final newEncTitle = await encryptionService.encryptText(plainTitle, customKey: currentKey);
+                                final Map<String, String> newEncFields = {};
+                                for (final e in plainFields.entries) {
+                                  newEncFields[e.key] = await encryptionService.encryptText(e.value, customKey: currentKey);
+                                }
+
+                                await doc.reference.update({
+                                  'encryptedTitle': newEncTitle,
+                                  'encryptedFields': newEncFields,
+                                  'reEncryptedAt': FieldValue.serverTimestamp(),
+                                });
+                                recoveredCount++;
+                              }
+                            }
+
+                            setDialogState(() {
+                              isProcessing = false;
+                              successMsg = 'Successfully recovered and re-encrypted $recoveredCount documents!';
+                            });
+
+                            if (mounted) {
+                              setState(() {
+                                _decryptionFuture = null;
+                                _previousRawDocs = null;
+                              });
+                            }
+
+                            Future.delayed(const Duration(seconds: 2), () {
+                              if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                            });
+                          } catch (e) {
+                            setDialogState(() {
+                              isProcessing = false;
+                              errorMsg = 'Recovery failed: $e';
+                            });
+                          }
+                        },
+                  child: isProcessing
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Recover & Re-encrypt'),
                 ),
               ],
             );
@@ -964,6 +1250,11 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
             tooltip: 'Family Vault & Profiles',
           ),
           IconButton(
+            icon: const Icon(Icons.build_circle_outlined),
+            onPressed: _showOldPinRecoveryDialog,
+            tooltip: 'Recover Documents from Old PIN',
+          ),
+          IconButton(
             icon: const Icon(Icons.password_rounded),
             onPressed: _showChangePinDialog,
             tooltip: 'Change Vault PIN',
@@ -1260,6 +1551,32 @@ class _VaultDashboardScreenState extends State<VaultDashboardScreen> {
                             ],
                           ),
                         ),
+                        if (decDocs.any((d) => d.title == '[Decryption Error]'))
+                          Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade900.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.amber.shade700, width: 1),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Some documents could not be decrypted. If you recently changed PIN, restore them using your previous PIN.',
+                                    style: TextStyle(color: isDark ? Colors.amber.shade200 : Colors.amber.shade900, fontSize: 12),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _showOldPinRecoveryDialog,
+                                  child: const Text('RECOVER', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.amber)),
+                                ),
+                              ],
+                            ),
+                          ),
                         // List of documents
                         Expanded(
                           child: filteredDocs.isEmpty

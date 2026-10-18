@@ -18,10 +18,26 @@ export const adminCreateUser = functions.runWith({ timeoutSeconds: 60, memory: "
     try {
         const usernameDoc = await db.collection('usernames').doc(username).get();
         if (usernameDoc.exists) {
-            throw new functions.https.HttpsError('already-exists', 'Username is already taken.');
+            throw new functions.https.HttpsError('already-exists', `Username "${username}" is already taken.`);
+        }
+
+        const querySnap = await db.collection('usernames').where('username', '==', username).limit(1).get();
+        if (!querySnap.empty) {
+            throw new functions.https.HttpsError('already-exists', `Username "${username}" is already taken.`);
         }
 
         const email = `${username}@remindbuddy.com`;
+        
+        try {
+            const existingAuth = await admin.auth().getUserByEmail(email);
+            if (existingAuth) {
+                throw new functions.https.HttpsError('already-exists', `A user with username "${username}" already exists.`);
+            }
+        } catch (authErr: any) {
+            if (authErr.code !== 'auth/user-not-found') {
+                if (authErr instanceof functions.https.HttpsError) throw authErr;
+            }
+        }
         
         const userRecord = await admin.auth().createUser({
             email: email,
@@ -35,6 +51,7 @@ export const adminCreateUser = functions.runWith({ timeoutSeconds: 60, memory: "
         const allowedCollaborators = Array.isArray(data.allowedCollaborators) ? data.allowedCollaborators : [];
 
         await db.collection('usernames').doc(username).set({
+            username: username,
             email: email,
             uid: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -48,6 +65,9 @@ export const adminCreateUser = functions.runWith({ timeoutSeconds: 60, memory: "
 
         return { success: true, uid: uid, username: username };
     } catch (error: any) {
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
         console.error("Error creating user:", error);
         throw new functions.https.HttpsError('internal', error.message || 'Failed to create user.');
     }

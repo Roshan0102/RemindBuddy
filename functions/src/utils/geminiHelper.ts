@@ -106,8 +106,11 @@ export async function callGeminiAPI(
     const apiKey = targetApiKey;
     const keyLabel = options.apiKey ? "User BYOK Key" : "Admin Key";
 
+    let consecutive503Count = 0;
+
     for (const model of candidateModels) {
         let attempt = 0;
+        let modelEncountered503 = false;
         while (attempt <= maxRetries) {
             try {
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -160,9 +163,10 @@ export async function callGeminiAPI(
 
                 // 503 / 502 / 504 Transient high demand or server overload spike
                 if (status === 503 || status === 502 || status === 504 || (errMsg && (errMsg.includes("high demand") || errMsg.includes("spikes in demand") || errMsg.includes("temporarily unavailable") || errMsg.includes("overloaded")))) {
+                    modelEncountered503 = true;
                     attempt++;
                     if (attempt <= maxRetries) {
-                        const delayMs = attempt * 2000;
+                        const delayMs = attempt * 1500;
                         console.log(`[GeminiHelper] Server transient high-demand/busy spike (Status ${status}) on '${model}'. Backing off ${delayMs}ms before retry...`);
                         await new Promise((res) => setTimeout(res, delayMs));
                         continue;
@@ -176,20 +180,52 @@ export async function callGeminiAPI(
                 break; // Move to next model
             }
         }
+
+        if (modelEncountered503) {
+            consecutive503Count++;
+            if (consecutive503Count >= 2) {
+                console.log(`[GeminiHelper] Multiple Gemini models encountered high-demand (503). Fast-cascading directly to Groq fallback...`);
+                break;
+            }
+        } else {
+            consecutive503Count = 0;
+        }
     }
 
-    // Tier-2 Universal Fallback: If all Gemini models failed, attempt Groq (Llama 3.3 70B)
-    const groqKey = (options.groqApiKey || "").trim();
+    // Tier-2 Universal Fallback: If all Gemini models failed, attempt Groq
+    let groqKey = (options.groqApiKey || "").trim();
+    if (!groqKey) {
+        try {
+            const groqDoc = await db.collection("admin_creds").doc("groq_config").get();
+            if (groqDoc.exists) {
+                groqKey = (groqDoc.data()?.apiKey || "").trim();
+            }
+        } catch (e: any) {
+            console.warn("[GeminiHelper] Admin Groq config lookup error:", e.message);
+        }
+    }
+
     if (groqKey) {
-        console.log(`[GeminiHelper] 🔄 All Gemini models failed or rate-limited. Cascading to Tier-2 Groq fallback (llama-3.3-70b-versatile)...`);
+        console.log(`[GeminiHelper] 🔄 All Gemini models failed or rate-limited. Cascading to Tier-2 Groq fallback...`);
         try {
             let extractedText = "";
+            const extractedImages: Array<{ mimeType: string; data: string }> = [];
+
             if (payload && Array.isArray(payload.contents)) {
                 for (const item of payload.contents) {
                     if (Array.isArray(item.parts)) {
                         for (const part of item.parts) {
                             if (typeof part.text === "string") {
                                 extractedText += part.text + "\n";
+                            }
+                            if (part.inlineData && part.inlineData.data) {
+                                const mime = part.inlineData.mimeType || "image/jpeg";
+                                if (mime.startsWith("image/")) {
+                                    extractedImages.push({
+                                        mimeType: mime,
+                                        data: part.inlineData.data
+                                    });
+                                }
                             }
                         }
                     }
@@ -198,10 +234,28 @@ export async function callGeminiAPI(
                 extractedText = payload;
             }
 
-            if (extractedText.trim()) {
+            if (extractedText.trim() || extractedImages.length > 0) {
+                const groqMessages: any[] = [];
+                if (extractedImages.length > 0) {
+                    const content: any[] = [];
+                    if (extractedText.trim()) {
+                        content.push({ type: "text", text: extractedText });
+                    }
+                    for (const img of extractedImages) {
+                        content.push({
+                            type: "image_url",
+                            image_url: { url: `data:${img.mimeType};base64,${img.data}` }
+                        });
+                    }
+                    groqMessages.push({ role: "user", content });
+                } else {
+                    groqMessages.push({ role: "user", content: extractedText.trim() });
+                }
+
                 const groqRes = await callGroqAPI({
                     apiKey: groqKey,
-                    prompt: extractedText
+                    messages: groqMessages,
+                    responseFormat: payload?.generationConfig?.responseMimeType === "application/json" ? "json_object" : undefined
                 });
                 console.log(`[GeminiHelper] ✅ Tier-2 Groq fallback succeeded (${groqRes.modelUsed})!`);
                 return {

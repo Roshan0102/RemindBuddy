@@ -727,6 +727,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         builder: (context, setDlgState) {
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            insetPadding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: MediaQuery.of(context).viewInsets.bottom > 0
+                  ? MediaQuery.of(context).viewInsets.bottom + 16
+                  : 24,
+            ),
             title: Row(
               children: [
                 const Icon(Icons.picture_as_pdf_rounded, color: Colors.blueAccent),
@@ -738,6 +746,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               ],
             ),
             content: SingleChildScrollView(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom > 0 ? 20 : 0,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -749,6 +760,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   const SizedBox(height: 14),
                   TextField(
                     controller: titleController,
+                    scrollPadding: const EdgeInsets.only(bottom: 100),
                     decoration: InputDecoration(
                       labelText: 'Profile Title *',
                       hintText: 'e.g. DevOps & Cloud Resume, Flutter Mobile',
@@ -760,6 +772,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   const SizedBox(height: 12),
                   TextField(
                     controller: rolesController,
+                    scrollPadding: const EdgeInsets.only(bottom: 100),
                     decoration: InputDecoration(
                       labelText: 'Target Roles & Keywords * (comma-separated)',
                       hintText: 'e.g. DevOps, Cloud, Kubernetes, Terraform, SRE',
@@ -810,12 +823,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           ),
                           onPressed: () async {
                             try {
-                              final picked = await AppFilePicker.pickPdf();
+                              final picked = await AppFilePicker.pickResumeDocument();
                               if (picked != null) {
-                                if (!picked.name.toLowerCase().endsWith('.pdf')) {
+                                final lower = picked.name.toLowerCase();
+                                if (!lower.endsWith('.pdf') && !lower.endsWith('.docx') && !lower.endsWith('.doc')) {
                                   if (dlgCtx.mounted) {
                                     ScaffoldMessenger.of(dlgCtx).showSnackBar(
-                                      const SnackBar(content: Text('Please select a PDF file.')),
+                                      const SnackBar(content: Text('Please select a PDF or Word document.')),
                                     );
                                   }
                                   return;
@@ -940,6 +954,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         builder: (dialogCtx, setDialogState) {
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            insetPadding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: MediaQuery.of(dialogCtx).viewInsets.bottom > 0
+                  ? MediaQuery.of(dialogCtx).viewInsets.bottom + 16
+                  : 24,
+            ),
             title: Row(
               children: [
                 Icon(Icons.settings_suggest_rounded, color: Theme.of(context).primaryColor, size: 26),
@@ -950,6 +972,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             content: SizedBox(
               width: 580,
               child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(dialogCtx).viewInsets.bottom > 0 ? 24 : 0,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -967,6 +992,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     const SizedBox(height: 10),
                     TextField(
                       controller: nameController,
+                      scrollPadding: const EdgeInsets.only(bottom: 100),
                       decoration: InputDecoration(
                         labelText: 'Your Full Name (Candidate Name)',
                         hintText: 'e.g. Alex Morgan or Sarah Connor',
@@ -1000,6 +1026,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         final hasRoleError = parsedRoles.length > 4;
                         return TextField(
                           controller: rolesController,
+                          scrollPadding: const EdgeInsets.only(bottom: 100),
                           onChanged: (_) {
                             setFieldState(() {});
                             setDialogState(() {});
@@ -1032,6 +1059,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         final hasLocError = parsedLocs.length > 5;
                         return TextField(
                           controller: locationsController,
+                          scrollPadding: const EdgeInsets.only(bottom: 100),
                           onChanged: (_) {
                             setFieldState(() {});
                             setDialogState(() {});
@@ -1091,6 +1119,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           Expanded(
                             child: TextField(
                               controller: minExpController,
+                              scrollPadding: const EdgeInsets.only(bottom: 100),
                               keyboardType: TextInputType.number,
                               decoration: InputDecoration(
                                 labelText: 'Min Exp (Years)',
@@ -1105,6 +1134,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           Expanded(
                             child: TextField(
                               controller: maxExpController,
+                              scrollPadding: const EdgeInsets.only(bottom: 100),
                               keyboardType: TextInputType.number,
                               decoration: InputDecoration(
                                 labelText: 'Max Exp (Years)',
@@ -1129,6 +1159,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         Expanded(
                           child: TextField(
                             controller: newExcludeController,
+                            scrollPadding: const EdgeInsets.only(bottom: 100),
                             decoration: InputDecoration(
                               hintText: 'e.g. Current Employer, Consultancy...',
                               hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade500),
@@ -1411,6 +1442,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     const SizedBox(height: 12),
                     TextField(
                       controller: emailController,
+                      scrollPadding: const EdgeInsets.only(bottom: 100),
                       enableSuggestions: false,
                       autocorrect: false,
                       decoration: InputDecoration(
@@ -1424,6 +1456,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     const SizedBox(height: 12),
                     TextField(
                       controller: passwordController,
+                      scrollPadding: const EdgeInsets.only(bottom: 100),
                       obscureText: true,
                       enableSuggestions: false,
                       autocorrect: false,
@@ -1598,13 +1631,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
   Future<void> _pickMasterResume() async {
     try {
-      final picked = await AppFilePicker.pickPdf();
+      final picked = await AppFilePicker.pickResumeDocument();
 
       if (picked != null) {
-        if (!picked.name.toLowerCase().endsWith('.pdf')) {
+        final lower = picked.name.toLowerCase();
+        if (!lower.endsWith('.pdf') && !lower.endsWith('.docx') && !lower.endsWith('.doc')) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Please select a valid PDF file for your resume.')),
+              const SnackBar(content: Text('Please select a valid PDF or Word document (.pdf, .docx, .doc).')),
             );
           }
           return;
@@ -1619,7 +1653,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             _hasResume = true;
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Master Resume ($fileName) saved successfully!')),
+            SnackBar(content: Text('Master Resume ($fileName) saved & indexing in background!')),
           );
         }
       }
@@ -5523,6 +5557,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         builder: (context, setDlgState) {
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            insetPadding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: MediaQuery.of(context).viewInsets.bottom > 0
+                  ? MediaQuery.of(context).viewInsets.bottom + 16
+                  : 24,
+            ),
             title: Row(
               children: [
                 Container(
@@ -5543,6 +5585,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             content: SizedBox(
               width: 520,
               child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom > 0 ? 20 : 0,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -5575,6 +5620,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     TextField(
                       controller: _apifyToken1Controller,
                       obscureText: obscureT1,
+                      scrollPadding: const EdgeInsets.only(bottom: 100),
                       decoration: InputDecoration(
                         labelText: 'Token 1 (Primary) *',
                         hintText: 'apify_api_...',
@@ -5608,6 +5654,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     TextField(
                       controller: _apifyToken2Controller,
                       obscureText: obscureT2,
+                      scrollPadding: const EdgeInsets.only(bottom: 100),
                       decoration: InputDecoration(
                         labelText: 'Token 2 (Backup)',
                         hintText: 'apify_api_... (optional)',
@@ -5641,6 +5688,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     TextField(
                       controller: _apifyToken3Controller,
                       obscureText: obscureT3,
+                      scrollPadding: const EdgeInsets.only(bottom: 100),
                       decoration: InputDecoration(
                         labelText: 'Token 3 (Backup)',
                         hintText: 'apify_api_... (optional)',
@@ -7951,8 +7999,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   bool _isLinkedInApp(JobApplication a) {
     return a.sourcePlatform?.toLowerCase().contains('linkedin') == true ||
         a.sourcePlatform?.toLowerCase().contains('apify') == true ||
+        a.sourcePlatform?.toLowerCase().contains('ios share') == true ||
         a.source == 'linkedin_post_apify' ||
-        a.source == 'linkedin_share';
+        a.source == 'linkedin_share' ||
+        a.source == 'ios_share_sheet';
   }
 
   bool _isCareerPortalApp(JobApplication a) {

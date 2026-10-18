@@ -57,7 +57,21 @@ class VaultService {
           .snapshots()
           .map((famSnap) {
         if (!famSnap.exists || famSnap.data() == null) return null;
-        return VaultFamily.fromMap(famSnap.id, famSnap.data()!);
+        final data = famSnap.data()!;
+        final family = VaultFamily.fromMap(famSnap.id, data);
+
+        // Synchronize Family Key into EncryptionService
+        final fKey = data['familyKey'];
+        if (fKey is String && fKey.isNotEmpty) {
+          EncryptionService().setFamilyKey(fKey);
+        } else {
+          // If existing family has no familyKey, generate one and save
+          final newFamilyKey = EncryptionService().generateMasterKey();
+          _firestore.collection('families').doc(famSnap.id).set({'familyKey': newFamilyKey}, SetOptions(merge: true));
+          EncryptionService().setFamilyKey(newFamilyKey);
+        }
+
+        return family;
       });
     });
   }
@@ -102,6 +116,7 @@ class VaultService {
     }
 
     final docRef = _firestore.collection('families').doc();
+    final familyMasterKey = EncryptionService().generateMasterKey();
 
     final familyData = {
       'id': docRef.id,
@@ -110,10 +125,12 @@ class VaultService {
       'collaboratorUids': [uid],
       'pendingInvites': [],
       'virtualProfiles': [],
+      'familyKey': familyMasterKey,
       'createdAt': FieldValue.serverTimestamp(),
     };
 
     await docRef.set(familyData);
+    EncryptionService().setFamilyKey(familyMasterKey);
     await _firestore.collection('users').doc(uid).set({'familyId': docRef.id}, SetOptions(merge: true));
   }
 
@@ -731,13 +748,16 @@ class VaultService {
     if (uid == null) throw Exception("User not authenticated.");
 
     final encryptionService = EncryptionService();
+    final keyToUse = (!isPrivate && encryptionService.familyKey != null)
+        ? encryptionService.familyKey
+        : encryptionService.sessionKey;
 
-    final encryptedTitle = await encryptionService.encryptText(title);
+    final encryptedTitle = await encryptionService.encryptText(title, customKey: keyToUse);
 
     final Map<String, String> encryptedFields = {};
     for (var entry in fields.entries) {
       if (entry.value.isNotEmpty) {
-        encryptedFields[entry.key] = await encryptionService.encryptText(entry.value);
+        encryptedFields[entry.key] = await encryptionService.encryptText(entry.value, customKey: keyToUse);
       }
     }
 
@@ -753,7 +773,7 @@ class VaultService {
 
     for (int i = 0; i < rawImagesToUpload.length; i++) {
       final rawBytes = rawImagesToUpload[i];
-      final encryptedBytes = await encryptionService.encryptBytes(rawBytes);
+      final encryptedBytes = await encryptionService.encryptBytes(rawBytes, customKey: keyToUse);
 
       final originalName = newAttachmentsNames[i];
       final ext = originalName.contains('.') ? originalName.split('.').last : 'bin';

@@ -21,6 +21,7 @@ import '../services/vault_service.dart';
 import 'vault_tab_wrapper.dart';
 import 'settings_screen.dart';
 import 'admin_screen.dart';
+import '../services/auth_service.dart';
 import 'notification_history_screen.dart';
 import '../services/update_service.dart';
 import '../services/home_widget_service.dart';
@@ -1794,7 +1795,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       IconButton(
                         icon: const Icon(Icons.logout, color: Colors.redAccent),
                         onPressed: () async {
-                          await FirebaseAuth.instance.signOut();
+                          await AuthService().signOut();
                           if (mounted) {
                             Navigator.pushReplacement(
                               context,
@@ -1808,7 +1809,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'SmartBuddy v1.10.56',
+                  'SmartBuddy v1.10.57',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],
@@ -2063,7 +2064,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 );
 
                 if (confirm == true) {
-                  await FirebaseAuth.instance.signOut();
+                  await AuthService().signOut();
                   if (context.mounted) {
                     Navigator.pushAndRemoveUntil(
                       context,

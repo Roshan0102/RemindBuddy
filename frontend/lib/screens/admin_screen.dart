@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:share_plus/share_plus.dart';
@@ -166,8 +167,13 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Future<void> _checkLocalAuth() async {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final prefs = await SharedPreferences.getInstance();
-    final isAuth = prefs.getBool('isAdminAuthenticated') ?? false;
+    final authUid = prefs.getString('adminAuthenticatedUid') ?? '';
+    final isAuth = (prefs.getBool('isAdminAuthenticated') ?? false) &&
+        currentUid.isNotEmpty &&
+        authUid == currentUid;
+
     setState(() {
       _isAuthenticated = isAuth;
       _isLoading = false;
@@ -200,8 +206,10 @@ class _AdminScreenState extends State<AdminScreen> {
         final dbPassword = doc.data()!['password'];
 
         if (username == dbUsername && password == dbPassword) {
+          final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isAdminAuthenticated', true);
+          await prefs.setString('adminAuthenticatedUid', currentUid);
           await _fetchGeminiApiKey();
           await _fetchAppUpdatesConfig();
           setState(() {
@@ -228,6 +236,8 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _handleLogout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isAdminAuthenticated', false);
+    await prefs.remove('isAdminAuthenticated');
+    await prefs.remove('adminAuthenticatedUid');
     setState(() {
       _isAuthenticated = false;
       _usernameController.clear();
@@ -430,49 +440,39 @@ class _AdminScreenState extends State<AdminScreen> {
     bool enable,
     List<String> enabledModules,
   ) async {
-    final newModules = List<String>.from(enabledModules);
-    if (enable) {
-      if (!newModules.contains(moduleId)) newModules.add(moduleId);
-    } else {
-      newModules.remove(moduleId);
-    }
-
-    final Map<String, dynamic> updatePayload = {
-      'enabledModules': newModules,
-    };
-
-    if (moduleId == 'job_assistant') {
-      if (enable) {
-        if (!newModules.contains('linkedin_auto_apply')) newModules.add('linkedin_auto_apply');
-        if (!newModules.contains('career_portals')) newModules.add('career_portals');
-        updatePayload['jobAssistantSubPermissions'] = {
-          'auto_apply': true,
-          'career_portals': true,
-          'linkedin_auto_apply': true,
-          'cold_outreach': true,
-          'manual_apply': true,
-          'ai_recruiter_call': false,
-        };
-      } else {
-        newModules.remove('linkedin_auto_apply');
-        newModules.remove('career_portals');
-      }
-    }
-
     try {
-      await FirebaseFirestore.instance.collection('users').doc(userId).set(
-        updatePayload,
-        SetOptions(merge: true),
-      );
+      final docRef = FirebaseFirestore.instance.collection('users').doc(userId);
+      final Map<String, dynamic> updatePayload = {
+        'enabledModules': enable
+            ? FieldValue.arrayUnion([moduleId])
+            : FieldValue.arrayRemove([moduleId]),
+      };
 
-      await FirebaseFunctions.instance
-          .httpsCallable('adminUpdateUserModules')
-          .call({
-            'userId': userId,
-            'enabledModules': newModules,
-            if (updatePayload.containsKey('jobAssistantSubPermissions'))
-              'jobAssistantSubPermissions': updatePayload['jobAssistantSubPermissions'],
-          });
+      if (moduleId == 'job_assistant') {
+        if (enable) {
+          updatePayload['enabledModules'] = FieldValue.arrayUnion([
+            'job_assistant',
+            'linkedin_auto_apply',
+            'career_portals',
+          ]);
+          updatePayload['jobAssistantSubPermissions'] = {
+            'auto_apply': true,
+            'career_portals': true,
+            'linkedin_auto_apply': true,
+            'cold_outreach': true,
+            'manual_apply': true,
+            'ai_recruiter_call': false,
+          };
+        } else {
+          updatePayload['enabledModules'] = FieldValue.arrayRemove([
+            'job_assistant',
+            'linkedin_auto_apply',
+            'career_portals',
+          ]);
+        }
+      }
+
+      await docRef.set(updatePayload, SetOptions(merge: true));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -495,41 +495,25 @@ class _AdminScreenState extends State<AdminScreen> {
     Map<String, dynamic> currentSubPermissions,
     List<String> enabledModules,
   ) async {
-    final updated = Map<String, dynamic>.from(currentSubPermissions);
-    updated[subKey] = enable;
-
-    final newModules = List<String>.from(enabledModules);
-    if (!newModules.contains('job_assistant')) {
-      newModules.add('job_assistant');
-    }
-    if (subKey == 'linkedin_auto_apply') {
-      if (enable && !newModules.contains('linkedin_auto_apply')) {
-        newModules.add('linkedin_auto_apply');
-      } else if (!enable) {
-        newModules.remove('linkedin_auto_apply');
-      }
-    }
-    if (subKey == 'career_portals') {
-      if (enable && !newModules.contains('career_portals')) {
-        newModules.add('career_portals');
-      } else if (!enable) {
-        newModules.remove('career_portals');
-      }
-    }
-
     try {
-      await FirebaseFirestore.instance.collection('users').doc(userId).set({
-        'jobAssistantSubPermissions': updated,
-        'enabledModules': newModules,
-      }, SetOptions(merge: true));
+      final docRef = FirebaseFirestore.instance.collection('users').doc(userId);
+      final updatePayload = <String, dynamic>{
+        'jobAssistantSubPermissions.$subKey': enable,
+      };
 
-      await FirebaseFunctions.instance
-          .httpsCallable('adminUpdateUserModules')
-          .call({
-            'userId': userId,
-            'enabledModules': newModules,
-            'jobAssistantSubPermissions': updated,
-          });
+      if (enable) {
+        final toAdd = <String>['job_assistant'];
+        if (subKey == 'linkedin_auto_apply' || subKey == 'career_portals') {
+          toAdd.add(subKey);
+        }
+        updatePayload['enabledModules'] = FieldValue.arrayUnion(toAdd);
+      } else {
+        if (subKey == 'linkedin_auto_apply' || subKey == 'career_portals') {
+          updatePayload['enabledModules'] = FieldValue.arrayRemove([subKey]);
+        }
+      }
+
+      await docRef.set(updatePayload, SetOptions(merge: true));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -550,34 +534,34 @@ class _AdminScreenState extends State<AdminScreen> {
     Map<String, bool> newPerms,
     List<String> enabledModules,
   ) async {
-    final newModules = List<String>.from(enabledModules);
-    if (!newModules.contains('job_assistant')) {
-      newModules.add('job_assistant');
-    }
-    if (newPerms['linkedin_auto_apply'] == true) {
-      if (!newModules.contains('linkedin_auto_apply')) newModules.add('linkedin_auto_apply');
-    } else {
-      newModules.remove('linkedin_auto_apply');
-    }
-    if (newPerms['career_portals'] == true) {
-      if (!newModules.contains('career_portals')) newModules.add('career_portals');
-    } else {
-      newModules.remove('career_portals');
-    }
-
     try {
-      await FirebaseFirestore.instance.collection('users').doc(userId).set({
-        'jobAssistantSubPermissions': newPerms,
-        'enabledModules': newModules,
-      }, SetOptions(merge: true));
+      final docRef = FirebaseFirestore.instance.collection('users').doc(userId);
+      final toAdd = <String>['job_assistant'];
+      final toRemove = <String>[];
 
-      await FirebaseFunctions.instance
-          .httpsCallable('adminUpdateUserModules')
-          .call({
-            'userId': userId,
-            'enabledModules': newModules,
-            'jobAssistantSubPermissions': newPerms,
-          });
+      if (newPerms['linkedin_auto_apply'] == true) {
+        toAdd.add('linkedin_auto_apply');
+      } else {
+        toRemove.add('linkedin_auto_apply');
+      }
+
+      if (newPerms['career_portals'] == true) {
+        toAdd.add('career_portals');
+      } else {
+        toRemove.add('career_portals');
+      }
+
+      final updatePayload = <String, dynamic>{
+        'jobAssistantSubPermissions': newPerms,
+        'enabledModules': FieldValue.arrayUnion(toAdd),
+      };
+
+      await docRef.set(updatePayload, SetOptions(merge: true));
+      if (toRemove.isNotEmpty) {
+        await docRef.update({
+          'enabledModules': FieldValue.arrayRemove(toRemove),
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -609,9 +593,24 @@ class _AdminScreenState extends State<AdminScreen> {
       return;
     }
 
-    // Fetch existing usernames for the collaboration partner pop-up
+    // Fetch existing usernames to verify uniqueness upfront and for collaboration partner pop-up
     final usernamesSnap =
         await FirebaseFirestore.instance.collection('usernames').get();
+
+    final isDuplicate = usernamesSnap.docs.any(
+      (d) => d.id.toLowerCase() == username.toLowerCase() ||
+             (d.data()['username'] ?? '').toString().toLowerCase() == username.toLowerCase(),
+    );
+
+    if (isDuplicate) {
+      setState(() {
+        _adminUserErrorMessage =
+            'Username "$username" already exists. Please choose a different username.';
+        _adminUserSuccessMessage = '';
+      });
+      return;
+    }
+
     final existingUsernames = usernamesSnap.docs
         .map((d) => d.id)
         .where((u) => u.toLowerCase() != username.toLowerCase())

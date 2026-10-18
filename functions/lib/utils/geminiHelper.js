@@ -52,7 +52,7 @@ const unsupportedModels = new Set();
  * - Built-in exponential backoff for HTTP 503 (high-demand transient spikes) and HTTP 429
  */
 async function callGeminiAPI(payload, options = {}) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
     let targetApiKey = (options.apiKey || "").trim();
     // If no custom user key provided, fetch admin key from Firestore
     if (!targetApiKey) {
@@ -86,8 +86,10 @@ async function callGeminiAPI(payload, options = {}) {
     }
     const apiKey = targetApiKey;
     const keyLabel = options.apiKey ? "User BYOK Key" : "Admin Key";
+    let consecutive503Count = 0;
     for (const model of candidateModels) {
         let attempt = 0;
+        let modelEncountered503 = false;
         while (attempt <= maxRetries) {
             try {
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -134,9 +136,10 @@ async function callGeminiAPI(payload, options = {}) {
                 }
                 // 503 / 502 / 504 Transient high demand or server overload spike
                 if (status === 503 || status === 502 || status === 504 || (errMsg && (errMsg.includes("high demand") || errMsg.includes("spikes in demand") || errMsg.includes("temporarily unavailable") || errMsg.includes("overloaded")))) {
+                    modelEncountered503 = true;
                     attempt++;
                     if (attempt <= maxRetries) {
-                        const delayMs = attempt * 2000;
+                        const delayMs = attempt * 1500;
                         console.log(`[GeminiHelper] Server transient high-demand/busy spike (Status ${status}) on '${model}'. Backing off ${delayMs}ms before retry...`);
                         await new Promise((res) => setTimeout(res, delayMs));
                         continue;
@@ -149,19 +152,50 @@ async function callGeminiAPI(payload, options = {}) {
                 break; // Move to next model
             }
         }
+        if (modelEncountered503) {
+            consecutive503Count++;
+            if (consecutive503Count >= 2) {
+                console.log(`[GeminiHelper] Multiple Gemini models encountered high-demand (503). Fast-cascading directly to Groq fallback...`);
+                break;
+            }
+        }
+        else {
+            consecutive503Count = 0;
+        }
     }
-    // Tier-2 Universal Fallback: If all Gemini models failed, attempt Groq (Llama 3.3 70B)
-    const groqKey = (options.groqApiKey || "").trim();
+    // Tier-2 Universal Fallback: If all Gemini models failed, attempt Groq
+    let groqKey = (options.groqApiKey || "").trim();
+    if (!groqKey) {
+        try {
+            const groqDoc = await firebase_1.db.collection("admin_creds").doc("groq_config").get();
+            if (groqDoc.exists) {
+                groqKey = (((_j = groqDoc.data()) === null || _j === void 0 ? void 0 : _j.apiKey) || "").trim();
+            }
+        }
+        catch (e) {
+            console.warn("[GeminiHelper] Admin Groq config lookup error:", e.message);
+        }
+    }
     if (groqKey) {
-        console.log(`[GeminiHelper] 🔄 All Gemini models failed or rate-limited. Cascading to Tier-2 Groq fallback (llama-3.3-70b-versatile)...`);
+        console.log(`[GeminiHelper] 🔄 All Gemini models failed or rate-limited. Cascading to Tier-2 Groq fallback...`);
         try {
             let extractedText = "";
+            const extractedImages = [];
             if (payload && Array.isArray(payload.contents)) {
                 for (const item of payload.contents) {
                     if (Array.isArray(item.parts)) {
                         for (const part of item.parts) {
                             if (typeof part.text === "string") {
                                 extractedText += part.text + "\n";
+                            }
+                            if (part.inlineData && part.inlineData.data) {
+                                const mime = part.inlineData.mimeType || "image/jpeg";
+                                if (mime.startsWith("image/")) {
+                                    extractedImages.push({
+                                        mimeType: mime,
+                                        data: part.inlineData.data
+                                    });
+                                }
                             }
                         }
                     }
@@ -170,10 +204,28 @@ async function callGeminiAPI(payload, options = {}) {
             else if (typeof payload === "string") {
                 extractedText = payload;
             }
-            if (extractedText.trim()) {
+            if (extractedText.trim() || extractedImages.length > 0) {
+                const groqMessages = [];
+                if (extractedImages.length > 0) {
+                    const content = [];
+                    if (extractedText.trim()) {
+                        content.push({ type: "text", text: extractedText });
+                    }
+                    for (const img of extractedImages) {
+                        content.push({
+                            type: "image_url",
+                            image_url: { url: `data:${img.mimeType};base64,${img.data}` }
+                        });
+                    }
+                    groqMessages.push({ role: "user", content });
+                }
+                else {
+                    groqMessages.push({ role: "user", content: extractedText.trim() });
+                }
                 const groqRes = await (0, groqHelper_1.callGroqAPI)({
                     apiKey: groqKey,
-                    prompt: extractedText
+                    messages: groqMessages,
+                    responseFormat: ((_k = payload === null || payload === void 0 ? void 0 : payload.generationConfig) === null || _k === void 0 ? void 0 : _k.responseMimeType) === "application/json" ? "json_object" : undefined
                 });
                 console.log(`[GeminiHelper] ✅ Tier-2 Groq fallback succeeded (${groqRes.modelUsed})!`);
                 return {
@@ -187,18 +239,18 @@ async function callGeminiAPI(payload, options = {}) {
             console.error(`[GeminiHelper] Tier-2 Groq fallback also failed: ${groqErr.message}`);
         }
     }
-    const isQuota = ((_j = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _j === void 0 ? void 0 : _j.status) === 429;
-    const isBusy = ((_k = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _k === void 0 ? void 0 : _k.status) === 503 ||
-        ((_l = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _l === void 0 ? void 0 : _l.status) === 502 ||
-        ((_m = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _m === void 0 ? void 0 : _m.status) === 504 ||
-        (((_q = (_p = (_o = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _o === void 0 ? void 0 : _o.data) === null || _p === void 0 ? void 0 : _p.error) === null || _q === void 0 ? void 0 : _q.message) && (lastError.response.data.error.message.includes("high demand") ||
+    const isQuota = ((_l = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _l === void 0 ? void 0 : _l.status) === 429;
+    const isBusy = ((_m = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _m === void 0 ? void 0 : _m.status) === 503 ||
+        ((_o = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _o === void 0 ? void 0 : _o.status) === 502 ||
+        ((_p = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _p === void 0 ? void 0 : _p.status) === 504 ||
+        (((_s = (_r = (_q = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _q === void 0 ? void 0 : _q.data) === null || _r === void 0 ? void 0 : _r.error) === null || _s === void 0 ? void 0 : _s.message) && (lastError.response.data.error.message.includes("high demand") ||
             lastError.response.data.error.message.includes("spikes in demand") ||
             lastError.response.data.error.message.includes("overloaded")));
     const finalMessage = isQuota
         ? "Gemini API Quota Exceeded (HTTP 429). The daily or per-minute rate limit for Gemini API has been reached on this key. Please check your Google AI Studio / GCP quota or configure a backup API key."
         : isBusy
             ? "Google AI Studio is currently experiencing high demand (HTTP 503). Spikes in traffic are temporary. Please try again after a few moments."
-            : (((_t = (_s = (_r = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _r === void 0 ? void 0 : _r.data) === null || _s === void 0 ? void 0 : _s.error) === null || _t === void 0 ? void 0 : _t.message) || (lastError === null || lastError === void 0 ? void 0 : lastError.message) || "All Gemini API attempts failed across all models.");
+            : (((_v = (_u = (_t = lastError === null || lastError === void 0 ? void 0 : lastError.response) === null || _t === void 0 ? void 0 : _t.data) === null || _u === void 0 ? void 0 : _u.error) === null || _v === void 0 ? void 0 : _v.message) || (lastError === null || lastError === void 0 ? void 0 : lastError.message) || "All Gemini API attempts failed across all models.");
     throw new Error(`Gemini Service Error: ${finalMessage}`);
 }
 //# sourceMappingURL=geminiHelper.js.map
