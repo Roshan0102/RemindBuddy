@@ -105,14 +105,54 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         val widgetData = HomeWidgetPlugin.getData(context)
+        val pendingNoteId = widgetData?.getString("pending_pin_note_id", null)
+        val pendingTitle = widgetData?.getString("pending_pin_note_title", null)
+        val pendingItems = widgetData?.getString("pending_pin_note_items", null)
 
         for (appWidgetId in appWidgetIds) {
-            val title = widgetData?.getString("note_widget_title_$appWidgetId", null)
-                ?: widgetData?.getString("note_widget_title", null)
-                ?: "Office Checklist"
-            val noteId = widgetData?.getString("note_widget_id_$appWidgetId", null)
-                ?: widgetData?.getString("note_widget_id", null)
-                ?: ""
+            var noteId = widgetData?.getString("note_widget_id_$appWidgetId", null)
+            var title = widgetData?.getString("note_widget_title_$appWidgetId", null)
+
+            // If this widget has no dedicated note assigned, bind to pending pin note if available
+            if (noteId == null && !pendingNoteId.isNullOrEmpty()) {
+                noteId = pendingNoteId
+                title = pendingTitle ?: "Checklist"
+                val items = pendingItems ?: "[]"
+                widgetData?.edit()?.apply {
+                    putString("note_widget_id_$appWidgetId", noteId)
+                    putString("note_widget_title_$appWidgetId", title)
+                    putString("note_widget_items_$appWidgetId", items)
+                    putBoolean("note_widget_dirty_$appWidgetId", false)
+                    remove("pending_pin_note_id")
+                    remove("pending_pin_note_title")
+                    remove("pending_pin_note_items")
+                    apply()
+                }
+                Log.d("NoteChecklistWidget", "Bound newly created widget $appWidgetId to pending note: $title ($noteId)")
+            } else if (noteId == null) {
+                val globalNoteId = widgetData?.getString("note_widget_id", null) ?: ""
+                val globalTitle = widgetData?.getString("note_widget_title", null) ?: "Checklist"
+                val globalItems = widgetData?.getString("note_widget_items", null) ?: "[]"
+                if (globalNoteId.isNotEmpty()) {
+                    noteId = globalNoteId
+                    title = globalTitle
+                    widgetData?.edit()?.apply {
+                        putString("note_widget_id_$appWidgetId", globalNoteId)
+                        putString("note_widget_title_$appWidgetId", globalTitle)
+                        putString("note_widget_items_$appWidgetId", globalItems)
+                        apply()
+                    }
+                } else {
+                    title = globalTitle
+                }
+            }
+
+            if (title.isNullOrEmpty()) {
+                title = "Checklist"
+            }
+            if (noteId == null) {
+                noteId = ""
+            }
 
             val views = RemoteViews(context.packageName, R.layout.note_checklist_widget_layout).apply {
                 setTextViewText(R.id.widget_note_title, title)

@@ -77,6 +77,33 @@ CRITICAL RULES:
 - Output ONLY the updated full text with calculations filled in.`;
                 break;
 
+            case "calculate_and_sum":
+                systemInstruction = `You are a precision mathematical evaluator, accounting assistant, and smart calculation engine.
+Analyze the entire note content and perform all necessary math and summation:
+1. If there are arithmetic calculations or equations (e.g., "100 + 30 =", "15 * 24 =", "10% of 250 ="), solve them and append the calculated answer.
+2. If there are itemized names, expenses, debts, bills, or items with numbers (e.g. "Groceries - 500", "Utilities: 300", "Rent: ₹12000", "Coffee 45"), identify all amounts, preserve currency symbols if present, and calculate the total sum.
+3. If amounts or itemized expenses are found and summed, append a clean summary line at the bottom or below that section (e.g. "Total: ₹X" or "Total: X" matching the note's currency/format). If there are multiple distinct categories or lists, provide appropriate totals.
+CRITICAL RULES:
+- Preserve all existing non-math text, headers, and user formatting.
+- Ensure 100% mathematical accuracy.
+- Do NOT add conversational greetings, explanations, or preambles. Output ONLY the updated note text with calculations and totals incorporated.`;
+                break;
+
+            case "custom_prompt":
+                const userPrompt = ((data.customPrompt || data.prompt || "") as string).trim();
+                if (!userPrompt) {
+                    throw new functions.https.HttpsError("invalid-argument", "Prompt is required for custom_prompt.");
+                }
+                systemInstruction = `You are an elite AI writing and thinking assistant for notes.
+The user wants you to transform, edit, expand, or update their note according to their specific instruction:
+USER INSTRUCTION: "${userPrompt}"
+
+CRITICAL RULES:
+- Carefully fulfill the user's instruction on the note content.
+- Maintain appropriate formatting (e.g. markdown, lists, paragraphs) suitable for a clean personal note.
+- Do NOT output conversational chatter, preambles (e.g., "Sure, here is your note:"), or explanations. Output ONLY the updated note content.`;
+                break;
+
             default:
                 throw new functions.https.HttpsError("invalid-argument", `Unknown action: ${action}`);
         }

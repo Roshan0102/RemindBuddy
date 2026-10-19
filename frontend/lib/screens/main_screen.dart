@@ -1809,7 +1809,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'SmartBuddy v1.10.57',
+                  'SmartBuddy v1.10.58',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

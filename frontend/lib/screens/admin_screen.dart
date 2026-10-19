@@ -1,14 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import '../services/update_service.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -1040,93 +1035,6 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
-  bool _isSharingApk = false;
-
-  Future<void> _shareLatestApk() async {
-    if (_isSharingApk) return;
-    setState(() => _isSharingApk = true);
-    try {
-      final packageInfo = await PackageInfo.fromPlatform();
-      final version = packageInfo.version;
-
-      if (!kIsWeb && Platform.isAndroid) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Preparing APK file for sharing...',
-                    style: GoogleFonts.outfit(),
-                  ),
-                ],
-              ),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-
-        const platform = MethodChannel('com.remindbuddy/app_utils');
-        final String? apkPath = await platform.invokeMethod<String>(
-          'getAppApkPath',
-        );
-        if (apkPath != null &&
-            File(apkPath).existsSync() &&
-            (await File(apkPath).length()) > 1000000) {
-          await Share.shareXFiles(
-            [
-              XFile(
-                apkPath,
-                mimeType: 'application/vnd.android.package-archive',
-              ),
-            ],
-            text: '📥 SmartBuddy App APK (v$version)',
-            subject: 'SmartBuddy App APK (v$version)',
-          );
-          return;
-        }
-      }
-
-      // Fallback if web or non-android
-      const firebaseApkUrl =
-          'https://firebasestorage.googleapis.com/v0/b/remindbuddy-b68f9.firebasestorage.app/o/releases%2Flatest-release.apk?alt=media';
-      final shareText =
-          '''
-📱 *SmartBuddy App (v${packageInfo.version})*
-Download latest release APK:
-$firebaseApkUrl
-'''
-              .trim();
-
-      await Share.share(shareText, subject: 'Download SmartBuddy App APK');
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Error preparing APK for sharing: $e',
-              style: GoogleFonts.outfit(),
-            ),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSharingApk = false);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1210,24 +1118,6 @@ $firebaseApkUrl
             ],
           ),
           actions: [
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : const Color(0xFF6366F1).withValues(alpha: 0.08),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.share_rounded,
-                  size: 18,
-                  color: isDark ? Colors.cyanAccent : const Color(0xFF4F46E5),
-                ),
-              ),
-              onPressed: _shareLatestApk,
-              tooltip: 'Share App APK',
-            ),
             IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(6),

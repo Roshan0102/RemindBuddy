@@ -93,9 +93,10 @@ export const processCalendarReminderTask = functions.tasks
                     const isSticky = rData?.isSticky === true;
                     const message: any = {
                         token,
-                        // For sticky reminders on Android, omitting top-level notification prevents Google Play Services
-                        // from displaying a standard dismissible tray notification, allowing Flutter's background handler
-                        // to render a true ongoing (FLAG_ONGOING_EVENT) notification that cannot be dismissed by "Clear All".
+                        // For sticky reminders on Android, omitting top-level notification and android.notification
+                        // prevents Google Play Services from displaying a standard dismissible tray notification,
+                        // allowing Flutter's background/foreground handler to render a true ongoing (FLAG_ONGOING_EVENT | FLAG_NO_CLEAR)
+                        // notification that cannot be dismissed by "Clear All" or swiping.
                         ...(!isSticky ? { notification: { title, body } } : {}),
                         webpush: {
                             notification: { title, body }
@@ -107,13 +108,15 @@ export const processCalendarReminderTask = functions.tasks
                         },
                         android: { 
                             priority: "high",
-                            notification: { 
-                                channelId: isAlarmMode 
-                                    ? `alarm_reminder_channel_${rawSound}` 
-                                    : (isSticky ? "sticky_reminder_channel" : "calendar_reminder_channel"),
-                                tag: `calendar_reminder_${reminderId}`,
-                                sound: isAlarmMode ? rawSound : undefined,
-                            } 
+                            ...(!isSticky ? {
+                                notification: { 
+                                    channelId: isAlarmMode 
+                                        ? `alarm_reminder_channel_${rawSound}` 
+                                        : "calendar_reminder_channel",
+                                    tag: `calendar_reminder_${reminderId}`,
+                                    sound: isAlarmMode ? rawSound : undefined,
+                                } 
+                            } : {}),
                         },
                         data: { 
                             title: title,

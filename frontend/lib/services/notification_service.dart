@@ -79,7 +79,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final payload = "CALENDAR_REMINDER|$reminderId|$uid";
 
     final FlutterLocalNotificationsPlugin localNotifs = FlutterLocalNotificationsPlugin();
-    const androidDetails = AndroidNotificationDetails(
+    final androidDetails = AndroidNotificationDetails(
       'sticky_reminder_channel',
       'Sticky Reminders',
       channelDescription: 'Persistent reminder notifications that stay in the tray until dismissed',
@@ -87,10 +87,12 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       priority: Priority.high,
       ongoing: true,
       autoCancel: false,
-      actions: <AndroidNotificationAction>[
+      additionalFlags: Int32List.fromList([2, 32]), // FLAG_ONGOING_EVENT = 2, FLAG_NO_CLEAR = 32 (prevents swipe dismiss)
+      category: AndroidNotificationCategory.reminder,
+      actions: const <AndroidNotificationAction>[
         AndroidNotificationAction(
           'action_dismiss_sticky',
-          'Dismiss ✕',
+          'Dismiss',
           showsUserInterface: false,
           cancelNotification: true,
         ),
@@ -102,7 +104,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       notifId,
       title,
       body,
-      const NotificationDetails(android: androidDetails),
+      NotificationDetails(android: androidDetails),
       payload: payload,
     );
     LogService.staticLog("FCM BG: Displayed ongoing sticky notification for reminder $reminderId");
@@ -135,6 +137,11 @@ void notificationTapBackground(NotificationResponse notificationResponse) async 
         try {
           await AlarmAudioService().stopAlarm();
         } catch (_) {}
+        if (notificationResponse.id != null) {
+          try {
+            await FlutterLocalNotificationsPlugin().cancel(notificationResponse.id!);
+          } catch (_) {}
+        }
         final expireAt = DateTime.now().add(const Duration(days: 30));
         await docRef.update({
           'status': 'completed',
@@ -393,6 +400,11 @@ class NotificationService {
                 try {
                   await AlarmAudioService().stopAlarm();
                 } catch (_) {}
+                if (response.id != null) {
+                  try {
+                    await _localNotifications.cancel(response.id!);
+                  } catch (_) {}
+                }
                 final expireAt = DateTime.now().add(const Duration(days: 30));
                 await docRef.update({
                   'status': 'completed',
@@ -863,11 +875,13 @@ class NotificationService {
                 icon: android?.smallIcon ?? '@mipmap/ic_launcher',
                 ongoing: isSticky,
                 autoCancel: !isSticky,
+                additionalFlags: isSticky ? Int32List.fromList([2, 32]) : null, // FLAG_ONGOING_EVENT = 2, FLAG_NO_CLEAR = 32
+                category: isSticky ? AndroidNotificationCategory.reminder : null,
                 actions: isSticky
                     ? <AndroidNotificationAction>[
                         const AndroidNotificationAction(
                           'action_dismiss_sticky',
-                          'Dismiss ✕',
+                          'Dismiss',
                           showsUserInterface: false,
                           cancelNotification: true,
                         ),
@@ -1006,11 +1020,13 @@ class NotificationService {
           icon: '@mipmap/ic_launcher',
           ongoing: isSticky,
           autoCancel: !isSticky,
+          additionalFlags: isSticky ? Int32List.fromList([2, 32]) : null, // FLAG_ONGOING_EVENT = 2, FLAG_NO_CLEAR = 32
+          category: isSticky ? AndroidNotificationCategory.reminder : null,
           actions: isSticky
-              ? <AndroidNotificationAction>[
-                  const AndroidNotificationAction(
+              ? const <AndroidNotificationAction>[
+                  AndroidNotificationAction(
                     'action_dismiss_sticky',
-                    'Dismiss ✕',
+                    'Dismiss',
                     showsUserInterface: false,
                     cancelNotification: true,
                   ),

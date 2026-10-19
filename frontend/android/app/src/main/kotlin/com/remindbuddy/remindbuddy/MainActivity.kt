@@ -320,6 +320,16 @@ class MainActivity: FlutterActivity() {
                                 val title = call.argument<String>("title") ?: "Office Checklist"
                                 val items = call.argument<String>("items") ?: "[]"
 
+                                // Save pending pin data so newly created widget instance binds immediately
+                                val widgetData = es.antonborri.home_widget.HomeWidgetPlugin.getData(context)
+                                widgetData?.edit()?.apply {
+                                    putString("pending_pin_note_id", noteId)
+                                    putString("pending_pin_note_title", title)
+                                    putString("pending_pin_note_items", items)
+                                    putLong("pending_pin_timestamp", System.currentTimeMillis())
+                                    apply()
+                                }
+
                                 val callbackIntent = Intent(context, NoteChecklistWidgetProvider::class.java).apply {
                                     action = NoteChecklistWidgetProvider.ACTION_WIDGET_PINNED_CALLBACK
                                     putExtra(NoteChecklistWidgetProvider.EXTRA_NOTE_ID, noteId)
@@ -360,12 +370,15 @@ class MainActivity: FlutterActivity() {
                         for (id in appWidgetIds) {
                             val noteId = widgetData?.getString("note_widget_id_$id", null)
                                 ?: widgetData?.getString("note_widget_id", "") ?: ""
+                            val title = widgetData?.getString("note_widget_title_$id", null)
+                                ?: widgetData?.getString("note_widget_title", "Checklist") ?: "Checklist"
                             val isDirty = widgetData?.getBoolean("note_widget_dirty_$id", false) ?: false
                             val itemsJson = widgetData?.getString("note_widget_items_$id", null)
                                 ?: widgetData?.getString("note_widget_items", "[]") ?: "[]"
                             list.add(mapOf(
                                 "appWidgetId" to id,
                                 "noteId" to noteId,
+                                "title" to title,
                                 "isDirty" to isDirty,
                                 "items" to itemsJson
                             ))

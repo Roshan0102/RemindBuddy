@@ -529,29 +529,7 @@ class _NotesScreenState extends State<NotesScreen> {
                             checklistItems: checklistItems,
                             isStarred: note?.isStarred ?? false,
                           );
-                          final pinned = await HomeWidgetService().pinNoteChecklistWidget(currentNote);
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Row(
-                                children: [
-                                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      pinned
-                                          ? 'Pinned "${currentNote.title.isNotEmpty ? currentNote.title : 'Checklist'}" to Home Screen!'
-                                          : 'Checklist synced to Home Widget! Add the "Checklist Note" widget to your home screen.',
-                                      style: GoogleFonts.outfit(),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              backgroundColor: const Color(0xFF6366F1),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                          );
+                          await _handlePinOrAssignWidget(context, currentNote);
                         },
                       ),
                     Padding(
@@ -1114,6 +1092,24 @@ class _NotesScreenState extends State<NotesScreen> {
                   const SizedBox(height: 16),
                   _buildAiToolOption(
                     ctx,
+                    action: 'calculate_and_sum',
+                    title: 'Calculate & Sum All',
+                    subtitle: 'Solves all math equations and sums up items/names with totals',
+                    icon: Icons.functions_rounded,
+                    iconColor: const Color(0xFF6366F1),
+                    isDark: isDark,
+                  ),
+                  _buildAiToolOption(
+                    ctx,
+                    action: 'custom_prompt',
+                    title: 'Ask AI / Custom Prompt',
+                    subtitle: 'Give any custom instruction to write, edit, or transform this note',
+                    icon: Icons.psychology_rounded,
+                    iconColor: const Color(0xFFEC4899),
+                    isDark: isDark,
+                  ),
+                  _buildAiToolOption(
+                    ctx,
                     action: 'solve_all_math',
                     title: 'Solve All Math in Note',
                     subtitle: 'Instantly calculate all formulas and expressions ending with =',
@@ -1221,6 +1217,80 @@ class _NotesScreenState extends State<NotesScreen> {
       return;
     }
 
+    String? customPrompt;
+    if (selectedAction == 'custom_prompt') {
+      final promptCtrl = TextEditingController();
+      final userConfirmed = await showDialog<bool>(
+        context: context,
+        builder: (pCtx) => AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Ask AI',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'What would you like AI to do with this note?',
+                style: GoogleFonts.outfit(fontSize: 13, color: isDark ? Colors.white70 : Colors.black87),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: promptCtrl,
+                autofocus: true,
+                maxLines: 3,
+                style: GoogleFonts.outfit(fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'e.g., Categorize expenses, translate to French, add key takeaways, organize into sections...',
+                  hintStyle: GoogleFonts.outfit(fontSize: 12, color: isDark ? Colors.white38 : Colors.black38),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(pCtx, false),
+              child: Text('Cancel', style: GoogleFonts.outfit(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(pCtx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text('Generate', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+      if (userConfirmed != true || promptCtrl.text.trim().isEmpty) return;
+      customPrompt = promptCtrl.text.trim();
+    }
+
     final rawText = isChecklist
         ? checklistItems.map((it) => (it['text'] as String? ?? '').trim()).where((t) => t.isNotEmpty).join('\n')
         : contentController.text;
@@ -1236,6 +1306,8 @@ class _NotesScreenState extends State<NotesScreen> {
       }
       return;
     }
+
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
@@ -1265,11 +1337,22 @@ class _NotesScreenState extends State<NotesScreen> {
     );
 
     try {
-      final aiResult = await NotesAiService.callNotesAI(
-        action: selectedAction,
-        text: rawText,
-        title: titleController.text,
-      );
+      String aiResult;
+      try {
+        aiResult = await NotesAiService.callNotesAI(
+          action: selectedAction,
+          text: rawText,
+          title: titleController.text,
+          customPrompt: customPrompt,
+        );
+      } catch (cloudErr) {
+        if (selectedAction == 'calculate_and_sum') {
+          aiResult = NotesAiService.calculateAndSumInText(rawText);
+        } else {
+          rethrow;
+        }
+      }
+
       if (context.mounted) {
         Navigator.pop(context); // Close loading dialog
       }
@@ -1372,6 +1455,8 @@ class _NotesScreenState extends State<NotesScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final actionTitles = {
+      'calculate_and_sum': 'Calculated & Summed',
+      'custom_prompt': 'AI Generated Note',
       'fix_grammar': 'Grammar & Spelling Fixed',
       'polish': 'Polished Note',
       'summarize': 'Key Points Summary',
@@ -2306,31 +2391,7 @@ class _NotesScreenState extends State<NotesScreen> {
                     ],
                     if (note.isChecklist) ...[
                       GestureDetector(
-                        onTap: () async {
-                          final pinned = await HomeWidgetService().pinNoteChecklistWidget(note);
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Row(
-                                children: [
-                                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      pinned
-                                          ? 'Pinned "${note.title.isNotEmpty ? note.title : 'Checklist'}" to Home Screen!'
-                                          : 'Checklist synced to Home Widget! Add the "Checklist Note" widget to your home screen.',
-                                      style: GoogleFonts.outfit(),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              backgroundColor: const Color(0xFF6366F1),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                          );
-                        },
+                        onTap: () => _handlePinOrAssignWidget(context, note),
                         child: Tooltip(
                           message: 'Pin to Home Screen Widget',
                           child: Icon(Icons.widgets_outlined, size: 18, color: hintIconColor),
@@ -2740,6 +2801,211 @@ class _NotesScreenState extends State<NotesScreen> {
         'text': '$stripped (by $currentUsername)',
       };
     }).toList();
+  }
+
+  Future<void> _handlePinOrAssignWidget(BuildContext context, Note note) async {
+    final instances = await HomeWidgetService().getNoteWidgetInstances();
+    if (!context.mounted) return;
+
+    if (instances.isEmpty) {
+      final pinned = await HomeWidgetService().pinNoteChecklistWidget(note);
+      if (!context.mounted) return;
+      _showWidgetResultSnackbar(context, note, pinned);
+      return;
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final selectedOption = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF6366F1), Color(0xFFA855F7)],
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.widgets_rounded, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Home Screen Widget',
+                            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 17),
+                          ),
+                          Text(
+                            'Assign "${note.title.isNotEmpty ? note.title : 'Checklist'}" to a widget',
+                            style: GoogleFonts.outfit(fontSize: 12, color: isDark ? Colors.white60 : Colors.black54),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.add_to_home_screen_rounded, color: Color(0xFF10B981), size: 22),
+                  ),
+                  title: Text(
+                    'Pin New Widget to Home Screen',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 15),
+                  ),
+                  subtitle: Text(
+                    'Adds a separate widget for this note alongside your existing widgets',
+                    style: GoogleFonts.outfit(fontSize: 12, color: isDark ? Colors.white60 : Colors.black54),
+                  ),
+                  onTap: () => Navigator.pop(sheetCtx, {'action': 'pin_new'}),
+                ),
+                const Divider(height: 16),
+                Text(
+                  'OR UPDATE AN EXISTING WIDGET',
+                  style: GoogleFonts.outfit(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
+                    color: isDark ? Colors.white38 : Colors.black38,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...instances.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final inst = entry.value;
+                  final widgetId = inst['appWidgetId'] as int;
+                  final currentTitle = inst['title']?.toString() ?? 'Checklist';
+                  final isCurrentNote = inst['noteId'] == note.id;
+
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: (isCurrentNote ? const Color(0xFF6366F1) : Colors.blueGrey).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        isCurrentNote ? Icons.check_circle_rounded : Icons.phone_android_rounded,
+                        color: isCurrentNote ? const Color(0xFF6366F1) : (isDark ? Colors.white70 : Colors.blueGrey),
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      'Widget #${idx + 1}: $currentTitle',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text(
+                      isCurrentNote ? 'Already showing this note' : 'Switch this widget to "${note.title.isNotEmpty ? note.title : 'Checklist'}"',
+                      style: GoogleFonts.outfit(
+                        fontSize: 12,
+                        color: isCurrentNote ? const Color(0xFF6366F1) : (isDark ? Colors.white60 : Colors.black54),
+                      ),
+                    ),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey),
+                    onTap: () => Navigator.pop(sheetCtx, {
+                      'action': 'update_existing',
+                      'appWidgetId': widgetId,
+                    }),
+                  );
+                }),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selectedOption == null || !context.mounted) return;
+
+    if (selectedOption['action'] == 'pin_new') {
+      final pinned = await HomeWidgetService().pinNoteChecklistWidget(note);
+      if (!context.mounted) return;
+      _showWidgetResultSnackbar(context, note, pinned);
+    } else if (selectedOption['action'] == 'update_existing') {
+      final appWidgetId = selectedOption['appWidgetId'] as int;
+      await HomeWidgetService().pinNoteChecklistWidget(note, targetAppWidgetId: appWidgetId);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Updated widget with "${note.title.isNotEmpty ? note.title : 'Checklist'}"!',
+                  style: GoogleFonts.outfit(),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF6366F1),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
+  void _showWidgetResultSnackbar(BuildContext context, Note note, bool pinned) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                pinned
+                    ? 'Pinned "${note.title.isNotEmpty ? note.title : 'Checklist'}" to Home Screen!'
+                    : 'Checklist synced to Home Widget! Add the "Checklist Note" widget to your home screen.',
+                style: GoogleFonts.outfit(),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF6366F1),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
   }
 }
 

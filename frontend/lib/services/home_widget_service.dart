@@ -820,8 +820,22 @@ class HomeWidgetService {
     }
   }
 
-  /// Automatically finds the user's pinned note or active checklist ("Office Checklist" / latest checklist note)
-  /// and updates the home widget so it never displays an empty state when checklist items exist.
+  /// Returns all active note checklist widget instances currently placed on the Android home screen
+  Future<List<Map<String, dynamic>>> getNoteWidgetInstances() async {
+    if (kIsWeb || !Platform.isAndroid) return [];
+    try {
+      final rawList = await _widgetPinChannel.invokeListMethod('getNoteWidgetInstances');
+      if (rawList != null) {
+        return rawList.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+    } catch (e) {
+      LogService().error('Error getting widget instances', e);
+    }
+    return [];
+  }
+
+  /// Automatically live-syncs each active widget instance to its specific note,
+  /// preserving multiple independent note widgets on the home screen.
   Future<void> syncNoteChecklistWidgetAuto([String? targetUid]) async {
     if (kIsWeb) return;
     try {
@@ -830,104 +844,90 @@ class HomeWidgetService {
       if (uid == null) return;
 
       final notesCol = FirebaseFirestore.instance.collection('users').doc(uid).collection('notes');
-
-      // 1. Check if user already has a pinned note ID stored in HomeWidget
-      final pinnedNoteId = await HomeWidget.getWidgetData<String>('note_widget_id');
-      if (pinnedNoteId != null && pinnedNoteId.isNotEmpty) {
-        final doc = await notesCol.doc(pinnedNoteId).get();
-        if (doc.exists && doc.data() != null) {
-          final note = Note.fromMap(doc.data()!, doc.id);
-          await syncNoteChecklistWidget(note);
-          return;
-        }
-      }
-
-      // 2. Not pinned or pinned note deleted: search for "Office Checklist" note
       final notesSnap = await notesCol.get();
-      if (notesSnap.docs.isEmpty) {
-        return;
-      }
+      if (notesSnap.docs.isEmpty) return;
 
       final notes = notesSnap.docs.map((d) => Note.fromMap(d.data(), d.id)).toList();
+      final notesById = {for (final n in notes) if (n.id != null) n.id!: n};
 
-      // Find exact or case-insensitive match for "Office Checklist"
-      Note? chosenNote;
-      for (final n in notes) {
-        final t = n.title.trim().toLowerCase();
-        if (t == 'office checklist') {
-          chosenNote = n;
-          break;
-        }
-      }
+      // 1. If on Android, iterate over all active widget instances and update each one individually
+      if (Platform.isAndroid) {
+        final instances = await getNoteWidgetInstances();
+        if (instances.isNotEmpty) {
+          for (final inst in instances) {
+            final appWidgetId = inst['appWidgetId'] as int?;
+            final noteId = inst['noteId']?.toString() ?? '';
+            if (appWidgetId == null) continue;
 
-      // If not exact, find any note title containing "office" and "checklist"
-      if (chosenNote == null) {
-        for (final n in notes) {
-          final t = n.title.trim().toLowerCase();
-          if (t.contains('office') && t.contains('checklist')) {
-            chosenNote = n;
-            break;
+            Note? targetNote;
+            if (noteId.isNotEmpty && notesById.containsKey(noteId)) {
+              targetNote = notesById[noteId];
+            }
+
+            if (targetNote != null) {
+              final noteTitle = targetNote.title.trim().isNotEmpty ? targetNote.title.trim() : 'Checklist';
+              final cleanItems = _extractCleanChecklistItems(targetNote);
+              await _widgetPinChannel.invokeMethod('updateNoteWidgetInstance', {
+                'appWidgetId': appWidgetId,
+                'noteId': targetNote.id,
+                'title': noteTitle,
+                'items': jsonEncode(cleanItems),
+              });
+              LogService().log('Live synced widget $appWidgetId for note: $noteTitle');
+            }
           }
         }
       }
 
-      // If still not found, find any note titled "checklist"
-      if (chosenNote == null) {
-        for (final n in notes) {
-          final t = n.title.trim().toLowerCase();
-          if (t.contains('checklist') && (n.checklistItems.isNotEmpty || n.content.contains('['))) {
-            chosenNote = n;
-            break;
-          }
-        }
+      // 2. Also keep global widget keys updated with the pinned note or latest checklist note for fallback
+      final pinnedNoteId = await HomeWidget.getWidgetData<String>('note_widget_id');
+      Note? globalNote;
+      if (pinnedNoteId != null && notesById.containsKey(pinnedNoteId)) {
+        globalNote = notesById[pinnedNoteId];
       }
+      globalNote ??= notes.firstWhere(
+        (n) => n.isChecklist && n.checklistItems.isNotEmpty,
+        orElse: () => notes.firstWhere(
+          (n) => n.checklistItems.isNotEmpty || n.content.contains('['),
+          orElse: () => notes.first,
+        ),
+      );
 
-      // If still not found, pick the most recent note with isChecklist == true and items
-      if (chosenNote == null) {
-        final checklistNotes = notes.where((n) => n.isChecklist && n.checklistItems.isNotEmpty).toList();
-        if (checklistNotes.isNotEmpty) {
-          chosenNote = checklistNotes.first;
-        }
-      }
-
-      // If still not found, check if any note has checklistItems
-      if (chosenNote == null) {
-        final anyChecklist = notes.where((n) => n.checklistItems.isNotEmpty).toList();
-        if (anyChecklist.isNotEmpty) {
-          chosenNote = anyChecklist.first;
-        }
-      }
-
-      // If still not found, check if any note has markdown checkboxes in content
-      if (chosenNote == null) {
-        final anyMarkdownChecklist = notes.where((n) => n.content.contains('[-]') || n.content.contains('[ ]') || n.content.contains('[x]')).toList();
-        if (anyMarkdownChecklist.isNotEmpty) {
-          chosenNote = anyMarkdownChecklist.first;
-        }
-      }
-
-      if (chosenNote != null) {
-        await syncNoteChecklistWidget(chosenNote);
-      }
+      await syncNoteChecklistWidget(globalNote);
     } catch (e) {
       LogService().error('Error in syncNoteChecklistWidgetAuto', e);
     }
   }
 
   /// Pins the Note Checklist Widget to the Android Home Screen (API 26+)
-  Future<bool> pinNoteChecklistWidget(Note note) async {
+  /// Or assigns this note to an existing home screen widget instance if targetAppWidgetId is provided.
+  Future<bool> pinNoteChecklistWidget(Note note, {int? targetAppWidgetId}) async {
     if (kIsWeb) return false;
     try {
+      final noteTitle = note.title.trim().isNotEmpty ? note.title.trim() : 'Checklist';
+      final cleanItems = _extractCleanChecklistItems(note);
+      final itemsJson = jsonEncode(cleanItems);
+
+      if (Platform.isAndroid && targetAppWidgetId != null) {
+        // User assigned this note to an existing home screen widget
+        await _widgetPinChannel.invokeMethod('updateNoteWidgetInstance', {
+          'appWidgetId': targetAppWidgetId,
+          'noteId': note.id ?? '',
+          'title': noteTitle,
+          'items': itemsJson,
+        });
+        LogService().log('Updated existing widget $targetAppWidgetId with note: $noteTitle');
+        return true;
+      }
+
       await syncNoteChecklistWidget(note);
       if (Platform.isAndroid) {
-        final noteTitle = note.title.trim().isNotEmpty ? note.title.trim() : 'Office Checklist';
-        final cleanItems = _extractCleanChecklistItems(note);
         final result = await _widgetPinChannel.invokeMethod<bool>(
           'requestPinNoteChecklistWidget',
           {
             'noteId': note.id ?? '',
             'title': noteTitle,
-            'items': jsonEncode(cleanItems),
+            'items': itemsJson,
           },
         );
         return result ?? false;
@@ -944,27 +944,25 @@ class HomeWidgetService {
     if (kIsWeb || note.id == null || note.id!.isEmpty) return;
     try {
       if (Platform.isAndroid) {
-        final rawInstances = await _widgetPinChannel.invokeListMethod('getNoteWidgetInstances');
-        if (rawInstances != null && rawInstances.isNotEmpty) {
-          final noteTitle = note.title.trim().isNotEmpty ? note.title.trim() : 'Office Checklist';
+        final rawInstances = await getNoteWidgetInstances();
+        if (rawInstances.isNotEmpty) {
+          final noteTitle = note.title.trim().isNotEmpty ? note.title.trim() : 'Checklist';
           final cleanItems = _extractCleanChecklistItems(note);
           final itemsJson = jsonEncode(cleanItems);
           bool matchedAnyInstance = false;
 
           for (final raw in rawInstances) {
-            if (raw is Map) {
-              final instNoteId = raw['noteId']?.toString() ?? '';
-              final appWidgetId = raw['appWidgetId'] as int?;
-              if (instNoteId == note.id && appWidgetId != null) {
-                matchedAnyInstance = true;
-                await _widgetPinChannel.invokeMethod('updateNoteWidgetInstance', {
-                  'appWidgetId': appWidgetId,
-                  'noteId': note.id,
-                  'title': noteTitle,
-                  'items': itemsJson,
-                });
-                LogService().log('Updated active widget $appWidgetId for note: $noteTitle');
-              }
+            final instNoteId = raw['noteId']?.toString() ?? '';
+            final appWidgetId = raw['appWidgetId'] as int?;
+            if (instNoteId == note.id && appWidgetId != null) {
+              matchedAnyInstance = true;
+              await _widgetPinChannel.invokeMethod('updateNoteWidgetInstance', {
+                'appWidgetId': appWidgetId,
+                'noteId': note.id,
+                'title': noteTitle,
+                'items': itemsJson,
+              });
+              LogService().log('Updated active widget $appWidgetId for note: $noteTitle');
             }
           }
 

@@ -726,26 +726,15 @@ class SharedIntentService {
 
         final cleanScrapeUrl = _cleanPostUrl(url);
         try {
-          http.Response response = await http.post(
-            Uri.parse('https://api.apify.com/v2/acts/thirdwatch~linkedin-post-scraper/run-sync-get-dataset-items?token=${Uri.encodeComponent(token)}'),
+          final response = await http.post(
+            Uri.parse('https://api.apify.com/v2/acts/supreme_coder~linkedin-post/run-sync-get-dataset-items?token=${Uri.encodeComponent(token)}'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
+              'urls': [cleanScrapeUrl],
               'postUrls': [cleanScrapeUrl],
-              'maxPosts': 1,
+              'deepScrape': true,
             }),
           ).timeout(const Duration(seconds: 40));
-
-          if ((response.statusCode != 200 && response.statusCode != 201) || response.body.trim() == '[]') {
-            response = await http.post(
-              Uri.parse('https://api.apify.com/v2/acts/supreme_coder~linkedin-post/run-sync-get-dataset-items?token=${Uri.encodeComponent(token)}'),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({
-                'urls': [cleanScrapeUrl],
-                'postUrls': [cleanScrapeUrl],
-                'deepScrape': true,
-              }),
-            ).timeout(const Duration(seconds: 40));
-          }
 
           if (response.statusCode == 200 || response.statusCode == 201) {
             final List<dynamic> items = jsonDecode(response.body) as List<dynamic>? ?? [];

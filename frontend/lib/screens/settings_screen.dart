@@ -9,7 +9,8 @@ import 'email_notification_control_screen.dart';
 import 'ai_keys_settings_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'dart:io';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../services/update_service.dart';
 import '../services/auth_service.dart';
 
@@ -448,9 +449,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildModernTile(
                   icon: Icons.language_rounded,
                   iconGradient: const [Color(0xFF0EA5E9), Color(0xFF0284C7)],
-                  title: 'SmartBuddy Web App',
+                  title: 'Share SmartBuddy Web App',
                   subtitle: 'https://smartbuddy-app.web.app',
-                  badgeText: 'Open',
+                  badgeText: 'Share',
                   badgeColor: const Color(0xFF0EA5E9),
                   isFirst: true,
                   isLast: false,
@@ -458,17 +459,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtextColor: subtextColor,
                   onTap: () async {
                     HapticFeedback.selectionClick();
-                    final uri = Uri.parse('https://smartbuddy-app.web.app');
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    const webAppUrl = 'https://smartbuddy-app.web.app';
+                    await Clipboard.setData(const ClipboardData(text: webAppUrl));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Web app link copied to clipboard!'),
+                          behavior: SnackBarBehavior.floating,
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                    await Share.share(
+                      'Check out SmartBuddy Web App - Your all-in-one daily life, reminders, and productivity companion: $webAppUrl',
+                      subject: 'SmartBuddy Web App',
+                    );
                   },
                 ),
                 Divider(height: 1, indent: 64, color: cardBorder),
                 _buildModernTile(
-                  icon: Icons.share_rounded,
+                  icon: Icons.android_rounded,
                   iconGradient: const [Color(0xFF10B981), Color(0xFF059669)],
-                  title: 'Share SmartBuddy',
-                  subtitle: 'Share web app URL on WhatsApp or other apps',
-                  badgeText: 'Share',
+                  title: 'Share SmartBuddy Mobile App',
+                  subtitle: 'Share the app APK file directly with others',
+                  badgeText: 'APK',
                   badgeColor: const Color(0xFF10B981),
                   isFirst: false,
                   isLast: false,
@@ -476,14 +490,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtextColor: subtextColor,
                   onTap: () {
                     HapticFeedback.selectionClick();
-                    Share.share(
-                      'Check out SmartBuddy - Your all-in-one AI daily life, reminders, and career assistant: https://smartbuddy-app.web.app',
-                      subject: 'SmartBuddy Web App',
-                    );
+                    _shareLatestApk();
                   },
                 ),
                 Divider(height: 1, indent: 64, color: cardBorder),
+                _buildModernTile(
+                  icon: Icons.apple_rounded,
+                  iconGradient: const [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+                  title: 'iPhone LinkedIn Share Setup',
+                  subtitle: '1-tap iOS shortcut setup to share hiring posts',
+                  badgeText: 'iOS',
+                  badgeColor: const Color(0xFF8B5CF6),
+                  isFirst: false,
+                  isLast: kIsWeb,
+                  textColor: textColor,
+                  subtextColor: subtextColor,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    _showIosShortcutGuideDialog(context);
+                  },
+                ),
                 if (!kIsWeb) ...[
+                  Divider(height: 1, indent: 64, color: cardBorder),
                   _buildModernTile(
                     icon: Icons.system_update_alt_rounded,
                     iconGradient: const [Color(0xFF6366F1), Color(0xFF4338CA)],
@@ -507,7 +535,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     badgeText: 'Clean',
                     badgeColor: const Color(0xFFF59E0B),
                     isFirst: false,
-                    isLast: false,
+                    isLast: true,
                     textColor: textColor,
                     subtextColor: subtextColor,
                     onTap: () async {
@@ -526,21 +554,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       }
                     },
                   ),
-                  Divider(height: 1, indent: 64, color: cardBorder),
                 ],
-                _buildModernTile(
-                  icon: Icons.verified_rounded,
-                  iconGradient: const [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
-                  title: 'SmartBuddy Engine',
-                  subtitle: 'All-in-One AI Daily Life & Assistant Platform',
-                  badgeText: 'v1.10.57',
-                  badgeColor: const Color(0xFF8B5CF6),
-                  isFirst: false,
-                  isLast: true,
-                  textColor: textColor,
-                  subtextColor: subtextColor,
-                  onTap: () {},
-                ),
               ],
             ),
           ),
@@ -928,4 +942,281 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
+  bool _isSharingApk = false;
+
+  Future<void> _shareLatestApk() async {
+    if (_isSharingApk) return;
+    setState(() => _isSharingApk = true);
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final version = packageInfo.version;
+
+      if (!kIsWeb && Platform.isAndroid) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Preparing APK file for sharing...',
+                    style: GoogleFonts.outfit(),
+                  ),
+                ],
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+
+        const platform = MethodChannel('com.remindbuddy/app_utils');
+        final String? apkPath = await platform.invokeMethod<String>(
+          'getAppApkPath',
+        );
+        if (apkPath != null &&
+            File(apkPath).existsSync() &&
+            (await File(apkPath).length()) > 1000000) {
+          await Share.shareXFiles(
+            [
+              XFile(
+                apkPath,
+                mimeType: 'application/vnd.android.package-archive',
+              ),
+            ],
+            text: '📥 SmartBuddy App APK (v$version)',
+            subject: 'SmartBuddy App APK (v$version)',
+          );
+          return;
+        }
+      }
+
+      // Fallback if web or non-android
+      const firebaseApkUrl =
+          'https://firebasestorage.googleapis.com/v0/b/remindbuddy-b68f9.firebasestorage.app/o/releases%2Flatest-release.apk?alt=media';
+      final shareText = '''
+📱 *SmartBuddy App (v${packageInfo.version})*
+Download latest release APK:
+$firebaseApkUrl
+'''
+          .trim();
+
+      await Share.share(shareText, subject: 'Download SmartBuddy App APK');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error preparing APK for sharing: $e',
+              style: GoogleFonts.outfit(),
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSharingApk = false);
+      }
+    }
+  }
+
+  void _showIosShortcutGuideDialog(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final webhookUrl = 'https://us-central1-remindbuddy-b68f9.cloudfunctions.net/importSharedJob?userId=$uid';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.apple_rounded, color: Color(0xFF8B5CF6), size: 24),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'iPhone Share Sheet Setup (1 Min)',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 520,
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Configure Apple Shortcuts once to share directly from the LinkedIn iOS app without Safari popping up:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.grey[300] : Colors.grey[700],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _buildGuideStep(
+                  step: '1',
+                  title: 'Open Shortcuts app on iPhone',
+                  desc: 'Tap "+" at the top right to create a new shortcut. Rename it to "Share to SmartBuddy".',
+                  isDark: isDark,
+                ),
+                _buildGuideStep(
+                  step: '2',
+                  title: 'Enable "Show in Share Sheet"',
+                  desc: 'Tap the circle (i) info icon at the bottom, and toggle ON "Show in Share Sheet". Set Share Sheet Types to: URLs, Text, and Safari web pages.',
+                  isDark: isDark,
+                ),
+                _buildGuideStep(
+                  step: '3',
+                  title: 'Add "Get Contents of URL" action',
+                  desc: 'Search for "Get Contents of URL" and add it. Configure the action as follows:',
+                  isDark: isDark,
+                  extra: Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('• URL: $webhookUrl', style: GoogleFonts.jetBrainsMono(fontSize: 11)),
+                        const SizedBox(height: 4),
+                        Text('• Method: POST', style: GoogleFonts.jetBrainsMono(fontSize: 11, fontWeight: FontWeight.bold, color: const Color(0xFF8B5CF6))),
+                        const SizedBox(height: 4),
+                        Text('• Request Body: JSON', style: GoogleFonts.jetBrainsMono(fontSize: 11)),
+                        const SizedBox(height: 4),
+                        Text('• Key: sharedText  →  Value: Shortcut Input', style: GoogleFonts.jetBrainsMono(fontSize: 11, color: const Color(0xFF10B981))),
+                      ],
+                    ),
+                  ),
+                ),
+                _buildGuideStep(
+                  step: '4',
+                  title: '(Optional) Show Notification',
+                  desc: 'Add a "Show Notification" action with text: "Job Sent to SmartBuddy!" so iOS alerts you immediately upon sharing.',
+                  isDark: isDark,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Done! Whenever you browse LinkedIn on your iPhone, tap Share -> "Share to SmartBuddy" and it imports in background.',
+                          style: TextStyle(fontSize: 11.5, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.copy_rounded, size: 16),
+            label: const Text('Copy Webhook URL'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: webhookUrl));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Personal Webhook URL copied!'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6)),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuideStep({
+    required String step,
+    required String title,
+    required String desc,
+    required bool isDark,
+    Widget? extra,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 12,
+            backgroundColor: const Color(0xFF8B5CF6),
+            child: Text(step, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  desc,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[700],
+                    height: 1.35,
+                  ),
+                ),
+                if (extra != null) extra,
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
+

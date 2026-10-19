@@ -91,16 +91,15 @@ exports.processCalendarReminderTask = functions.tasks
                         payload: {
                             aps: { alert: { title, body }, sound: "default" }
                         }
-                    }, android: {
-                        priority: "high",
+                    }, android: Object.assign({ priority: "high" }, (!isSticky ? {
                         notification: {
                             channelId: isAlarmMode
                                 ? `alarm_reminder_channel_${rawSound}`
-                                : (isSticky ? "sticky_reminder_channel" : "calendar_reminder_channel"),
+                                : "calendar_reminder_channel",
                             tag: `calendar_reminder_${reminderId}`,
                             sound: isAlarmMode ? rawSound : undefined,
                         }
-                    }, data: {
+                    } : {})), data: {
                         title: title,
                         body: body,
                         type: "CALENDAR_REMINDER",

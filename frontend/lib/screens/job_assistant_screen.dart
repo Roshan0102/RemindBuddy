@@ -27,6 +27,7 @@ import '../services/notification_service.dart';
 import '../services/web_clipboard_drag/web_clipboard_drag.dart';
 import 'in_app_call_screen.dart';
 import 'document_detail_screen.dart';
+import '../widgets/api_usage_line_indicator.dart';
 
 class JobAssistantScreen extends StatefulWidget {
   final int? initialFeatureIndex;
@@ -727,14 +728,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         builder: (context, setDlgState) {
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            insetPadding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 16,
-              bottom: MediaQuery.of(context).viewInsets.bottom > 0
-                  ? MediaQuery.of(context).viewInsets.bottom + 16
-                  : 24,
-            ),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
             title: Row(
               children: [
                 const Icon(Icons.picture_as_pdf_rounded, color: Colors.blueAccent),
@@ -745,43 +739,46 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 ),
               ],
             ),
-            content: SingleChildScrollView(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom > 0 ? 20 : 0,
+            content: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 520,
+                maxHeight: MediaQuery.of(context).size.height * 0.75,
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Save 2–3 targeted profiles (e.g., DevOps/Cloud Resume vs Flutter/Mobile Resume). The AI agent automatically attaches the resume matching the detected role.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: titleController,
-                    scrollPadding: const EdgeInsets.only(bottom: 100),
-                    decoration: InputDecoration(
-                      labelText: 'Profile Title *',
-                      hintText: 'e.g. DevOps & Cloud Resume, Flutter Mobile',
-                      prefixIcon: const Icon(Icons.badge_outlined),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      isDense: true,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Save 2–3 targeted profiles (e.g., DevOps/Cloud Resume vs Flutter/Mobile Resume). The AI agent automatically attaches the resume matching the detected role.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: rolesController,
-                    scrollPadding: const EdgeInsets.only(bottom: 100),
-                    decoration: InputDecoration(
-                      labelText: 'Target Roles & Keywords * (comma-separated)',
-                      hintText: 'e.g. DevOps, Cloud, Kubernetes, Terraform, SRE',
-                      prefixIcon: const Icon(Icons.tag_rounded),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      isDense: true,
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: titleController,
+                      scrollPadding: const EdgeInsets.all(20),
+                      decoration: InputDecoration(
+                        labelText: 'Profile Title *',
+                        hintText: 'e.g. DevOps & Cloud Resume, Flutter Mobile',
+                        prefixIcon: const Icon(Icons.badge_outlined),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
                     ),
-                    maxLines: 2,
-                  ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: rolesController,
+                      scrollPadding: const EdgeInsets.all(20),
+                      decoration: InputDecoration(
+                        labelText: 'Target Roles & Keywords * (comma-separated)',
+                        hintText: 'e.g. DevOps, Cloud, Kubernetes, Terraform, SRE',
+                        prefixIcon: const Icon(Icons.tag_rounded),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                      maxLines: 2,
+                    ),
                   const SizedBox(height: 14),
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -867,6 +864,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 ],
               ),
             ),
+          ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dlgCtx),
@@ -954,14 +952,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         builder: (dialogCtx, setDialogState) {
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            insetPadding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 16,
-              bottom: MediaQuery.of(dialogCtx).viewInsets.bottom > 0
-                  ? MediaQuery.of(dialogCtx).viewInsets.bottom + 16
-                  : 24,
-            ),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
             title: Row(
               children: [
                 Icon(Icons.settings_suggest_rounded, color: Theme.of(context).primaryColor, size: 26),
@@ -969,12 +960,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 const Text('Job Assistant Settings', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               ],
             ),
-            content: SizedBox(
-              width: 580,
+            content: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 580,
+                maxHeight: MediaQuery.of(dialogCtx).size.height * 0.75,
+              ),
               child: SingleChildScrollView(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(dialogCtx).viewInsets.bottom > 0 ? 24 : 0,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -992,7 +984,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     const SizedBox(height: 10),
                     TextField(
                       controller: nameController,
-                      scrollPadding: const EdgeInsets.only(bottom: 100),
+                      scrollPadding: const EdgeInsets.all(20),
                       decoration: InputDecoration(
                         labelText: 'Your Full Name (Candidate Name)',
                         hintText: 'e.g. Alex Morgan or Sarah Connor',
@@ -1026,7 +1018,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         final hasRoleError = parsedRoles.length > 4;
                         return TextField(
                           controller: rolesController,
-                          scrollPadding: const EdgeInsets.only(bottom: 100),
+                          scrollPadding: const EdgeInsets.all(20),
                           onChanged: (_) {
                             setFieldState(() {});
                             setDialogState(() {});
@@ -1059,7 +1051,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         final hasLocError = parsedLocs.length > 5;
                         return TextField(
                           controller: locationsController,
-                          scrollPadding: const EdgeInsets.only(bottom: 100),
+                          scrollPadding: const EdgeInsets.all(20),
                           onChanged: (_) {
                             setFieldState(() {});
                             setDialogState(() {});
@@ -1119,7 +1111,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           Expanded(
                             child: TextField(
                               controller: minExpController,
-                              scrollPadding: const EdgeInsets.only(bottom: 100),
+                              scrollPadding: const EdgeInsets.all(20),
                               keyboardType: TextInputType.number,
                               decoration: InputDecoration(
                                 labelText: 'Min Exp (Years)',
@@ -1134,7 +1126,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           Expanded(
                             child: TextField(
                               controller: maxExpController,
-                              scrollPadding: const EdgeInsets.only(bottom: 100),
+                              scrollPadding: const EdgeInsets.all(20),
                               keyboardType: TextInputType.number,
                               decoration: InputDecoration(
                                 labelText: 'Max Exp (Years)',
@@ -1159,7 +1151,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         Expanded(
                           child: TextField(
                             controller: newExcludeController,
-                            scrollPadding: const EdgeInsets.only(bottom: 100),
+                            scrollPadding: const EdgeInsets.all(20),
                             decoration: InputDecoration(
                               hintText: 'e.g. Current Employer, Consultancy...',
                               hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade500),
@@ -1442,7 +1434,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     const SizedBox(height: 12),
                     TextField(
                       controller: emailController,
-                      scrollPadding: const EdgeInsets.only(bottom: 100),
+                      scrollPadding: const EdgeInsets.all(20),
                       enableSuggestions: false,
                       autocorrect: false,
                       decoration: InputDecoration(
@@ -1456,7 +1448,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     const SizedBox(height: 12),
                     TextField(
                       controller: passwordController,
-                      scrollPadding: const EdgeInsets.only(bottom: 100),
+                      scrollPadding: const EdgeInsets.all(20),
                       obscureText: true,
                       enableSuggestions: false,
                       autocorrect: false,
@@ -5557,14 +5549,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         builder: (context, setDlgState) {
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            insetPadding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 16,
-              bottom: MediaQuery.of(context).viewInsets.bottom > 0
-                  ? MediaQuery.of(context).viewInsets.bottom + 16
-                  : 24,
-            ),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
             title: Row(
               children: [
                 Container(
@@ -5576,18 +5561,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   child: const Icon(Icons.settings_suggest_rounded, color: Color(0xFF0A66C2)),
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  'LinkedIn Auto-Apply Settings',
-                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 17),
+                Expanded(
+                  child: Text(
+                    'LinkedIn Auto-Apply Settings',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 17),
+                  ),
                 ),
               ],
             ),
-            content: SizedBox(
-              width: 520,
+            content: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 520,
+                maxHeight: MediaQuery.of(context).size.height * 0.7,
+              ),
               child: SingleChildScrollView(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom > 0 ? 20 : 0,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -5620,7 +5608,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     TextField(
                       controller: _apifyToken1Controller,
                       obscureText: obscureT1,
-                      scrollPadding: const EdgeInsets.only(bottom: 100),
+                      scrollPadding: const EdgeInsets.all(20),
                       decoration: InputDecoration(
                         labelText: 'Token 1 (Primary) *',
                         hintText: 'apify_api_...',
@@ -5637,9 +5625,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               tooltip: 'Paste from clipboard',
                               onPressed: () async {
                                 final data = await Clipboard.getData('text/plain');
-                                if (data?.text != null) {
-                                  _apifyToken1Controller.text = data!.text!.trim();
+                                final text = data?.text?.trim() ?? '';
+                                if (text.isNotEmpty) {
+                                  _apifyToken1Controller.text = text;
                                   setDlgState(() {});
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Token 1 pasted from clipboard!'),
+                                        duration: Duration(seconds: 1),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
                                 }
                               },
                             ),
@@ -5649,12 +5647,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         isDense: true,
                       ),
                     ),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _apifyToken1Controller,
+                      builder: (context, value, _) {
+                        return ApiUsageLineIndicator(
+                          providerType: ApiProviderType.apify,
+                          apiKey: value.text,
+                        );
+                      },
+                    ),
                     const SizedBox(height: 10),
                     // Token 2
                     TextField(
                       controller: _apifyToken2Controller,
                       obscureText: obscureT2,
-                      scrollPadding: const EdgeInsets.only(bottom: 100),
+                      scrollPadding: const EdgeInsets.all(20),
                       decoration: InputDecoration(
                         labelText: 'Token 2 (Backup)',
                         hintText: 'apify_api_... (optional)',
@@ -5671,9 +5678,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               tooltip: 'Paste from clipboard',
                               onPressed: () async {
                                 final data = await Clipboard.getData('text/plain');
-                                if (data?.text != null) {
-                                  _apifyToken2Controller.text = data!.text!.trim();
+                                final text = data?.text?.trim() ?? '';
+                                if (text.isNotEmpty) {
+                                  _apifyToken2Controller.text = text;
                                   setDlgState(() {});
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Token 2 pasted from clipboard!'),
+                                        duration: Duration(seconds: 1),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
                                 }
                               },
                             ),
@@ -5683,12 +5700,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         isDense: true,
                       ),
                     ),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _apifyToken2Controller,
+                      builder: (context, value, _) {
+                        return ApiUsageLineIndicator(
+                          providerType: ApiProviderType.apify,
+                          apiKey: value.text,
+                        );
+                      },
+                    ),
                     const SizedBox(height: 10),
                     // Token 3
                     TextField(
                       controller: _apifyToken3Controller,
                       obscureText: obscureT3,
-                      scrollPadding: const EdgeInsets.only(bottom: 100),
+                      scrollPadding: const EdgeInsets.all(20),
                       decoration: InputDecoration(
                         labelText: 'Token 3 (Backup)',
                         hintText: 'apify_api_... (optional)',
@@ -5705,9 +5731,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                               tooltip: 'Paste from clipboard',
                               onPressed: () async {
                                 final data = await Clipboard.getData('text/plain');
-                                if (data?.text != null) {
-                                  _apifyToken3Controller.text = data!.text!.trim();
+                                final text = data?.text?.trim() ?? '';
+                                if (text.isNotEmpty) {
+                                  _apifyToken3Controller.text = text;
                                   setDlgState(() {});
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Token 3 pasted from clipboard!'),
+                                        duration: Duration(seconds: 1),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
                                 }
                               },
                             ),
@@ -5717,7 +5753,16 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         isDense: true,
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _apifyToken3Controller,
+                      builder: (context, value, _) {
+                        return ApiUsageLineIndicator(
+                          providerType: ApiProviderType.apify,
+                          apiKey: value.text,
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 14),
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -5980,38 +6025,38 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0A66C2).withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.dynamic_feed_rounded, color: Color(0xFF0A66C2), size: 22),
-                          ),
-                          const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'LinkedIn Recruiter Post Scraper',
-                                style: GoogleFonts.outfit(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: isDark ? Colors.white : const Color(0xFF0F172A),
-                                ),
-                              ),
-                              const Text(
-                                'Runs every day at 11:00 AM & 11:00 PM IST (Asia/Kolkata)',
-                                style: TextStyle(fontSize: 11, color: Color(0xFF0A66C2), fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                        ],
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0A66C2).withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.dynamic_feed_rounded, color: Color(0xFF0A66C2), size: 22),
                       ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'LinkedIn Recruiter Post Scraper',
+                              style: GoogleFonts.outfit(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: isDark ? Colors.white : const Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'Runs every day at 11:00 AM & 11:00 PM IST (Asia/Kolkata)',
+                              style: TextStyle(fontSize: 11, color: Color(0xFF0A66C2), fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Switch.adaptive(
                         value: _linkedInAutoApplyEnabled,
                         activeTrackColor: const Color(0xFF0A66C2),
@@ -6131,7 +6176,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   ],
                   const SizedBox(height: 14),
                   // Action buttons
-                  Row(
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
                     children: [
                       ElevatedButton.icon(
                         onPressed: _isRunningLinkedInAutoApply ? null : _triggerLinkedInAutoApplyNow,
@@ -6149,7 +6196,6 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
-                      const SizedBox(width: 10),
                       OutlinedButton.icon(
                         onPressed: _showLinkedInSettingsDialog,
                         style: OutlinedButton.styleFrom(
@@ -6158,20 +6204,6 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         ),
                         icon: const Icon(Icons.tune_rounded, size: 18),
                         label: const Text('Settings & 3 Tokens'),
-                      ),
-                      const SizedBox(width: 10),
-                      OutlinedButton.icon(
-                        onPressed: () => _showIosShortcutGuideDialog(
-                          'https://us-central1-remindbuddy-b68f9.cloudfunctions.net/importSharedJob?userId=${FirebaseAuth.instance.currentUser?.uid ?? ''}',
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          foregroundColor: const Color(0xFF8B5CF6),
-                          side: const BorderSide(color: Color(0xFF8B5CF6)),
-                        ),
-                        icon: const Icon(Icons.apple_rounded, size: 18),
-                        label: const Text('iOS Share Sheet'),
                       ),
                     ],
                   ),
@@ -6194,9 +6226,6 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 ],
               ),
             ),
-
-            // iOS 1-Tap Background Webhook Card
-            _buildIosShareWebhookCard(isDark),
 
             const SizedBox(height: 20),
 
@@ -6561,440 +6590,6 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildIosShareWebhookCard(bool isDark) {
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    final webhookUrl = 'https://us-central1-remindbuddy-b68f9.cloudfunctions.net/importSharedJob?userId=$uid';
-
-    return Container(
-      margin: const EdgeInsets.only(top: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? [const Color(0xFF1E1E2E), const Color(0xFF2A203F)]
-              : [const Color(0xFFF5F3FF), const Color(0xFFEDE9FE)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFF8B5CF6).withValues(alpha: 0.35),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.apple_rounded, color: Color(0xFF8B5CF6), size: 22),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  'iPhone LinkedIn 1-Tap Share Sheet',
-                                  style: GoogleFonts.outfit(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: isDark ? Colors.white : const Color(0xFF0F172A),
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: const Text(
-                                  'Background Webhook',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF10B981),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Share posts directly from the LinkedIn iOS App with 0 Safari popups',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: isDark ? Colors.grey[400] : const Color(0xFF6B7280),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Share any job or recruiter hiring post straight from the LinkedIn iOS app into SmartBuddy. Apple Shortcuts runs silently in the background, extracts post details with Gemini, validates experience with your profile, and logs the job application.',
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark ? Colors.grey[300] : const Color(0xFF374151),
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF0F172A) : Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: isDark ? Colors.white12 : Colors.grey.shade300,
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.link_rounded, size: 18, color: Color(0xFF8B5CF6)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    webhookUrl,
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 11,
-                      color: isDark ? Colors.grey[300] : Colors.grey[800],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.copy_rounded, size: 18, color: Color(0xFF8B5CF6)),
-                  tooltip: 'Copy Personal Webhook URL',
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: webhookUrl));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Personal Webhook URL copied to clipboard!'),
-                        behavior: SnackBarBehavior.floating,
-                        backgroundColor: Color(0xFF8B5CF6),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 8,
-            children: [
-              ElevatedButton.icon(
-                onPressed: () => _showIosShortcutGuideDialog(webhookUrl),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8B5CF6),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                ),
-                icon: const Icon(Icons.menu_book_rounded, size: 16),
-                label: const Text(
-                  '1-Minute iPhone Setup Guide',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _showTestWebhookDialog(webhookUrl),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF8B5CF6),
-                  side: const BorderSide(color: Color(0xFF8B5CF6)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                ),
-                icon: const Icon(Icons.play_arrow_rounded, size: 16),
-                label: const Text(
-                  'Test Webhook Online',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showIosShortcutGuideDialog(String webhookUrl) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.apple_rounded, color: Color(0xFF8B5CF6), size: 24),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'iPhone Share Sheet Setup (1 Min)',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Configure Apple Shortcuts once to share directly from the LinkedIn iOS app without Safari popping up:',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isDark ? Colors.grey[300] : Colors.grey[700],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _buildGuideStep(
-                  step: '1',
-                  title: 'Open Shortcuts app on iPhone',
-                  desc: 'Tap "+" at the top right to create a new shortcut. Rename it to "Share to SmartBuddy".',
-                  isDark: isDark,
-                ),
-                _buildGuideStep(
-                  step: '2',
-                  title: 'Enable "Show in Share Sheet"',
-                  desc: 'Tap the circle (i) info icon at the bottom, and toggle ON "Show in Share Sheet". Set Share Sheet Types to: URLs, Text, and Safari web pages.',
-                  isDark: isDark,
-                ),
-                _buildGuideStep(
-                  step: '3',
-                  title: 'Add "Get Contents of URL" action',
-                  desc: 'Search for "Get Contents of URL" and add it. Configure the action as follows:',
-                  isDark: isDark,
-                  extra: Container(
-                    margin: const EdgeInsets.only(top: 8),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('• URL: (Your personal webhook URL)', style: GoogleFonts.jetBrainsMono(fontSize: 11)),
-                        const SizedBox(height: 4),
-                        Text('• Method: POST', style: GoogleFonts.jetBrainsMono(fontSize: 11, fontWeight: FontWeight.bold, color: const Color(0xFF8B5CF6))),
-                        const SizedBox(height: 4),
-                        Text('• Request Body: JSON', style: GoogleFonts.jetBrainsMono(fontSize: 11)),
-                        const SizedBox(height: 4),
-                        Text('• Key: sharedText  →  Value: Shortcut Input', style: GoogleFonts.jetBrainsMono(fontSize: 11, color: const Color(0xFF10B981))),
-                      ],
-                    ),
-                  ),
-                ),
-                _buildGuideStep(
-                  step: '4',
-                  title: '(Optional) Show Notification',
-                  desc: 'Add a "Show Notification" action with text: "Job Sent to SmartBuddy!" so iOS alerts you immediately upon sharing.',
-                  isDark: isDark,
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 18),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Done! Whenever you browse LinkedIn on your iPhone, tap Share -> "Share to SmartBuddy" and it imports in background.',
-                          style: TextStyle(fontSize: 11.5, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton.icon(
-            icon: const Icon(Icons.copy_rounded, size: 16),
-            label: const Text('Copy Webhook URL'),
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: webhookUrl));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Personal Webhook URL copied!'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6)),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGuideStep({
-    required String step,
-    required String title,
-    required String desc,
-    required bool isDark,
-    Widget? extra,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 12,
-            backgroundColor: const Color(0xFF8B5CF6),
-            child: Text(step, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.outfit(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: isDark ? Colors.white : const Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  desc,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.grey[400] : Colors.grey[700],
-                    height: 1.35,
-                  ),
-                ),
-                if (extra != null) extra,
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showTestWebhookDialog(String webhookUrl) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final curlCmd = 'curl -X POST "$webhookUrl" -H "Content-Type: application/json" -d \'{"sharedText": "https://www.linkedin.com/jobs/view/12345678"}\'';
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.network_check_rounded, color: Color(0xFF8B5CF6)),
-            const SizedBox(width: 8),
-            Text('Webhook Health & Test', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
-        ),
-        content: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Your background webhook endpoint is deployed and isolated to your user credentials:',
-              style: TextStyle(fontSize: 13, color: isDark ? Colors.grey[300] : Colors.grey[700]),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
-              ),
-              child: SelectableText(
-                curlCmd,
-                style: GoogleFonts.jetBrainsMono(fontSize: 11, color: isDark ? Colors.grey[300] : Colors.grey[800]),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'You can open the webhook URL in your browser to check its live JSON status directly.',
-              style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[600]),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton.icon(
-            icon: const Icon(Icons.copy_rounded, size: 16),
-            label: const Text('Copy cURL'),
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: curlCmd));
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Test cURL command copied!'), behavior: SnackBarBehavior.floating),
-              );
-            },
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6), foregroundColor: Colors.white),
-            icon: const Icon(Icons.open_in_new_rounded, size: 16),
-            label: const Text('Open Status in Browser'),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              final uri = Uri.parse(webhookUrl);
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            },
-          ),
-        ],
       ),
     );
   }

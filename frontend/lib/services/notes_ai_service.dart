@@ -239,14 +239,82 @@ class NotesAiService {
     return s;
   }
 
+  /// Scans entire text for arithmetic expressions AND itemized name/expense amounts (e.g. Roshan - 500),
+  /// calculates all values, and automatically computes and appends the total.
+  static String calculateAndSumInText(String text) {
+    if (text.isEmpty) return text;
+
+    // 1. Solve any inline math expressions ending with '='
+    var updated = solveAllMathInText(text);
+
+    // 2. Scan lines for itemized entries with amounts (e.g. "Roshan - 500", "Syed: 300", "Rent: ₹12,000")
+    final lines = updated.split('\n');
+    double totalSum = 0.0;
+    int amountCount = 0;
+    String detectedCurrency = '';
+
+    final itemAmountRegex = RegExp(
+      r'^(?!.*\b(?:total|sum)\b)(?:[-*•]\s*)?(.+?)\s*(?:[-:–—=]|\s)\s*([₹$€£]|Rs\.?|INR)?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?)\s*$',
+      caseSensitive: false,
+    );
+
+    final hasExistingTotal = lines.any((line) =>
+      RegExp(r'^\s*(?:[-*•]\s*)?(?:total|grand total|sum)\s*[:=–—-]', caseSensitive: false).hasMatch(line)
+    );
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+
+      final match = itemAmountRegex.firstMatch(trimmed);
+      if (match != null) {
+        final prefix = match.group(1)?.trim() ?? '';
+        if (RegExp(r'^\d+$').hasMatch(prefix)) continue;
+
+        final curr = match.group(2)?.trim() ?? '';
+        final amtStr = match.group(3)?.replaceAll(',', '') ?? '';
+        final val = double.tryParse(amtStr);
+        if (val != null) {
+          totalSum += val;
+          amountCount++;
+          if (curr.isNotEmpty && detectedCurrency.isEmpty) {
+            detectedCurrency = curr;
+          }
+        }
+      }
+    }
+
+    if (detectedCurrency.isEmpty && text.contains('₹')) {
+      detectedCurrency = '₹';
+    }
+
+    if (amountCount >= 1 && !hasExistingTotal) {
+      final formattedTotal = _formatNumber(totalSum);
+      final currencyPrefix = detectedCurrency.isNotEmpty ? '$detectedCurrency ' : '';
+      updated = '${updated.trimRight()}\n\nTotal: $currencyPrefix$formattedTotal';
+    } else if (hasExistingTotal && amountCount >= 1) {
+      final formattedTotal = _formatNumber(totalSum);
+      final currencyPrefix = detectedCurrency.isNotEmpty ? '$detectedCurrency ' : '';
+      updated = lines.map((line) {
+        if (RegExp(r'^\s*(?:[-*•]\s*)?(?:total|grand total|sum)\s*[:=–—-]', caseSensitive: false).hasMatch(line)) {
+          return 'Total: $currencyPrefix$formattedTotal';
+        }
+        return line;
+      }).join('\n');
+    }
+
+    return updated;
+  }
+
   // ============================================================================
-  // CLOUD FUNCTION AI CALLER (Grammar Fix, Polish, Summarize, To Checklist)
+  // CLOUD FUNCTION AI CALLER (Grammar Fix, Polish, Summarize, To Checklist, Calculate & Sum, Custom Prompt)
   // ============================================================================
 
   static Future<String> callNotesAI({
     required String action,
     required String text,
     String? title,
+    String? customPrompt,
   }) async {
     try {
       final callable = FirebaseFunctions.instance.httpsCallable(
@@ -258,6 +326,8 @@ class NotesAiService {
         'action': action,
         'text': text,
         'title': title ?? '',
+        if (customPrompt != null && customPrompt.isNotEmpty)
+          'customPrompt': customPrompt,
       });
 
       final data = resp.data;

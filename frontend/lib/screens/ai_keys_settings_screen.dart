@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/url_launcher_helper/url_launcher_helper.dart';
+import '../widgets/api_usage_line_indicator.dart';
 
 class AIKeysSettingsScreen extends StatefulWidget {
   const AIKeysSettingsScreen({super.key});
@@ -386,7 +387,16 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: _tavilyController,
+                          builder: (context, value, _) {
+                            return ApiUsageLineIndicator(
+                              providerType: ApiProviderType.tavily,
+                              apiKey: value.text,
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 10),
                         TextField(
                           controller: _tavilySecondaryController,
                           obscureText: _obscureTavilySecondary,
@@ -411,6 +421,15 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                               ],
                             ),
                           ),
+                        ),
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: _tavilySecondaryController,
+                          builder: (context, value, _) {
+                            return ApiUsageLineIndicator(
+                              providerType: ApiProviderType.tavily,
+                              apiKey: value.text,
+                            );
+                          },
                         ),
                         const SizedBox(height: 10),
                         Container(
