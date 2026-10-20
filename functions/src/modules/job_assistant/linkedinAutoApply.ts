@@ -262,18 +262,40 @@ export async function processLinkedInAutoApplyForUser(
         const appliedEmails = new Set<string>();
         const appliedUrls = new Set<string>();
         const appliedEmailRoles = new Set<string>();
+        const blockedFakeEmails = new Set<string>();
+
+        // 6-fake. Load user's permanently blocked fake recruiter emails from users/{uid}/blocked_fake_jobs
+        try {
+            const blockedSnap = await db.collection("users").doc(uid).collection("blocked_fake_jobs").get();
+            blockedSnap.forEach((doc) => {
+                const bData = doc.data();
+                const bEmail = (bData.email || doc.id || "").toLowerCase().trim();
+                try {
+                    const decoded = decodeURIComponent(bEmail);
+                    if (decoded) blockedFakeEmails.add(decoded.toLowerCase().trim());
+                } catch (_) {}
+                if (bEmail) blockedFakeEmails.add(bEmail);
+            });
+            console.log(`[LinkedInAutoApply] User ${uid} has ${blockedFakeEmails.size} permanently blocked fake recruiter email(s).`);
+        } catch (e: any) {
+            console.warn(`[LinkedInAutoApply] Error loading blocked_fake_jobs: ${e.message}`);
+        }
 
         // 6a. job_applications (Auto-Apply Agent & LinkedIn)
         try {
             const existingAppsSnap = await db.collection("users").doc(uid).collection("job_applications").get();
             existingAppsSnap.forEach((doc) => {
                 const d = doc.data();
+                const email = (d.recipientEmail || "").toLowerCase().trim();
+                if (d.isFake === true || d.status === 'fake') {
+                    if (email) blockedFakeEmails.add(email);
+                    return; // Permanently blocked, never eligible for re-applying
+                }
                 const appliedTime = d.appliedAt?.toDate ? d.appliedAt.toDate() : (d.appliedAt ? new Date(d.appliedAt) : null);
                 if (appliedTime && appliedTime < thirtyDaysAgo) {
                     // Applied more than 30 days ago -> eligible to re-apply!
                     return;
                 }
-                const email = (d.recipientEmail || "").toLowerCase().trim();
                 const role = normalizeJobRole(d.jobTitle || "");
                 const url = (d.sourceUrl || "").toLowerCase().trim();
                 if (email) appliedEmails.add(email);
@@ -414,6 +436,11 @@ export async function processLinkedInAutoApplyForUser(
 
             for (const email of post.emails) {
                 const normEmail = email.toLowerCase().trim();
+                // 1. Permanently blocked fake recruiter/scam email check
+                if (blockedFakeEmails.has(normEmail)) {
+                    console.log(`[LinkedInAutoApply] BLOCKED FAKE RECRUITER: Email ${normEmail} is permanently blocked by user ${uid} as fake/scam. Skipping.`);
+                    continue;
+                }
                 if (appliedEmails.has(normEmail)) {
                     console.log(`[LinkedInAutoApply] DEDUPLICATED: Email ${normEmail} was already contacted or queued in this batch. Skipping.`);
                     continue;
@@ -484,6 +511,12 @@ export async function processLinkedInAutoApplyForUser(
                 continue;
             }
 
+            // Permanent fake recruiter block check
+            if (blockedFakeEmails.has(recipientEmail.toLowerCase().trim())) {
+                console.log(`[LinkedInAutoApply] BLOCKED FAKE RECRUITER: Email ${recipientEmail} is permanently blocked by user ${uid} as fake/scam. Skipping.`);
+                continue;
+            }
+
             // Fresh database duplicate check to prevent race conditions
             try {
                 const dupCheck = await db.collection("users").doc(uid).collection("job_applications")
@@ -546,26 +579,26 @@ CRITICAL MATCHING & GROUND-TRUTH RULES (MUST FOLLOW STRICTLY):
    - "detectedLocation": The city/country and work mode (e.g. "Bengaluru (Hybrid)", "Remote (India)", "Chennai (Onsite)").
    - "isRemote": boolean (true if work from home / remote is allowed).
    - "subject": Tailored email subject line (format: "Application for [Job Title] - ${applicantName}").
-   - "coverLetter": A comprehensive, compelling, and highly personalized application email tailored specifically to this hiring post.
-     CRITICAL STRUCTURE & HIGH-CONVERSION MANDATES:
-     1. PROFESSIONAL GREETING: e.g. "Dear Hiring Team," or "Dear [Author Name]," if available.
-     2. COMPELLING OPENING: Express keen, enthusiastic interest in the specific [Job Title] role at [Company], referencing details or focus areas mentioned in their post.
-     3. VALUE PROPOSITION & RELEVANCE: Directly reference the job requirements and technologies highlighted in the post, and articulate how the candidate's real verified experience from their resume solves them.
-     4. KEY CONTRIBUTIONS PREPARED TO DELIVER (MANDATORY):
-        Include a dedicated bulleted section:
-        "Key contributions I am prepared to deliver include:"
-        Provide 3-4 concrete, impactful bullet points (using "•") directly derived from the candidate's attached resume PDF (quantified project deliverables, architectures built, optimizations achieved, and verified technical proficiencies).
-     5. EXPERIENCE ALIGNMENT: Articulate the candidate's verified hands-on project mastery and immediate readiness to deliver value from Day 1 without overpromising.
-     6. CALL TO ACTION & RESUME REFERENCE: Respectfully mention the attached resume for review and propose a brief 10-15 minute discussion.
-     7. SIGN-OFF:
+   - "coverLetter": A concise, authentic, human-written application email tailored specifically to this hiring post.
+     CRITICAL STRUCTURE & MOBILE-OPTIMIZED MANDATES:
+     1. HUMAN-WRITTEN, HIGH-CONVERSION, MOBILE FORMAT:
+        Recruiters read emails on mobile and will NOT read long essays or bulleted lists.
+        The cover letter MUST be concise, punchy, authentic, and strictly 4–5 sentences total, formatted into exactly TWO short paragraphs with a blank line between them.
+        ABSOLUTELY NO BULLET POINTS ("•", "-", "*") OR LENGTHY LISTS.
+     2. TWO-PARAGRAPH FORMAT (4–5 LINES TOTAL):
+        - Professional Greeting: e.g. "Dear [Author Name]," if available, else "Dear Hiring Team,"
+        - Paragraph 1 (approx. 2 sentences): Direct, engaging opening expressing enthusiastic interest in the specific [Job Title] role at [Company]. Highlight candidate's core domain and top 2–3 strengths/technologies verified from their attached resume that directly match the post.
+        - Paragraph 2 (approx. 2–3 sentences): Highlight proven hands-on project delivery and problem-solving impact from their resume. Respectfully mention that their attached resume contains complete details on their background, and invite them for a brief 10–15 minute call to discuss how they can contribute (always use "call" or "discussion", never "chat").
+        - Sign-off:
 "Sincerely,
 ${applicantName}"
 
-     CRITICAL RESUME GROUNDING INSTRUCTION:
+     CRITICAL RESUME GROUNDING & ANTI-BOILERPLATE MANDATES:
      - You MUST ground all technical skills, programming languages, frameworks, and past achievements SOLELY on the candidate's attached resume PDF.
-     - NEVER hallucinate, invent, or assume skills that are NOT in the candidate's resume (e.g. DO NOT mention DevOps, AWS, Kubernetes, Terraform, Cloud, or CI/CD unless they are explicitly written in the candidate's attached resume).
+     - NEVER hallucinate, invent, or assume skills that are NOT in the candidate's resume.
      - Focus strictly on the candidate's actual stack and experience as documented in their resume.
-     - STRICT PROHIBITION ON REPETITIVE BOILERPLATE: DO NOT use repetitive generic template sentences like "I am writing to express my enthusiastic interest in the ... position shared on LinkedIn. With hands-on experience in ..., I am confident in my ability to deliver immediate value." Every single application email MUST be uniquely customized, substantive, and authentically tailored.
+     - STRICT PROHIBITION ON REPETITIVE AI BOILERPLATE: Avoid robotic, canned clichés like "I am writing to express my strong interest...", "I am eager to contribute...", "With extensive hands-on experience...", or "Key contributions include:". Every application email MUST sound authentically human, conversational yet sharp and professional.
+     - Universal Generalization: Must work seamlessly for ANY user, ANY profession, and ANY experience tier.
 
 Respond ONLY with valid JSON:
 {

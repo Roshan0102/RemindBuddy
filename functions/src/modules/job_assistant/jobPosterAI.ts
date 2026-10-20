@@ -63,24 +63,25 @@ ${jobText.trim()}
 CRITICAL INSTRUCTIONS FOR COVER LETTER & SUBJECT:
 1. Candidate's Full Name is: "${promptName}".
 2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, framework proficiencies, work history, and key projects.
-3. Compare candidate's actual resume experience against the job post requirements. Write a highly personalized, compelling, professional application email that directly maps candidate's specific accomplishments, certifications, and skills from their resume to the exact requirements of the job.
-4. COVER LETTER STRUCTURE & KEY CONTRIBUTIONS:
-   a) Engaging Opening: Express keen, enthusiastic interest in the specific [Job Title] role at [Company], referencing details or team focus from the post.
-   b) Value Proposition: Clearly explain what direct value and technical alignment the candidate brings based on real resume highlights.
-   c) KEY CONTRIBUTIONS PREPARED TO DELIVER (MANDATORY):
-      A dedicated bulleted section:
-      "Key contributions I am prepared to deliver include:"
-      Provide 3-4 concrete, impactful bullet points (using "•") directly derived from the candidate's attached resume PDF (quantified project deliverables, architectures built, optimizations achieved, and verified technical proficiencies).
-   d) Strategic Alignment & Experience Gap Bridging:
-      If the job seeks more experience than the candidate has, proactively and confidently bridge the gap by emphasizing deep hands-on project mastery and immediate readiness to deliver value from Day 1.
-   e) Professional Call to Action & Resume Reference: Propose a brief 10-15 minute discussion and mention the attached resume.
-   f) Sign-off:
+3. Compare candidate's actual resume experience against the job post requirements.
+4. HUMAN-WRITTEN, HIGH-CONVERSION, MOBILE-OPTIMIZED FORMAT:
+   Recruiters read emails on mobile and will NOT read long essays or bulleted lists.
+   The cover letter MUST be concise, punchy, authentic, and strictly 4–5 sentences total, formatted into exactly TWO short paragraphs with a blank line between them.
+   ABSOLUTELY NO BULLET POINTS ("•", "-", "*") OR LENGTHY LISTS.
+5. TWO-PARAGRAPH FORMAT (4–5 LINES TOTAL):
+   - Professional Greeting: "Dear [Hiring Manager / Recruiter Name if known, else 'Hiring Team'],"
+   - Paragraph 1 (approx. 2 sentences):
+     Direct, engaging opening expressing enthusiastic interest in the specific [Job Title] role at [Company]. Highlight candidate's core domain and top 2–3 strengths/technologies verified from their attached resume that directly match the post.
+   - Paragraph 2 (approx. 2–3 sentences):
+     Highlight proven hands-on project delivery and problem-solving impact from their resume. Mention that their resume is attached for complete review, and invite them for a brief 10–15 minute call to discuss how they can contribute (always use "call" or "discussion", never "chat").
+   - Sign-off:
 "Sincerely,
 ${promptName}"
-5. STRICT RESUME GROUNDING & NO HALLUCINATION:
+6. STRICT RESUME GROUNDING & NO HALLUCINATION:
    - Ground all technical skills, frameworks, and past achievements SOLELY on the candidate's attached resume PDF.
    - NEVER invent or assume skills not present on the resume.
-6. The cover letter MUST sound authentically human-written (not robotic, generic, or repetitive boilerplate).
+   - Must sound genuinely human, natural, conversational yet sharp and professional—NOT robotic or like generic AI boilerplate. Avoid clichés like "I am writing to express my strong interest...", "With extensive hands-on experience...", or "Key contributions include:".
+   - Universal Generalization: Must work seamlessly for ANY user, ANY profession, and ANY experience tier.
 7. Format the generated subject as: "Application for [Job Title] - ${promptName}".
 
 Respond ONLY with a JSON object matching this schema:
@@ -104,22 +105,25 @@ ${userDirective}
 CRITICAL INSTRUCTIONS FOR COVER LETTER & SUBJECT:
 1. Candidate's Full Name is: "${promptName}".
 2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, framework proficiencies, work history, and key projects.
-3. Compare candidate's actual resume experience against the job poster requirements. Write a highly personalized, compelling, professional application email that directly maps candidate's specific accomplishments, certifications, and skills from their resume to the exact requirements of the job posting.
-4. COVER LETTER STRUCTURE & KEY CONTRIBUTIONS:
-   a) Engaging Opening: Express keen, enthusiastic interest in the specific [Job Title] role at [Company], referencing details from the poster.
-   b) Value Proposition: Clearly explain what direct value and technical alignment the candidate brings based on real resume highlights.
-   c) KEY CONTRIBUTIONS PREPARED TO DELIVER (MANDATORY):
-      A dedicated bulleted section:
-      "Key contributions I am prepared to deliver include:"
-      Provide 3-4 concrete, impactful bullet points (using "•") directly derived from the candidate's attached resume PDF (quantified project deliverables, architectures built, optimizations achieved, and verified technical proficiencies).
-   d) Strategic Alignment & Experience Gap Bridging:
-      If the job poster seeks more experience than the candidate currently has on their resume (e.g. posting asks for 2+ or 3+ years, but resume shows 1-2 years), proactively, diplomatically, and creatively bridge this gap. Confidently acknowledge the expectation while decisively pivoting to the candidate's deep, hands-on mastery of the exact required tools, frameworks, and architectures, demonstrating immediate readiness from Day 1.
-   e) Professional Call to Action & Resume Reference: Propose a brief 10-15 minute discussion and mention the attached resume.
-   f) Sign-off:
+3. Compare candidate's actual resume experience against the job poster requirements.
+4. HUMAN-WRITTEN, HIGH-CONVERSION, MOBILE-OPTIMIZED FORMAT:
+   Recruiters read emails on mobile and will NOT read long essays or bulleted lists.
+   The cover letter MUST be concise, punchy, authentic, and strictly 4–5 sentences total, formatted into exactly TWO short paragraphs with a blank line between them.
+   ABSOLUTELY NO BULLET POINTS ("•", "-", "*") OR LENGTHY LISTS.
+5. TWO-PARAGRAPH FORMAT (4–5 LINES TOTAL):
+   - Professional Greeting: "Dear [Hiring Manager / Recruiter Name if known, else 'Hiring Team'],"
+   - Paragraph 1 (approx. 2 sentences):
+     Direct, engaging opening expressing enthusiastic interest in the specific [Job Title] role at [Company]. Highlight candidate's core domain and top 2–3 strengths/technologies verified from their attached resume that directly match the poster.
+   - Paragraph 2 (approx. 2–3 sentences):
+     Highlight proven hands-on project delivery and problem-solving impact from their resume. Mention that their resume is attached for complete review, and invite them for a brief 10–15 minute call to discuss how they can contribute (always use "call" or "discussion", never "chat").
+   - Sign-off:
 "Sincerely,
 ${promptName}"
-5. STRICT RESUME GROUNDING: Ground all skills SOLELY on the attached resume. NEVER hallucinate skills or use generic boilerplate.
-6. Format the generated subject as: "Application for [Job Title] - ${promptName}".
+6. STRICT RESUME GROUNDING & NO HALLUCINATION:
+   - Ground all skills SOLELY on the attached resume. NEVER hallucinate skills or use generic boilerplate.
+   - Must sound genuinely human, natural, conversational yet sharp and professional—NOT robotic or like generic AI boilerplate. Avoid clichés like "I am writing to express my strong interest...", "With extensive hands-on experience...", or "Key contributions include:".
+   - Universal Generalization: Must work seamlessly for ANY user, ANY profession, and ANY experience tier.
+7. Format the generated subject as: "Application for [Job Title] - ${promptName}".
 
 Respond ONLY with a JSON object matching this schema:
 {
@@ -141,21 +145,24 @@ ${userDirective}
 CRITICAL INSTRUCTIONS FOR COVER LETTER & SUBJECT:
 1. Candidate's Full Name is: "${promptName}".
 2. Read the candidate's actual Resume (PDF) attached to analyze candidate's specific technical skills, certifications, work history, and key projects.
-3. Compare candidate's actual resume experience against each job poster's requirements. Write a highly personalized, compelling, professional cover letter for EACH job posting that directly maps candidate's specific accomplishments from their resume to that job.
-4. COVER LETTER STRUCTURE & KEY CONTRIBUTIONS:
-   a) Engaging Opening: Express keen, enthusiastic interest in the specific role at the company.
-   b) Value Proposition: Clearly explain direct technical alignment.
-   c) KEY CONTRIBUTIONS PREPARED TO DELIVER (MANDATORY):
-      A dedicated bulleted section:
-      "Key contributions I am prepared to deliver include:"
-      Provide 3-4 concrete, impactful bullet points (using "•") directly derived from the candidate's attached resume PDF.
-   d) Experience Gap Bridging: Bridge any experience gap with hands-on project mastery and immediate readiness.
-   e) Professional Call to Action & Resume Reference: Propose a brief discussion and mention attached resume.
-   f) Sign-off:
+3. Compare candidate's actual resume experience against each job poster's requirements.
+4. HUMAN-WRITTEN, HIGH-CONVERSION, MOBILE-OPTIMIZED FORMAT:
+   Recruiters read emails on mobile and will NOT read long essays or bulleted lists.
+   The cover letter MUST be concise, punchy, authentic, and strictly 4–5 sentences total, formatted into exactly TWO short paragraphs with a blank line between them.
+   ABSOLUTELY NO BULLET POINTS ("•", "-", "*") OR LENGTHY LISTS.
+5. TWO-PARAGRAPH FORMAT (4–5 LINES TOTAL):
+   - Professional Greeting: "Dear [Hiring Manager / Recruiter Name if known, else 'Hiring Team'],"
+   - Paragraph 1 (approx. 2 sentences):
+     Direct, engaging opening expressing enthusiastic interest in the specific role at the company. Highlight candidate's core domain and top 2–3 strengths/technologies verified from their attached resume that directly match the post.
+   - Paragraph 2 (approx. 2–3 sentences):
+     Highlight proven hands-on project delivery and problem-solving impact from their resume. Mention that their resume is attached for complete review, and invite them for a brief 10–15 minute call to discuss how they can contribute (always use "call" or "discussion", never "chat").
+   - Sign-off:
 "Sincerely,
 ${promptName}"
-5. STRICT RESUME GROUNDING: Ground all skills SOLELY on the attached resume. NEVER hallucinate skills or use generic boilerplate.
-6. Format the generated subject as: "Application for [Job Title] - ${promptName}".
+6. STRICT RESUME GROUNDING: Ground all skills SOLELY on the attached resume. NEVER hallucinate skills or use generic boilerplate.
+   - Must sound genuinely human, natural, conversational yet sharp and professional—NOT robotic or like generic AI boilerplate. Avoid clichés like "I am writing to express my strong interest...", "With extensive hands-on experience...", or "Key contributions include:".
+   - Universal Generalization: Must work seamlessly for ANY user, ANY profession, and ANY experience tier.
+7. Format the generated subject as: "Application for [Job Title] - ${promptName}".
 
 Respond ONLY with a JSON object matching this schema:
 {

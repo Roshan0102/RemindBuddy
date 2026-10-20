@@ -201,7 +201,7 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
                 )
                 setOnClickPendingIntent(R.id.widget_note_reset_btn, resetPendingIntent)
 
-                // 4. Header Click (Open specific note in app)
+                // 4. Header & Container Click (Open specific note in app with Android 14+ background launch permissions)
                 val targetUri = if (noteId.isNotEmpty()) {
                     Uri.parse("remindbuddy://feature/notes?noteId=$noteId")
                 } else {
@@ -212,8 +212,12 @@ class NoteChecklistWidgetProvider : AppWidgetProvider() {
                     MainActivity::class.java,
                     targetUri
                 )
+                setOnClickPendingIntent(R.id.widget_note_root, openNotePendingIntent)
                 setOnClickPendingIntent(R.id.widget_note_header, openNotePendingIntent)
+                setOnClickPendingIntent(R.id.widget_note_title, openNotePendingIntent)
+                setOnClickPendingIntent(R.id.widget_note_icon, openNotePendingIntent)
                 setOnClickPendingIntent(R.id.widget_note_open_btn, openNotePendingIntent)
+                setOnClickPendingIntent(R.id.widget_checklist_empty, openNotePendingIntent)
             }
 
             appWidgetManager.updateAppWidget(appWidgetId, views)

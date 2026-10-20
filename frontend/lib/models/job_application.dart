@@ -32,6 +32,7 @@ class JobApplication {
   final String? source;
   final String? authorName;
   final String? postExcerpt;
+  final bool isFake;
 
   JobApplication({
     required this.id,
@@ -65,6 +66,7 @@ class JobApplication {
     this.source,
     this.authorName,
     this.postExcerpt,
+    this.isFake = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -98,6 +100,7 @@ class JobApplication {
       'isReplyDismissed': isReplyDismissed,
       'replyDismissed': isReplyDismissed,
       'isBounced': isBounced,
+      'isFake': isFake,
       'replyDeleted': replyDeleted,
       'sourceUrl': sourceUrl,
       'source': source,
@@ -192,6 +195,7 @@ class JobApplication {
       source: map['source'] as String?,
       authorName: map['authorName'] as String?,
       postExcerpt: (map['postExcerpt'] ?? map['postContentExcerpt']) as String?,
+      isFake: map['isFake'] == true || map['status'] == 'fake' || map['status'] == 'marked_fake',
     );
   }
 }

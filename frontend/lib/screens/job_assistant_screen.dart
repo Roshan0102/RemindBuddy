@@ -7646,6 +7646,309 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     }
   }
 
+  Future<void> _confirmMarkJobAsFake(JobApplication app) async {
+    final email = app.recipientEmail.trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot block: this job record has no recipient email address.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.report_problem_rounded, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('Mark as Fake Job?'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Are you sure you want to mark this job as a fake job / scam?',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('• Company: ${app.companyName}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 3),
+                  Text('• Recipient Email: $email', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.redAccent)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '⚠️ This will PERMANENTLY block RemindBuddy from applying to this recipient email ID across all future automated LinkedIn sweeps, AI discovery, and shared links.',
+              style: TextStyle(fontSize: 11.5, color: Colors.grey, height: 1.35),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Mark & Permanently Block'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _service.markJobAsFake(app, reason: 'Suspicious / scam recruiter or agency');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Marked as fake. Future applications to $email are permanently blocked!'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmUnmarkJobAsFake(JobApplication app) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unmark Fake Job?'),
+        content: Text('Do you want to unmark this job and remove "${app.recipientEmail}" from your permanent blocklist?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Unmark & Unblock'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _service.unmarkJobAsFake(app);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unmarked fake job and unblocked ${app.recipientEmail}.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showBlockedFakeJobsSheet() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.65,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 10, bottom: 6),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.block_rounded, color: Colors.redAccent, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Blocked Fake Recruiters & Jobs',
+                              style: GoogleFonts.outfit(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : const Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Permanently blocked by recipient email address',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: isDark ? Colors.white60 : Colors.black54,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: _service.streamBlockedFakeJobs(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final blockedList = snapshot.data ?? [];
+                      if (blockedList.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.shield_outlined, size: 54, color: Colors.grey.shade400),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'No Blocked Emails Yet',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white70 : Colors.grey.shade700,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'When you mark suspicious or scam recruiter jobs as fake in your history, their email IDs will appear here and be permanently prevented from receiving applications.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey.shade600, height: 1.4),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        itemCount: blockedList.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final item = blockedList[index];
+                          final email = item['email'] as String? ?? '';
+                          final company = item['companyName'] as String? ?? 'Unknown Company';
+                          final title = item['jobTitle'] as String? ?? '';
+                          final blockedAt = (item['blockedAt'] as Timestamp?)?.toDate();
+
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.red.withValues(alpha: 0.15),
+                                child: const Icon(Icons.mark_email_read_rounded, color: Colors.redAccent, size: 18),
+                              ),
+                              title: Text(
+                                email,
+                                style: GoogleFonts.outfit(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13.5,
+                                  color: isDark ? Colors.red.shade300 : Colors.red.shade700,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    company + (title.isNotEmpty ? ' • $title' : ''),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: isDark ? Colors.white70 : Colors.black87,
+                                    ),
+                                  ),
+                                  if (blockedAt != null) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Blocked on ${DateFormat('dd MMM yyyy, hh:mm a').format(blockedAt)}',
+                                      style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white38 : Colors.grey),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              trailing: TextButton.icon(
+                                icon: const Icon(Icons.lock_open_rounded, size: 14, color: Colors.teal),
+                                label: const Text('Unblock', style: TextStyle(fontSize: 12, color: Colors.teal, fontWeight: FontWeight.bold)),
+                                onPressed: () async {
+                                  final messenger = ScaffoldMessenger.of(context);
+                                  await _service.unblockEmail(email);
+                                  if (mounted) {
+                                    messenger.showSnackBar(
+                                      SnackBar(
+                                        content: Text('Unblocked $email.'),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildUnifiedFilterChip({
     required String key,
     required String label,
@@ -7742,18 +8045,26 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
-          color: isBounced
-              ? const Color(0xFFEF4444).withValues(alpha: 0.45)
-              : badgeColor.withValues(alpha: 0.25),
-          width: 1,
+          color: app.isFake
+              ? const Color(0xFFEF4444).withValues(alpha: 0.6)
+              : (isBounced
+                  ? const Color(0xFFEF4444).withValues(alpha: 0.45)
+                  : badgeColor.withValues(alpha: 0.25)),
+          width: app.isFake ? 1.5 : 1,
         ),
       ),
       child: ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         leading: CircleAvatar(
-          backgroundColor: badgeColor.withValues(alpha: 0.15),
-          child: Icon(leadingIcon, color: badgeColor, size: 20),
+          backgroundColor: app.isFake
+              ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+              : badgeColor.withValues(alpha: 0.15),
+          child: Icon(
+            app.isFake ? Icons.gavel_rounded : leadingIcon,
+            color: app.isFake ? const Color(0xFFEF4444) : badgeColor,
+            size: 20,
+          ),
         ),
         title: Text(
           app.jobTitle,
@@ -7790,7 +8101,27 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ),
                   ),
                 ),
-                if (isBounced)
+                if (app.isFake)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(color: const Color(0xFFEF4444)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.gavel_rounded, size: 10, color: Color(0xFFEF4444)),
+                        SizedBox(width: 3),
+                        Text(
+                          '🚫 FAKE / SCAM (BLOCKED)',
+                          style: TextStyle(fontSize: 9.5, color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (isBounced)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
@@ -8071,6 +8402,68 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   .toList(),
             ),
           ],
+          // Fake / Scam reporting action row
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: app.isFake
+                  ? Colors.red.withValues(alpha: 0.08)
+                  : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.grey.shade50),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: app.isFake
+                    ? Colors.red.withValues(alpha: 0.35)
+                    : (isDark ? Colors.white10 : Colors.grey.shade200),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  app.isFake ? Icons.gavel_rounded : Icons.shield_outlined,
+                  size: 16,
+                  color: app.isFake ? Colors.redAccent : Colors.grey,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    app.isFake
+                        ? 'Permanently Blocked (${app.recipientEmail})'
+                        : 'Recruiter safety & verification:',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: app.isFake ? FontWeight.bold : FontWeight.normal,
+                      color: app.isFake ? Colors.redAccent : (isDark ? Colors.white70 : Colors.black87),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (app.isFake)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.teal,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.undo_rounded, size: 14),
+                    label: const Text('Unmark & Unblock', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    onPressed: () => _confirmUnmarkJobAsFake(app),
+                  )
+                else
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.report_problem_outlined, size: 14),
+                    label: const Text('Mark as Fake', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    onPressed: () => _confirmMarkJobAsFake(app),
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -8156,6 +8549,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             final countLinkedIn = activePool.where((a) => _isLinkedInApp(a)).length;
             final countManual = activePool.where((a) => _isManualScanApp(a)).length;
             final countReplies = activePool.where((a) => a.status == 'reply_received').length;
+            final countFake = activePool.where((a) => a.isFake).length;
 
             // Apply selected source / status filter
             List<JobApplication> displayApps = activePool.where((a) {
@@ -8170,6 +8564,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   return _isManualScanApp(a);
                 case 'replies':
                   return a.status == 'reply_received';
+                case 'fake':
+                  return a.isFake;
                 case 'all':
                 default:
                   return true;
@@ -8283,7 +8679,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     ),
                   ),
 
-                // Source Filter Bar with Chips
+                // Source Filter Bar with Chips & Blocked Fake List
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   color: isDark ? const Color(0xFF0F172A) : Colors.grey.shade100,
@@ -8331,6 +8727,26 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           label: '💬 Replies ($countReplies)',
                           color: const Color(0xFF059669),
                           isDark: isDark,
+                        ),
+                        if (countFake > 0) ...[
+                          const SizedBox(width: 8),
+                          _buildUnifiedFilterChip(
+                            key: 'fake',
+                            label: '🚫 Fake ($countFake)',
+                            color: const Color(0xFFEF4444),
+                            isDark: isDark,
+                          ),
+                        ],
+                        const SizedBox(width: 10),
+                        ActionChip(
+                          avatar: const Icon(Icons.block_rounded, size: 14, color: Colors.redAccent),
+                          label: const Text(
+                            'Blocked Fake List 🚫',
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                          ),
+                          backgroundColor: Colors.red.withValues(alpha: 0.1),
+                          side: BorderSide(color: Colors.red.withValues(alpha: 0.35)),
+                          onPressed: _showBlockedFakeJobsSheet,
                         ),
                       ],
                     ),

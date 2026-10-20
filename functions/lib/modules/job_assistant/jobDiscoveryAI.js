@@ -273,18 +273,44 @@ async function discoverAndApplyForUser(uid, options) {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const appliedEmailRoles = new Set();
     const appliedCompanyRoles = new Set();
+    const blockedFakeEmails = new Set();
+    // 0. Load user's permanently blocked fake recruiter emails from users/{uid}/blocked_fake_jobs
+    try {
+        const blockedSnap = await firebase_1.db.collection("users").doc(uid).collection("blocked_fake_jobs").get();
+        blockedSnap.forEach((doc) => {
+            const bData = doc.data();
+            const bEmail = (bData.email || doc.id || "").toLowerCase().trim();
+            try {
+                const decoded = decodeURIComponent(bEmail);
+                if (decoded)
+                    blockedFakeEmails.add(decoded.toLowerCase().trim());
+            }
+            catch (_) { }
+            if (bEmail)
+                blockedFakeEmails.add(bEmail);
+        });
+        console.log(`[JobDiscovery] User ${uid} has ${blockedFakeEmails.size} permanently blocked fake recruiter email(s).`);
+    }
+    catch (e) {
+        console.warn(`[JobDiscovery] Error loading blocked_fake_jobs: ${e.message}`);
+    }
     // 1. job_applications
     try {
         const existingAppsSnap = await firebase_1.db.collection("users").doc(uid).collection("job_applications").get();
         existingAppsSnap.forEach((doc) => {
             var _a;
             const d = doc.data();
+            const email = (d.recipientEmail || "").toLowerCase().trim();
+            if (d.isFake === true || d.status === 'fake') {
+                if (email)
+                    blockedFakeEmails.add(email);
+                return; // Permanently blocked, never eligible for re-applying
+            }
             const appliedTime = ((_a = d.appliedAt) === null || _a === void 0 ? void 0 : _a.toDate) ? d.appliedAt.toDate() : (d.appliedAt ? new Date(d.appliedAt) : null);
             if (appliedTime && appliedTime < thirtyDaysAgo) {
                 // Applied more than 30 days ago -> eligible to re-apply!
                 return;
             }
-            const email = (d.recipientEmail || "").toLowerCase().trim();
             const role = normalizeJobRole(d.jobTitle || "");
             const comp = (d.companyName || "").toLowerCase().trim();
             if (email && role) {
@@ -471,21 +497,20 @@ CRITICAL VERIFICATION & EXTRACTION MANDATES:
 
 2. ${expMandateStr}
 
-3. HUMAN-WRITTEN, HIGH-CONVERTING APPLICATION EMAIL:
-   - For each matching job, write a highly authentic, natural, and engaging cover letter tailored specifically to that job title and company.
-   - Read the candidate's attached Resume PDF to extract concrete accomplishments, technical skills, programming languages, frameworks, and domain expertise directly from the resume, and align them specifically with the company's requirements.
+3. HUMAN-WRITTEN, HIGH-CONVERSION, MOBILE-OPTIMIZED APPLICATION EMAIL (STRICT 4-5 LINES TOTAL):
+   - Recruiters read emails on mobile and will NOT read long essays or bulleted lists.
+   - For each matching job, write a highly authentic, natural, and punchy application email strictly 4–5 sentences total, formatted into exactly TWO short paragraphs with a single blank line between them.
+   - ABSOLUTELY NO BULLET POINTS ("•", "-", "*") OR LENGTHY LISTS. Detailed metrics belong exclusively in the attached resume.
+   - AVOID ROBOTIC CLICHÉS: Never use phrases like "I am writing to express my strong interest...", "I am eager to contribute...", "With extensive hands-on experience...", or "Key contributions include:". Write in a sharp, natural, conversational human voice.
+   - Read the candidate's attached Resume PDF to extract concrete accomplishments, technical skills, and domain expertise directly from the resume, aligning them specifically with the company's requirements.
    - EXPERIENCE ALIGNMENT:
      Strictly match openings within ${minExp}-${maxExp} years. Never apply to or select roles requiring 4+, 5+, 5-8, 6+, 7+, 8+, 10+, Senior, Lead, or Principal experience. If the candidate has e.g. 2 years and the role asks for 2-3 years, articulate the candidate's verified hands-on project mastery and immediate readiness to deliver value from Day 1.
-   - Structure:
-     a) Enthusiastic opening identifying the specific role and company.
-     b) Value Proposition: Clear explanation of what direct value and expertise the candidate brings based on real resume highlights.
-     c) Key Contributions Prepared to Deliver (MANDATORY):
-        A dedicated bulleted section:
-        "Key contributions I am prepared to deliver include:"
-        Provide 3-4 concrete, impactful bullet points (using "•") directly derived from the candidate's attached resume PDF that directly match the requirements of the job.
-     d) Professional closing & Call to Action proposing a brief 10-15 minute discussion, mentioning the attached resume.
-     e) Sign-off: "Sincerely,\n${applicantName}" (Never use placeholders like [Your Name]).
-   - Strict Anti-Hallucination: Ground all skills and accomplishments SOLELY on the candidate's attached resume PDF. NEVER invent or assume skills not present on the resume. STRICTLY AVOID generic, repetitive boilerplate templates.
+   - Structure (strictly 4–5 lines total):
+     - Greeting: "Dear [Hiring Manager / Recruiter Name if known, else 'Hiring Team'],"
+     - Paragraph 1 (approx. 2 lines): Direct, catchy hook expressing enthusiasm for the specific [Job Title] role at [Company]. Highlight candidate's core domain and top 2–3 strengths/technologies verified from their attached resume that directly match the position.
+     - Paragraph 2 (approx. 2–3 lines): Highlight proven hands-on project delivery and problem-solving impact from their resume. Mention that their resume is attached for complete review, and invite them for a brief 10–15 minute call to discuss how they can contribute (always use "call" or "discussion", never "chat").
+     - Sign-off: "Sincerely,\n${applicantName}" (Never use placeholders like [Your Name]).
+   - Strict Anti-Hallucination & Anti-Boilerplate: Ground all skills and accomplishments SOLELY on the candidate's attached resume PDF. NEVER invent or assume skills not present on the resume. Must sound genuinely human, natural, conversational yet sharp and professional—NOT robotic or like generic AI boilerplate.
    - Subject line format: "Application for [Job Title] - ${applicantName}"
 
 4. LOCATION & WORK MODE MATCHING:
@@ -612,6 +637,11 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             continue;
         }
         const emailLower = email.toLowerCase();
+        // 1. Permanently blocked fake recruiter/scam check
+        if (blockedFakeEmails.has(emailLower)) {
+            console.log(`[JobDiscovery] 🚫 Skipping '${email}' for '${job.companyName}': Recipient email is permanently blocked by user as fake/scam.`);
+            continue;
+        }
         const normRole = normalizeJobRole(job.jobTitle || "");
         const emailRoleKey = `${emailLower}|${normRole}`;
         const compRoleKey = `${(job.companyName || '').toLowerCase().trim()}|${normRole}`;

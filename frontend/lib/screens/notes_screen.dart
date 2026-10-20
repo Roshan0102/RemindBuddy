@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/note.dart';
 import '../services/storage_service.dart';
@@ -14,6 +16,8 @@ import '../services/notes_ai_service.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
+
+  static final ValueNotifier<String?> targetNoteIdNotifier = ValueNotifier<String?>(null);
 
   @override
   State<NotesScreen> createState() => _NotesScreenState();
@@ -43,13 +47,60 @@ class _NotesScreenState extends State<NotesScreen> {
     _notesStream = _storageService.getNotesStream();
     _loadCustomOrder();
     HomeWidgetService().syncWidgetChangesToFirestore();
+    NotesScreen.targetNoteIdNotifier.addListener(_checkTargetNote);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkTargetNote();
+    });
   }
 
   @override
   void dispose() {
+    NotesScreen.targetNoteIdNotifier.removeListener(_checkTargetNote);
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  bool _isCheckingTargetNote = false;
+
+  Future<void> _checkTargetNote([List<Note>? currentNotes]) async {
+    final targetId = NotesScreen.targetNoteIdNotifier.value;
+    if (targetId == null || targetId.isEmpty || _isCheckingTargetNote) return;
+
+    if (!mounted) return;
+
+    // 1. Check if note is already in the loaded notes list
+    if (currentNotes != null && currentNotes.isNotEmpty) {
+      final localMatch = currentNotes.where((n) => n.id == targetId).firstOrNull;
+      if (localMatch != null) {
+        NotesScreen.targetNoteIdNotifier.value = null;
+        _addOrEditNote(note: localMatch);
+        return;
+      }
+    }
+
+    _isCheckingTargetNote = true;
+    try {
+      // 2. If user auth is still loading (cold start from widget), wait briefly for auth state
+      if (FirebaseAuth.instance.currentUser == null) {
+        try {
+          await FirebaseAuth.instance
+              .authStateChanges()
+              .firstWhere((u) => u != null)
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {}
+      }
+
+      final note = await _storageService.getNoteById(targetId);
+      if (note != null && mounted) {
+        NotesScreen.targetNoteIdNotifier.value = null;
+        _addOrEditNote(note: note);
+      }
+    } catch (e) {
+      debugPrint('Error opening note from widget deep link: $e');
+    } finally {
+      _isCheckingTargetNote = false;
+    }
   }
 
   Future<void> _loadCustomOrder() async {
@@ -148,13 +199,22 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   Future<void> _addOrEditNote({Note? note, bool startAsChecklist = false}) async {
+    String? currentNoteId = note?.id;
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final String? ownerUid = note?.ownerUid ?? currentUser?.uid;
+
     final titleController = TextEditingController(text: note?.title ?? '');
+    final titleFocusNode = FocusNode();
+
     final String rawContent = note?.content ?? '';
     final String editableContent = rawContent.isNotEmpty
         ? rawContent.split('\n').map((line) => _stripSignature(line)).join('\n')
         : '';
     final contentController = LinkTextEditingController(text: editableContent);
+    final contentFocusNode = FocusNode();
+
     bool isLocked = note?.isLocked ?? false;
+    bool isStarred = note?.isStarred ?? false;
     bool isChecklist = note?.isChecklist ?? (note == null && startAsChecklist);
     List<Map<String, dynamic>> checklistItems = note != null
         ? List<Map<String, dynamic>>.from(
@@ -172,6 +232,233 @@ class _NotesScreenState extends State<NotesScreen> {
         .map((item) => LinkTextEditingController(text: item['text'] as String))
         .toList();
     final List<FocusNode> itemFocusNodes = checklistItems.map((_) => FocusNode()).toList();
+
+    // Check Lock
+    if (note != null && note.isLocked) {
+      bool authenticated = await _showPinDialog();
+      if (!authenticated) {
+        titleController.dispose();
+        titleFocusNode.dispose();
+        contentController.dispose();
+        contentFocusNode.dispose();
+        for (var c in itemControllers) {
+          c.dispose();
+        }
+        for (var n in itemFocusNodes) {
+          n.dispose();
+        }
+        return;
+      }
+    }
+
+    bool isSaving = false;
+    bool isDisposed = false;
+    bool isSyncingRemote = false;
+    bool hasUnsavedChanges = false;
+
+    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? liveDocSub;
+    Timer? autoSaveTimer;
+    void Function(void Function())? dialogSetState;
+
+    // Real-Time Document Synchronization across tabs/devices
+    void setupLiveDocListener(String noteId, String uid) {
+      liveDocSub?.cancel();
+      liveDocSub = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('notes')
+          .doc(noteId)
+          .snapshots()
+          .listen((snapshot) {
+        if (isDisposed || !snapshot.exists || snapshot.data() == null) return;
+        // Skip local write echoes to preserve cursor offset and prevent rubber-banding
+        if (snapshot.metadata.hasPendingWrites) return;
+
+        final data = snapshot.data()!;
+        final remoteNote = Note.fromMap(data, snapshot.id, ownerUid: uid);
+
+        if (dialogSetState != null) {
+          isSyncingRemote = true;
+          dialogSetState!(() {
+            // 1. Sync Title if not currently focused by local user
+            if (!titleFocusNode.hasFocus && titleController.text != remoteNote.title) {
+              titleController.text = remoteNote.title;
+            }
+
+            // 2. Sync Lock & Star states
+            isLocked = remoteNote.isLocked;
+            isStarred = remoteNote.isStarred;
+
+            // 3. Sync Checklist or Note content
+            if (remoteNote.isChecklist) {
+              isChecklist = true;
+              final remoteItems = remoteNote.checklistItems;
+
+              // Find which item (if any) currently has active keyboard focus
+              int activeFocusIndex = -1;
+              for (int i = 0; i < itemFocusNodes.length; i++) {
+                if (itemFocusNodes[i].hasFocus) {
+                  activeFocusIndex = i;
+                  break;
+                }
+              }
+
+              // Adjust controller and focus node pool size
+              while (itemControllers.length < remoteItems.length) {
+                itemControllers.add(LinkTextEditingController());
+                itemFocusNodes.add(FocusNode());
+              }
+              while (itemControllers.length > remoteItems.length) {
+                final c = itemControllers.removeLast();
+                final f = itemFocusNodes.removeLast();
+                c.dispose();
+                f.dispose();
+              }
+
+              checklistItems = List<Map<String, dynamic>>.from(
+                remoteItems.map((item) {
+                  final String text = item['text'] as String? ?? '';
+                  return {
+                    ...item,
+                    'text': _stripSignature(text),
+                  };
+                }),
+              );
+
+              for (int i = 0; i < remoteItems.length; i++) {
+                final strippedText = _stripSignature(remoteItems[i]['text'] as String? ?? '');
+                // Do not clobber the exact input field the user is actively typing into
+                if (i != activeFocusIndex && itemControllers[i].text != strippedText) {
+                  itemControllers[i].text = strippedText;
+                }
+              }
+            } else {
+              isChecklist = false;
+              if (!contentFocusNode.hasFocus) {
+                final remoteContent = remoteNote.content.isNotEmpty
+                    ? remoteNote.content.split('\n').map((l) => _stripSignature(l)).join('\n')
+                    : '';
+                if (contentController.text != remoteContent) {
+                  contentController.text = remoteContent;
+                }
+              }
+            }
+          });
+          isSyncingRemote = false;
+        }
+      }, onError: (err) {
+        debugPrint("[NotesSync] Live document sync error: $err");
+      });
+    }
+
+    // Auto-sync function to immediately or debounced push changes to Firestore
+    Future<void> syncToFirestore({bool immediate = false}) async {
+      if (isDisposed || isSyncingRemote) return;
+
+      final title = titleController.text.trim();
+      final effectiveUid = ownerUid ?? FirebaseAuth.instance.currentUser?.uid;
+      if (effectiveUid == null) return;
+
+      List<Map<String, dynamic>> itemsToSave = [];
+      if (isChecklist) {
+        for (int i = 0; i < checklistItems.length; i++) {
+          final text = i < itemControllers.length
+              ? itemControllers[i].text
+              : (checklistItems[i]['text'] as String? ?? '');
+          if (text.isNotEmpty) {
+            itemsToSave.add({
+              'text': text,
+              'isChecked': checklistItems[i]['isChecked'] == true,
+            });
+          }
+        }
+      }
+
+      final isShared = currentNoteId != null &&
+          note != null &&
+          (note.sharedWith.isNotEmpty || (note.ownerUid != null && note.ownerUid != currentUser?.uid));
+
+      if (isShared) {
+        final currentUsername =
+            currentUser?.displayName ?? currentUser?.email?.split('@').first ?? 'User';
+        if (isChecklist) {
+          itemsToSave = _processChecklistWithSignatures(
+            itemsToSave,
+            note.checklistItems,
+            currentUsername,
+            ownerUsername: note.ownerUsername,
+          );
+        } else {
+          contentController.text = _processContentWithSignatures(
+            contentController.text,
+            note.content,
+            currentUsername,
+            ownerUsername: note.ownerUsername,
+          );
+        }
+      }
+
+      String content = contentController.text;
+      if (isChecklist) {
+        content = itemsToSave
+            .map((item) => (item['isChecked'] == true ? '[x] ' : '[ ] ') + (item['text'] as String))
+            .join('\n');
+      }
+
+      if (currentNoteId == null) {
+        if (title.isNotEmpty || (isChecklist ? itemsToSave.isNotEmpty : content.trim().isNotEmpty)) {
+          final newNote = Note(
+            title: title,
+            content: content,
+            date: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
+            isLocked: isLocked,
+            ownerUid: effectiveUid,
+            sharedWith: [],
+            isChecklist: isChecklist,
+            checklistItems: itemsToSave,
+            isStarred: isStarred,
+          );
+          try {
+            final newId = await _storageService.insertNote(newNote);
+            if (newId.isNotEmpty) {
+              currentNoteId = newId;
+              hasUnsavedChanges = false;
+              setupLiveDocListener(newId, effectiveUid);
+            }
+          } catch (e) {
+            debugPrint("[NotesSync] Error inserting new note: $e");
+          }
+        }
+      } else {
+        final updatedNote = Note(
+          id: currentNoteId,
+          title: title,
+          content: content,
+          date: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
+          isLocked: isLocked,
+          ownerUid: effectiveUid,
+          sharedWith: note?.sharedWith ?? [],
+          isChecklist: isChecklist,
+          checklistItems: itemsToSave,
+          isStarred: isStarred,
+        );
+        try {
+          await _storageService.updateNote(updatedNote);
+          await HomeWidgetService().checkAndSyncIfPinnedNote(updatedNote);
+          hasUnsavedChanges = false;
+        } catch (e) {
+          debugPrint("[NotesSync] Error updating note: $e");
+        }
+      }
+    }
+
+    void scheduleAutoSave() {
+      hasUnsavedChanges = true;
+      autoSaveTimer?.cancel();
+      autoSaveTimer = Timer(const Duration(milliseconds: 600), () {
+        syncToFirestore(immediate: false);
+      });
+    }
 
     void toggleItemChecked(int index, bool isChecked, void Function(void Function()) setDialogState) {
       setDialogState(() {
@@ -214,16 +501,9 @@ class _NotesScreenState extends State<NotesScreen> {
           }
         }
       });
+      // Immediately sync check state to Firestore
+      syncToFirestore(immediate: true);
     }
-
-    // Check Lock
-    if (note != null && note.isLocked) {
-      bool authenticated = await _showPinDialog();
-      if (!authenticated) return;
-    }
-
-    bool isSaving = false;
-    bool hasSaved = false;
 
     MathResult? activeMathResult;
     TextEditingController? activeMathController;
@@ -290,8 +570,6 @@ class _NotesScreenState extends State<NotesScreen> {
       });
     };
 
-
-
     if (!mounted) return;
 
     await Navigator.of(context).push(
@@ -299,101 +577,19 @@ class _NotesScreenState extends State<NotesScreen> {
         fullscreenDialog: true,
         builder: (context) => StatefulBuilder(
           builder: (context, setDialogState) {
+            dialogSetState = setDialogState;
+            if (currentNoteId != null && ownerUid != null && liveDocSub == null) {
+              setupLiveDocListener(currentNoteId!, ownerUid);
+            }
+
             final isDark = Theme.of(context).brightness == Brightness.dark;
             return PopScope(
               canPop: true,
               onPopInvokedWithResult: (bool didPop, Object? result) async {
-                if (didPop && !hasSaved) {
-                  final title = titleController.text;
-                  if (isChecklist) {
-                    final List<Map<String, dynamic>> filteredItems = [];
-                    for (int i = 0; i < checklistItems.length; i++) {
-                      final text = itemControllers[i].text;
-                      if (text.isNotEmpty) {
-                        checklistItems[i]['text'] = text;
-                        filteredItems.add(checklistItems[i]);
-                      }
-                    }
-                    checklistItems = filteredItems;
-                  }
-
-                  final currentUser = FirebaseAuth.instance.currentUser;
-                  final isShared = note != null && (
-                    note.sharedWith.isNotEmpty || 
-                    (note.ownerUid != null && note.ownerUid != currentUser?.uid)
-                  );
-
-                  if (isShared) {
-                    final currentUsername = currentUser?.displayName ?? currentUser?.email?.split('@').first ?? 'User';
-                    if (isChecklist) {
-                      checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername, ownerUsername: note.ownerUsername);
-                    } else {
-                      contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername, ownerUsername: note.ownerUsername);
-                    }
-                  }
-
-                  if (isChecklist) {
-                    contentController.text = checklistItems.map((item) => (item['isChecked'] == true ? '[x] ' : '[ ] ') + (item['text'] as String)).join('\n');
-                  }
-                  final content = contentController.text;
-                  if (note == null) {
-                    if (title.isNotEmpty || (isChecklist ? checklistItems.isNotEmpty : content.isNotEmpty)) {
-                      hasSaved = true;
-                      final newNote = Note(
-                        title: title,
-                        content: content,
-                        date: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
-                        isLocked: isLocked,
-                        sharedWith: [],
-                        isChecklist: isChecklist,
-                        checklistItems: checklistItems,
-                      );
-                      try {
-                        await _storageService.insertNote(newNote);
-                      } catch (e) {
-                        debugPrint("Error auto-saving new note: $e");
-                      }
-                    }
-                  } else {
-                    bool isChanged = title != note.title || isLocked != note.isLocked || isChecklist != note.isChecklist;
-                    if (!isChanged) {
-                      if (isChecklist) {
-                        if (checklistItems.length != note.checklistItems.length) {
-                          isChanged = true;
-                        } else {
-                          for (int i = 0; i < checklistItems.length; i++) {
-                            if (checklistItems[i]['text'] != note.checklistItems[i]['text'] ||
-                                checklistItems[i]['isChecked'] != note.checklistItems[i]['isChecked']) {
-                              isChanged = true;
-                              break;
-                            }
-                          }
-                        }
-                      } else {
-                        isChanged = content != note.content;
-                      }
-                    }
-                    if (isChanged) {
-                      hasSaved = true;
-                      final updatedNote = Note(
-                        id: note.id,
-                        title: title,
-                        content: content,
-                        date: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
-                        isLocked: isLocked,
-                        ownerUid: note.ownerUid,
-                        sharedWith: note.sharedWith,
-                        isChecklist: isChecklist,
-                        checklistItems: checklistItems,
-                        isStarred: note.isStarred,
-                      );
-                      try {
-                        await _storageService.updateNote(updatedNote);
-                        await HomeWidgetService().checkAndSyncIfPinnedNote(updatedNote);
-                      } catch (e) {
-                        debugPrint("Error auto-saving updated note: $e");
-                      }
-                    }
+                if (didPop) {
+                  autoSaveTimer?.cancel();
+                  if (hasUnsavedChanges) {
+                    await syncToFirestore(immediate: true);
                   }
                 }
               },
@@ -471,6 +667,7 @@ class _NotesScreenState extends State<NotesScreen> {
                             isChecklist = true;
                           }
                         });
+                        syncToFirestore(immediate: true);
                       },
                     ),
                     IconButton(
@@ -487,6 +684,7 @@ class _NotesScreenState extends State<NotesScreen> {
                         setDialogState(() {
                           isLocked = !isLocked;
                         });
+                        syncToFirestore(immediate: true);
                       },
                     ),
                     IconButton(
@@ -501,16 +699,19 @@ class _NotesScreenState extends State<NotesScreen> {
                         child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 16),
                       ),
                       tooltip: 'AI Writing & Math Tools',
-                      onPressed: () => _openNoteAiTools(
-                        context: context,
-                        isChecklist: isChecklist,
-                        titleController: titleController,
-                        contentController: contentController,
-                        checklistItems: checklistItems,
-                        itemControllers: itemControllers,
-                        itemFocusNodes: itemFocusNodes,
-                        setDialogState: setDialogState,
-                      ),
+                      onPressed: () async {
+                        await _openNoteAiTools(
+                          context: context,
+                          isChecklist: isChecklist,
+                          titleController: titleController,
+                          contentController: contentController,
+                          checklistItems: checklistItems,
+                          itemControllers: itemControllers,
+                          itemFocusNodes: itemFocusNodes,
+                          setDialogState: setDialogState,
+                        );
+                        syncToFirestore(immediate: true);
+                      },
                     ),
                     if (isChecklist)
                       IconButton(
@@ -518,16 +719,16 @@ class _NotesScreenState extends State<NotesScreen> {
                         tooltip: 'Pin Checklist to Home Screen',
                         onPressed: () async {
                           final currentNote = Note(
-                            id: note?.id,
+                            id: currentNoteId ?? note?.id,
                             title: titleController.text.trim(),
                             content: contentController.text,
                             date: note?.date ?? DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
                             isLocked: isLocked,
-                            ownerUid: note?.ownerUid,
+                            ownerUid: ownerUid ?? note?.ownerUid,
                             sharedWith: note?.sharedWith ?? [],
                             isChecklist: true,
                             checklistItems: checklistItems,
-                            isStarred: note?.isStarred ?? false,
+                            isStarred: isStarred,
                           );
                           await _handlePinOrAssignWidget(context, currentNote);
                         },
@@ -554,75 +755,12 @@ class _NotesScreenState extends State<NotesScreen> {
                                 style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
                               ),
                               onPressed: () async {
-                                final title = titleController.text;
-                                if (isChecklist) {
-                                  final List<Map<String, dynamic>> filteredItems = [];
-                                  for (int i = 0; i < checklistItems.length; i++) {
-                                    final text = itemControllers[i].text;
-                                    if (text.isNotEmpty) {
-                                      checklistItems[i]['text'] = text;
-                                      filteredItems.add(checklistItems[i]);
-                                    }
-                                  }
-                                  checklistItems = filteredItems;
-                                }
-
-                                final currentUser = FirebaseAuth.instance.currentUser;
-                                final isShared = note != null && (
-                                  note.sharedWith.isNotEmpty || 
-                                  (note.ownerUid != null && note.ownerUid != currentUser?.uid)
-                                );
-
-                                if (isShared) {
-                                  final currentUsername = currentUser?.displayName ?? currentUser?.email?.split('@').first ?? 'User';
-                                  if (isChecklist) {
-                                    checklistItems = _processChecklistWithSignatures(checklistItems, note.checklistItems, currentUsername, ownerUsername: note.ownerUsername);
-                                  } else {
-                                    contentController.text = _processContentWithSignatures(contentController.text, note.content, currentUsername, ownerUsername: note.ownerUsername);
-                                  }
-                                }
-
-                                if (isChecklist) {
-                                  contentController.text = checklistItems.map((item) => (item['isChecked'] == true ? '[x] ' : '[ ] ') + (item['text'] as String)).join('\n');
-                                }
-                                final content = contentController.text;
-                                if (title.isNotEmpty || (isChecklist ? checklistItems.isNotEmpty : content.isNotEmpty)) {
-                                  setDialogState(() {
-                                    isSaving = true;
-                                    hasSaved = true;
-                                  });
-                                  final newNote = Note(
-                                    id: note?.id,
-                                    title: title,
-                                    content: content,
-                                    date: DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
-                                    isLocked: isLocked,
-                                    ownerUid: note?.ownerUid,
-                                    sharedWith: note?.sharedWith ?? [],
-                                    isChecklist: isChecklist,
-                                    checklistItems: checklistItems,
-                                    isStarred: note?.isStarred ?? false,
-                                  );
-                                  try {
-                                    if (note == null) {
-                                      await _storageService.insertNote(newNote);
-                                    } else {
-                                      await _storageService.updateNote(newNote);
-                                      await HomeWidgetService().checkAndSyncIfPinnedNote(newNote);
-                                    }
-                                    if (context.mounted) Navigator.pop(context);
-                                  } catch (e) {
-                                    setDialogState(() {
-                                      isSaving = false;
-                                      hasSaved = false;
-                                    });
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Error saving note: $e'), backgroundColor: Colors.red),
-                                      );
-                                    }
-                                  }
-                                }
+                                setDialogState(() {
+                                  isSaving = true;
+                                });
+                                autoSaveTimer?.cancel();
+                                await syncToFirestore(immediate: true);
+                                if (context.mounted) Navigator.pop(context);
                               },
                             ),
                     ),
@@ -634,6 +772,7 @@ class _NotesScreenState extends State<NotesScreen> {
                     children: [
                       TextField(
                         controller: titleController,
+                        focusNode: titleFocusNode,
                         decoration: InputDecoration(
                           hintText: 'Title...',
                           border: InputBorder.none,
@@ -645,6 +784,9 @@ class _NotesScreenState extends State<NotesScreen> {
                         ),
                         style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold),
                         autofocus: note == null,
+                        onChanged: (val) {
+                          scheduleAutoSave();
+                        },
                       ),
                       Divider(
                         color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
@@ -691,6 +833,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                                                 newFocusNode.requestFocus();
                                                               });
                                                             });
+                                                            syncToFirestore(immediate: true);
                                                             return KeyEventResult.handled;
                                                           }
                                                         }
@@ -724,6 +867,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                                           item['text'] = val;
                                                           updateMath(itemControllers[index], setDialogState);
                                                           setDialogState(() {});
+                                                          scheduleAutoSave();
                                                         },
                                                       ),
                                                     ),
@@ -811,6 +955,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                                     itemFocusNodes[index].dispose();
                                                     itemFocusNodes.removeAt(index);
                                                   });
+                                                  syncToFirestore(immediate: true);
                                                 },
                                               ),
                                             ],
@@ -841,6 +986,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                             newFocusNode.requestFocus();
                                           });
                                         });
+                                        syncToFirestore(immediate: true);
                                       },
                                     ),
                                   ),
@@ -892,6 +1038,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                   Expanded(
                                     child: TextField(
                                       controller: contentController,
+                                      focusNode: contentFocusNode,
                                       decoration: InputDecoration(
                                         hintText: 'Start typing your note...',
                                         border: InputBorder.none,
@@ -909,6 +1056,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                       onChanged: (val) {
                                         updateMath(contentController, setDialogState);
                                         setDialogState(() {});
+                                        scheduleAutoSave();
                                       },
                                     ),
                                   ),
@@ -1008,6 +1156,11 @@ class _NotesScreenState extends State<NotesScreen> {
     );
 
     // Dispose resources on dialog close
+    isDisposed = true;
+    autoSaveTimer?.cancel();
+    liveDocSub?.cancel();
+    titleFocusNode.dispose();
+    contentFocusNode.dispose();
     for (var controller in itemControllers) {
       controller.dispose();
     }
@@ -1821,6 +1974,11 @@ class _NotesScreenState extends State<NotesScreen> {
           }
 
           final allNotes = snapshot.data ?? [];
+          if (allNotes.isNotEmpty && NotesScreen.targetNoteIdNotifier.value != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _checkTargetNote(allNotes);
+            });
+          }
           final orderedNotes = _sortNotesWithCustomOrder(allNotes);
           final displayedNotes = _filterNotes(orderedNotes, currentUser);
 

@@ -148,8 +148,21 @@ TASK:
 1. Identify the Company Name and Job Title. If company cannot be identified with certainty, use the most plausible employer or poster name.
 2. Check if a recruiter or hiring manager contact email is mentioned anywhere in the content.
 3. Extract 4-8 core required skills, tools, and technical keywords.
-4. Craft an attention-grabbing email subject line: "${candidateName} - Application for [Job Title]".
-5. Write a persuasive, highly customized 3-4 paragraph cover letter pitching the candidate for this exact role. Ground it solidly in candidate's skills and experience.
+4. Craft an attention-grabbing email subject line: "Application for [Job Title] - ${candidateName}".
+5. HUMAN-WRITTEN, CRISPY, HIGH-CONVERSION APPLICATION EMAIL (STRICT 4-5 LINES TOTAL):
+   - Recruiters read emails on mobile and immediately discard long essays or bulleted lists.
+   - The email MUST be concise, punchy, authentic, and strictly 4–5 sentences total, formatted into exactly TWO short paragraphs with a single blank line between them.
+   - ABSOLUTELY NO BULLET POINTS ("•", "-", "*") OR LENGTHY LISTS. Detailed metrics belong exclusively in the attached resume.
+   - Avoid robotic AI clichés like "I am writing to express my strong interest...", "I am eager to contribute...", "With extensive hands-on experience...", or "Key contributions include:". Write in a sharp, natural, conversational human voice.
+   - Structure:
+     * Greeting: "Dear [Recruiter / Hiring Manager Name if identified in post, else 'Hiring Team'],"
+     * Paragraph 1 (approx. 2 lines): Direct, catchy hook expressing enthusiasm for the specific [Job Title] role at [Company], connecting candidate's core expertise and verified top 2-3 strengths from their attached resume directly to the position.
+     * Paragraph 2 (approx. 2-3 lines): Highlight candidate's hands-on problem-solving and immediate readiness to deliver results. Explicitly mention that their resume is attached for complete review, and invite them for a brief 10–15 minute call to discuss how they can contribute (always use "call" or "discussion", never "chat").
+     * Sign-off:
+"Sincerely,
+${candidateName}"
+   - Ground all skills and accomplishments SOLELY on the candidate's attached resume. NEVER hallucinate.
+   - Universal Generalization: Must work seamlessly for ANY user, ANY profession, and ANY role.
 
 OUTPUT STRICT JSON FORMAT ONLY:
 {
@@ -158,8 +171,8 @@ OUTPUT STRICT JSON FORMAT ONLY:
   "recipientEmail": "recruiter@company.com or empty string if not found",
   "extractedSkills": ["Skill 1", "Skill 2", "Skill 3"],
   "location": "Location or Remote",
-  "generatedSubject": "${candidateName} - Application for Job Title",
-  "generatedCoverLetter": "Dear Hiring Team,\\n\\n..."
+  "generatedSubject": "Application for [Job Title] - ${candidateName}",
+  "generatedCoverLetter": "Dear [Name],\\n\\n[Paragraph 1 - approx 2 lines]\\n\\n[Paragraph 2 - approx 2 to 3 lines]\\n\\nSincerely,\\n${candidateName}"
 }`;
 
         const inlineParts: any[] = [];
@@ -224,7 +237,24 @@ OUTPUT STRICT JSON FORMAT ONLY:
         let emailMessageId: string | null = null;
         let emailSendError: string | null = null;
 
-        if (recipientEmail && userEmail && appPassword) {
+        // Check if recipient email has been permanently blocked by the user as fake/scam
+        let isPermanentlyBlockedFake = false;
+        if (recipientEmail) {
+            const cleanRecip = recipientEmail.toLowerCase().trim();
+            try {
+                const blockedDoc = await db.collection("users").doc(targetUid).collection("blocked_fake_jobs").doc(encodeURIComponent(cleanRecip)).get();
+                if (blockedDoc.exists) {
+                    isPermanentlyBlockedFake = true;
+                    console.log(`[SharedJobWebhook] Recipient email ${cleanRecip} is permanently blocked by user ${targetUid} as fake/scam.`);
+                }
+            } catch (bErr: any) {
+                console.warn(`[SharedJobWebhook] Error checking blocked_fake_jobs: ${bErr.message}`);
+            }
+        }
+
+        if (isPermanentlyBlockedFake) {
+            emailSendError = `Recruiter email (${recipientEmail}) is permanently blocked because you previously marked it as a fake job / scam. RemindBuddy prevented sending an application.`;
+        } else if (recipientEmail && userEmail && appPassword) {
             try {
                 const cleanPassword = appPassword.replace(/\s+/g, "");
                 const transporter = nodemailer.createTransport({
@@ -269,9 +299,11 @@ OUTPUT STRICT JSON FORMAT ONLY:
         const source = isLinkedIn ? "linkedin_share" : "ios_share_sheet";
         const sourcePlatform = isLinkedIn ? "LinkedIn Post (iOS Share)" : "iOS Share Sheet (iPhone)";
 
-        const status = isSent
-            ? "sent"
-            : (recipientEmail ? (userEmail && appPassword ? "needs_review" : "extracted") : "needs_review");
+        const status = isPermanentlyBlockedFake
+            ? "fake"
+            : (isSent
+                ? "sent"
+                : (recipientEmail ? (userEmail && appPassword ? "needs_review" : "extracted") : "needs_review"));
         const isAutoApplied = isSent;
 
         const appId = `ios_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -285,6 +317,7 @@ OUTPUT STRICT JSON FORMAT ONLY:
             generatedSubject,
             generatedCoverLetter,
             status,
+            isFake: isPermanentlyBlockedFake,
             isAutoApplied,
             appliedAt: admin.firestore.FieldValue.serverTimestamp(),
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -294,11 +327,13 @@ OUTPUT STRICT JSON FORMAT ONLY:
             messageId: emailMessageId || null,
             errorMessage: isSent
                 ? null
-                : (!recipientEmail
-                    ? "No recruiter email detected in post. Saved in Drafts ready for portal submission."
-                    : (!userEmail || !appPassword
-                        ? "Recruiter email found, but Gmail App Password is not configured in Settings to auto-send."
-                        : `Email delivery error: ${emailSendError}`))
+                : (isPermanentlyBlockedFake
+                    ? `⚠️ BLOCKED: Recruiter email (${recipientEmail}) is permanently blocked as fake/scam.`
+                    : (!recipientEmail
+                        ? "No recruiter email detected in post. Saved in Drafts ready for portal submission."
+                        : (!userEmail || !appPassword
+                            ? "Recruiter email found, but Gmail App Password is not configured in Settings to auto-send."
+                            : `Email delivery error: ${emailSendError}`)))
         });
 
         // 10. Log Feature Execution

@@ -900,6 +900,107 @@ class JobAssistantService {
     }
   }
 
+  /// Marks an application as fake/scam and permanently adds the recipient email to the user's blocked_fake_jobs collection.
+  Future<void> markJobAsFake(JobApplication app, {String? reason}) async {
+    final cleanEmail = app.recipientEmail.toLowerCase().trim();
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    // 1. Update the application record
+    await doc.collection('job_applications').doc(app.id).set({
+      'isFake': true,
+      'status': 'fake',
+      'markedFakeAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    // 2. Add to user's blocked_fake_jobs collection keyed by encoded email
+    if (cleanEmail.isNotEmpty) {
+      await doc.collection('blocked_fake_jobs').doc(Uri.encodeComponent(cleanEmail)).set({
+        'email': cleanEmail,
+        'companyName': app.companyName,
+        'jobTitle': app.jobTitle,
+        'blockedAt': FieldValue.serverTimestamp(),
+        'reason': reason ?? 'Marked as fake/scam by user',
+        'originalJobId': app.id,
+      }, SetOptions(merge: true));
+    }
+
+    // 3. Update in-memory cached applications
+    final idx = _cachedApplications.indexWhere((a) => a.id == app.id);
+    if (idx != -1) {
+      final updated = JobApplication.fromMap({
+        ..._cachedApplications[idx].toMap(),
+        'isFake': true,
+        'status': 'fake',
+      }, app.id);
+      _cachedApplications[idx] = updated;
+      _saveCachedApplications(_cachedApplications);
+      if (!_appsStreamController.isClosed) {
+        _appsStreamController.add(List.unmodifiable(_cachedApplications));
+      }
+    }
+  }
+
+  /// Unmarks an application as fake and removes the recipient email from blocked_fake_jobs.
+  Future<void> unmarkJobAsFake(JobApplication app) async {
+    final cleanEmail = app.recipientEmail.toLowerCase().trim();
+    final doc = _userDoc;
+    if (doc == null) return;
+
+    // 1. Update the application record
+    await doc.collection('job_applications').doc(app.id).set({
+      'isFake': false,
+      'status': 'sent',
+    }, SetOptions(merge: true));
+
+    // 2. Remove from blocked_fake_jobs
+    if (cleanEmail.isNotEmpty) {
+      await doc.collection('blocked_fake_jobs').doc(Uri.encodeComponent(cleanEmail)).delete();
+    }
+
+    // 3. Update in-memory cached applications
+    final idx = _cachedApplications.indexWhere((a) => a.id == app.id);
+    if (idx != -1) {
+      final updated = JobApplication.fromMap({
+        ..._cachedApplications[idx].toMap(),
+        'isFake': false,
+        'status': 'sent',
+      }, app.id);
+      _cachedApplications[idx] = updated;
+      _saveCachedApplications(_cachedApplications);
+      if (!_appsStreamController.isClosed) {
+        _appsStreamController.add(List.unmodifiable(_cachedApplications));
+      }
+    }
+  }
+
+  /// Unblocks a specific email address from the user's blocked fake jobs list.
+  Future<void> unblockEmail(String email) async {
+    final cleanEmail = email.toLowerCase().trim();
+    final doc = _userDoc;
+    if (doc == null || cleanEmail.isEmpty) return;
+
+    await doc.collection('blocked_fake_jobs').doc(Uri.encodeComponent(cleanEmail)).delete();
+  }
+
+  /// Streams the list of permanently blocked fake emails for this user.
+  Stream<List<Map<String, dynamic>>> streamBlockedFakeJobs() {
+    final doc = _userDoc;
+    if (doc == null) return const Stream.empty();
+
+    return doc
+        .collection('blocked_fake_jobs')
+        .orderBy('blockedAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) {
+              final data = d.data();
+              return {
+                ...data,
+                'id': d.id,
+              };
+            }).toList());
+  }
+
   /// Checks if an application was already sent/recorded for this job/company/email within the last [withinDays] (default 30).
   /// Returns the matching JobApplication if applied within the window, or null if never applied or applied >30 days ago.
   Future<JobApplication?> findRecentApplication({

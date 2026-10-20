@@ -697,6 +697,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     } else if (uriStr.contains('gold') || uri.path.contains('gold')) {
       _selectTabOrPush('gold');
     } else if (uriStr.contains('notes') || uri.path.contains('notes')) {
+      final noteId = uri.queryParameters['noteId'];
+      if (noteId != null && noteId.trim().isNotEmpty) {
+        NotesScreen.targetNoteIdNotifier.value = noteId.trim();
+      }
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+      }
       _selectTabOrPush('notes');
       HomeWidgetService().syncWidgetChangesToFirestore();
     }
@@ -1809,7 +1816,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'SmartBuddy v1.10.58',
+                  'SmartBuddy v1.10.59',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

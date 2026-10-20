@@ -309,6 +309,37 @@ class StorageService {
     return merged;
   }
 
+  /// Fetches a single note by its document ID (supports own and shared notes)
+  Future<Note?> getNoteById(String noteId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || noteId.trim().isEmpty) return null;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('notes')
+          .doc(noteId.trim())
+          .get();
+      if (doc.exists && doc.data() != null) {
+        return Note.fromMap(doc.data()!, doc.id);
+      }
+
+      // Check shared notes
+      final sharedQuery = await FirebaseFirestore.instance
+          .collectionGroup('notes')
+          .where(FieldPath.documentId, isEqualTo: noteId.trim())
+          .limit(1)
+          .get();
+      if (sharedQuery.docs.isNotEmpty) {
+        final d = sharedQuery.docs.first;
+        return Note.fromMap(d.data(), d.id, ownerUid: d.data()['ownerUid']);
+      }
+    } catch (e) {
+      debugPrint('[StorageService] Error getting note by ID $noteId: $e');
+    }
+    return null;
+  }
+
   Stream<List<Note>> getNotesStream() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Stream.empty();

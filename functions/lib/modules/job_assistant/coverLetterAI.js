@@ -45,24 +45,26 @@ ${companyNotes ? `Job Details / Company Context: "${companyNotes}"` : ''}
 ${customPrompt ? `Candidate's Custom Directive / Specific Request: "${customPrompt}"` : ''}
 
 CRITICAL INSTRUCTIONS:
-1. Examine the candidate's attached Resume PDF thoroughly. Extract concrete accomplishments, technical skills, programming languages, frameworks, APIs, databases, and domain expertise directly from the resume, and relate them directly to the target role.
-2. Structure:
-   a) Engaging Opening: Express enthusiasm for "${jobTitle}" at "${companyName}", referencing specific aspects of the role or team.
-   b) Concrete Value: Highlighting 2-3 specific achievements or competencies from the candidate's resume that make them an outstanding fit.
-   c) KEY CONTRIBUTIONS PREPARED TO DELIVER (MANDATORY):
-      A dedicated bulleted section:
-      "Key contributions I am prepared to deliver include:"
-      Provide 3-4 concrete, impactful bullet points (using "•") directly derived from the candidate's attached resume PDF that directly match the role.
-   d) Strategic Alignment & Experience Gap Bridging:
-      - Compare the candidate's years of experience on their resume with the requirements in the job details/company notes.
-      - If the job seeks more experience than the candidate has on their resume (e.g. asking for 2+ or 3+ years, but resume shows 1-2 years), proactively and creatively bridge this gap: do not apologize; instead, confidently acknowledge the requirement and pivot decisively to the candidate's hands-on mastery of the exact required tools, architectures, and real-world project deliveries, demonstrating that they will add immediate, high-impact value from Day 1.
-      - If experience matches or exceeds requirements, highlight their depth and proven results.
-   e) Clear, professional closing and Call to Action proposing a brief 10-15 minute discussion, mentioning the attached resume.
-3. Sign-off MUST be:
+1. Examine the candidate's attached Resume PDF thoroughly. Extract concrete accomplishments, technical skills, and domain expertise directly from the resume, relating them directly to the target role.
+2. HUMAN-WRITTEN, HIGH-CONVERSION, MOBILE-OPTIMIZED FORMAT:
+   Recruiters and hiring managers read applications on their phones and will NOT read long essays or bulleted lists.
+   The email MUST be concise, punchy, authentic, and strictly 4–5 sentences total, formatted into exactly TWO short paragraphs with a blank line between them.
+   ABSOLUTELY NO BULLET POINTS ("•", "-", "*") OR LENGTHY LISTS.
+3. TWO-PARAGRAPH FORMAT (4–5 LINES TOTAL):
+   - Professional Greeting: "Dear [Hiring Manager / Recruiter Name if known, else 'Hiring Team'],"
+   - Paragraph 1 (approx. 2 sentences):
+     Direct, engaging opening expressing enthusiastic interest in the "${jobTitle}" role at "${companyName}". Highlight the candidate's core domain and top 2–3 strengths/technologies verified from their attached resume that directly align with the position.
+   - Paragraph 2 (approx. 2–3 sentences):
+     Highlight proven hands-on project delivery and problem-solving impact from their resume. Mention that their attached resume contains full details on their background and accomplishments, and invite them for a brief 10–15 minute call to discuss how they can contribute (always use "call" or "discussion", never "chat").
+   - Sign-off:
 "Sincerely,
 ${promptName}"
-Never use generic placeholders like "[Your Name]".
-4. Tone: Confident, professional, clear, authentic, and grounded SOLELY on the attached resume. NEVER hallucinate skills or use generic boilerplate templates.
+     (Never use generic placeholders like "[Your Name]").
+4. TONE & ANTI-AI/ANTI-BOILERPLATE MANDATES:
+   - Must sound genuinely human, natural, conversational yet sharp and professional—NOT robotic, formalistic, or like generic ChatGPT/AI boilerplate.
+   - Avoid tired clichés like "I am writing to express my strong interest...", "I am eager to contribute...", "With extensive hands-on experience...", or "Key contributions include:".
+   - Ground all skills, tools, and background SOLELY on the candidate's attached resume. NEVER hallucinate or assume skills not on the resume.
+   - Universal Generalization: Must work seamlessly for ANY user, ANY profession, and ANY experience tier.
 
 Respond ONLY with a JSON object in this format:
 {
@@ -71,7 +73,7 @@ Respond ONLY with a JSON object in this format:
     "companyName": "${companyName}",
     "recipientEmail": "${recipientEmails || ''}",
     "extractedSkills": ["string"],
-    "generatedSubject": "${promptName} - ${jobTitle}",
+    "generatedSubject": "Application for ${jobTitle} - ${promptName}",
     "generatedCoverLetter": "string"
   }
 }`;
@@ -181,10 +183,12 @@ USER'S REFINEMENT / MODIFICATION INSTRUCTION:
 
 CRITICAL REFINEMENT INSTRUCTIONS:
 1. Revise and rewrite the cover letter and subject line adhering strictly to the user's refinement instruction.
-2. If candidate resume is attached, ensure skills/experience mentioned stay grounded in candidate's background.
-3. Ensure the cover letter reads like an authentic, highly convincing human-written email (not robotic AI text).
-4. Subject line MUST include candidate name: e.g. "${promptName} - [Job Title]".
-5. Sign off MUST be:
+2. STRICT MOBILE FORMAT (4–5 LINES TOTAL): Keep the revised email concise, punchy, and strictly 4–5 sentences across exactly TWO short paragraphs with a single blank line between them.
+3. ABSOLUTELY NO BULLET POINTS ("•", "-", "*") OR LISTS. Detailed metrics belong exclusively in the attached resume.
+4. Avoid robotic AI clichés ("I am writing to express my strong interest...", "With extensive hands-on experience...", "Key contributions include:").
+5. Ground all skills/experience mentioned solidly in the candidate's actual background/resume.
+6. Subject line format: "Application for [Job Title] - ${promptName}".
+7. Sign off MUST be:
 "Sincerely,
 ${promptName}"
 Never use generic placeholders like "[Your Name]".
