@@ -58,18 +58,22 @@ class SharedIntentService {
   }
 
   Future<void> _handleIncomingShare(Map<String, dynamic> data) async {
-    final type = data['type']?.toString() ?? '';
-    debugPrint('[SharedIntentService] Received shared intent of type: $type');
+    try {
+      // Ensure user auth credentials have loaded from local storage
+      await JobAssistantService().getOrWaitForUid();
 
-    // Debounce to avoid duplicate processing within 3 seconds
-    final fingerprint = '$type:${data['text'] ?? ''}:${data['imagePaths'] ?? ''}';
-    final now = DateTime.now();
-    if (fingerprint == _lastProcessedFingerprint && now.difference(_lastProcessedTime).inSeconds < 3) {
-      debugPrint('[SharedIntentService] Duplicate intent ignored: $fingerprint');
-      return;
-    }
-    _lastProcessedFingerprint = fingerprint;
-    _lastProcessedTime = now;
+      final type = data['type']?.toString() ?? '';
+      debugPrint('[SharedIntentService] Received shared intent of type: $type');
+
+      // Debounce to avoid duplicate processing within 3 seconds
+      final fingerprint = '$type:${data['text'] ?? ''}:${data['imagePaths'] ?? ''}';
+      final now = DateTime.now();
+      if (fingerprint == _lastProcessedFingerprint && now.difference(_lastProcessedTime).inSeconds < 3) {
+        debugPrint('[SharedIntentService] Duplicate intent ignored: $fingerprint');
+        return;
+      }
+      _lastProcessedFingerprint = fingerprint;
+      _lastProcessedTime = now;
 
     if (type == 'image') {
       final paths = List<String>.from(data['imagePaths'] ?? []);
@@ -82,7 +86,10 @@ class SharedIntentService {
         await _processSharedText(text.trim());
       }
     }
+  } catch (err, stack) {
+    debugPrint('[SharedIntentService] Error handling incoming share: $err\n$stack');
   }
+}
 
   // ============================================================================
   // PROCESS SHARED SCREENSHOTS / IMAGES
@@ -236,8 +243,13 @@ class SharedIntentService {
       final url = urlMatch.group(0)!;
       final textWithoutUrl = text.replaceAll(url, '').trim();
 
-      // If user shared a message with substantive job text + link (e.g. recruiter message)
-      if (textWithoutUrl.length > 50 || (textWithoutUrl.contains('@') && !textWithoutUrl.contains('static.licdn.com'))) {
+      // If user shared a message with substantive job text + link (e.g. recruiter message or post caption)
+      final hasJobKeywords = RegExp(
+        r'\b(hiring|hire|job|engineer|developer|role|opening|fresher|devops|cloud|sre|resume|apply|recruiter|opportunity)\b',
+        caseSensitive: false,
+      ).hasMatch(textWithoutUrl);
+
+      if (textWithoutUrl.length >= 20 && (hasJobKeywords || textWithoutUrl.contains('@'))) {
         debugPrint('[SharedIntentService] Found URL with substantial body text, analyzing text first...');
         final handledWithText = await _tryProcessJobText(text, sourceUrl: url);
         if (handledWithText) return;
@@ -573,13 +585,20 @@ class SharedIntentService {
       debugPrint('[SharedIntentService] Public URL fetch notice: $e');
     }
 
-    // 3. If unauthenticated fetch was blocked by login wall, attempt Apify residential post scraper if configured
+    // 3. Fallback: If direct public fetch was blocked by login wall or failed:
+    // First attempt server-side importSharedJob Cloud Function (runs on GCP server with Cheerio, Gemini AI & resume attachment)
+    if (!successfullyParsed) {
+      final cfSuccess = await _tryImportViaCloudFunction(expandedUrl, originalText);
+      if (cfSuccess) return;
+    }
+
+    // 4. If Cloud Function also failed, attempt Apify residential post scraper if configured
     if (!successfullyParsed && isLinkedIn) {
       final apifySuccess = await _tryScrapeWithApify(expandedUrl);
       if (apifySuccess) return;
     }
 
-    // 4. Fallback: Save in Unified Apply History with the exact post link and notify user
+    // 5. Ultimate Fallback: Save in Unified Apply History with the exact post link and notify user
     if (!successfullyParsed) {
       final failedApp = JobApplication(
         id: '',
@@ -612,6 +631,38 @@ class SharedIntentService {
         payload: 'OPEN_URL|$expandedUrl',
       );
     }
+  }
+
+  Future<bool> _tryImportViaCloudFunction(String url, String originalText) async {
+    try {
+      final uid = await JobAssistantService().getOrWaitForUid();
+      if (uid == null || uid.isEmpty) return false;
+
+      debugPrint('[SharedIntentService] Calling importSharedJob Cloud Function for user: $uid...');
+      final response = await http.post(
+        Uri.parse('https://us-central1-remindbuddy-b68f9.cloudfunctions.net/importSharedJob'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'uid': uid,
+          'url': url,
+          'text': originalText.trim().isNotEmpty ? originalText : url,
+        }),
+      ).timeout(const Duration(seconds: 40));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map && data['success'] == true) {
+          debugPrint('[SharedIntentService] Server-side importSharedJob succeeded: ${data['message']}');
+          await JobAssistantService().initLocalCache();
+          return true;
+        }
+      } else {
+        debugPrint('[SharedIntentService] importSharedJob returned status ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('[SharedIntentService] Notice in _tryImportViaCloudFunction: $e');
+    }
+    return false;
   }
 
   Future<void> _processSharedJobText(String text) async {

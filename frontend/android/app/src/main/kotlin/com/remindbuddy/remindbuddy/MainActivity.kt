@@ -81,6 +81,14 @@ class MainActivity: FlutterActivity() {
         val type = intent.type ?: ""
 
         if (Intent.ACTION_SEND == action || Intent.ACTION_SEND_MULTIPLE == action) {
+            try {
+                val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                val wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SmartBuddy:ShareProcessingWakeLock")
+                wakeLock?.acquire(60 * 1000L /* 60 seconds */)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
             runOnUiThread {
                 android.widget.Toast.makeText(
                     applicationContext,

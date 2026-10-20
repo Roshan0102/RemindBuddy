@@ -580,6 +580,13 @@ class NotificationService {
           playSound: true,
         ),
         AndroidNotificationChannel(
+          'job_assistant_share_channel',
+          'Job Assistant Auto-Apply',
+          description: 'Notifications for shared job links, post parsing, and 1-click auto-apply',
+          importance: Importance.max,
+          playSound: true,
+        ),
+        AndroidNotificationChannel(
           'collaboration_channel',
           'Collaboration Alerts',
           description: 'Notifications for shared tasks and team activities',
@@ -1007,6 +1014,25 @@ class NotificationService {
       );
       return;
     }
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final androidPlugin = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        if (androidPlugin != null) {
+          final effectiveChannelId = isSticky ? 'sticky_reminder_channel' : channelId;
+          final effectiveChannelName = isSticky ? 'Sticky Reminders' : channelName;
+          await androidPlugin.createNotificationChannel(
+            AndroidNotificationChannel(
+              effectiveChannelId,
+              effectiveChannelName,
+              importance: Importance.max,
+              playSound: true,
+            ),
+          );
+        }
+      } catch (_) {}
+    }
+
     await _localNotifications.show(
       id,
       title,

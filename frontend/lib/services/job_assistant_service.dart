@@ -76,6 +76,7 @@ class JobAssistantService {
       }
       _hasInitializedLeads = true;
       _cacheInitialized = true;
+      flushPendingOfflineApplications();
     } catch (e) {
       debugPrint('Error initializing local job assistant cache: $e');
       _hasInitializedLeads = true;
@@ -105,10 +106,48 @@ class JobAssistantService {
 
   String? get _uid {
     try {
-      return FirebaseAuth.instance.currentUser?.uid;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        SharedPreferences.getInstance().then((p) => p.setString('last_known_user_uid', user.uid)).catchError((_) => false);
+        return user.uid;
+      }
+      return null;
     } catch (_) {
       return null;
     }
+  }
+
+  /// Asynchronously waits for Firebase Auth to restore credentials from local storage
+  /// during background intents / cold starts, falling back to cached UID.
+  Future<String?> getOrWaitForUid({Duration timeout = const Duration(seconds: 4)}) async {
+    try {
+      var user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('last_known_user_uid', user.uid);
+        return user.uid;
+      }
+
+      user = await FirebaseAuth.instance
+          .authStateChanges()
+          .firstWhere((u) => u != null)
+          .timeout(timeout, onTimeout: () => null);
+
+      if (user != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('last_known_user_uid', user.uid);
+        return user.uid;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('last_known_user_uid');
+      if (cached != null && cached.trim().isNotEmpty) {
+        return cached.trim();
+      }
+    } catch (e) {
+      debugPrint('[JobAssistantService] getOrWaitForUid note: $e');
+    }
+    return null;
   }
 
   DocumentReference? get _userDoc {
@@ -119,6 +158,13 @@ class JobAssistantService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Asynchronous resolution of the user document reference, ensuring auth state is ready
+  Future<DocumentReference?> getEffectiveUserDoc({Duration timeout = const Duration(seconds: 4)}) async {
+    final uid = await getOrWaitForUid(timeout: timeout);
+    if (uid == null || uid.isEmpty) return null;
+    return _db.collection('users').doc(uid);
   }
 
   // ============================================================================
@@ -343,7 +389,7 @@ class JobAssistantService {
       }
     } catch (_) {}
 
-    final doc = _userDoc;
+    final doc = await getEffectiveUserDoc();
     if (doc == null) {
       final bool hasValidCached = cachedBase64.isNotEmpty;
       return {'base64': cachedBase64, 'fileName': hasValidCached ? cachedFileName : ''};
@@ -824,15 +870,21 @@ class JobAssistantService {
   }
 
   Future<void> saveJobApplication(JobApplication app) async {
-    final doc = _userDoc;
-    if (doc == null) return;
+    final doc = await getEffectiveUserDoc();
 
-    final ref = app.id.isNotEmpty
-        ? doc.collection('job_applications').doc(app.id)
-        : doc.collection('job_applications').doc();
+    final ref = (doc != null)
+        ? (app.id.isNotEmpty
+            ? doc.collection('job_applications').doc(app.id)
+            : doc.collection('job_applications').doc())
+        : null;
+
+    final resolvedId = ref?.id ??
+        (app.id.isNotEmpty
+            ? app.id
+            : 'app_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}');
 
     final newApp = JobApplication(
-      id: ref.id,
+      id: resolvedId,
       jobTitle: app.jobTitle,
       companyName: app.companyName,
       recipientEmail: app.recipientEmail,
@@ -873,7 +925,46 @@ class JobAssistantService {
       _appsStreamController.add(List.unmodifiable(_cachedApplications));
     }
 
-    await ref.set(newApp.toMap(), SetOptions(merge: true));
+    if (ref != null) {
+      await ref.set(newApp.toMap(), SetOptions(merge: true));
+    } else {
+      await _enqueuePendingOfflineApplication(newApp);
+    }
+  }
+
+  Future<void> _enqueuePendingOfflineApplication(JobApplication app) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('pending_offline_job_applications') ?? [];
+      list.add(jsonEncode(app.toMap()));
+      await prefs.setStringList('pending_offline_job_applications', list);
+      debugPrint('[JobAssistantService] Enqueued offline job application: ${app.jobTitle} (${app.id})');
+    } catch (e) {
+      debugPrint('Error enqueuing offline application: $e');
+    }
+  }
+
+  Future<void> flushPendingOfflineApplications() async {
+    try {
+      final doc = await getEffectiveUserDoc(timeout: const Duration(seconds: 2));
+      if (doc == null) return;
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('pending_offline_job_applications');
+      if (list != null && list.isNotEmpty) {
+        for (final item in list) {
+          try {
+            final map = jsonDecode(item) as Map<String, dynamic>;
+            final id = map['id']?.toString() ?? '';
+            final ref = id.isNotEmpty ? doc.collection('job_applications').doc(id) : doc.collection('job_applications').doc();
+            await ref.set(map, SetOptions(merge: true));
+          } catch (_) {}
+        }
+        await prefs.remove('pending_offline_job_applications');
+        debugPrint('[JobAssistantService] Successfully flushed ${list.length} offline application(s) to Firestore.');
+      }
+    } catch (e) {
+      debugPrint('Error flushing pending applications: $e');
+    }
   }
 
   Future<void> deleteJobApplication(String appId) async {
@@ -1689,7 +1780,7 @@ class JobAssistantService {
   }
 
   Future<Map<String, dynamic>> getLinkedInAutoApplySettings() async {
-    final doc = _userDoc;
+    final doc = await getEffectiveUserDoc();
     if (doc == null) return {};
     try {
       final snap = await doc.get();
