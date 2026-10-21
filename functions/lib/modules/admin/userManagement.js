@@ -51,8 +51,11 @@ exports.adminCreateUser = functions.runWith({ timeoutSeconds: 60, memory: "256MB
             uid: uid,
             createdAt: firebase_1.admin.firestore.FieldValue.serverTimestamp()
         });
+        const initialModules = Array.isArray(data.enabledModules) && data.enabledModules.length > 0
+            ? data.enabledModules
+            : ['reminders', 'gold', 'notes', 'daily_reminders'];
         await firebase_1.db.collection('users').doc(uid).set({
-            enabledModules: ['reminders', 'gold', 'notes', 'daily_reminders'],
+            enabledModules: initialModules,
             allowedCollaborators: allowedCollaborators,
             createdAt: firebase_1.admin.firestore.FieldValue.serverTimestamp()
         });

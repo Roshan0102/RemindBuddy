@@ -141,6 +141,12 @@ class _AdminScreenState extends State<AdminScreen> {
       'icon': Icons.sms_rounded,
       'color': const Color(0xFF059669),
     },
+    {
+      'id': 'gym',
+      'label': 'Gym & Workouts',
+      'icon': Icons.fitness_center_rounded,
+      'color': const Color(0xFFEA580C),
+    },
   ];
 
   @override
