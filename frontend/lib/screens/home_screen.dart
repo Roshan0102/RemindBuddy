@@ -147,6 +147,12 @@ class _HomeScreenState extends State<HomeScreen> {
       'icon': Icons.mic_rounded,
       'color': Colors.redAccent,
     },
+    'gym': {
+      'title': 'Gym & Workouts',
+      'module': 'gym',
+      'icon': Icons.fitness_center_rounded,
+      'color': Colors.deepOrangeAccent,
+    },
   };
 
   @override
@@ -2639,6 +2645,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text('Ask Buddy', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
               ],
             ),
+          ),
+        );
+        break;
+      case 'gym':
+        body = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text('Train Today',
+                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepOrangeAccent)),
+              const SizedBox(height: 2),
+              Text('Log Workout & PRs', style: TextStyle(fontSize: 10.5, color: isDark ? Colors.white60 : Colors.grey[600])),
+            ],
           ),
         );
         break;

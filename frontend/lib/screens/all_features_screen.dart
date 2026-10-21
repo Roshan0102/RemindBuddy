@@ -108,6 +108,14 @@ class AllFeaturesScreen extends StatelessWidget {
         'description': 'Explore walk-in job interview drives and venue details.',
       },
       {
+        'id': 'gym',
+        'title': 'Gym & Workouts',
+        'category': 'HEALTH & FITNESS',
+        'icon': Icons.fitness_center_rounded,
+        'color': Colors.deepOrange.shade600,
+        'description': 'Track workouts, sets, weights, PR trophies, rest timer, and body weight progression.',
+      },
+      {
         'id': 'voice_assistant',
         'title': 'Voice Assistant',
         'category': 'AI UTILITY',

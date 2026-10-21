@@ -40,6 +40,7 @@ import 'alarm_ringing_screen.dart';
 import '../models/calendar_reminder.dart';
 import 'in_app_call_screen.dart';
 import '../services/url_launcher_helper/url_launcher_helper.dart';
+import 'gym_dashboard_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -58,6 +59,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     'gold',
     'notes',
     'daily_reminders',
+    'gym',
   ];
   List<String> _userSelectedBottomModules = [];
   List<String> _userMenuOrder = [];
@@ -838,6 +840,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         label: 'Walk-Ins',
       ),
     },
+    'gym': {
+      'screen': const GymDashboardScreen(),
+      'name': 'Gym & Workouts',
+      'destination': const NavigationDestination(
+        icon: Icon(Icons.fitness_center_outlined, color: Colors.deepOrangeAccent),
+        selectedIcon: Icon(Icons.fitness_center, color: Colors.deepOrangeAccent),
+        label: 'Gym',
+      ),
+    },
   };
 
   List<String> get _activeFeatures {
@@ -877,6 +888,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       'walkins',
       'astro_calendar',
       'gcp_cost',
+      'gym',
     ];
     return allModules.where((id) {
       if (id == 'home') return true;
@@ -1040,6 +1052,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       id = 'daily_reminders';
     } else if (id == 'calendar_reminder' || id == 'reminders') {
       id = 'reminders';
+    } else if (id == 'gym' || id == 'workout' || id == 'workouts' || id == 'gym_tracker' || id == 'GYM') {
+      id = 'gym';
     }
 
     final double screenWidth = MediaQuery.of(context).size.width;
@@ -1323,6 +1337,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   'icon': Icons.work_outline,
                   'color': Colors.blueAccent,
                   'action': () => _selectTabOrPush('job_assistant'),
+                },
+              if (_enabledModules.contains('gym'))
+                {
+                  'id': 'gym',
+                  'name': 'Gym & Workouts',
+                  'icon': Icons.fitness_center_rounded,
+                  'color': Colors.deepOrangeAccent,
+                  'action': () => _selectTabOrPush('gym'),
                 },
               if (_enabledModules.contains('finance'))
                 {
@@ -1816,7 +1838,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'SmartBuddy v1.10.60',
+                  'SmartBuddy v1.10.61',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],
