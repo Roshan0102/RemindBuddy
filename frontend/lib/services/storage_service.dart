@@ -313,29 +313,61 @@ class StorageService {
   Future<Note?> getNoteById(String noteId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || noteId.trim().isEmpty) return null;
+    final trimmedId = noteId.trim();
+
+    // 1. Fast local cache lookup (0ms offline SQLite/LevelDB)
+    try {
+      final cacheDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('notes')
+          .doc(trimmedId)
+          .get(const GetOptions(source: Source.cache));
+      if (cacheDoc.exists && cacheDoc.data() != null) {
+        return Note.fromMap(cacheDoc.data()!, cacheDoc.id);
+      }
+    } catch (_) {}
+
+    // 2. Network / serverAndCache lookup with a tight 3s timeout
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('notes')
-          .doc(noteId.trim())
-          .get();
+          .doc(trimmedId)
+          .get(const GetOptions(source: Source.serverAndCache))
+          .timeout(const Duration(seconds: 3));
       if (doc.exists && doc.data() != null) {
         return Note.fromMap(doc.data()!, doc.id);
       }
+    } catch (_) {}
 
-      // Check shared notes
+    // 3. Check shared notes (cache first, then server)
+    try {
+      final sharedQueryCache = await FirebaseFirestore.instance
+          .collectionGroup('notes')
+          .where(FieldPath.documentId, isEqualTo: trimmedId)
+          .limit(1)
+          .get(const GetOptions(source: Source.cache));
+      if (sharedQueryCache.docs.isNotEmpty) {
+        final d = sharedQueryCache.docs.first;
+        return Note.fromMap(d.data(), d.id, ownerUid: d.data()['ownerUid']);
+      }
+    } catch (_) {}
+
+    try {
       final sharedQuery = await FirebaseFirestore.instance
           .collectionGroup('notes')
-          .where(FieldPath.documentId, isEqualTo: noteId.trim())
+          .where(FieldPath.documentId, isEqualTo: trimmedId)
           .limit(1)
-          .get();
+          .get(const GetOptions(source: Source.serverAndCache))
+          .timeout(const Duration(seconds: 3));
       if (sharedQuery.docs.isNotEmpty) {
         final d = sharedQuery.docs.first;
         return Note.fromMap(d.data(), d.id, ownerUid: d.data()['ownerUid']);
       }
     } catch (e) {
-      debugPrint('[StorageService] Error getting note by ID $noteId: $e');
+      debugPrint('[StorageService] Error getting note by ID $trimmedId: $e');
     }
     return null;
   }

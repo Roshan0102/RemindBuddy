@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -12,7 +11,6 @@ import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import '../models/job_application.dart';
 import '../models/networking_lead.dart';
 import '../models/resume_profile.dart';
@@ -20,6 +18,7 @@ import '../models/career_portal_job.dart';
 import '../services/job_assistant_service.dart';
 import '../services/app_file_picker/app_file_picker.dart';
 import '../services/url_launcher_helper/url_launcher_helper.dart';
+import '../services/file_download_service.dart';
 import 'ai_keys_settings_screen.dart';
 import 'job_replies_screen.dart';
 import 'feature_logs_screen.dart';
@@ -3938,49 +3937,55 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 backgroundColor: const Color(0xFF10B981),
               ),
             );
+            // Open the resume preview in web app without page reload/navigation
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => FullscreenFileViewer(
+                  fileBytes: bytes,
+                  title: fileName,
+                  isPdf: true,
+                ),
+              ),
+            );
           }
           return;
         }
 
-        Directory? downloadsDir;
-        try {
-          if (Platform.isAndroid) {
-            downloadsDir = Directory('/storage/emulated/0/Download');
-            if (!await downloadsDir.exists()) {
-              downloadsDir = await getExternalStorageDirectory();
-            }
-          } else {
-            downloadsDir = await getDownloadsDirectory();
-          }
-        } catch (_) {}
-        downloadsDir ??= await getApplicationDocumentsDirectory();
-
-        final filePath = '${downloadsDir.path}/$fileName';
-        final file = File(filePath);
-        await file.writeAsBytes(bytes);
+        // Native Android / iOS Download
+        final result = await FileDownloadService.saveFile(
+          bytes: bytes,
+          fileName: fileName,
+          mimeType: 'application/pdf',
+        );
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Saved $fileName to Downloads!'),
-              backgroundColor: const Color(0xFF10B981),
-              action: SnackBarAction(
-                label: 'OPEN',
-                textColor: Colors.white,
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => FullscreenFileViewer(
-                        fileBytes: bytes,
-                        title: fileName,
-                        isPdf: true,
+          if (result.isSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✓ Saved $fileName to Downloads!'),
+                backgroundColor: const Color(0xFF10B981),
+                action: SnackBarAction(
+                  label: 'OPEN',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => FullscreenFileViewer(
+                          fileBytes: bytes,
+                          title: fileName,
+                          isPdf: true,
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
-          );
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to save to Downloads: ${result.errorMessage}')),
+            );
+          }
 
           // Open the resume preview immediately so the user can review and share it directly
           Navigator.of(context).push(

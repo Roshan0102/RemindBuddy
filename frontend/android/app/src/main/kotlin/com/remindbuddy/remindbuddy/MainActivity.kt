@@ -25,6 +25,10 @@ import android.provider.Telephony
 import androidx.core.app.NotificationManagerCompat
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
+import android.content.ContentValues
+import android.os.Environment
+import android.provider.MediaStore
+import android.media.MediaScannerConnection
 import java.io.File
 import java.io.FileOutputStream
 
@@ -309,6 +313,28 @@ class MainActivity: FlutterActivity() {
                         }
                     } catch (e: Exception) {
                         result.error("APK_ERROR", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // File Downloader Channel for saving PDFs/files directly to public Downloads folder
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/file_downloader").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "saveToDownloads" -> {
+                    val bytes = call.argument<ByteArray>("bytes")
+                    val fileName = call.argument<String>("fileName") ?: "document.pdf"
+                    val mimeType = call.argument<String>("mimeType") ?: "application/pdf"
+                    if (bytes == null) {
+                        result.error("INVALID_ARGS", "Bytes cannot be null", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val path = saveFileToPublicDownloads(bytes, fileName, mimeType)
+                        result.success(mapOf("success" to true, "path" to path, "fileName" to fileName))
+                    } catch (e: Exception) {
+                        result.error("SAVE_FAILED", e.message ?: "Failed to save file", null)
                     }
                 }
                 else -> result.notImplemented()
@@ -843,5 +869,44 @@ class MainActivity: FlutterActivity() {
             e.printStackTrace()
         }
         return result
+    }
+
+    private fun saveFileToPublicDownloads(bytes: ByteArray, fileName: String, mimeType: String): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = applicationContext.contentResolver
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                ?: throw Exception("Failed to insert MediaStore download record")
+            resolver.openOutputStream(uri)?.use { stream ->
+                stream.write(bytes)
+                stream.flush()
+            } ?: throw Exception("Failed to open stream for download URI")
+            contentValues.clear()
+            contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            resolver.update(uri, contentValues, null, null)
+            uri.toString()
+        } else {
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) {
+                downloadsDir.mkdirs()
+            }
+            val file = File(downloadsDir, fileName)
+            FileOutputStream(file).use { stream ->
+                stream.write(bytes)
+                stream.flush()
+            }
+            MediaScannerConnection.scanFile(
+                applicationContext,
+                arrayOf(file.absolutePath),
+                arrayOf(mimeType),
+                null
+            )
+            file.absolutePath
+        }
     }
 }

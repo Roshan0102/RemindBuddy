@@ -77,6 +77,7 @@ class GymWorkoutExercise {
   final List<GymWorkoutSet> sets;
   final int restSeconds; // e.g. 60, 90, 120
   final String? notes;
+  final String? videoUrl; // Custom exercise form video link (YouTube, Instagram Reel, Web URL)
 
   const GymWorkoutExercise({
     required this.exerciseId,
@@ -86,6 +87,7 @@ class GymWorkoutExercise {
     required this.sets,
     this.restSeconds = 90,
     this.notes,
+    this.videoUrl,
   });
 
   /// Total volume across all completed sets in kg
@@ -108,6 +110,7 @@ class GymWorkoutExercise {
       'sets': sets.map((s) => s.toMap()).toList(),
       'restSeconds': restSeconds,
       if (notes != null) 'notes': notes,
+      if (videoUrl != null && videoUrl!.trim().isNotEmpty) 'videoUrl': videoUrl!.trim(),
     };
   }
 
@@ -123,6 +126,7 @@ class GymWorkoutExercise {
           [],
       restSeconds: (map['restSeconds'] as num?)?.toInt() ?? 90,
       notes: map['notes']?.toString(),
+      videoUrl: map['videoUrl']?.toString(),
     );
   }
 
@@ -134,6 +138,7 @@ class GymWorkoutExercise {
     List<GymWorkoutSet>? sets,
     int? restSeconds,
     String? notes,
+    String? videoUrl,
   }) {
     return GymWorkoutExercise(
       exerciseId: exerciseId ?? this.exerciseId,
@@ -143,6 +148,7 @@ class GymWorkoutExercise {
       sets: sets ?? this.sets,
       restSeconds: restSeconds ?? this.restSeconds,
       notes: notes ?? this.notes,
+      videoUrl: videoUrl ?? this.videoUrl,
     );
   }
 }

@@ -56,6 +56,8 @@ void downloadBase64File(String cleanBase64, String filename, String mimeType) {
     final blobUrl = html.Url.createObjectUrlFromBlob(blob);
     final anchor = html.AnchorElement(href: blobUrl)
       ..setAttribute('download', filename)
+      ..target = '_blank'
+      ..rel = 'noopener noreferrer'
       ..style.display = 'none';
     html.document.body?.children.add(anchor);
     anchor.click();
@@ -71,6 +73,8 @@ void downloadBase64File(String cleanBase64, String filename, String mimeType) {
       final dataUrl = 'data:$mimeType;base64,$cleanBase64';
       final anchor = html.AnchorElement(href: dataUrl)
         ..setAttribute('download', filename)
+        ..target = '_blank'
+        ..rel = 'noopener noreferrer'
         ..style.display = 'none';
       html.document.body?.children.add(anchor);
       anchor.click();

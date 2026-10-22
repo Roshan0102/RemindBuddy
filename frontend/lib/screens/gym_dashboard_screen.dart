@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/gym_workout.dart';
+import '../models/gym_routine.dart';
 import '../models/personal_record.dart';
 import '../models/body_weight_entry.dart';
 import '../models/gym_profile.dart';
 import '../models/exercise_model.dart';
 import '../services/gym_service.dart';
-import '../services/gym_exercise_catalog.dart';
 import '../widgets/gym/gym_workout_detail_modal.dart';
 import 'gym_active_workout_screen.dart';
 
@@ -23,16 +23,109 @@ class GymDashboardScreen extends StatefulWidget {
 class _GymDashboardScreenState extends State<GymDashboardScreen> {
   final GymService _gymService = GymService();
 
-  void _startWorkout({String? title, List<ExerciseModel>? starterExercises}) {
+  void _startWorkout({
+    String? title,
+    List<ExerciseModel>? starterExercises,
+    GymRoutine? starterRoutine,
+  }) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => GymActiveWorkoutScreen(
           initialTitle: title,
           starterExercises: starterExercises,
+          starterRoutine: starterRoutine,
         ),
       ),
     );
+  }
+
+  Future<void> _showCreateRoutineDialog() async {
+    final titleCtrl = TextEditingController();
+
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.playlist_add, color: Colors.blueAccent),
+            SizedBox(width: 10),
+            Text('New Custom Routine'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter a name for your custom routine (e.g. "Chest & Triceps", "Heavy Leg Day"). You will pick exercises and sets next.',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: titleCtrl,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Routine Name',
+                hintText: 'e.g. Push Day, Arm Blaster',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final text = titleCtrl.text.trim();
+              if (text.isNotEmpty) {
+                Navigator.pop(ctx, text);
+              }
+            },
+            child: const Text('Start Routine Builder'),
+          ),
+        ],
+      ),
+    );
+
+    if (name != null && name.isNotEmpty) {
+      _startWorkout(title: name);
+    }
+  }
+
+  Future<void> _confirmDeleteRoutine(GymRoutine routine) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete Routine?'),
+        content: Text('Are you sure you want to remove "${routine.name}" from your quick routines?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _gymService.deleteRoutine(routine.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Routine "${routine.name}" deleted.')),
+        );
+      }
+    }
   }
 
   void _showLogWeightDialog() {
@@ -386,114 +479,219 @@ class _GymDashboardScreenState extends State<GymDashboardScreen> {
   }
 
   Widget _buildSplitPresetsBar(BuildContext context) {
-    final splits = [
-      {
-        'title': 'Push Day',
-        'subtitle': 'Chest, Shoulders & Triceps',
-        'icon': Icons.arrow_upward,
-        'color': Colors.orange,
-        'exercises': ['0025', '0033', '0070', '0334', '0201'],
-      },
-      {
-        'title': 'Pull Day',
-        'subtitle': 'Back, Rear Delts & Biceps',
-        'icon': Icons.arrow_downward,
-        'color': Colors.blue,
-        'exercises': ['0027', '0022', '0150', '0160', '0031'],
-      },
-      {
-        'title': 'Leg Day',
-        'subtitle': 'Quads, Hamstrings & Glutes',
-        'icon': Icons.directions_run,
-        'color': Colors.green,
-        'exercises': ['0043', '0585', '0584', '0085', '0016'],
-      },
-      {
-        'title': 'Upper Body',
-        'subtitle': 'Complete Upper Torso',
-        'icon': Icons.fitness_center,
-        'color': Colors.purple,
-        'exercises': ['0025', '0150', '0070', '0305', '0038'],
-      },
-    ];
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Quick Splits & Routines',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 105,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: splits.length,
-            itemBuilder: (context, idx) {
-              final split = splits[idx];
-              final Color color = split['color'] as Color;
+    return StreamBuilder<List<GymRoutine>>(
+      stream: _gymService.getRoutinesStream(),
+      builder: (context, snapshot) {
+        final routines = snapshot.data ?? [];
 
-              return Container(
-                width: 170,
-                margin: const EdgeInsets.only(right: 12),
-                child: InkWell(
-                  onTap: () {
-                    final exerciseIds = split['exercises'] as List<String>;
-                    final exerciseModels = exerciseIds
-                        .map((id) => GymExerciseCatalog.findById(id))
-                        .whereType<ExerciseModel>()
-                        .toList();
-
-                    _startWorkout(
-                      title: split['title'] as String,
-                      starterExercises: exerciseModels,
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: color.withValues(alpha: 0.3)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(split['icon'] as IconData, size: 18, color: color),
-                            const Spacer(),
-                            Icon(Icons.play_circle_fill, size: 20, color: color),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          split['title'] as String,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: color,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          split['subtitle'] as String,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
-                      ],
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  'Quick Splits & Routines',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('New Routine', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: _showCreateRoutineDialog,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (routines.isEmpty)
+              InkWell(
+                onTap: _showCreateRoutineDialog,
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF232731) : Colors.blue.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isDark ? Colors.grey[800]! : Colors.blue.withValues(alpha: 0.2),
                     ),
                   ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.blueAccent.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.playlist_add, color: Colors.blueAccent, size: 24),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Build Your Custom Routine',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Create a custom split or save one from an active workout.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                    ],
+                  ),
                 ),
-              );
-            },
-          ),
-        ),
-      ],
+              )
+            else
+              SizedBox(
+                height: 110,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: routines.length + 1,
+                  itemBuilder: (context, idx) {
+                    if (idx == routines.length) {
+                      // "+ New Routine" card at end of scroll
+                      return Container(
+                        width: 130,
+                        margin: const EdgeInsets.only(right: 12),
+                        child: InkWell(
+                          onTap: _showCreateRoutineDialog,
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF1E222A) : Colors.grey[100],
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+                              ),
+                            ),
+                            child: const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.add_circle_outline, size: 26, color: Colors.blueAccent),
+                                SizedBox(height: 6),
+                                Text(
+                                  'Add Routine',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blueAccent,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    final routine = routines[idx];
+                    final colorPalette = [
+                      Colors.orange,
+                      Colors.blue,
+                      Colors.green,
+                      Colors.purple,
+                      Colors.teal,
+                      Colors.pinkAccent,
+                    ];
+                    final Color color = colorPalette[idx % colorPalette.length];
+
+                    final targetBodyParts = routine.exercises
+                        .map((e) => e.bodyPart)
+                        .where((bp) => bp.isNotEmpty)
+                        .toSet()
+                        .join(', ');
+                    final subtitle = routine.description != null && routine.description!.isNotEmpty
+                        ? routine.description!
+                        : (targetBodyParts.isNotEmpty
+                            ? '${routine.exercises.length} exercises • $targetBodyParts'
+                            : '${routine.exercises.length} exercises');
+
+                    return Container(
+                      width: 175,
+                      margin: const EdgeInsets.only(right: 12),
+                      child: InkWell(
+                        onTap: () {
+                          _startWorkout(
+                            title: routine.name,
+                            starterRoutine: routine,
+                          );
+                        },
+                        onLongPress: () => _confirmDeleteRoutine(routine),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: color.withValues(alpha: 0.3)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.fitness_center, size: 18, color: color),
+                                  const Spacer(),
+                                  InkWell(
+                                    onTap: () => _confirmDeleteRoutine(routine),
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(2.0),
+                                      child: Icon(Icons.close, size: 15, color: Colors.grey),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(Icons.play_circle_fill, size: 20, color: color),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                routine.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: color,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                subtitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -792,10 +990,40 @@ class _GymDashboardScreenState extends State<GymDashboardScreen> {
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        DateFormat('EEEE, MMM d, y').format(workout.startedAt),
-                                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                      const SizedBox(height: 5),
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: theme.colorScheme.primary.withValues(alpha: isDark ? 0.22 : 0.12),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              DateFormat('EEEE').format(workout.startedAt),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: theme.colorScheme.primary,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Icon(
+                                            Icons.calendar_today_rounded,
+                                            size: 12,
+                                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            DateFormat('d MMM yyyy • h:mm a').format(workout.startedAt),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w500,
+                                              color: isDark ? Colors.grey[300] : Colors.grey[700],
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),

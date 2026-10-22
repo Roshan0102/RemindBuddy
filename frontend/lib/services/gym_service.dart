@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/gym_workout.dart';
+import '../models/gym_routine.dart';
 import '../models/personal_record.dart';
 import '../models/body_weight_entry.dart';
 import '../models/gym_profile.dart';
@@ -69,6 +70,20 @@ class GymService {
     final fs = _firestore;
     if (uid == null || fs == null) return null;
     return fs.collection('users').doc(uid).collection('settings').doc('gym_profile');
+  }
+
+  CollectionReference<Map<String, dynamic>>? get _routinesRef {
+    final uid = currentUserId;
+    final fs = _firestore;
+    if (uid == null || fs == null) return null;
+    return fs.collection('users').doc(uid).collection('gym_routines');
+  }
+
+  CollectionReference<Map<String, dynamic>>? get _exerciseLinksRef {
+    final uid = currentUserId;
+    final fs = _firestore;
+    if (uid == null || fs == null) return null;
+    return fs.collection('users').doc(uid).collection('gym_exercise_links');
   }
 
   // ==========================================
@@ -318,6 +333,100 @@ class GymService {
       await prefs.setInt('gym_bandwidth_bytes_today', currentBytes + bytes);
     } catch (_) {
       // Ignore cache write errors
+    }
+  }
+
+  // ==========================================
+  // CUSTOM USER ROUTINES & SPLITS
+  // ==========================================
+
+  /// Stream of all custom routines/splits built by the user, ordered by createdAt descending
+  Stream<List<GymRoutine>> getRoutinesStream() {
+    final ref = _routinesRef;
+    if (ref == null) return Stream.value([]);
+
+    return ref.orderBy('createdAt', descending: true).snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return GymRoutine.fromMap(doc.data(), docId: doc.id);
+      }).toList();
+    });
+  }
+
+  /// Save or update a custom routine
+  Future<String> saveRoutine(GymRoutine routine) async {
+    final ref = _routinesRef;
+    final uid = currentUserId;
+    if (ref == null || uid == null) {
+      throw Exception('User must be logged in to save custom routines');
+    }
+
+    final docRef = routine.id.isNotEmpty ? ref.doc(routine.id) : ref.doc();
+    final data = routine.toMap();
+    data['id'] = docRef.id;
+    data['userId'] = uid;
+
+    await docRef.set(data, SetOptions(merge: true));
+    return docRef.id;
+  }
+
+  /// Delete a custom routine
+  Future<void> deleteRoutine(String routineId) async {
+    final ref = _routinesRef;
+    if (ref == null || routineId.isEmpty) return;
+    await ref.doc(routineId).delete();
+  }
+
+  // ==========================================
+  // CUSTOM EXERCISE VIDEO LINKS (YouTube, IG, Web)
+  // ==========================================
+
+  /// Saves or updates the user's custom form video link for a specific exercise
+  Future<void> saveCustomExerciseVideoUrl(String exerciseId, String videoUrl) async {
+    final ref = _exerciseLinksRef;
+    final uid = currentUserId;
+    if (ref == null || uid == null || exerciseId.trim().isEmpty) return;
+
+    await ref.doc(exerciseId.trim()).set({
+      'exerciseId': exerciseId.trim(),
+      'videoUrl': videoUrl.trim(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  /// Retrieves the user's custom video URL for a specific exercise (if previously saved)
+  Future<String?> getCustomExerciseVideoUrl(String exerciseId) async {
+    final ref = _exerciseLinksRef;
+    if (ref == null || exerciseId.trim().isEmpty) return null;
+
+    try {
+      final doc = await ref.doc(exerciseId.trim()).get();
+      if (doc.exists && doc.data() != null) {
+        final url = doc.data()!['videoUrl']?.toString();
+        if (url != null && url.trim().isNotEmpty) {
+          return url.trim();
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Retrieves a map of all custom exercise video URLs for the user { exerciseId: videoUrl }
+  Future<Map<String, String>> getAllCustomExerciseVideoUrls() async {
+    final ref = _exerciseLinksRef;
+    if (ref == null) return {};
+
+    try {
+      final snap = await ref.get();
+      final Map<String, String> result = {};
+      for (final doc in snap.docs) {
+        final url = doc.data()['videoUrl']?.toString();
+        if (url != null && url.trim().isNotEmpty) {
+          result[doc.id] = url.trim();
+        }
+      }
+      return result;
+    } catch (_) {
+      return {};
     }
   }
 }

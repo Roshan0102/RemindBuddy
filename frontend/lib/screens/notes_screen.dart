@@ -61,24 +61,30 @@ class _NotesScreenState extends State<NotesScreen> {
     super.dispose();
   }
 
+  List<Note> _cachedNotes = [];
   bool _isCheckingTargetNote = false;
 
   Future<void> _checkTargetNote([List<Note>? currentNotes]) async {
     final targetId = NotesScreen.targetNoteIdNotifier.value;
-    if (targetId == null || targetId.isEmpty || _isCheckingTargetNote) return;
+    if (targetId == null || targetId.isEmpty) return;
 
     if (!mounted) return;
 
-    // 1. Check if note is already in the loaded notes list
-    if (currentNotes != null && currentNotes.isNotEmpty) {
-      final localMatch = currentNotes.where((n) => n.id == targetId).firstOrNull;
+    // 1. Check if note is already in the loaded notes list or cached notes
+    final list = (currentNotes != null && currentNotes.isNotEmpty)
+        ? currentNotes
+        : _cachedNotes;
+    if (list.isNotEmpty) {
+      final localMatch = list.where((n) => n.id == targetId).firstOrNull;
       if (localMatch != null) {
         NotesScreen.targetNoteIdNotifier.value = null;
+        _isCheckingTargetNote = false;
         _addOrEditNote(note: localMatch);
         return;
       }
     }
 
+    if (_isCheckingTargetNote) return;
     _isCheckingTargetNote = true;
     try {
       // 2. If user auth is still loading (cold start from widget), wait briefly for auth state
@@ -1974,10 +1980,13 @@ class _NotesScreenState extends State<NotesScreen> {
           }
 
           final allNotes = snapshot.data ?? [];
-          if (allNotes.isNotEmpty && NotesScreen.targetNoteIdNotifier.value != null) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _checkTargetNote(allNotes);
-            });
+          if (allNotes.isNotEmpty) {
+            _cachedNotes = allNotes;
+            if (NotesScreen.targetNoteIdNotifier.value != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _checkTargetNote(allNotes);
+              });
+            }
           }
           final orderedNotes = _sortNotesWithCustomOrder(allNotes);
           final displayedNotes = _filterNotes(orderedNotes, currentUser);

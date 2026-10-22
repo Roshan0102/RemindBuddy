@@ -4,8 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/exercise_model.dart';
 import '../models/gym_workout.dart';
+import '../models/gym_routine.dart';
 import '../services/gym_service.dart';
 import '../services/gym_exercise_catalog.dart';
+import '../services/gym_video_launcher.dart';
 import '../widgets/gym/exercise_picker_dialog.dart';
 import '../widgets/gym/exercise_demo_modal.dart';
 import '../widgets/gym/gym_rest_timer_widget.dart';
@@ -16,11 +18,13 @@ import '../widgets/gym/gym_rest_timer_widget.dart';
 class GymActiveWorkoutScreen extends StatefulWidget {
   final String? initialTitle;
   final List<ExerciseModel>? starterExercises;
+  final GymRoutine? starterRoutine;
 
   const GymActiveWorkoutScreen({
     super.key,
     this.initialTitle,
     this.starterExercises,
+    this.starterRoutine,
   });
 
   @override
@@ -51,13 +55,19 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
   void initState() {
     super.initState();
     final defaultTitle = widget.initialTitle ??
-        'Workout - ${DateFormat('EEEE, MMM d').format(DateTime.now())}';
+        (widget.starterRoutine != null
+            ? widget.starterRoutine!.name
+            : 'Workout - ${DateFormat('EEEE, MMM d').format(DateTime.now())}');
     _titleController = TextEditingController(text: defaultTitle);
 
     _startDurationTimer();
 
-    // Populate initial exercises if provided
-    if (widget.starterExercises != null && widget.starterExercises!.isNotEmpty) {
+    // Populate initial exercises from routine or starter list
+    if (widget.starterRoutine != null && widget.starterRoutine!.exercises.isNotEmpty) {
+      for (final rex in widget.starterRoutine!.exercises) {
+        _addRoutineExerciseInternal(rex);
+      }
+    } else if (widget.starterExercises != null && widget.starterExercises!.isNotEmpty) {
       for (final ex in widget.starterExercises!) {
         _addExerciseInternal(ex);
       }
@@ -121,6 +131,12 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
       }
     } catch (_) {}
 
+    // Check if user has a custom video URL saved for this exercise
+    String? customVideo;
+    try {
+      customVideo = await _gymService.getCustomExerciseVideoUrl(exercise.formattedId);
+    } catch (_) {}
+
     final prevSets = _previousSets[exercise.formattedId];
 
     // Default sets: either pre-fill from last time or create 3 fresh sets
@@ -144,6 +160,7 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
       ]);
     }
 
+    if (!mounted) return;
     setState(() {
       _exercises.add(GymWorkoutExercise(
         exerciseId: exercise.formattedId,
@@ -152,8 +169,296 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
         targetMuscle: exercise.target,
         sets: initialSets,
         restSeconds: 90,
+        videoUrl: customVideo,
       ));
     });
+  }
+
+  Future<void> _addRoutineExerciseInternal(GymRoutineExercise rex) async {
+    if (_exercises.any((e) => e.exerciseId == rex.exerciseId)) return;
+
+    try {
+      final prevMap = await _gymService.getLastSetsForExercises([rex.exerciseId]);
+      if (mounted && prevMap.isNotEmpty) {
+        setState(() {
+          _previousSets.addAll(prevMap);
+        });
+      }
+    } catch (_) {}
+
+    String? customVideo = rex.videoUrl;
+    if (customVideo == null || customVideo.isEmpty) {
+      try {
+        customVideo = await _gymService.getCustomExerciseVideoUrl(rex.exerciseId);
+      } catch (_) {}
+    }
+
+    final prevSets = _previousSets[rex.exerciseId];
+    final List<GymWorkoutSet> initialSets = [];
+    if (prevSets != null && prevSets.isNotEmpty) {
+      for (int i = 0; i < prevSets.length; i++) {
+        final p = prevSets[i];
+        initialSets.add(GymWorkoutSet(
+          setNumber: i + 1,
+          weightKg: p.weightKg,
+          reps: p.reps,
+          isCompleted: false,
+          isWarmup: p.isWarmup,
+        ));
+      }
+    } else {
+      final setCount = rex.defaultSets > 0 ? rex.defaultSets : 3;
+      for (int i = 1; i <= setCount; i++) {
+        initialSets.add(GymWorkoutSet(setNumber: i, weightKg: 0, reps: 10, isCompleted: false));
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _exercises.add(GymWorkoutExercise(
+        exerciseId: rex.exerciseId,
+        exerciseName: rex.exerciseName,
+        bodyPart: rex.bodyPart,
+        targetMuscle: rex.targetMuscle,
+        sets: initialSets,
+        restSeconds: rex.restSeconds > 0 ? rex.restSeconds : 90,
+        videoUrl: customVideo,
+      ));
+    });
+  }
+
+  Future<void> _promptEditVideoUrl(int exIndex) async {
+    final exercise = _exercises[exIndex];
+    final controller = TextEditingController(text: exercise.videoUrl ?? '');
+
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.video_collection_outlined, color: Colors.blueAccent),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Exercise Video Link',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Add your YouTube, Instagram Reel, or form video link for ${exercise.exerciseName}.',
+              style: const TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              decoration: InputDecoration(
+                labelText: 'Video URL',
+                hintText: 'https://youtu.be/... or instagram.com/reel/...',
+                prefixIcon: const Icon(Icons.link),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Icon(Icons.info_outline, size: 14, color: Colors.grey.shade500),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Opens in YouTube / Instagram app on phones, or web browser.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          if (exercise.videoUrl != null && exercise.videoUrl!.isNotEmpty)
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, ''),
+              child: const Text('Remove Link'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save Link'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      final newUrl = result.isEmpty ? null : result;
+      setState(() {
+        _exercises[exIndex] = exercise.copyWith(videoUrl: newUrl);
+      });
+      // Save permanently for this exercise under users/{uid}/gym_exercise_links/{exerciseId}
+      if (newUrl != null && newUrl.isNotEmpty) {
+        await _gymService.saveCustomExerciseVideoUrl(exercise.exerciseId, newUrl);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Video link saved for this exercise!')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _saveAsRoutine() async {
+    if (_exercises.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one exercise before saving as a routine.')),
+      );
+      return;
+    }
+
+    final titleCtrl = TextEditingController(
+      text: _titleController.text.trim().isNotEmpty && !_titleController.text.startsWith('Workout -')
+          ? _titleController.text.trim()
+          : '',
+    );
+    final descCtrl = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.bookmark_add, color: Colors.blueAccent),
+            SizedBox(width: 10),
+            Text('Save as Routine'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Save these exercises as a reusable routine in "Quick Splits & Routines" on your Gym Dashboard.',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: titleCtrl,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Routine Name',
+                  hintText: 'e.g. Chest & Triceps, Heavy Legs',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Description (Optional)',
+                  hintText: 'e.g. Incline focus with triceps finisher',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Included Exercises (${_exercises.length}):',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 6),
+              ...List.generate(_exercises.length, (i) {
+                final ex = _exercises[i];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check, size: 14, color: Colors.green),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${ex.exerciseName} (${ex.sets.length} sets)',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (titleCtrl.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Please enter a name for the routine.')),
+                );
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('Save Routine'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final name = titleCtrl.text.trim();
+      final routine = GymRoutine(
+        id: '',
+        userId: _gymService.currentUserId ?? '',
+        name: name,
+        description: descCtrl.text.trim().isNotEmpty ? descCtrl.text.trim() : null,
+        exercises: _exercises.map((e) {
+          return GymRoutineExercise(
+            exerciseId: e.exerciseId,
+            exerciseName: e.exerciseName,
+            bodyPart: e.bodyPart,
+            targetMuscle: e.targetMuscle,
+            defaultSets: e.sets.isNotEmpty ? e.sets.length : 3,
+            restSeconds: e.restSeconds,
+            videoUrl: e.videoUrl,
+          );
+        }).toList(),
+        createdAt: DateTime.now(),
+      );
+
+      try {
+        await _gymService.saveRoutine(routine);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Routine "$name" saved to Quick Splits & Routines!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to save routine: $e')),
+          );
+        }
+      }
+    }
   }
 
   void _addSetToExercise(int exerciseIndex) {
@@ -469,7 +774,12 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
                   ),
                 ),
               )
-            else
+            else ...[
+              IconButton(
+                icon: const Icon(Icons.bookmark_add_outlined),
+                tooltip: 'Save as Routine',
+                onPressed: _saveAsRoutine,
+              ),
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: FilledButton.icon(
@@ -481,6 +791,7 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
                   onPressed: _finishWorkout,
                 ),
               ),
+            ],
           ],
         ),
         body: Stack(
@@ -548,6 +859,18 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
                     ),
                     onPressed: _pickAndAddExercise,
                   ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.bookmark_outline),
+                  label: const Text('Save Routine'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: _saveAsRoutine,
                 ),
               ],
             ),
@@ -671,6 +994,80 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
                           color: theme.colorScheme.primary,
                         ),
                       ),
+                      const SizedBox(height: 6),
+                      // Custom Form Video Action Button (YouTube, IG, Web)
+                      if (exercise.videoUrl != null && exercise.videoUrl!.isNotEmpty)
+                        InkWell(
+                          onTap: () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            final ok = await GymVideoLauncher.launchVideo(exercise.videoUrl!);
+                            if (!ok && mounted) {
+                              messenger.showSnackBar(
+                                const SnackBar(content: Text('Could not open video. Check the link in exercise options.')),
+                              );
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: GymVideoLauncher.getPlatformColor(exercise.videoUrl).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: GymVideoLauncher.getPlatformColor(exercise.videoUrl).withValues(alpha: 0.35),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  GymVideoLauncher.getPlatformIcon(exercise.videoUrl),
+                                  size: 13,
+                                  color: GymVideoLauncher.getPlatformColor(exercise.videoUrl),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  GymVideoLauncher.getPlatformLabel(exercise.videoUrl),
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: GymVideoLauncher.getPlatformColor(exercise.videoUrl),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        InkWell(
+                          onTap: () => _promptEditVideoUrl(exIndex),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.grey[800] : Colors.grey[100],
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.video_call_outlined, size: 13, color: Colors.blueAccent),
+                                SizedBox(width: 4),
+                                Text(
+                                  '+ Add Form Video',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.blueAccent,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -678,8 +1075,8 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
                 // Info / Form demo button
                 if (catalogModel != null)
                   IconButton(
-                    icon: const Icon(Icons.play_circle_outline, color: Colors.blue),
-                    tooltip: 'Watch Form Demo',
+                    icon: const Icon(Icons.help_outline, color: Colors.grey, size: 20),
+                    tooltip: 'Exercise Guide',
                     onPressed: () {
                       ExerciseDemoModal.show(context, catalogModel);
                     },
@@ -950,6 +1347,9 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
   }
 
   void _showExerciseOptions(int exIndex) {
+    final exercise = _exercises[exIndex];
+    final hasVideo = exercise.videoUrl != null && exercise.videoUrl!.isNotEmpty;
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -959,8 +1359,44 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (hasVideo)
+              ListTile(
+                leading: Icon(
+                  GymVideoLauncher.getPlatformIcon(exercise.videoUrl),
+                  color: GymVideoLauncher.getPlatformColor(exercise.videoUrl),
+                ),
+                title: Text(
+                  GymVideoLauncher.getPlatformLabel(exercise.videoUrl),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: GymVideoLauncher.getPlatformColor(exercise.videoUrl),
+                  ),
+                ),
+                subtitle: Text(
+                  exercise.videoUrl!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  GymVideoLauncher.launchVideo(exercise.videoUrl!);
+                },
+              ),
             ListTile(
-              leading: const Icon(Icons.timer),
+              leading: const Icon(Icons.video_library_outlined, color: Colors.blueAccent),
+              title: Text(hasVideo ? 'Change Video Link' : 'Add Form Video Link'),
+              subtitle: Text(
+                hasVideo ? 'Update YouTube or Instagram Reel link' : 'Attach your 30s form demo video',
+                style: const TextStyle(fontSize: 11),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _promptEditVideoUrl(exIndex);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
               title: const Text('Adjust Rest Timer'),
               onTap: () {
                 Navigator.pop(ctx);
@@ -968,7 +1404,7 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete, color: Colors.red),
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
               title: const Text('Remove Exercise', style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(ctx);

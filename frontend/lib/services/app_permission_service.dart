@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'log_service.dart';
+import 'notification_service.dart';
+import 'web_desktop_notifications/web_desktop_notifications.dart';
 
 class AppPermissionService {
   static final AppPermissionService _instance = AppPermissionService._internal();
@@ -14,6 +16,13 @@ class AppPermissionService {
 
   /// Check if a specific permission is granted
   Future<bool> isPermissionGranted(String permissionName) async {
+    if (kIsWeb) {
+      if (permissionName == 'notification') {
+        final perm = await WebDesktopNotificationService.getPermission();
+        return perm == 'granted';
+      }
+      return false;
+    }
     try {
       final bool? granted = await _channel.invokeMethod<bool>('checkPermission', {
         'permission': permissionName,
@@ -25,8 +34,15 @@ class AppPermissionService {
     }
   }
 
-  /// Request a specific permission natively
+  /// Request a specific permission natively or via browser API
   Future<bool> requestPermission(String permissionName) async {
+    if (kIsWeb) {
+      if (permissionName == 'notification') {
+        final res = await NotificationService().requestWebPushPermission();
+        return res['success'] == true;
+      }
+      return false;
+    }
     try {
       final bool? granted = await _channel.invokeMethod<bool>('requestPermission', {
         'permission': permissionName,
@@ -40,6 +56,7 @@ class AppPermissionService {
 
   /// Open App System Settings
   Future<void> openAppSettings() async {
+    if (kIsWeb) return;
     try {
       await _channel.invokeMethod('openAppSettings');
     } catch (e) {
@@ -47,13 +64,136 @@ class AppPermissionService {
     }
   }
 
-  /// Check and prompt for mandatory initial permissions on first launch (Notification & Location)
+  /// Check and prompt for necessary permissions on launch/login
+  /// Handles both native platforms (Android/iOS) and Web (iPhone Safari PWA / Chrome)
   Future<void> checkAndPromptInitialPermissions(BuildContext context) async {
-    if (kIsWeb) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final bool hasPrompted = prefs.getBool('has_prompted_initial_permissions_v2') ?? false;
 
+      // Web App & Safari PWA handling
+      if (kIsWeb) {
+        final String webStatus = await WebDesktopNotificationService.getPermission();
+        final bool hasPromptedWeb = prefs.getBool('has_prompted_web_push_v3') ?? false;
+
+        if (webStatus != 'granted' && !hasPromptedWeb) {
+          if (!context.mounted) return;
+
+          final bool isDenied = webStatus == 'denied';
+
+          await showDialog(
+            context: context,
+            barrierDismissible: true,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  const Icon(Icons.notifications_active_rounded, color: Colors.blueAccent, size: 26),
+                  const SizedBox(width: 10),
+                  Text('Enable Notifications', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'SmartBuddy delivers timely calendar alarms, shift rosters, and smart reminders directly to your device.',
+                    style: TextStyle(fontSize: 13, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.blue.withValues(alpha: 0.25)),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.phone_iphone_rounded, color: Colors.blueAccent, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'iPhone Users: For push notifications on iOS, tap Share (⬆️) ➔ "Add to Home Screen", then open SmartBuddy and allow notifications.',
+                            style: TextStyle(fontSize: 11.5, height: 1.35),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isDenied) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Notifications are currently blocked in your browser site settings.',
+                              style: TextStyle(fontSize: 11.5, color: Colors.orange),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await prefs.setBool('has_prompted_web_push_v3', true);
+                  },
+                  child: const Text('Not Now'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await prefs.setBool('has_prompted_web_push_v3', true);
+                    if (isDenied) {
+                      if (context.mounted) {
+                        showWebPermissionGuidanceDialog(context);
+                      }
+                    } else {
+                      final res = await NotificationService().requestWebPushPermission();
+                      if (context.mounted) {
+                        if (res['success'] == true) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('🚀 Web Push notifications enabled!'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } else if (res['denied'] == true) {
+                          showWebPermissionGuidanceDialog(context);
+                        }
+                      }
+                    }
+                  },
+                  child: Text(isDenied ? 'How to Unblock' : 'Allow Notifications'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
+      // Native (Android / iOS)
+      final bool hasPrompted = prefs.getBool('has_prompted_initial_permissions_v3') ?? false;
       final bool hasNotification = await isPermissionGranted('notification');
       final bool hasLocation = await isPermissionGranted('location');
 
@@ -62,7 +202,7 @@ class AppPermissionService {
 
         await showDialog(
           context: context,
-          barrierDismissible: false,
+          barrierDismissible: true,
           builder: (ctx) => AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: Row(
@@ -84,7 +224,7 @@ class AppPermissionService {
                 _buildPermissionRow(
                   icon: Icons.notifications_active_rounded,
                   color: Colors.purpleAccent,
-                  title: 'Notifications (Mandatory)',
+                  title: 'Notifications',
                   desc: 'Delivers calendar alarms, shift rosters, and smart expense alerts.',
                   isGranted: hasNotification,
                 ),
@@ -92,15 +232,22 @@ class AppPermissionService {
                 _buildPermissionRow(
                   icon: Icons.location_on_rounded,
                   color: Colors.teal,
-                  title: 'Location (Mandatory)',
+                  title: 'Location',
                   desc: 'Detects city for accurate local weather and gold rates.',
                   isGranted: hasLocation,
                 ),
               ],
             ),
             actions: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await prefs.setBool('has_prompted_initial_permissions_v3', true);
+                },
+                child: const Text('Not Now'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -108,7 +255,7 @@ class AppPermissionService {
                 ),
                 onPressed: () async {
                   Navigator.pop(ctx);
-                  await prefs.setBool('has_prompted_initial_permissions_v2', true);
+                  await prefs.setBool('has_prompted_initial_permissions_v3', true);
                   if (!hasNotification) {
                     await requestPermission('notification');
                   }
@@ -125,6 +272,134 @@ class AppPermissionService {
     } catch (e) {
       LogService().error('Error prompting initial permissions', e);
     }
+  }
+
+  /// Displays comprehensive step-by-step instructions to enable notifications
+  /// for iPhone Safari PWA, Android Chrome, and Desktop browsers.
+  Future<void> showWebPermissionGuidanceDialog(BuildContext context) async {
+    return showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.help_outline_rounded, color: Colors.blueAccent),
+            SizedBox(width: 10),
+            Text('Enable Notifications'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Follow the quick steps below for your device to receive calendar and workout alerts:',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: 14),
+
+              // iPhone Safari Guide
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.purple.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.purple.withValues(alpha: 0.25)),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.apple, color: Colors.purple, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'iPhone Safari (iOS 16.4+)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.purple),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      '1. Tap the Safari Share button (⬆️) at the bottom.\n'
+                      '2. Scroll down and tap "Add to Home Screen".\n'
+                      '3. Open the SmartBuddy icon from your Home Screen.\n'
+                      '4. Go to iPhone Settings ➔ Notifications ➔ SmartBuddy and switch Allow Notifications to ON.',
+                      style: TextStyle(fontSize: 12, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Android Chrome Guide
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.teal.withValues(alpha: 0.25)),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.android, color: Colors.teal, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Android (Chrome / Samsung Internet)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.teal),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      '1. Tap the lock/tune icon (🔒) on the left of the address bar.\n'
+                      '2. Tap "Permissions" or "Site Settings".\n'
+                      '3. Set Notifications to "Allow".',
+                      style: TextStyle(fontSize: 12, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.refresh, size: 16),
+            label: const Text('Try Again Now'),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final res = await NotificationService().requestWebPushPermission();
+              if (context.mounted) {
+                if (res['success'] == true) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('🚀 Web Push notifications enabled!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } else if (res['denied'] == true) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Still blocked in browser settings. Please follow the steps above.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              }
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   /// Ensure Microphone permission for Ask Buddy (Voice Assistant)

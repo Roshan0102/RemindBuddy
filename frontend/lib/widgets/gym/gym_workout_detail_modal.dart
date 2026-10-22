@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/gym_workout.dart';
 import '../../services/gym_service.dart';
+import '../../services/gym_video_launcher.dart';
 
 /// Modal bottom sheet displaying detailed breakdown of a past workout session.
 class GymWorkoutDetailModal extends StatelessWidget {
@@ -111,13 +112,40 @@ class GymWorkoutDetailModal extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        DateFormat('EEEE, MMMM d, y • h:mm a').format(workout.startedAt),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
-                        ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withValues(alpha: isDark ? 0.22 : 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              DateFormat('EEEE').format(workout.startedAt),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.calendar_today_rounded,
+                            size: 13,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            DateFormat('d MMMM yyyy • h:mm a').format(workout.startedAt),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: isDark ? Colors.grey[300] : Colors.grey[700],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -208,10 +236,48 @@ class GymWorkoutDetailModal extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              exercise.exerciseName,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            Flexible(
+                              child: Text(
+                                exercise.exerciseName,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                              ),
                             ),
+                            if (exercise.videoUrl != null && exercise.videoUrl!.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () => GymVideoLauncher.launchVideo(exercise.videoUrl!),
+                                borderRadius: BorderRadius.circular(6),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: GymVideoLauncher.getPlatformColor(exercise.videoUrl).withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: GymVideoLauncher.getPlatformColor(exercise.videoUrl).withValues(alpha: 0.3),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        GymVideoLauncher.getPlatformIcon(exercise.videoUrl),
+                                        size: 13,
+                                        color: GymVideoLauncher.getPlatformColor(exercise.videoUrl),
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        'Video',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: GymVideoLauncher.getPlatformColor(exercise.videoUrl),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                             const Spacer(),
                             Text(
                               '${exercise.totalVolume.toStringAsFixed(1)} kg',

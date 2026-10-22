@@ -681,10 +681,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void _setupHomeWidgetLaunchListener() {
     if (kIsWeb) return;
     HomeWidget.initiallyLaunchedFromHomeWidget().then((uri) {
-      if (uri != null) _handleHomeWidgetUri(uri);
+      if (uri != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _handleHomeWidgetUri(uri);
+        });
+      }
     });
     _widgetLaunchSub = HomeWidget.widgetClicked.listen((uri) {
-      if (uri != null) _handleHomeWidgetUri(uri);
+      if (uri != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _handleHomeWidgetUri(uri);
+        });
+      }
     });
   }
 
@@ -700,13 +708,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _selectTabOrPush('gold');
     } else if (uriStr.contains('notes') || uri.path.contains('notes')) {
       final noteId = uri.queryParameters['noteId'];
-      if (noteId != null && noteId.trim().isNotEmpty) {
-        NotesScreen.targetNoteIdNotifier.value = noteId.trim();
-      }
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
       }
       _selectTabOrPush('notes');
+      if (noteId != null && noteId.trim().isNotEmpty) {
+        // Clear first to force ValueNotifier to fire even if it's the same note ID
+        NotesScreen.targetNoteIdNotifier.value = null;
+        NotesScreen.targetNoteIdNotifier.value = noteId.trim();
+      }
       HomeWidgetService().syncWidgetChangesToFirestore();
     }
   }
@@ -1838,7 +1848,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'SmartBuddy v1.10.62',
+                  'SmartBuddy v1.10.63',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

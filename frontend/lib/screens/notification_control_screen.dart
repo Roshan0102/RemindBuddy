@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
+import '../services/app_permission_service.dart';
 
 class NotificationControlScreen extends StatefulWidget {
   const NotificationControlScreen({super.key});
@@ -262,10 +263,13 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                                 } else if (res['denied'] == true) {
                                   messenger.showSnackBar(
                                     const SnackBar(
-                                      content: Text('Notifications are blocked by your browser settings. Please allow notifications in your browser address bar or site settings.'),
+                                      content: Text('Notifications are blocked by your browser settings.'),
                                       backgroundColor: Colors.orange,
                                     ),
                                   );
+                                  if (context.mounted) {
+                                    AppPermissionService().showWebPermissionGuidanceDialog(context);
+                                  }
                                   return;
                                 } else if (res['success'] == true) {
                                   messenger.showSnackBar(
@@ -308,6 +312,18 @@ class _NotificationControlScreenState extends State<NotificationControlScreen> {
                                 const Text(
                                   '• iPhone: Apple requires adding SmartBuddy to your Home Screen (Safari Share ➔ Add to Home Screen) to receive push alerts.\n• Android: Native push works in Chrome, Edge, and Samsung Internet.',
                                   style: TextStyle(fontSize: 11, color: Colors.grey, height: 1.35),
+                                ),
+                                const SizedBox(height: 6),
+                                TextButton.icon(
+                                  icon: const Icon(Icons.help_outline, size: 15),
+                                  label: const Text('View Step-by-Step Setup Guide', style: TextStyle(fontSize: 12)),
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  onPressed: () {
+                                    AppPermissionService().showWebPermissionGuidanceDialog(context);
+                                  },
                                 ),
                               ],
                             ),

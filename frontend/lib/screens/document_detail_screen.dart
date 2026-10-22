@@ -9,6 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/secure_document.dart';
 import '../models/vault_member_profile.dart';
 import '../services/vault_service.dart';
+import '../services/file_download_service.dart';
+import '../services/url_launcher_helper/url_launcher_helper.dart';
 import 'add_document_screen.dart';
 
 class DocumentDetailScreen extends StatefulWidget {
@@ -522,13 +524,10 @@ class FullscreenFileViewer extends StatelessWidget {
   });
 
   Future<void> _shareFile() async {
+    final mime = isPdf ? 'application/pdf' : 'image/jpeg';
     if (kIsWeb) {
-      try {
-        final mime = isPdf ? 'application/pdf' : 'image/jpeg';
-        final base64Data = base64Encode(fileBytes);
-        final url = 'data:$mime;base64,$base64Data';
-        await launchUrl(Uri.parse(url));
-      } catch (_) {}
+      final base64Data = base64Encode(fileBytes);
+      UrlLauncherHelper.downloadBase64(base64Data, title, mimeType: mime);
       return;
     }
     try {
@@ -536,56 +535,31 @@ class FullscreenFileViewer extends StatelessWidget {
       final tempPath = '${tempDir.path}/$title';
       final file = File(tempPath);
       await file.writeAsBytes(fileBytes);
-      
       await Share.shareXFiles([XFile(tempPath)], text: title);
     } catch (_) {}
   }
 
   Future<void> _downloadFile(BuildContext context) async {
-    if (kIsWeb) {
-      try {
-        final mime = isPdf ? 'application/pdf' : 'image/jpeg';
-        final base64Data = base64Encode(fileBytes);
-        final url = 'data:$mime;base64,$base64Data';
-        await launchUrl(Uri.parse(url));
-      } catch (_) {}
-      return;
-    }
-    try {
-      Directory? downloadsDir;
-      if (Platform.isAndroid) {
-        downloadsDir = Directory('/storage/emulated/0/Download');
-        if (!await downloadsDir.exists()) {
-          downloadsDir = await getExternalStorageDirectory();
-        }
-      } else {
-        downloadsDir = await getDownloadsDirectory();
-      }
+    final mime = isPdf ? 'application/pdf' : 'image/jpeg';
+    final result = await FileDownloadService.saveFile(
+      bytes: fileBytes,
+      fileName: title,
+      mimeType: mime,
+    );
 
-      if (downloadsDir == null) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to locate download directory.')),
-        );
-        return;
-      }
-
-      final fileName = title.replaceAll(RegExp(r'[^\w\-_.]'), '_');
-      final filePath = '${downloadsDir.path}/$fileName';
-      final file = File(filePath);
-      await file.writeAsBytes(fileBytes);
-
-      if (!context.mounted) return;
+    if (!context.mounted) return;
+    if (result.isSuccess) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Saved to Downloads folder: $fileName'),
-          backgroundColor: Colors.green,
+          content: Text(kIsWeb
+              ? 'Downloading ${result.fileName}...'
+              : 'Saved to Downloads folder: ${result.fileName}'),
+          backgroundColor: const Color(0xFF10B981),
         ),
       );
-    } catch (e) {
-      if (!context.mounted) return;
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save file: $e')),
+        SnackBar(content: Text('Failed to save file: ${result.errorMessage}')),
       );
     }
   }
@@ -599,6 +573,16 @@ class FullscreenFileViewer extends StatelessWidget {
         foregroundColor: Colors.white,
         title: Text(title, style: const TextStyle(color: Colors.white)),
         actions: [
+          if (kIsWeb)
+            IconButton(
+              icon: const Icon(Icons.open_in_new, color: Colors.white),
+              onPressed: () {
+                final mime = isPdf ? 'application/pdf' : 'image/jpeg';
+                final base64Data = base64Encode(fileBytes);
+                UrlLauncherHelper.downloadBase64(base64Data, title, mimeType: mime);
+              },
+              tooltip: 'Open in New Tab',
+            ),
           IconButton(
             icon: const Icon(Icons.share, color: Colors.white),
             onPressed: _shareFile,
