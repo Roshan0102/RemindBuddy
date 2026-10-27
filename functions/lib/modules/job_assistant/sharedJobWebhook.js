@@ -216,23 +216,34 @@ OUTPUT STRICT JSON FORMAT ONLY:
         let isSent = false;
         let emailMessageId = null;
         let emailSendError = null;
-        // Check if recipient email has been permanently blocked by the user as fake/scam
+        // Check if recipient email has been permanently blocked by the user as fake/scam or centrally bounced
         let isPermanentlyBlockedFake = false;
+        let isCentralBouncedBlocked = false;
         if (recipientEmail) {
             const cleanRecip = recipientEmail.toLowerCase().trim();
             try {
-                const blockedDoc = await firebase_1.db.collection("users").doc(targetUid).collection("blocked_fake_jobs").doc(encodeURIComponent(cleanRecip)).get();
+                const [blockedDoc, centralBouncedDoc] = await Promise.all([
+                    firebase_1.db.collection("users").doc(targetUid).collection("blocked_fake_jobs").doc(encodeURIComponent(cleanRecip)).get(),
+                    firebase_1.db.collection("system_bounced_emails").doc(encodeURIComponent(cleanRecip)).get()
+                ]);
                 if (blockedDoc.exists) {
                     isPermanentlyBlockedFake = true;
                     console.log(`[SharedJobWebhook] Recipient email ${cleanRecip} is permanently blocked by user ${targetUid} as fake/scam.`);
                 }
+                if (centralBouncedDoc.exists) {
+                    isCentralBouncedBlocked = true;
+                    console.log(`[SharedJobWebhook] Recipient email ${cleanRecip} is centrally blacklisted as Address Not Found / bounced.`);
+                }
             }
             catch (bErr) {
-                console.warn(`[SharedJobWebhook] Error checking blocked_fake_jobs: ${bErr.message}`);
+                console.warn(`[SharedJobWebhook] Error checking blocked/bounced lists: ${bErr.message}`);
             }
         }
         if (isPermanentlyBlockedFake) {
             emailSendError = `Recruiter email (${recipientEmail}) is permanently blocked because you previously marked it as a fake job / scam. RemindBuddy prevented sending an application.`;
+        }
+        else if (isCentralBouncedBlocked) {
+            emailSendError = `Recipient email (${recipientEmail}) is invalid ("Address Not Found" previously). Blocked centrally to protect your sender reputation.`;
         }
         else if (recipientEmail && userEmail && appPassword) {
             try {
@@ -277,9 +288,11 @@ OUTPUT STRICT JSON FORMAT ONLY:
         const sourcePlatform = isLinkedIn ? "LinkedIn Post (iOS Share)" : "iOS Share Sheet (iPhone)";
         const status = isPermanentlyBlockedFake
             ? "fake"
-            : (isSent
-                ? "sent"
-                : (recipientEmail ? (userEmail && appPassword ? "needs_review" : "extracted") : "needs_review"));
+            : (isCentralBouncedBlocked
+                ? "bounced"
+                : (isSent
+                    ? "sent"
+                    : (recipientEmail ? (userEmail && appPassword ? "needs_review" : "extracted") : "needs_review")));
         const isAutoApplied = isSent;
         const appId = `ios_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         await firebase_1.db.collection("users").doc(targetUid).collection("job_applications").doc(appId).set({
@@ -293,6 +306,8 @@ OUTPUT STRICT JSON FORMAT ONLY:
             generatedCoverLetter,
             status,
             isFake: isPermanentlyBlockedFake,
+            isBounced: isCentralBouncedBlocked,
+            bounceReason: isCentralBouncedBlocked ? "address_not_found" : null,
             isAutoApplied,
             appliedAt: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
             createdAt: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
@@ -304,11 +319,13 @@ OUTPUT STRICT JSON FORMAT ONLY:
                 ? null
                 : (isPermanentlyBlockedFake
                     ? `⚠️ BLOCKED: Recruiter email (${recipientEmail}) is permanently blocked as fake/scam.`
-                    : (!recipientEmail
-                        ? "No recruiter email detected in post. Saved in Drafts ready for portal submission."
-                        : (!userEmail || !appPassword
-                            ? "Recruiter email found, but Gmail App Password is not configured in Settings to auto-send."
-                            : `Email delivery error: ${emailSendError}`)))
+                    : (isCentralBouncedBlocked
+                        ? `⚠️ BLOCKED: Recruiter email (${recipientEmail}) is invalid (Address Not Found previously on mail server).`
+                        : (!recipientEmail
+                            ? "No recruiter email detected in post. Saved in Drafts ready for portal submission."
+                            : (!userEmail || !appPassword
+                                ? "Recruiter email found, but Gmail App Password is not configured in Settings to auto-send."
+                                : `Email delivery error: ${emailSendError}`))))
         });
         // 10. Log Feature Execution
         await (0, featureLogger_1.logFeatureExecution)(targetUid, {

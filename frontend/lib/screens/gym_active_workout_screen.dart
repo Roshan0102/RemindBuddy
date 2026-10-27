@@ -51,9 +51,13 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
 
   bool _isSaving = false;
 
+  // Track active routine if started from a routine preset
+  GymRoutine? _activeRoutine;
+
   @override
   void initState() {
     super.initState();
+    _activeRoutine = widget.starterRoutine;
     final defaultTitle = widget.initialTitle ??
         (widget.starterRoutine != null
             ? widget.starterRoutine!.name
@@ -321,27 +325,34 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
   Future<void> _saveAsRoutine() async {
     if (_exercises.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add at least one exercise before saving as a routine.')),
+        const SnackBar(
+          content: Text('Add at least one exercise before saving as a routine.'),
+          duration: Duration(seconds: 3),
+        ),
       );
       return;
     }
 
-    final titleCtrl = TextEditingController(
-      text: _titleController.text.trim().isNotEmpty && !_titleController.text.startsWith('Workout -')
-          ? _titleController.text.trim()
-          : '',
-    );
-    final descCtrl = TextEditingController();
+    final isExistingRoutine = _activeRoutine != null && _activeRoutine!.id.isNotEmpty;
+    final initialName = _activeRoutine != null && _activeRoutine!.name.isNotEmpty
+        ? _activeRoutine!.name
+        : (_titleController.text.trim().isNotEmpty && !_titleController.text.startsWith('Workout -')
+            ? _titleController.text.trim()
+            : '');
+    final initialDesc = _activeRoutine?.description ?? '';
+
+    final titleCtrl = TextEditingController(text: initialName);
+    final descCtrl = TextEditingController(text: initialDesc);
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.bookmark_add, color: Colors.blueAccent),
-            SizedBox(width: 10),
-            Text('Save as Routine'),
+            Icon(isExistingRoutine ? Icons.edit_note_rounded : Icons.bookmark_add, color: Colors.blueAccent),
+            const SizedBox(width: 10),
+            Text(isExistingRoutine ? 'Update Routine' : 'Save as Routine'),
           ],
         ),
         content: SingleChildScrollView(
@@ -349,9 +360,11 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Save these exercises as a reusable routine in "Quick Splits & Routines" on your Gym Dashboard.',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
+              Text(
+                isExistingRoutine
+                    ? 'Update "${_activeRoutine!.name}" with the newly added exercises and sets.'
+                    : 'Save these exercises as a reusable routine in "Quick Splits & Routines" on your Gym Dashboard.',
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
               ),
               const SizedBox(height: 16),
               TextField(
@@ -408,13 +421,16 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
             onPressed: () {
               if (titleCtrl.text.trim().isEmpty) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(content: Text('Please enter a name for the routine.')),
+                  const SnackBar(
+                    content: Text('Please enter a name for the routine.'),
+                    duration: Duration(seconds: 3),
+                  ),
                 );
                 return;
               }
               Navigator.pop(ctx, true);
             },
-            child: const Text('Save Routine'),
+            child: Text(isExistingRoutine ? 'Update Routine' : 'Save Routine'),
           ),
         ],
       ),
@@ -422,8 +438,9 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
 
     if (confirmed == true) {
       final name = titleCtrl.text.trim();
+      final routineId = _activeRoutine != null ? _activeRoutine!.id : '';
       final routine = GymRoutine(
-        id: '',
+        id: routineId,
         userId: _gymService.currentUserId ?? '',
         name: name,
         description: descCtrl.text.trim().isNotEmpty ? descCtrl.text.trim() : null,
@@ -438,23 +455,32 @@ class _GymActiveWorkoutScreenState extends State<GymActiveWorkoutScreen> {
             videoUrl: e.videoUrl,
           );
         }).toList(),
-        createdAt: DateTime.now(),
+        createdAt: _activeRoutine?.createdAt ?? DateTime.now(),
       );
 
       try {
-        await _gymService.saveRoutine(routine);
+        final savedId = await _gymService.saveRoutine(routine);
+        setState(() {
+          _activeRoutine = routine.copyWith(id: savedId);
+        });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Routine "$name" saved to Quick Splits & Routines!'),
+              content: Text(isExistingRoutine
+                  ? 'Routine "$name" updated successfully!'
+                  : 'Routine "$name" saved to Quick Splits & Routines!'),
               backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
             ),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to save routine: $e')),
+            SnackBar(
+              content: Text('Failed to save routine: $e'),
+              duration: const Duration(seconds: 3),
+            ),
           );
         }
       }

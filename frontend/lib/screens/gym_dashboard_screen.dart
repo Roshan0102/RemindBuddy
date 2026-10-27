@@ -563,45 +563,8 @@ class _GymDashboardScreenState extends State<GymDashboardScreen> {
                 height: 110,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
-                  itemCount: routines.length + 1,
+                  itemCount: routines.length,
                   itemBuilder: (context, idx) {
-                    if (idx == routines.length) {
-                      // "+ New Routine" card at end of scroll
-                      return Container(
-                        width: 130,
-                        margin: const EdgeInsets.only(right: 12),
-                        child: InkWell(
-                          onTap: _showCreateRoutineDialog,
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF1E222A) : Colors.grey[100],
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
-                              ),
-                            ),
-                            child: const Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.add_circle_outline, size: 26, color: Colors.blueAccent),
-                                SizedBox(height: 6),
-                                Text(
-                                  'Add Routine',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blueAccent,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-
                     final routine = routines[idx];
                     final colorPalette = [
                       Colors.orange,

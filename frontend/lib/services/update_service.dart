@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:ota_update/ota_update.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class UpdateService {
   /// Cleans up any leftover downloaded APKs and temporary install files to reclaim storage.
@@ -62,7 +63,9 @@ class UpdateService {
   }
 
   /// Checks for updates. If a new version is available, it pops up an update dialog.
-  static Future<void> checkForUpdates(BuildContext context, {bool showNoUpdateMsg = false}) async {
+  /// If the user previously tapped "Later" for this version, automatic checks will not show
+  /// the popup again until a newer version is released. Manual checks (e.g. from Settings) always prompt.
+  static Future<void> checkForUpdates(BuildContext context, {bool showNoUpdateMsg = false, bool isManualCheck = false}) async {
     if (kIsWeb) return; // Never show APK updates on the web
 
     // Clean up old update APKs in background so storage never balloons
@@ -119,6 +122,19 @@ class UpdateService {
       final bool updateAvailable = _isNewerVersion(currentVersion, targetVersion);
 
       if (updateAvailable) {
+        // If not an explicit manual check from Settings, verify if user already dismissed this target version
+        final isExplicitManual = isManualCheck || showNoUpdateMsg;
+        if (!isExplicitManual) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final dismissedVersion = prefs.getString('dismissed_update_version') ?? '';
+            if (dismissedVersion.isNotEmpty && !_isNewerVersion(dismissedVersion, targetVersion)) {
+              // User already dismissed this update version, do not prompt again automatically
+              return;
+            }
+          } catch (_) {}
+        }
+
         // 4. Fetch the specific release metadata from GitHub to get the download URL
         final String releaseUrl = 'https://api.github.com/repos/Roshan0102/RemindBuddy/releases/tags/v$targetVersion';
         final response = await http.get(Uri.parse(releaseUrl));
@@ -347,7 +363,15 @@ class _OtaUpdateDialogState extends State<OtaUpdateDialog> {
           ? []
           : [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () async {
+                  try {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString('dismissed_update_version', widget.newVersion);
+                  } catch (_) {}
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                  }
+                },
                 child: const Text('Later', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(

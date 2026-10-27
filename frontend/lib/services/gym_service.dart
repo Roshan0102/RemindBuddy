@@ -352,7 +352,10 @@ class GymService {
     });
   }
 
-  /// Save or update a custom routine
+  /// Save or update a custom routine.
+  /// If routine.id is provided, updates that routine.
+  /// If routine.id is empty, checks if a routine with the same name already exists for the user and updates it,
+  /// preventing duplicate routines with the same name.
   Future<String> saveRoutine(GymRoutine routine) async {
     final ref = _routinesRef;
     final uid = currentUserId;
@@ -360,10 +363,26 @@ class GymService {
       throw Exception('User must be logged in to save custom routines');
     }
 
-    final docRef = routine.id.isNotEmpty ? ref.doc(routine.id) : ref.doc();
+    String targetDocId = routine.id.trim();
+
+    // If ID is empty, check if a routine with matching name already exists for this user
+    if (targetDocId.isEmpty && routine.name.trim().isNotEmpty) {
+      final snap = await ref.where('userId', isEqualTo: uid).get();
+      final targetLower = routine.name.trim().toLowerCase();
+      for (final doc in snap.docs) {
+        final existingName = (doc.data()['name'] ?? '').toString().trim().toLowerCase();
+        if (existingName == targetLower) {
+          targetDocId = doc.id;
+          break;
+        }
+      }
+    }
+
+    final docRef = targetDocId.isNotEmpty ? ref.doc(targetDocId) : ref.doc();
     final data = routine.toMap();
     data['id'] = docRef.id;
     data['userId'] = uid;
+    data['updatedAt'] = FieldValue.serverTimestamp();
 
     await docRef.set(data, SetOptions(merge: true));
     return docRef.id;

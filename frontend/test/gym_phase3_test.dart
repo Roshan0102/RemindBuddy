@@ -76,10 +76,7 @@ void main() {
 
       // Verify Quick Split Presets
       expect(find.text('Quick Splits & Routines'), findsOneWidget);
-      expect(find.text('Push Day'), findsOneWidget);
-      expect(find.text('Pull Day'), findsOneWidget);
-      expect(find.text('Leg Day'), findsOneWidget);
-      expect(find.text('Upper Body'), findsOneWidget);
+      expect(find.text('Build Your Custom Routine'), findsOneWidget);
 
       // Verify PR Showcase & Body Weight Tracker
       expect(find.text('Personal Records (PRs)'), findsOneWidget);

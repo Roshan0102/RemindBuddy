@@ -400,7 +400,19 @@ async function checkUserJobReplies(uid) {
                         await matchedApp.ref.update(updateData);
                         repliesFound++;
                         // Automatically blacklist this bounced address globally only if the address truly does not exist
-                        const bouncedEmail = (matchedApp.recipientEmail || "").toLowerCase().trim();
+                        let bouncedEmail = (matchedApp.recipientEmail || "").toLowerCase().trim();
+                        if ((!bouncedEmail || !bouncedEmail.includes("@")) && cleanBodySnippet) {
+                            const matches = cleanBodySnippet.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+                            if (matches && matches.length > 0) {
+                                for (const m of matches) {
+                                    const low = m.toLowerCase().trim();
+                                    if (!low.includes("mailer-daemon") && !low.includes("postmaster") && !low.includes("google.com") && low !== userEmail.toLowerCase().trim()) {
+                                        bouncedEmail = low;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                         if (specificResponseType === "address_not_found" && bouncedEmail && bouncedEmail.includes("@")) {
                             try {
                                 await firebase_1.db.collection("system_bounced_emails").doc(encodeURIComponent(bouncedEmail)).set({

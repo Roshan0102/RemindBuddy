@@ -1334,7 +1334,31 @@ class JobAssistantService {
     };
   }
 
+  /// Checks whether an email is centrally blacklisted due to delivery bounces (Address Not Found / 550)
+  Future<bool> isEmailBouncedBlacklisted(String email) async {
+    final clean = email.toLowerCase().trim();
+    if (clean.isEmpty || !clean.contains('@')) return false;
+    try {
+      final doc = await _db.collection('system_bounced_emails').doc(Uri.encodeComponent(clean)).get();
+      return doc.exists;
+    } catch (e) {
+      debugPrint('Error checking system_bounced_emails: $e');
+      return false;
+    }
+  }
+
   Future<void> sendJobApplicationEmail(JobApplication app) async {
+    final cleanEmail = app.recipientEmail.toLowerCase().trim();
+    if (await isEmailBouncedBlacklisted(cleanEmail)) {
+      // Mark application as bounced in Firestore
+      await saveJobApplication(app.copyWith(
+        status: 'bounced',
+        isBounced: true,
+        errorMessage: 'Address not found: Recipient email is blacklisted centrally as undeliverable.',
+      ));
+      throw Exception('Cannot send application: Recipient email "${app.recipientEmail}" is an invalid address ("Address Not Found" previously). Delivery blocked centrally to protect your email deliverability.');
+    }
+
     final masterResume = await getMasterResume();
 
     final callable = _functions.httpsCallable('sendJobApplicationEmail');

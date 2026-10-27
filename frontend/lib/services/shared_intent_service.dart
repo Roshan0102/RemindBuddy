@@ -170,42 +170,11 @@ class SharedIntentService {
           }
 
           // Valid recipient email found -> auto-apply directly in background!
-          try {
-            await jobService.sendJobApplicationEmail(job);
-            await NotificationService().showNotification(
-              id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-              title: '🎯 1-Click Applied: ${job.jobTitle}',
-              body: 'Sent tailored resume & application to ${job.companyName} (${job.recipientEmail}).',
-              channelId: 'job_assistant_share_channel',
-              channelName: 'Job Assistant Auto-Apply',
-              payload: 'JOB_APPLICATION',
-            );
-          } catch (sendErr) {
-            debugPrint('[SharedIntentService] Failed to auto-send email: $sendErr');
-            // Save as draft in history with error message
-            await jobService.saveJobApplication(JobApplication(
-              id: job.id,
-              jobTitle: job.jobTitle,
-              companyName: job.companyName,
-              recipientEmail: job.recipientEmail,
-              extractedSkills: job.extractedSkills,
-              generatedSubject: job.generatedSubject,
-              generatedCoverLetter: job.generatedCoverLetter,
-              status: 'needs_review',
-              appliedAt: DateTime.now(),
-              sourcePlatform: 'Shared Screenshot',
-              source: 'shared_screenshot',
-              errorMessage: 'Email send error: $sendErr. Saved in Drafts.',
-            ));
-            await NotificationService().showNotification(
-              id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-              title: '⚠️ Could Not Send Email: ${job.jobTitle}',
-              body: 'Extracted for ${job.companyName}, but email sending failed: $sendErr. Saved in Drafts.',
-              channelId: 'job_assistant_share_channel',
-              channelName: 'Job Assistant Auto-Apply',
-              payload: 'JOB_APPLICATION',
-            );
-          }
+          await _sendOrSaveApplication(
+            jobService,
+            job,
+            contextLabel: 'from shared screenshot',
+          );
         } else {
           // No direct email found (e.g. flyer instructs to apply on company website)
           await jobService.saveJobApplication(job);
@@ -303,14 +272,10 @@ class SharedIntentService {
             return true;
           }
 
-          await jobService.sendJobApplicationEmail(job);
-          await NotificationService().showNotification(
-            id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-            title: '🎯 1-Click Applied: ${job.jobTitle}',
-            body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared post text.',
-            channelId: 'job_assistant_share_channel',
-            channelName: 'Job Assistant Auto-Apply',
-            payload: 'JOB_APPLICATION',
+          await _sendOrSaveApplication(
+            jobService,
+            job,
+            contextLabel: 'from shared post text',
           );
         } else {
           await jobService.saveJobApplication(job);
@@ -488,14 +453,10 @@ class SharedIntentService {
                     payload: 'JOB_APPLICATION',
                   );
                 } else {
-                  await jobService.sendJobApplicationEmail(job);
-                  await NotificationService().showNotification(
-                    id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-                    title: '🎯 1-Click Applied: ${job.jobTitle}',
-                    body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared post flyer.',
-                    channelId: 'job_assistant_share_channel',
-                    channelName: 'Job Assistant Auto-Apply',
-                    payload: 'JOB_APPLICATION',
+                  await _sendOrSaveApplication(
+                    jobService,
+                    job,
+                    contextLabel: 'from shared post flyer',
                   );
                 }
               } else {
@@ -557,14 +518,10 @@ class SharedIntentService {
                   payload: 'JOB_APPLICATION',
                 );
               } else {
-                await jobService.sendJobApplicationEmail(job);
-                await NotificationService().showNotification(
-                  id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-                  title: '🎯 1-Click Applied: ${job.jobTitle}',
-                  body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared post text.',
-                  channelId: 'job_assistant_share_channel',
-                  channelName: 'Job Assistant Auto-Apply',
-                  payload: 'JOB_APPLICATION',
+                await _sendOrSaveApplication(
+                  jobService,
+                  job,
+                  contextLabel: 'from shared post text',
                 );
               }
             } else {
@@ -703,14 +660,10 @@ class SharedIntentService {
               payload: 'JOB_APPLICATION',
             );
           } else {
-            await jobService.sendJobApplicationEmail(job);
-            await NotificationService().showNotification(
-              id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-              title: '🎯 1-Click Applied: ${job.jobTitle}',
-              body: 'Applied to ${job.companyName} (${job.recipientEmail}) from shared text.',
-              channelId: 'job_assistant_share_channel',
-              channelName: 'Job Assistant Auto-Apply',
-              payload: 'JOB_APPLICATION',
+            await _sendOrSaveApplication(
+              jobService,
+              job,
+              contextLabel: 'from shared text',
             );
           }
         } else {
@@ -880,14 +833,10 @@ class SharedIntentService {
                         payload: 'JOB_APPLICATION',
                       );
                     } else {
-                      await jobService.sendJobApplicationEmail(job);
-                      await NotificationService().showNotification(
-                        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-                        title: '🎯 1-Click Applied: ${job.jobTitle}',
-                        body: 'Applied to ${job.companyName} (${job.recipientEmail}) via Apify post extraction.',
-                        channelId: 'job_assistant_share_channel',
-                        channelName: 'Job Assistant Auto-Apply',
-                        payload: 'JOB_APPLICATION',
+                      await _sendOrSaveApplication(
+                        jobService,
+                        job,
+                        contextLabel: 'via Apify post extraction',
                       );
                     }
                   } else {
@@ -951,5 +900,50 @@ class SharedIntentService {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     final m = (dt.month >= 1 && dt.month <= 12) ? months[dt.month - 1] : '';
     return '${dt.day} $m ${dt.year}';
+  }
+
+  Future<void> _sendOrSaveApplication(
+    JobAssistantService jobService,
+    JobApplication job, {
+    required String contextLabel,
+  }) async {
+    try {
+      await jobService.sendJobApplicationEmail(job);
+      await NotificationService().showNotification(
+        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title: '🎯 1-Click Applied: ${job.jobTitle}',
+        body: 'Applied to ${job.companyName} (${job.recipientEmail}) $contextLabel.',
+        channelId: 'job_assistant_share_channel',
+        channelName: 'Job Assistant Auto-Apply',
+        payload: 'JOB_APPLICATION',
+      );
+    } catch (sendErr) {
+      debugPrint('[SharedIntentService] Failed to auto-send email: $sendErr');
+      final errStr = sendErr.toString();
+      final isBounce = errStr.contains('Address Not Found') ||
+          errStr.contains('Bounced') ||
+          errStr.contains('invalid');
+
+      await jobService.saveJobApplication(job.copyWith(
+        status: isBounce ? 'bounced' : 'needs_review',
+        isBounced: isBounce,
+        errorMessage: isBounce
+            ? 'Recruiter email (${job.recipientEmail}) is an invalid / non-existent address (Address Not Found).'
+            : 'Email send error: $sendErr. Saved in Drafts.',
+      ));
+
+      await NotificationService().showNotification(
+        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title: isBounce
+            ? '⚠️ Invalid Email (Address Not Found): ${job.jobTitle}'
+            : '⚠️ Could Not Send Email: ${job.jobTitle}',
+        body: isBounce
+            ? 'The email (${job.recipientEmail}) has bounced in our system (Address Not Found). Application aborted.'
+            : 'Extracted for ${job.companyName}, but email sending failed: $sendErr. Saved in Drafts.',
+        channelId: 'job_assistant_share_channel',
+        channelName: 'Job Assistant Auto-Apply',
+        payload: 'JOB_APPLICATION',
+      );
+    }
   }
 }

@@ -889,6 +889,27 @@ class MainActivity: FlutterActivity() {
             contentValues.clear()
             contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
             resolver.update(uri, contentValues, null, null)
+
+            // Trigger media scanner so file managers (Samsung, Google Files, etc.) immediately display it in Downloads
+            try {
+                resolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val dataIdx = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                        if (dataIdx != -1) {
+                            val realPath = cursor.getString(dataIdx)
+                            if (!realPath.isNullOrEmpty()) {
+                                MediaScannerConnection.scanFile(
+                                    applicationContext,
+                                    arrayOf(realPath),
+                                    arrayOf(mimeType),
+                                    null
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
             uri.toString()
         } else {
             val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)

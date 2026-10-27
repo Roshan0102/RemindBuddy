@@ -1284,6 +1284,35 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                   ),
                                 const SizedBox(width: 4),
                                 IconButton(
+                                  icon: const Icon(Icons.visibility_outlined, size: 16),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  tooltip: 'View Resume',
+                                  onPressed: () {
+                                    if (p.base64.isNotEmpty) {
+                                      final cleanB64 = p.base64.replaceFirst(RegExp(r'^data:application\/pdf;base64,'), '');
+                                      final bytes = base64Decode(cleanB64);
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => FullscreenFileViewer(
+                                            fileBytes: bytes,
+                                            title: p.fileName.isNotEmpty ? p.fileName : '${p.title}_Resume.pdf',
+                                            isPdf: true,
+                                          ),
+                                        ),
+                                      );
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('No PDF content saved for this profile.'),
+                                          duration: Duration(seconds: 3),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                ),
+                                const SizedBox(width: 6),
+                                IconButton(
                                   icon: const Icon(Icons.edit_outlined, size: 16),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
@@ -1398,6 +1427,21 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                                 ],
                               ),
                             ),
+                            if (_hasResume) ...[
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.blueAccent,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  side: const BorderSide(color: Colors.blueAccent),
+                                ),
+                                onPressed: () async {
+                                  await _viewMasterResume();
+                                },
+                                icon: const Icon(Icons.visibility_outlined, size: 16),
+                                label: const Text('View', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.blueAccent,
@@ -1652,6 +1696,47 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error picking resume: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _viewMasterResume() async {
+    try {
+      final masterResume = await _service.getMasterResume();
+      final b64 = masterResume['base64'] ?? '';
+      final fileName = masterResume['fileName'] ?? (_resumeFileName.isNotEmpty ? _resumeFileName : 'Resume.pdf');
+      if (b64.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No resume file found to preview. Please upload your resume PDF.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      final cleanB64 = b64.replaceFirst(RegExp(r'^data:application\/pdf;base64,'), '');
+      final bytes = base64Decode(cleanB64);
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => FullscreenFileViewer(
+              fileBytes: bytes,
+              title: fileName,
+              isPdf: true,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error viewing resume: $e'),
+            duration: const Duration(seconds: 3),
+          ),
         );
       }
     }
@@ -3931,20 +4016,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         if (kIsWeb) {
           UrlLauncherHelper.downloadBase64(cleanB64, fileName);
           if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Downloading $fileName for ${job.companyName}...'),
                 backgroundColor: const Color(0xFF10B981),
-              ),
-            );
-            // Open the resume preview in web app without page reload/navigation
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => FullscreenFileViewer(
-                  fileBytes: bytes,
-                  title: fileName,
-                  isPdf: true,
-                ),
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
               ),
             );
           }
@@ -3959,11 +4037,14 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         );
 
         if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
           if (result.isSuccess) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('✓ Saved $fileName to Downloads!'),
                 backgroundColor: const Color(0xFF10B981),
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
                 action: SnackBarAction(
                   label: 'OPEN',
                   textColor: Colors.white,
@@ -3983,20 +4064,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to save to Downloads: ${result.errorMessage}')),
+              SnackBar(
+                content: Text('Failed to save to Downloads: ${result.errorMessage}'),
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
+              ),
             );
           }
-
-          // Open the resume preview immediately so the user can review and share it directly
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => FullscreenFileViewer(
-                fileBytes: bytes,
-                title: fileName,
-                isPdf: true,
-              ),
-            ),
-          );
         }
       } else if (job.tailoredResumePdfUrl != null && job.tailoredResumePdfUrl!.isNotEmpty) {
         await UrlLauncherHelper.openInNewTabOrExternal(job.tailoredResumePdfUrl!);
@@ -4044,9 +4118,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     try {
       await _service.updateCareerPortalJobStatus(job.id, 'dismissed', job: job);
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Ignored "${job.jobTitle}" at ${job.companyName}'),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
             action: SnackBarAction(
               label: 'Undo',
               textColor: const Color(0xFF10B981),
@@ -4058,7 +4135,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error ignoring opening: $e')),
+          SnackBar(
+            content: Text('Error ignoring opening: $e'),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -4068,10 +4149,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     try {
       await _service.updateCareerPortalJobStatus(job.id, 'discovered', job: job);
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Moved "${job.jobTitle}" at ${job.companyName} back to Unapplied'),
             backgroundColor: const Color(0xFF10B981),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
             action: SnackBarAction(
               label: 'Undo',
               textColor: Colors.white,

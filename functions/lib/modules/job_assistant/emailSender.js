@@ -15,6 +15,15 @@ exports.sendJobApplicationEmail = functions.runWith({ timeoutSeconds: 60, memory
         throw new functions.https.HttpsError('invalid-argument', 'Missing recipientEmail, subject, or body.');
     }
     try {
+        const cleanRecipient = recipientEmail.toLowerCase().trim();
+        // Check central bounced / undeliverable blacklist to protect user reputation
+        const bouncedDoc = await firebase_1.db.collection("system_bounced_emails").doc(encodeURIComponent(cleanRecipient)).get();
+        if (bouncedDoc.exists) {
+            const bounceInfo = bouncedDoc.data() || {};
+            const reason = bounceInfo.reason || 'Address Not Found (550 / mailbox unavailable)';
+            console.warn(`[EmailSender] Blocked email to ${cleanRecipient} - centrally blacklisted (${reason})`);
+            throw new functions.https.HttpsError('failed-precondition', `Recipient email "${recipientEmail}" is an invalid address ("Address Not Found" previously). Delivery blocked to protect your email deliverability.`);
+        }
         const userDoc = await firebase_1.db.collection("users").doc(uid).get();
         if (!userDoc.exists) {
             throw new functions.https.HttpsError('not-found', 'User profile not found.');
