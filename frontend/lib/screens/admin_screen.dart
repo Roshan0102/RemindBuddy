@@ -463,6 +463,7 @@ class _AdminScreenState extends State<AdminScreen> {
             'cold_outreach': true,
             'manual_apply': true,
             'ai_recruiter_call': false,
+            'remote_tech_directory': true,
           };
         } else {
           updatePayload['enabledModules'] = FieldValue.arrayRemove([
@@ -2889,6 +2890,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                             'cold_outreach': true,
                                             'manual_apply': true,
                                             'ai_recruiter_call': false,
+                                            'remote_tech_directory': true,
                                           };
                                 final int activeSubCount = [
                                   'auto_apply',
@@ -2897,6 +2899,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                   'cold_outreach',
                                   'manual_apply',
                                   'ai_recruiter_call',
+                                  'remote_tech_directory',
                                 ].where((k) =>
                                     jobSubPerms[k] == true ||
                                     (k != 'ai_recruiter_call' &&
@@ -3365,6 +3368,8 @@ class _AdminScreenState extends State<AdminScreen> {
                                                                     false,
                                                                 'ai_recruiter_call':
                                                                     false,
+                                                                'remote_tech_directory':
+                                                                    false,
                                                               },
                                                               enabledModules,
                                                             ),
@@ -3413,6 +3418,8 @@ class _AdminScreenState extends State<AdminScreen> {
                                                                     true,
                                                                 'ai_recruiter_call':
                                                                     true,
+                                                                'remote_tech_directory':
+                                                                    true,
                                                               },
                                                               enabledModules,
                                                             ),
@@ -3459,6 +3466,8 @@ class _AdminScreenState extends State<AdminScreen> {
                                                                 'manual_apply':
                                                                     false,
                                                                 'ai_recruiter_call':
+                                                                    false,
+                                                                'remote_tech_directory':
                                                                     false,
                                                               },
                                                               enabledModules,
@@ -3531,6 +3540,17 @@ class _AdminScreenState extends State<AdminScreen> {
                                                           .phone_in_talk_rounded,
                                                       'color':
                                                           const Color(0xFF10B981),
+                                                    },
+                                                    {
+                                                      'key': 'remote_tech_directory',
+                                                      'title':
+                                                          'Remote Tech Directory 🌐',
+                                                      'subtitle':
+                                                          '886+ verified remote companies, direct career links & AI cold pitch generator',
+                                                      'icon': Icons
+                                                          .travel_explore_rounded,
+                                                      'color':
+                                                          const Color(0xFF06B6D4),
                                                     },
                                                   ].map((sub) {
                                                     final subKey =

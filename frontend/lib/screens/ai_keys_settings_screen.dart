@@ -17,11 +17,15 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
   final _groqController = TextEditingController();
   final _tavilyController = TextEditingController();
   final _tavilySecondaryController = TextEditingController();
+  final _qevController = TextEditingController();
+  final _reoonController = TextEditingController();
 
   bool _obscureGemini = true;
   bool _obscureGroq = true;
   bool _obscureTavily = true;
   bool _obscureTavilySecondary = true;
+  bool _obscureQev = true;
+  bool _obscureReoon = true;
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -37,6 +41,8 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
     _groqController.dispose();
     _tavilyController.dispose();
     _tavilySecondaryController.dispose();
+    _qevController.dispose();
+    _reoonController.dispose();
     super.dispose();
   }
 
@@ -56,6 +62,8 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
         _groqController.text = (userKeys['groqApiKey'] ?? data['groqApiKey'] ?? '').toString();
         _tavilyController.text = (userKeys['tavilyApiKey'] ?? data['tavilyApiKey'] ?? '').toString();
         _tavilySecondaryController.text = (userKeys['tavilyApiKey2'] ?? userKeys['secondaryTavilyApiKey'] ?? data['tavilyApiKey2'] ?? data['secondaryTavilyApiKey'] ?? '').toString();
+        _qevController.text = (userKeys['quickEmailVerificationApiKey'] ?? data['quickEmailVerificationApiKey'] ?? '').toString();
+        _reoonController.text = (userKeys['reoonApiKey'] ?? userKeys['reoonEmailVerifierApiKey'] ?? data['reoonApiKey'] ?? data['reoonEmailVerifierApiKey'] ?? '').toString();
       }
     } catch (e) {
       debugPrint('Error loading user API keys: $e');
@@ -79,6 +87,8 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
     final groqKey = _groqController.text.trim();
     final tavilyKey = _tavilyController.text.trim();
     final tavilyKey2 = _tavilySecondaryController.text.trim();
+    final qevKey = _qevController.text.trim();
+    final reoonKey = _reoonController.text.trim();
 
     setState(() => _isSaving = true);
 
@@ -90,6 +100,9 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
           'tavilyApiKey': tavilyKey,
           'tavilyApiKey2': tavilyKey2,
           'secondaryTavilyApiKey': tavilyKey2,
+          'quickEmailVerificationApiKey': qevKey,
+          'reoonApiKey': reoonKey,
+          'reoonEmailVerifierApiKey': reoonKey,
           'updatedAt': FieldValue.serverTimestamp(),
         },
         'geminiApiKey': geminiKey,
@@ -97,6 +110,9 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
         'tavilyApiKey': tavilyKey,
         'tavilyApiKey2': tavilyKey2,
         'secondaryTavilyApiKey': tavilyKey2,
+        'quickEmailVerificationApiKey': qevKey,
+        'reoonApiKey': reoonKey,
+        'reoonEmailVerifierApiKey': reoonKey,
       }, SetOptions(merge: true));
 
       if (mounted) {
@@ -459,6 +475,132 @@ class _AIKeysSettingsScreenState extends State<AIKeysSettingsScreen> {
                             onPressed: () => _openUrl('https://app.tavily.com/home'),
                             icon: const Icon(Icons.open_in_new, size: 14),
                             label: const Text('Get Free Key (1,000 Searches/Month)', style: TextStyle(fontSize: 12)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 4. Email Verifier API Keys Section (Deliverability & Anti-Bounce)
+                Card(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.mark_email_read_rounded, color: Colors.blueAccent, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'Email Verifier API Keys',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Pre-validates recruiter mailboxes before sending to eliminate bounce rates, protect your Gmail reputation, and detect fake job listings.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // QuickEmailVerification Field
+                        TextField(
+                          controller: _qevController,
+                          obscureText: _obscureQev,
+                          scrollPadding: const EdgeInsets.only(bottom: 120),
+                          decoration: InputDecoration(
+                            labelText: 'QuickEmailVerification API Key (Tier 1)',
+                            hintText: '2529d... (Default key active if left blank)',
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.verified_user_rounded, color: Colors.blueAccent),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(_obscureQev ? Icons.visibility_off : Icons.visibility),
+                                  onPressed: () => setState(() => _obscureQev = !_obscureQev),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.paste_rounded),
+                                  tooltip: 'Paste',
+                                  onPressed: () => _pasteTo(_qevController),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () => _openUrl('https://quickemailverification.com'),
+                            icon: const Icon(Icons.open_in_new, size: 14),
+                            label: const Text('Get Free Key (100 Checks/Day)', style: TextStyle(fontSize: 12)),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Reoon Field
+                        TextField(
+                          controller: _reoonController,
+                          obscureText: _obscureReoon,
+                          scrollPadding: const EdgeInsets.only(bottom: 120),
+                          decoration: InputDecoration(
+                            labelText: 'Reoon Email Verifier API Key (Tier 2 Fallback)',
+                            hintText: 'Enter your Reoon key...',
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.shield_outlined, color: Colors.indigoAccent),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(_obscureReoon ? Icons.visibility_off : Icons.visibility),
+                                  onPressed: () => setState(() => _obscureReoon = !_obscureReoon),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.paste_rounded),
+                                  tooltip: 'Paste',
+                                  onPressed: () => _pasteTo(_reoonController),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () => _openUrl('https://emailverifier.reoon.com'),
+                            icon: const Icon(Icons.open_in_new, size: 14),
+                            label: const Text('Get Free Key (600 Checks/Month)', style: TextStyle(fontSize: 12)),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.blueAccent.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.info_outline_rounded, size: 16, color: Colors.blueAccent),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '4-Tier Cascading Protection: Tier 0 (Central Blacklist & User Blocks) -> Tier 1 (QuickEmailVerification) -> Tier 2 (Reoon) -> Tier 3 (In-House Google DNS MX + RFC Syntax). Undeliverable emails are automatically blocked to keep your account safe.',
+                                  style: TextStyle(fontSize: 11.5, color: Colors.blueAccent),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],

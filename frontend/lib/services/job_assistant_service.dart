@@ -9,6 +9,7 @@ import '../models/job_application.dart';
 import '../models/networking_lead.dart';
 import '../models/resume_profile.dart';
 import '../models/career_portal_job.dart';
+import 'email_verification_service.dart';
 
 class JobAssistantService {
   static final JobAssistantService _instance = JobAssistantService._internal();
@@ -1349,14 +1350,21 @@ class JobAssistantService {
 
   Future<void> sendJobApplicationEmail(JobApplication app) async {
     final cleanEmail = app.recipientEmail.toLowerCase().trim();
-    if (await isEmailBouncedBlacklisted(cleanEmail)) {
-      // Mark application as bounced in Firestore
+
+    // Cascading 4-Tier Email Verification Check (Blacklist -> QuickEmailVerification -> Reoon -> In-House MX)
+    final verification = await EmailVerificationService().verifyEmail(cleanEmail);
+    if (!verification.isDeliverable) {
+      final reasonMsg = verification.suggestedEmail != null
+          ? '${verification.reason} (Did you mean: ${verification.suggestedEmail}?)'
+          : verification.reason;
+
+      // Mark application as bounced / undeliverable in Firestore
       await saveJobApplication(app.copyWith(
         status: 'bounced',
         isBounced: true,
-        errorMessage: 'Address not found: Recipient email is blacklisted centrally as undeliverable.',
+        errorMessage: 'Email Verification Failed (${verification.tierUsed}): $reasonMsg. Delivery blocked to protect sender reputation.',
       ));
-      throw Exception('Cannot send application: Recipient email "${app.recipientEmail}" is an invalid address ("Address Not Found" previously). Delivery blocked centrally to protect your email deliverability.');
+      throw Exception('Cannot send application: Recipient email "${app.recipientEmail}" is undeliverable ($reasonMsg). Delivery blocked centrally to protect your email deliverability.');
     }
 
     final masterResume = await getMasterResume();

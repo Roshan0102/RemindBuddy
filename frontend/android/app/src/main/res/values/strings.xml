@@ -6,4 +6,14 @@
     <string name="widget_shift_description">Displays today\'s active work shift duty and tomorrow\'s schedule.</string>
     <string name="widget_shift_calendar_description">Displays the full monthly shift roster calendar heatmap on your home screen.</string>
     <string name="widget_note_checklist_description">Displays your pinned checklist on your home screen with interactive item checking and 1-tap reset.</string>
+
+    <!-- Google Assistant App Actions & Launcher Shortcuts -->
+    <string name="shortcut_gold_short">Gold Rates</string>
+    <string name="shortcut_gold_long">Check today\'s gold and silver rates</string>
+    <string name="shortcut_gym_short">Start Workout</string>
+    <string name="shortcut_gym_long">Start an empty gym workout session</string>
+    <string name="shortcut_reminder_short">Add Reminder</string>
+    <string name="shortcut_reminder_long">Create a new task or calendar reminder</string>
+    <string name="shortcut_voice_short">Voice Assistant</string>
+    <string name="shortcut_voice_long">Ask SmartBuddy AI Voice Assistant</string>
 </resources>

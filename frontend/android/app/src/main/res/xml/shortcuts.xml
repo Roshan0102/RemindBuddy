@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 1. Built-in Intent: Open App Feature (Gold, Gym, Reminders, Jobs, Notes, Shifts, Voice Assistant) -->
+    <capability android:name="actions.intent.OPEN_APP_FEATURE">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity">
+            <url-template android:value="smartbuddy://assistant?feature={feature}" />
+            <parameter
+                android:name="feature"
+                android:key="feature" />
+        </intent>
+    </capability>
+
+    <!-- 2. Built-in Intent: Create Reminder -->
+    <capability android:name="actions.intent.CREATE_REMINDER">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity">
+            <url-template android:value="smartbuddy://assistant?feature=reminders&amp;action=create" />
+        </intent>
+    </capability>
+
+    <!-- 3. Custom Intent: Check Gold Price ("Hey Google, check gold price on SmartBuddy") -->
+    <capability android:name="custom.actions.intent.CHECK_GOLD_PRICE">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity">
+            <url-template android:value="smartbuddy://assistant?feature=gold&amp;query=today+gold+rate" />
+        </intent>
+    </capability>
+
+    <!-- 4. Custom Intent: Start Gym Workout ("Hey Google, start workout on SmartBuddy") -->
+    <capability android:name="custom.actions.intent.START_WORKOUT">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity">
+            <url-template android:value="smartbuddy://assistant?feature=gym&amp;action=start_workout" />
+        </intent>
+    </capability>
+
+    <!-- 5. Custom Intent: Ask SmartBuddy Voice AI ("Hey Google, ask SmartBuddy...") -->
+    <capability android:name="custom.actions.intent.ASK_SMARTBUDDY">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity">
+            <url-template android:value="smartbuddy://assistant?query={query}" />
+            <parameter
+                android:name="query"
+                android:key="query" />
+        </intent>
+    </capability>
+
+    <!-- Static Shortcuts for Assistant & Launcher Menu -->
+    <shortcut
+        android:shortcutId="shortcut_gold_rates"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_gold_short"
+        android:shortcutLongLabel="@string/shortcut_gold_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity"
+            android:data="smartbuddy://assistant?feature=gold" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="gold" />
+        </capability-binding>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_gym_workout"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_gym_short"
+        android:shortcutLongLabel="@string/shortcut_gym_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity"
+            android:data="smartbuddy://assistant?feature=gym&amp;action=start_workout" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="gym" />
+        </capability-binding>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_create_reminder"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_reminder_short"
+        android:shortcutLongLabel="@string/shortcut_reminder_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity"
+            android:data="smartbuddy://assistant?feature=reminders&amp;action=create" />
+        <capability-binding android:key="actions.intent.CREATE_REMINDER" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_voice_assistant"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_voice_short"
+        android:shortcutLongLabel="@string/shortcut_voice_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity"
+            android:data="smartbuddy://assistant?feature=voice_assistant" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="voice_assistant" />
+        </capability-binding>
+    </shortcut>
+
+</shortcuts>

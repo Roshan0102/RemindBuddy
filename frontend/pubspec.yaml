@@ -2,7 +2,7 @@ name: remindbuddy
 description: "SmartBuddy - A comprehensive daily life management, reminders, finance tracking, and career assistant app."
 publish_to: 'none'
 
-version: 1.10.64+443
+version: 1.10.65+444
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -23,6 +23,7 @@ dependencies:
   html: ^0.15.4
   flutter_inappwebview: ^6.1.5
   syncfusion_flutter_charts: ^28.1.33
+  syncfusion_flutter_pdfviewer: ^28.1.33
   firebase_core: ^4.4.0
   firebase_auth: ^6.1.4
   cloud_firestore: ^6.1.2
@@ -74,3 +75,4 @@ flutter:
   assets:
     - assets/sounds/
     - assets/icon/
+    - assets/data/

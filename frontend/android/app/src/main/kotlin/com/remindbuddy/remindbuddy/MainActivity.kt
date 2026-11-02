@@ -40,6 +40,8 @@ class MainActivity: FlutterActivity() {
     companion object {
         var initialSharedData: Map<String, Any>? = null
         var shareEventSink: EventChannel.EventSink? = null
+        var initialAssistantData: Map<String, Any>? = null
+        var assistantEventSink: EventChannel.EventSink? = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +58,7 @@ class MainActivity: FlutterActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         if (!isFromHistory) {
             handleSendIntent(intent, isInitial = true)
+            handleAssistantIntent(intent, isInitial = true)
         }
     }
 
@@ -73,6 +76,7 @@ class MainActivity: FlutterActivity() {
         }
         if (!isFromHistory) {
             handleSendIntent(intent, isInitial = false)
+            handleAssistantIntent(intent, isInitial = false)
         }
     }
 
@@ -127,6 +131,7 @@ class MainActivity: FlutterActivity() {
                             "imagePaths" to listOf(filePath)
                         )
                         dispatchSharedData(data, isInitial)
+                        consumeAndClearSendIntent(intent)
                         return
                     }
                 }
@@ -169,8 +174,21 @@ class MainActivity: FlutterActivity() {
                 dispatchSharedData(data, isInitial)
             }
         }
+        consumeAndClearSendIntent(intent)
+    }
+
+    private fun consumeAndClearSendIntent(intent: Intent?) {
         try {
-            intent.action = null
+            intent?.action = null
+            intent?.removeExtra(Intent.EXTRA_TEXT)
+            intent?.removeExtra(Intent.EXTRA_STREAM)
+            intent?.removeExtra(Intent.EXTRA_PROCESS_TEXT)
+            intent?.clipData = null
+            intent?.data = null
+            setIntent(Intent(this, MainActivity::class.java).apply {
+                action = Intent.ACTION_MAIN
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            })
         } catch (_: Exception) {}
     }
 
@@ -200,8 +218,78 @@ class MainActivity: FlutterActivity() {
         }
     }
 
+    private fun handleAssistantIntent(intent: Intent?, isInitial: Boolean) {
+        if (intent == null) return
+        val isFromHistory = (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        if (isFromHistory) return
+
+        val data: Uri? = intent.data
+        if (data != null) {
+            val scheme = data.scheme?.lowercase() ?: ""
+            val host = data.host?.lowercase() ?: ""
+
+            if ((scheme == "smartbuddy" || scheme == "remindbuddy") && (host == "assistant" || host == "voice_query" || host == "feature")) {
+                val path = data.path ?: ""
+                val feature = data.getQueryParameter("feature")
+                    ?: (if (host == "feature" && path.isNotEmpty()) path.trim('/') else "")
+                val action = data.getQueryParameter("action") ?: ""
+                val query = data.getQueryParameter("query") ?: data.getQueryParameter("q") ?: ""
+
+                // Security guardrail: strictly reject voice assistant access to secure vault or finance
+                val featureLower = feature.lowercase()
+                if (featureLower == "vault" || featureLower == "secure_vault" || featureLower == "finance" || featureLower == "bank_accounts" || featureLower == "expenses") {
+                    android.util.Log.w("MainActivity", "Blocked voice assistant attempt to access restricted module: $featureLower")
+                    return
+                }
+
+                val payload = mapOf(
+                    "feature" to feature,
+                    "action" to action,
+                    "query" to query,
+                    "uri" to data.toString()
+                )
+
+                if (assistantEventSink != null) {
+                    runOnUiThread {
+                        assistantEventSink?.success(payload)
+                    }
+                } else {
+                    initialAssistantData = payload
+                }
+            }
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Google Assistant App Actions Channels
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/assistant_channel").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getInitialAssistantIntent" -> {
+                    val data = initialAssistantData
+                    initialAssistantData = null
+                    result.success(data)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/assistant_stream").setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    assistantEventSink = events
+                    if (initialAssistantData != null) {
+                        events?.success(initialAssistantData)
+                        initialAssistantData = null
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    assistantEventSink = null
+                }
+            }
+        )
 
         // Share Target Channels
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.remindbuddy/share_receiver").setMethodCallHandler { call, result ->

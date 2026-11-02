@@ -41,6 +41,7 @@ import '../models/calendar_reminder.dart';
 import 'in_app_call_screen.dart';
 import '../services/url_launcher_helper/url_launcher_helper.dart';
 import 'gym_dashboard_screen.dart';
+import '../services/assistant_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -99,6 +100,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkPendingNotification();
       _checkWebNotificationLaunch();
+      if (!kIsWeb && mounted) {
+        AssistantService().initialize(
+          context,
+          onNavigateToFeature: _selectTabOrPush,
+        );
+      }
     });
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
       _loadPreferences();
@@ -621,6 +628,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     HomeWidgetService().stopFinanceWidgetLiveSync();
     HomeWidgetService().stopShiftWidgetLiveSync();
+    AssistantService().dispose();
     _widgetLaunchSub?.cancel();
     _notificationSubscription?.cancel();
     _authSubscription?.cancel();
@@ -698,6 +706,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   void _handleHomeWidgetUri(Uri uri) {
     final uriStr = uri.toString().toLowerCase();
+    if (uri.host == 'assistant' || uriStr.contains('assistant')) {
+      AssistantService().handleUri(
+        context,
+        uri,
+        onNavigateToFeature: _selectTabOrPush,
+      );
+      return;
+    }
     if (uriStr.contains('shifts') || uri.path.contains('shifts')) {
       _selectTabOrPush('shifts');
       HomeWidgetService().syncShiftWidgets();
@@ -1848,7 +1864,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'SmartBuddy v1.10.64',
+                  'SmartBuddy v1.10.65',
                   style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
                 ),
               ],

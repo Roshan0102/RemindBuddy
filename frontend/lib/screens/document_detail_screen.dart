@@ -11,6 +11,7 @@ import '../models/vault_member_profile.dart';
 import '../services/vault_service.dart';
 import '../services/file_download_service.dart';
 import '../services/url_launcher_helper/url_launcher_helper.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'add_document_screen.dart';
 
 class DocumentDetailScreen extends StatefulWidget {
@@ -511,7 +512,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   }
 }
 
-class FullscreenFileViewer extends StatelessWidget {
+class FullscreenFileViewer extends StatefulWidget {
   final Uint8List fileBytes;
   final String title;
   final bool isPdf;
@@ -523,27 +524,50 @@ class FullscreenFileViewer extends StatelessWidget {
     required this.isPdf,
   });
 
+  @override
+  State<FullscreenFileViewer> createState() => _FullscreenFileViewerState();
+}
+
+class _FullscreenFileViewerState extends State<FullscreenFileViewer> {
+  late final PdfViewerController _pdfViewerController;
+  int _pageCount = 0;
+  int _currentPage = 1;
+  bool _isPdfLoaded = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _pdfViewerController = PdfViewerController();
+  }
+
+  @override
+  void dispose() {
+    _pdfViewerController.dispose();
+    super.dispose();
+  }
+
   Future<void> _shareFile() async {
-    final mime = isPdf ? 'application/pdf' : 'image/jpeg';
+    final mime = widget.isPdf ? 'application/pdf' : 'image/jpeg';
     if (kIsWeb) {
-      final base64Data = base64Encode(fileBytes);
-      UrlLauncherHelper.downloadBase64(base64Data, title, mimeType: mime);
+      final base64Data = base64Encode(widget.fileBytes);
+      UrlLauncherHelper.downloadBase64(base64Data, widget.title, mimeType: mime);
       return;
     }
     try {
       final tempDir = await getTemporaryDirectory();
-      final tempPath = '${tempDir.path}/$title';
+      final tempPath = '${tempDir.path}/${widget.title}';
       final file = File(tempPath);
-      await file.writeAsBytes(fileBytes);
-      await Share.shareXFiles([XFile(tempPath)], text: title);
+      await file.writeAsBytes(widget.fileBytes);
+      await Share.shareXFiles([XFile(tempPath)], text: widget.title);
     } catch (_) {}
   }
 
   Future<void> _downloadFile(BuildContext context) async {
-    final mime = isPdf ? 'application/pdf' : 'image/jpeg';
+    final mime = widget.isPdf ? 'application/pdf' : 'image/jpeg';
     final result = await FileDownloadService.saveFile(
-      bytes: fileBytes,
-      fileName: title,
+      bytes: widget.fileBytes,
+      fileName: widget.title,
       mimeType: mime,
     );
 
@@ -564,75 +588,181 @@ class FullscreenFileViewer extends StatelessWidget {
     }
   }
 
+  void _zoomIn() {
+    _pdfViewerController.zoomLevel = (_pdfViewerController.zoomLevel + 0.25).clamp(1.0, 3.5);
+  }
+
+  void _zoomOut() {
+    _pdfViewerController.zoomLevel = (_pdfViewerController.zoomLevel - 0.25).clamp(1.0, 3.5);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: isPdf ? Colors.white : Colors.black,
+      backgroundColor: widget.isPdf ? (isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9)) : Colors.black,
       appBar: AppBar(
-        backgroundColor: isPdf ? Colors.blueAccent : Colors.black,
+        backgroundColor: widget.isPdf ? const Color(0xFF0284C7) : Colors.black,
         foregroundColor: Colors.white,
-        title: Text(title, style: const TextStyle(color: Colors.white)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              widget.title,
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (widget.isPdf && _isPdfLoaded && _pageCount > 0)
+              Text(
+                'Page $_currentPage of $_pageCount',
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+          ],
+        ),
         actions: [
+          if (widget.isPdf) ...[
+            IconButton(
+              icon: const Icon(Icons.zoom_out, color: Colors.white),
+              onPressed: _zoomOut,
+              tooltip: 'Zoom Out',
+            ),
+            IconButton(
+              icon: const Icon(Icons.zoom_in, color: Colors.white),
+              onPressed: _zoomIn,
+              tooltip: 'Zoom In',
+            ),
+          ],
           if (kIsWeb)
             IconButton(
               icon: const Icon(Icons.open_in_new, color: Colors.white),
               onPressed: () {
-                final mime = isPdf ? 'application/pdf' : 'image/jpeg';
-                final base64Data = base64Encode(fileBytes);
-                UrlLauncherHelper.downloadBase64(base64Data, title, mimeType: mime);
+                final mime = widget.isPdf ? 'application/pdf' : 'image/jpeg';
+                final base64Data = base64Encode(widget.fileBytes);
+                UrlLauncherHelper.downloadBase64(base64Data, widget.title, mimeType: mime);
               },
               tooltip: 'Open in New Tab',
             ),
           IconButton(
             icon: const Icon(Icons.share, color: Colors.white),
             onPressed: _shareFile,
-            tooltip: 'Share File',
+            tooltip: 'Share Document',
           ),
           IconButton(
             icon: const Icon(Icons.download, color: Colors.white),
             onPressed: () => _downloadFile(context),
-            tooltip: 'Save to Gallery/Downloads',
+            tooltip: 'Download to Storage',
           ),
         ],
       ),
-      body: Center(
-        child: isPdf
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.picture_as_pdf, color: Colors.red, size: 100),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Text(
-                      title,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
-                      textAlign: TextAlign.center,
-                    ),
+      body: widget.isPdf
+          ? (widget.fileBytes.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.red, size: 64),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Empty or invalid PDF file',
+                        style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: _shareFile,
-                    icon: const Icon(Icons.share),
-                    label: const Text('Share PDF Document'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                )
+              : Stack(
+                  children: [
+                    SfPdfViewer.memory(
+                      widget.fileBytes,
+                      controller: _pdfViewerController,
+                      canShowScrollHead: true,
+                      canShowScrollStatus: true,
+                      canShowPaginationDialog: true,
+                      enableDoubleTapZooming: true,
+                      pageSpacing: 6.0,
+                      onDocumentLoaded: (PdfDocumentLoadedDetails details) {
+                        setState(() {
+                          _isPdfLoaded = true;
+                          _pageCount = details.document.pages.count;
+                        });
+                      },
+                      onPageChanged: (PdfPageChangedDetails details) {
+                        setState(() {
+                          _currentPage = details.newPageNumber;
+                        });
+                      },
+                      onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
+                        setState(() {
+                          _errorMessage = details.description;
+                        });
+                      },
                     ),
-                  ),
-                ],
-              )
-            : Center(
-                child: InteractiveViewer(
-                  panEnabled: true,
-                  boundaryMargin: const EdgeInsets.all(20),
-                  minScale: 0.5,
-                  maxScale: 4,
-                  child: Image.memory(fileBytes),
-                ),
+                    if (_errorMessage != null)
+                      Center(
+                        child: Container(
+                          margin: const EdgeInsets.all(24),
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.1),
+                                blurRadius: 10,
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.picture_as_pdf, color: Colors.red, size: 64),
+                              const SizedBox(height: 12),
+                              Text(
+                                widget.title,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Preview notice: $_errorMessage',
+                                style: const TextStyle(color: Colors.grey, fontSize: 13),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: () => _downloadFile(context),
+                                icon: const Icon(Icons.download),
+                                label: const Text('Download PDF Directly'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0284C7),
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ))
+          : Center(
+              child: InteractiveViewer(
+                panEnabled: true,
+                boundaryMargin: const EdgeInsets.all(20),
+                minScale: 0.5,
+                maxScale: 4,
+                child: Image.memory(widget.fileBytes),
               ),
-      ),
+            ),
+      floatingActionButton: widget.isPdf
+          ? FloatingActionButton.extended(
+              onPressed: () => _downloadFile(context),
+              icon: const Icon(Icons.download_rounded),
+              label: const Text('Download PDF'),
+              backgroundColor: const Color(0xFF0284C7),
+              foregroundColor: Colors.white,
+            )
+          : null,
     );
   }
 }

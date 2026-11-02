@@ -8,7 +8,8 @@ import 'dart:async';
 import '../services/app_permission_service.dart';
 
 class VoiceAssistantScreen extends StatefulWidget {
-  const VoiceAssistantScreen({super.key});
+  final String? initialQuery;
+  const VoiceAssistantScreen({super.key, this.initialQuery});
 
   @override
   State<VoiceAssistantScreen> createState() => _VoiceAssistantScreenState();
@@ -56,6 +57,12 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
+
+    if (widget.initialQuery != null && widget.initialQuery!.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _sendMessage(widget.initialQuery!.trim());
+      });
+    }
   }
 
   @override
@@ -230,6 +237,31 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> with Ticker
       _currentTranscribedText = "";
     });
     _scrollToBottom();
+
+    // Strict Security Guardrail: Reject voice queries attempting to query Vault or Finances
+    final lower = text.toLowerCase();
+    if (lower.contains('vault') ||
+        lower.contains('password') ||
+        lower.contains('secret') ||
+        lower.contains('credential') ||
+        lower.contains('bank account') ||
+        lower.contains('bank balance') ||
+        lower.contains('account balance') ||
+        lower.contains('my expense') ||
+        lower.contains('my transaction') ||
+        lower.contains('upi transaction')) {
+      const securityMsg =
+          "For your privacy and security, Secure Vault and financial records cannot be accessed via voice commands. Please open the app and authenticate with your biometric fingerprint or PIN.";
+      setState(() {
+        _messages.add({"sender": "assistant", "text": securityMsg});
+        _isThinking = false;
+      });
+      _scrollToBottom();
+      if (!_isMuted) {
+        await _flutterTts.speak(securityMsg);
+      }
+      return;
+    }
 
     try {
       final callable = FirebaseFunctions.instance.httpsCallable('voiceAssistantQuery');

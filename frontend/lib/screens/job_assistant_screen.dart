@@ -15,6 +15,8 @@ import '../models/job_application.dart';
 import '../models/networking_lead.dart';
 import '../models/resume_profile.dart';
 import '../models/career_portal_job.dart';
+import '../models/remote_company.dart';
+import '../services/remote_tech_directory_service.dart';
 import '../services/job_assistant_service.dart';
 import '../services/app_file_picker/app_file_picker.dart';
 import '../services/url_launcher_helper/url_launcher_helper.dart';
@@ -151,6 +153,20 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   final TextEditingController _newRadarDomainController = TextEditingController();
   bool _isSavingRadarSettings = false;
 
+  // Remote Tech Directory State
+  final RemoteTechDirectoryService _remoteDirectoryService = RemoteTechDirectoryService();
+  List<RemoteCompany> _allRemoteCompanies = [];
+  bool _isLoadingRemoteCompanies = false;
+  String _remoteSearchQuery = '';
+  String _selectedRemoteRegion = 'all';
+  String _selectedRemotePolicy = 'all';
+  String _selectedRemoteSize = 'all';
+  String _remoteSortBy = 'match';
+  int _remoteDirectoryPage = 1;
+  static const int _remotePageSize = 25;
+  final TextEditingController _remoteSearchController = TextEditingController();
+  final ScrollController _remoteScrollController = ScrollController();
+
   // LinkedIn Auto-Apply (Apify Real-Time Recruiter Posts) State
   bool _isLinkedInAutoApplyModuleEnabled = false;
   bool _isRunningLinkedInAutoApply = false;
@@ -184,6 +200,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     _setupTimestampsListeners();
     _setupResumeProfilesListener();
     _setupPasteAndDropListener();
+    _loadRemoteCompanies();
   }
 
   void _onFeatureIndexNotified() {
@@ -430,6 +447,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     JobAssistantScreen.selectedFeatureIndexNotifier.removeListener(_onFeatureIndexNotified);
     _portalRoleController.dispose();
     _portalSearchController.dispose();
+    _remoteSearchController.dispose();
+    _remoteScrollController.dispose();
     _userDocSub?.cancel();
     _appsSub?.cancel();
     _tabController.dispose();
@@ -3365,6 +3384,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         return const Text('Manual Scan & Apply 📸', style: TextStyle(fontWeight: FontWeight.bold));
       case 5:
         return const Text('Unified Applied Job History 📜', style: TextStyle(fontWeight: FontWeight.bold));
+      case 6:
+        return const Text('Remote Tech Directory 🌐', style: TextStyle(fontWeight: FontWeight.bold));
       default:
         return const Text('AI Job Applicant 💼', style: TextStyle(fontWeight: FontWeight.bold));
     }
@@ -3395,6 +3416,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         return 'manual_apply';
       case 5:
         return 'history';
+      case 6:
+        return 'remote_tech_directory';
       default:
         return '';
     }
@@ -3497,6 +3520,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         'subtitle': 'Unified application tracker for Auto-Apply, Career Portals, LinkedIn & Manual scans',
         'icon': Icons.history_rounded,
         'gradient': [const Color(0xFF64748B), const Color(0xFF334155)],
+      },
+      {
+        'key': 'remote_tech_directory',
+        'index': 6,
+        'title': 'Remote Tech Directory 🌐',
+        'subtitle': '886+ verified remote companies, direct careers links & AI cold pitch generator',
+        'isNew': true,
+        'icon': Icons.travel_explore_rounded,
+        'gradient': [const Color(0xFF06B6D4), const Color(0xFF0E7490)],
       },
     ];
 
@@ -3948,6 +3980,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                         : _buildFeatureLockedView('Manual Scan & Apply 📸'),
                   ),
                   _KeepAliveTabWrapper(child: _buildHistoryTab()),
+                  _KeepAliveTabWrapper(
+                    child: _isSubFeatureEnabled('remote_tech_directory')
+                        ? _buildRemoteTechDirectoryTab()
+                        : _buildFeatureLockedView('Remote Tech Directory 🌐'),
+                  ),
                 ],
               ),
       ),
@@ -10200,6 +10237,925 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       ),
     );
   }
+
+
+  // ============================================================================
+  // REMOTE TECH DIRECTORY & PITCH HUB (886+ Remote Companies from remoteintech)
+  // ============================================================================
+
+  Future<void> _loadRemoteCompanies() async {
+    if (_allRemoteCompanies.isNotEmpty) return;
+    if (mounted) setState(() => _isLoadingRemoteCompanies = true);
+    final list = await _remoteDirectoryService.loadCompanies();
+    if (mounted) {
+      setState(() {
+        _allRemoteCompanies = list;
+        _isLoadingRemoteCompanies = false;
+      });
+    }
+  }
+
+  List<String> _getApplicantSkills() {
+    final Set<String> skills = {};
+    for (final domain in _radarTechDomains) {
+      if (domain.trim().isNotEmpty) skills.add(domain.trim());
+    }
+    if (_targetRolesController.text.trim().isNotEmpty) {
+      for (final role in _targetRolesController.text.split(',')) {
+        if (role.trim().isNotEmpty) skills.add(role.trim());
+      }
+    }
+    for (final profile in _resumeProfiles) {
+      for (final role in profile.targetRoles) {
+        if (role.trim().isNotEmpty) skills.add(role.trim());
+      }
+    }
+    return skills.toList();
+  }
+
+  Widget _buildRemoteStatPill({required IconData icon, required String label}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: GoogleFonts.outfit(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRemoteFilterDropdown<T>({
+    required T value,
+    required String label,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T>(
+          value: value,
+          items: items,
+          onChanged: onChanged,
+          isDense: true,
+          style: GoogleFonts.outfit(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
+          ),
+          icon: const Icon(Icons.arrow_drop_down, size: 18),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRemoteTechDirectoryTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final cardBorder = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final userSkills = _getApplicantSkills();
+
+    if (_isLoadingRemoteCompanies) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: Color(0xFF06B6D4)),
+            const SizedBox(height: 16),
+            Text(
+              'Loading 886+ verified remote companies...',
+              style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final filteredResults = _remoteDirectoryService.filterCompanies(
+      companies: _allRemoteCompanies,
+      userSkills: userSkills,
+      query: _remoteSearchQuery,
+      selectedRegion: _selectedRemoteRegion,
+      selectedPolicy: _selectedRemotePolicy,
+      selectedSize: _selectedRemoteSize,
+      sortBy: _remoteSortBy,
+    );
+
+    final totalItems = filteredResults.length;
+    final totalPages = (totalItems / _remotePageSize).ceil().clamp(1, 9999);
+    final safePage = _remoteDirectoryPage.clamp(1, totalPages);
+    final startIndex = (safePage - 1) * _remotePageSize;
+    final endIndex = (startIndex + _remotePageSize).clamp(0, totalItems);
+    final pagedResults = filteredResults.isEmpty
+        ? <CompanyMatchResult>[]
+        : filteredResults.sublist(startIndex, endIndex);
+
+    final highMatchCount = filteredResults.where((r) => r.score >= 70).length;
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        setState(() => _isLoadingRemoteCompanies = true);
+        final list = await _remoteDirectoryService.loadCompanies();
+        if (mounted) {
+          setState(() {
+            _allRemoteCompanies = list;
+            _isLoadingRemoteCompanies = false;
+          });
+        }
+      },
+      child: ListView(
+        controller: _remoteScrollController,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        children: [
+          // Hero Banner
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF06B6D4), Color(0xFF0891B2), Color(0xFF0E7490)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF06B6D4).withValues(alpha: 0.25),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.travel_explore_rounded, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Remote Tech Directory & Pitch Hub',
+                            style: GoogleFonts.outfit(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Verified remote-first tech companies (remoteintech) with instant career links',
+                            style: GoogleFonts.outfit(
+                              fontSize: 12,
+                              color: Colors.white.withValues(alpha: 0.9),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                // Stats Badges
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildRemoteStatPill(
+                      icon: Icons.business_rounded,
+                      label: '${_allRemoteCompanies.length} Verified Companies',
+                    ),
+                    _buildRemoteStatPill(
+                      icon: Icons.bolt_rounded,
+                      label: '$highMatchCount Skills Matches (>=70%)',
+                    ),
+                    _buildRemoteStatPill(
+                      icon: Icons.launch_rounded,
+                      label: 'Direct Career Portals',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Search Bar
+          TextField(
+            controller: _remoteSearchController,
+            onChanged: (val) {
+              setState(() {
+                _remoteSearchQuery = val;
+                _remoteDirectoryPage = 1;
+              });
+            },
+            decoration: InputDecoration(
+              hintText: 'Search 886+ companies, tech stacks (e.g. python, devops, react)...',
+              hintStyle: GoogleFonts.outfit(fontSize: 13, color: Colors.grey),
+              prefixIcon: const Icon(Icons.search_rounded, size: 20),
+              suffixIcon: _remoteSearchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded, size: 18),
+                      onPressed: () {
+                        _remoteSearchController.clear();
+                        setState(() {
+                          _remoteSearchQuery = '';
+                          _remoteDirectoryPage = 1;
+                        });
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: cardBg,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: cardBorder),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: cardBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF06B6D4), width: 1.5),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Region & Policy Filter Chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildRemoteFilterDropdown<String>(
+                  value: _selectedRemoteRegion,
+                  label: 'Region',
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('All Regions 🌍')),
+                    DropdownMenuItem(value: 'worldwide', child: Text('Worldwide 🌐')),
+                    DropdownMenuItem(value: 'americas-europe', child: Text('Americas / Europe 🌎')),
+                    DropdownMenuItem(value: 'americas', child: Text('Americas 🇺🇸')),
+                    DropdownMenuItem(value: 'europe', child: Text('Europe 🇪🇺')),
+                    DropdownMenuItem(value: 'apac', child: Text('APAC 🌏')),
+                    DropdownMenuItem(value: 'australia-nz', child: Text('ANZ 🇦🇺')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _selectedRemoteRegion = val;
+                        _remoteDirectoryPage = 1;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                _buildRemoteFilterDropdown<String>(
+                  value: _selectedRemotePolicy,
+                  label: 'Policy',
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('All Remote Policies')),
+                    DropdownMenuItem(value: 'fully-remote', child: Text('Fully Remote 🏡')),
+                    DropdownMenuItem(value: 'remote-friendly', child: Text('Remote Friendly 🏢')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _selectedRemotePolicy = val;
+                        _remoteDirectoryPage = 1;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                _buildRemoteFilterDropdown<String>(
+                  value: _selectedRemoteSize,
+                  label: 'Size',
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('All Company Sizes')),
+                    DropdownMenuItem(value: 'small', child: Text('Small (1-50)')),
+                    DropdownMenuItem(value: 'medium', child: Text('Medium (50-250)')),
+                    DropdownMenuItem(value: 'large', child: Text('Large (250+)')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _selectedRemoteSize = val;
+                        _remoteDirectoryPage = 1;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                _buildRemoteFilterDropdown<String>(
+                  value: _remoteSortBy,
+                  label: 'Sort',
+                  items: const [
+                    DropdownMenuItem(value: 'match', child: Text('Best Skill Match 🎯')),
+                    DropdownMenuItem(value: 'name', child: Text('Company Name (A-Z)')),
+                    DropdownMenuItem(value: 'size', child: Text('Company Size')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _remoteSortBy = val;
+                        _remoteDirectoryPage = 1;
+                      });
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Count summary bar
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Showing $totalItems companies',
+                style: GoogleFonts.outfit(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.grey[400] : Colors.grey[700],
+                ),
+              ),
+              if (totalPages > 1)
+                Text(
+                  'Page $safePage of $totalPages',
+                  style: GoogleFonts.outfit(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF06B6D4),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Companies List or Empty State
+          if (pagedResults.isEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+              alignment: Alignment.center,
+              child: Column(
+                children: [
+                  Icon(Icons.search_off_rounded, size: 48, color: Colors.grey[400]),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No remote companies match your criteria',
+                    style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Try resetting your filters or search keywords.',
+                    style: GoogleFonts.outfit(fontSize: 13, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      _remoteSearchController.clear();
+                      setState(() {
+                        _remoteSearchQuery = '';
+                        _selectedRemoteRegion = 'all';
+                        _selectedRemotePolicy = 'all';
+                        _selectedRemoteSize = 'all';
+                        _remoteSortBy = 'match';
+                        _remoteDirectoryPage = 1;
+                      });
+                    },
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('Reset All Filters'),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            ...pagedResults.map((result) => _buildRemoteCompanyCard(result, userSkills, cardBg, cardBorder, isDark)),
+          ],
+
+          const SizedBox(height: 16),
+          // Pagination Controls
+          if (totalPages > 1) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: safePage > 1
+                      ? () {
+                          setState(() => _remoteDirectoryPage = safePage - 1);
+                          _remoteScrollController.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOut,
+                          );
+                        }
+                      : null,
+                  icon: const Icon(Icons.chevron_left_rounded, size: 18),
+                  label: const Text('Previous'),
+                ),
+                const SizedBox(width: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF06B6D4).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF06B6D4).withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    '$safePage / $totalPages',
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: const Color(0xFF06B6D4),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                OutlinedButton.icon(
+                  onPressed: safePage < totalPages
+                      ? () {
+                          setState(() => _remoteDirectoryPage = safePage + 1);
+                          _remoteScrollController.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOut,
+                          );
+                        }
+                      : null,
+                  icon: const Icon(Icons.chevron_right_rounded, size: 18),
+                  label: const Text('Next'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRemoteCompanyCard(
+    CompanyMatchResult result,
+    List<String> userSkills,
+    Color cardBg,
+    Color cardBorder,
+    bool isDark,
+  ) {
+    final company = result.company;
+    final matchScore = result.score;
+    Color scoreColor;
+    IconData scoreIcon;
+    if (matchScore >= 80) {
+      scoreColor = const Color(0xFF10B981); // Emerald
+      scoreIcon = Icons.verified_rounded;
+    } else if (matchScore >= 60) {
+      scoreColor = const Color(0xFF06B6D4); // Cyan
+      scoreIcon = Icons.tune_rounded;
+    } else {
+      scoreColor = const Color(0xFF64748B); // Slate
+      scoreIcon = Icons.work_outline_rounded;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.black.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: Company Name & Match Score
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  company.title,
+                  style: GoogleFonts.outfit(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: scoreColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: scoreColor.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(scoreIcon, size: 14, color: scoreColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$matchScore% Match',
+                      style: GoogleFonts.outfit(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: scoreColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Policy, Region & Size Badges
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              // Remote policy
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.home_work_rounded, size: 12, color: Color(0xFF10B981)),
+                    const SizedBox(width: 4),
+                    Text(
+                      company.formattedRemotePolicy,
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF10B981),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Region
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.public_rounded, size: 12, color: Color(0xFF6366F1)),
+                    const SizedBox(width: 4),
+                    Text(
+                      company.formattedRegion,
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF6366F1),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Size
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFA855F7).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.groups_rounded, size: 12, color: Color(0xFFA855F7)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${company.formattedCompanySize} Size',
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFFA855F7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Company Blurb
+          if (company.blurb.isNotEmpty)
+            Text(
+              company.blurb,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: isDark ? Colors.grey[300] : const Color(0xFF334155),
+              ),
+            ),
+          const SizedBox(height: 10),
+
+          // Technologies Chips
+          if (company.technologies.isNotEmpty) ...[
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: company.technologies.map((tech) {
+                final isMatched = result.matchedSkills.any((m) => m.toLowerCase() == tech.toLowerCase());
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isMatched
+                        ? const Color(0xFF06B6D4).withValues(alpha: 0.18)
+                        : (isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: isMatched
+                          ? const Color(0xFF06B6D4).withValues(alpha: 0.5)
+                          : Colors.transparent,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isMatched) ...[
+                        const Icon(Icons.check_circle_rounded, size: 11, color: Color(0xFF06B6D4)),
+                        const SizedBox(width: 3),
+                      ],
+                      Text(
+                        tech,
+                        style: GoogleFonts.outfit(
+                          fontSize: 11,
+                          fontWeight: isMatched ? FontWeight.bold : FontWeight.w500,
+                          color: isMatched
+                              ? const Color(0xFF06B6D4)
+                              : (isDark ? Colors.grey[300] : const Color(0xFF475569)),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Action Buttons
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // Careers Portal Button
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF06B6D4),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.launch_rounded, size: 15),
+                label: const Text('Careers Portal 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                onPressed: () async {
+                  final targetUrl = company.careersUrl.isNotEmpty ? company.careersUrl : company.website;
+                  if (targetUrl.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('No careers URL available for this company.')),
+                    );
+                    return;
+                  }
+                  final uri = Uri.tryParse(targetUrl);
+                  if (uri != null) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+              ),
+              // AI Cold Pitch Button
+              FilledButton.tonalIcon(
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.mark_email_unread_rounded, size: 15),
+                label: const Text('AI Cold Pitch ✍️', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
+                onPressed: () => _showRemoteCompanyPitchDialog(result, userSkills),
+              ),
+              // Website Link
+              if (company.website.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.public_rounded, size: 20),
+                  tooltip: 'Visit Official Website',
+                  onPressed: () async {
+                    final uri = Uri.tryParse(company.website);
+                    if (uri != null) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRemoteCompanyPitchDialog(
+    CompanyMatchResult result,
+    List<String> userSkills,
+  ) {
+    final company = result.company;
+    final applicantName = _applicantNameController.text.trim().isNotEmpty
+        ? _applicantNameController.text.trim()
+        : (FirebaseAuth.instance.currentUser?.displayName ?? 'Applicant');
+    final applicantRole = _targetRolesController.text.trim().isNotEmpty
+        ? _targetRolesController.text.split(',').first.trim()
+        : (_radarTechDomains.isNotEmpty ? _radarTechDomains.first : 'Software Engineer');
+
+    final pitchText = _remoteDirectoryService.generatePitch(
+      company: company,
+      applicantName: applicantName,
+      applicantRole: applicantRole,
+      skills: userSkills,
+      matchedSkills: result.matchedSkills,
+    );
+
+    final pitchController = TextEditingController(text: pitchText);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF06B6D4).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.rocket_launch_rounded, color: Color(0xFF06B6D4), size: 22),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'AI Cold Pitch to ${company.title}',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    'Tailored for ${company.formattedRemotePolicy} culture',
+                    style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 580,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (result.matchedSkills.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.verified_rounded, color: Color(0xFF10B981), size: 14),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          'Matched Tech: ${result.matchedSkills.join(', ')}',
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF10B981),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                TextFormField(
+                  controller: pitchController,
+                  maxLines: 14,
+                  style: const TextStyle(fontSize: 13, height: 1.45),
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[900]
+                        : Colors.grey[100],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                    ),
+                    contentPadding: const EdgeInsets.all(12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.copy_rounded, size: 16),
+            label: const Text('Copy Pitch'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: pitchController.text));
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Pitch copied to clipboard!')),
+              );
+            },
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF06B6D4),
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.email_rounded, size: 16),
+            label: const Text('Open in Email'),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final lines = pitchController.text.split('\n');
+              String subject = 'Exploring opportunities at ${company.title}';
+              for (final line in lines) {
+                if (line.toLowerCase().startsWith('subject:')) {
+                  subject = line.substring(8).trim();
+                  break;
+                }
+              }
+              final mailtoUri = Uri(
+                scheme: 'mailto',
+                queryParameters: {
+                  'subject': subject,
+                  'body': pitchController.text,
+                },
+              );
+              await launchUrl(mailtoUri, mode: LaunchMode.externalApplication);
+            },
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
 }
 
 class _KeepAliveTabWrapper extends StatefulWidget {

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/job_application.dart';
 import 'job_assistant_service.dart';
 import 'notification_service.dart';
@@ -65,7 +66,7 @@ class SharedIntentService {
       final type = data['type']?.toString() ?? '';
       debugPrint('[SharedIntentService] Received shared intent of type: $type');
 
-      // Debounce to avoid duplicate processing within 3 seconds
+      // Debounce to avoid duplicate processing within 3 seconds in-memory
       final fingerprint = '$type:${data['text'] ?? ''}:${data['imagePaths'] ?? ''}';
       final now = DateTime.now();
       if (fingerprint == _lastProcessedFingerprint && now.difference(_lastProcessedTime).inSeconds < 3) {
@@ -74,6 +75,24 @@ class SharedIntentService {
       }
       _lastProcessedFingerprint = fingerprint;
       _lastProcessedTime = now;
+
+      // Persistent check to prevent re-processing on activity recreate / phone reopen
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final lastSavedFingerprint = prefs.getString('last_shared_intent_fingerprint') ?? '';
+        final lastSavedTimestamp = prefs.getInt('last_shared_intent_timestamp') ?? 0;
+        final nowMs = now.millisecondsSinceEpoch;
+
+        if (fingerprint == lastSavedFingerprint && (nowMs - lastSavedTimestamp) < 86400000 /* 24 hours */) {
+          debugPrint('[SharedIntentService] Persistently duplicate intent ignored: $fingerprint');
+          return;
+        }
+
+        await prefs.setString('last_shared_intent_fingerprint', fingerprint);
+        await prefs.setInt('last_shared_intent_timestamp', nowMs);
+      } catch (prefErr) {
+        debugPrint('[SharedIntentService] Notice checking prefs: $prefErr');
+      }
 
     if (type == 'image') {
       final paths = List<String>.from(data['imagePaths'] ?? []);
@@ -922,13 +941,16 @@ class SharedIntentService {
       final errStr = sendErr.toString();
       final isBounce = errStr.contains('Address Not Found') ||
           errStr.contains('Bounced') ||
-          errStr.contains('invalid');
+          errStr.contains('invalid') ||
+          errStr.contains('undeliverable') ||
+          errStr.contains('Verification Failed') ||
+          errStr.contains('blocked');
 
       await jobService.saveJobApplication(job.copyWith(
         status: isBounce ? 'bounced' : 'needs_review',
         isBounced: isBounce,
         errorMessage: isBounce
-            ? 'Recruiter email (${job.recipientEmail}) is an invalid / non-existent address (Address Not Found).'
+            ? 'Recruiter email (${job.recipientEmail}) failed deliverability check: $sendErr'
             : 'Email send error: $sendErr. Saved in Drafts.',
       ));
 
