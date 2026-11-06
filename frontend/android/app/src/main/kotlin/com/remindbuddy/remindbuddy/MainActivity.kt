@@ -223,40 +223,106 @@ class MainActivity: FlutterActivity() {
         val isFromHistory = (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
         if (isFromHistory) return
 
+        var feature = ""
+        var action = ""
+        var query = ""
+        var uriString = ""
+
+        // 1. Check if intent came via URI Deep Link (smartbuddy://assistant?...)
         val data: Uri? = intent.data
         if (data != null) {
             val scheme = data.scheme?.lowercase() ?: ""
             val host = data.host?.lowercase() ?: ""
 
-            if ((scheme == "smartbuddy" || scheme == "remindbuddy") && (host == "assistant" || host == "voice_query" || host == "feature")) {
+            if ((scheme == "smartbuddy" || scheme == "remindbuddy") &&
+                (host == "assistant" || host == "voice_query" || host == "feature")) {
                 val path = data.path ?: ""
-                val feature = data.getQueryParameter("feature")
+                feature = data.getQueryParameter("feature")
                     ?: (if (host == "feature" && path.isNotEmpty()) path.trim('/') else "")
-                val action = data.getQueryParameter("action") ?: ""
-                val query = data.getQueryParameter("query") ?: data.getQueryParameter("q") ?: ""
+                    ?: ""
+                action = data.getQueryParameter("action") ?: ""
+                query = data.getQueryParameter("query") ?: data.getQueryParameter("q") ?: ""
+                uriString = data.toString()
+            }
+        }
 
-                // Security guardrail: strictly reject voice assistant access to secure vault or finance
-                val featureLower = feature.lowercase()
-                if (featureLower == "vault" || featureLower == "secure_vault" || featureLower == "finance" || featureLower == "bank_accounts" || featureLower == "expenses") {
-                    android.util.Log.w("MainActivity", "Blocked voice assistant attempt to access restricted module: $featureLower")
-                    return
+        // 2. Also inspect Intent Action and Intent Extras (for direct Google Assistant BII invocations)
+        val intentAction = intent.action ?: ""
+        if (feature.isEmpty()) {
+            when (intentAction) {
+                "actions.intent.START_EXERCISE" -> {
+                    feature = "gym"
+                    action = "start_workout"
                 }
-
-                val payload = mapOf(
-                    "feature" to feature,
-                    "action" to action,
-                    "query" to query,
-                    "uri" to data.toString()
-                )
-
-                if (assistantEventSink != null) {
-                    runOnUiThread {
-                        assistantEventSink?.success(payload)
-                    }
-                } else {
-                    initialAssistantData = payload
+                "actions.intent.CREATE_REMINDER" -> {
+                    feature = "reminders"
+                    action = "create"
+                }
+                "actions.intent.GET_THING" -> {
+                    val thing = intent.getStringExtra("thing") ?: intent.getStringExtra("thing.name") ?: ""
+                    feature = if (thing.isNotEmpty()) thing else "gold"
+                }
+                "actions.intent.OPEN_APP_FEATURE" -> {
+                    feature = intent.getStringExtra("feature") ?: intent.getStringExtra("featureParam") ?: ""
                 }
             }
+        }
+
+        // Read extras if not yet populated
+        if (feature.isEmpty()) {
+            feature = intent.getStringExtra("feature")
+                ?: intent.getStringExtra("featureParam")
+                ?: intent.getStringExtra("thing")
+                ?: intent.getStringExtra("thing.name")
+                ?: ""
+        }
+        if (action.isEmpty()) {
+            action = intent.getStringExtra("action") ?: ""
+        }
+        if (query.isEmpty()) {
+            query = intent.getStringExtra("query")
+                ?: intent.getStringExtra("q")
+                ?: intent.getStringExtra("text")
+                ?: intent.getStringExtra("reminder.text")
+                ?: intent.getStringExtra(Intent.EXTRA_TEXT)
+                ?: ""
+        }
+
+        // Check if exercise name specifies workout
+        val exerciseName = intent.getStringExtra("exercise") ?: intent.getStringExtra("exercise.name")
+        if (!exerciseName.isNullOrEmpty() && (feature.isEmpty() || feature == "gym")) {
+            feature = "gym"
+            action = "start_workout"
+        }
+
+        // If no feature or action or query was identified, do not proceed
+        if (feature.isEmpty() && action.isEmpty() && query.isEmpty()) {
+            return
+        }
+
+        // Security guardrail: strictly reject voice assistant access to secure vault or finance
+        val featureLower = feature.lowercase().trim()
+        if (featureLower == "vault" || featureLower == "secure_vault" ||
+            featureLower == "finance" || featureLower == "bank_accounts" || featureLower == "expenses") {
+            android.util.Log.w("MainActivity", "Blocked voice assistant attempt to access restricted module: $featureLower")
+            return
+        }
+
+        val payload = mapOf(
+            "feature" to feature,
+            "action" to action,
+            "query" to query,
+            "uri" to uriString
+        )
+
+        android.util.Log.d("MainActivity", "Dispatching Assistant payload: $payload (isInitial=$isInitial)")
+
+        if (assistantEventSink != null) {
+            runOnUiThread {
+                assistantEventSink?.success(payload)
+            }
+        } else {
+            initialAssistantData = payload
         }
     }
 

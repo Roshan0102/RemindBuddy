@@ -61,7 +61,7 @@ void main() {
       expect(find.textContaining('100.0 kg × 5 reps'), findsOneWidget);
     });
 
-    testWidgets('GymDashboardScreen renders hero card, split presets, PR showcase, and history feed', (tester) async {
+    testWidgets('GymDashboardScreen renders routines library and excludes empty workouts, PRs, weight tracking, and history', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: GymDashboardScreen(),
@@ -69,22 +69,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Verify Header & Hero Card
-      expect(find.text('Gym & Workouts'), findsOneWidget);
-      expect(find.text('READY TO TRAIN?'), findsOneWidget);
-      expect(find.text('Start Empty Workout'), findsOneWidget);
+      // Verify Routines View
+      expect(find.text('Workout Routines'), findsOneWidget);
+      expect(find.text('Custom Workout Splits'), findsOneWidget);
+      expect(find.text('Create New Routine'), findsOneWidget);
+      expect(find.text('My Routines'), findsOneWidget);
 
-      // Verify Quick Split Presets
-      expect(find.text('Quick Splits & Routines'), findsOneWidget);
-      expect(find.text('Build Your Custom Routine'), findsOneWidget);
-
-      // Verify PR Showcase & Body Weight Tracker
-      expect(find.text('Personal Records (PRs)'), findsOneWidget);
-      expect(find.text('Body Weight Tracking'), findsOneWidget);
-      expect(find.text('Log Weight'), findsOneWidget);
-
-      // Verify Workout History Feed
-      expect(find.text('Workout History'), findsOneWidget);
+      // Verify removed sections are absent
+      expect(find.text('Start Empty Workout'), findsNothing);
+      expect(find.text('Personal Records (PRs)'), findsNothing);
+      expect(find.text('Body Weight Tracking'), findsNothing);
+      expect(find.text('Workout History'), findsNothing);
     });
   });
 }

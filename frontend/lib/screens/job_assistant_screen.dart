@@ -86,6 +86,24 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   final ScrollController _newAppScrollController = ScrollController();
   final ScrollController _historyScrollController = ScrollController();
 
+  // Central Bounced & Blocked Hub Cache
+  final Map<String, CentralBlockedEmailInfo> _centralBlockedEmailsCache = {};
+
+  Future<CentralBlockedEmailInfo?> _checkAndCacheCentralBlockedEmail(String email) async {
+    final clean = email.toLowerCase().trim();
+    if (clean.isEmpty || !clean.contains('@')) return null;
+    if (_centralBlockedEmailsCache.containsKey(clean)) {
+      return _centralBlockedEmailsCache[clean];
+    }
+    final info = await _service.checkCentralBlockedEmail(clean);
+    if (info != null && mounted) {
+      setState(() {
+        _centralBlockedEmailsCache[clean] = info;
+      });
+    }
+    return info;
+  }
+
   TextEditingController _getController(Map<int, TextEditingController> map, int index, String initialText) {
     if (!map.containsKey(index)) {
       map[index] = TextEditingController(text: initialText);
@@ -116,6 +134,12 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   String _autoApplyStatusMessage = '';
   final ScrollController _autoAppScrollController = ScrollController();
 
+  // WFH Remote Job Hunter State
+  final TextEditingController _wfhLocationController = TextEditingController(text: 'India');
+  bool _isDiscoveringWFH = false;
+  String _wfhStatusMessage = '';
+  final ScrollController _wfhScrollController = ScrollController();
+
   // Cached Stream References (Prevent continuous resubscriptions & blinking)
   late Stream<List<JobApplication>> _applicationsStream;
   late Stream<List<NetworkingLead>> _networkingLeadsStream;
@@ -130,6 +154,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
   String _historyFilter = 'all'; // 'all', 'auto_apply', 'career_portals', 'linkedin', 'manual', 'replies'
   final TextEditingController _historySearchController = TextEditingController();
   String _historySearchQuery = '';
+  final Map<String, List<String>> _historyDuplicateDocIds = {};
 
   // Monthly Calendar & Pagination State for Tabs
   DateTime _autoApplyMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
@@ -354,6 +379,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               _linkedInRolesController.text = liveRoles.join(', ');
             }
 
+            final wfhLoc = data['wfhLocationPreference'];
+            if (wfhLoc != null && wfhLoc.toString().trim().isNotEmpty) {
+              _wfhLocationController.text = wfhLoc.toString().trim();
+            }
+
             final lRan = data['linkedinAutoApplyLastRan'] ?? data['linkedinAutoApplySettings']?['lastRan'] ?? data['jobsLastRan'];
             if (lRan is Timestamp) {
               _linkedInLastRan = lRan.toDate();
@@ -464,6 +494,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     _locationsController.dispose();
     _minExpController.dispose();
     _maxExpController.dispose();
+    _wfhLocationController.dispose();
+    _wfhScrollController.dispose();
     _profilesSub?.cancel();
     _customScreenshotPromptController.dispose();
     _pastedJobTextController.dispose();
@@ -1683,6 +1715,173 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     _showJobAssistantSettingsDialog();
   }
 
+  Future<void> _showCentralBlockedIntimationDialog(
+    BuildContext context,
+    String recipient,
+    CentralBlockedEmailInfo info, {
+    String? companyName,
+    String? jobTitle,
+  }) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final resolvedCompany = (companyName != null && companyName.trim().isNotEmpty)
+        ? companyName.trim()
+        : (info.companyName?.isNotEmpty == true ? info.companyName! : 'this company');
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.shield_outlined, color: Colors.red.shade700, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Recipient Blocked in Central Hub',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock_outline, size: 13, color: Colors.amber.shade800),
+                    const SizedBox(width: 6),
+                    Text(
+                      'CENTRAL VERIFICATION HUB • DELIVERY PROTECTED',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A) : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.alternate_email, size: 16, color: Colors.redAccent),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            recipient,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      info.isFake
+                          ? 'Status: Flagged fraudulent / fake agency email'
+                          : 'Status: Undeliverable address / 550 delivery bounce',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red.shade700,
+                      ),
+                    ),
+                    if (info.reason.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Reason: ${info.reason}',
+                        style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black87),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Why was delivery prevented?',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white : Colors.black87),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'A previous email sent to this mailbox failed with an "Address Not Found / 550" bounce, or this address was reported as an invalid dead-end mailbox.\n\n'
+                'Sending messages to dead or toxic mailboxes harms your sender reputation, triggers Gmail spam filters, and can result in sending limits on your account. RemindBuddy protects all users by centrally blocking delivery to verified non-existent addresses.',
+                style: TextStyle(fontSize: 12, height: 1.4, color: isDark ? Colors.white70 : Colors.black87),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.tips_and_updates_outlined, size: 16, color: Colors.blue),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Professional Recommendation: Reach out to $resolvedCompany hiring managers on LinkedIn or verify their current HR contact on their careers portal.',
+                        style: TextStyle(fontSize: 11, height: 1.35, color: isDark ? Colors.blue.shade200 : Colors.blue.shade900),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Understood'),
+          ),
+          if (resolvedCompany.isNotEmpty && resolvedCompany.toLowerCase() != 'this company')
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0A66C2),
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.open_in_new, size: 14),
+              label: const Text('Find on LinkedIn'),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final query = Uri.encodeComponent('$resolvedCompany hiring HR');
+                final url = Uri.parse('https://www.linkedin.com/search/results/all/?keywords=$query');
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _pickMasterResume() async {
     try {
       final picked = await AppFilePicker.pickResumeDocument();
@@ -2242,6 +2441,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         _selectedImagesBase64.clear();
       });
 
+      for (final job in jobs) {
+        _checkAndCacheCentralBlockedEmail(job.recipientEmail);
+      }
+
       if (jobs.isNotEmpty && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Extracted ${jobs.length} job application(s) with Gemini AI!')),
@@ -2344,6 +2547,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             continue;
           }
 
+          // Central Verification Hub Block Check
+          final centralInfo = await _service.checkCentralBlockedEmail(recipient);
+          if (centralInfo != null) {
+            debugPrint('[JobAssistant] Skipping centrally blocked email in auto-process: $recipient');
+            await NotificationService().showNotification(
+              id: (DateTime.now().millisecondsSinceEpoch ~/ 1000) + i,
+              title: '🛡️ Email Blocked in Central Hub',
+              body: 'Skipped "${job.jobTitle}" at "${job.companyName}" ($recipient) — address is flagged in Central Hub as invalid/bounced to protect your email score.',
+              payload: 'JOB_ASSISTANT',
+            );
+            continue;
+          }
+
           // Unified Duplicate Check across Manual Scan and Auto-Apply
           final duplicate = _findExistingApplication(recipient, job.jobTitle, job.companyName);
           if (duplicate != null) {
@@ -2419,6 +2635,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         _extractedJobs = jobs;
         _isAnalyzing = false;
       });
+
+      for (final job in jobs) {
+        _checkAndCacheCentralBlockedEmail(job.recipientEmail);
+      }
 
       if (jobs.isNotEmpty && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2520,6 +2740,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             continue;
           }
 
+          // Central Verification Hub Block Check
+          final centralInfo = await _service.checkCentralBlockedEmail(recipient);
+          if (centralInfo != null) {
+            debugPrint('[JobAssistant] Skipping centrally blocked email in pasted text process: $recipient');
+            await NotificationService().showNotification(
+              id: (DateTime.now().millisecondsSinceEpoch ~/ 1000) + i,
+              title: '🛡️ Email Blocked in Central Hub',
+              body: 'Skipped "${job.jobTitle}" at "${job.companyName}" ($recipient) — address is flagged in Central Hub as invalid/bounced to protect your email score.',
+              payload: 'JOB_ASSISTANT',
+            );
+            continue;
+          }
+
           final duplicate = _findExistingApplication(recipient, job.jobTitle, job.companyName);
           if (duplicate != null) {
             debugPrint('[JobAssistant] Skipping duplicate job: "${job.jobTitle}" at "${job.companyName}" to $recipient (applied on ${duplicate.appliedAt})');
@@ -2603,6 +2836,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         _extractedJobs.insert(0, newJob);
         _isGeneratingManual = false;
       });
+
+      _checkAndCacheCentralBlockedEmail(newJob.recipientEmail);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2726,6 +2961,22 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       errorMessage: originalApp.errorMessage,
     );
 
+    // 0. Check Central Verification Hub (system_bounced_emails) before proceeding
+    final centralInfo = await _checkAndCacheCentralBlockedEmail(recipient);
+    if (centralInfo != null) {
+      if (!mounted) return;
+      await _showCentralBlockedIntimationDialog(
+        context,
+        recipient,
+        centralInfo,
+        companyName: originalApp.companyName,
+        jobTitle: originalApp.jobTitle,
+      );
+      return;
+    }
+
+    if (!mounted) return;
+
     final duplicate = _findExistingApplication(recipient, originalApp.jobTitle, originalApp.companyName);
     if (duplicate != null) {
       final confirm = await showDialog<bool>(
@@ -2795,6 +3046,18 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         );
       }
     } catch (e) {
+      if (e is CentrallyBlockedEmailException) {
+        if (mounted) {
+          await _showCentralBlockedIntimationDialog(
+            context,
+            recipient,
+            e.info,
+            companyName: originalApp.companyName,
+            jobTitle: originalApp.jobTitle,
+          );
+        }
+        return;
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to send email: $e')),
@@ -2919,6 +3182,9 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       }
     }
 
+    int centrallyBlockedCount = 0;
+    final List<String> centrallyBlockedRecipients = [];
+
     for (int i = 0; i < jobsToProcess.length; i++) {
       final originalApp = jobsToProcess[i];
       final recipient = (_emailControllers[i]?.text ?? originalApp.recipientEmail).trim();
@@ -2927,6 +3193,19 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
       if (recipient.isEmpty) {
         failCount++;
+        continue;
+      }
+
+      // Check Central Verification Hub (system_bounced_emails)
+      final centralInfo = await _checkAndCacheCentralBlockedEmail(recipient);
+      if (centralInfo != null) {
+        centrallyBlockedCount++;
+        centrallyBlockedRecipients.add(recipient);
+        await _service.saveJobApplication(originalApp.copyWith(
+          status: 'bounced',
+          isBounced: true,
+          errorMessage: 'Blocked by Central Verification Hub: Recipient email is flagged as undeliverable (${centralInfo.reason}). Delivery prevented to protect sender reputation.',
+        ));
         continue;
       }
 
@@ -2997,10 +3276,32 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       _isSendingAll = false;
     });
 
+    if (centrallyBlockedCount > 0 && mounted) {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: Icon(Icons.shield_outlined, color: Colors.amber.shade800, size: 36),
+          title: const Text('Applications Protected by Central Hub', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Text(
+            '$centrallyBlockedCount application(s) were automatically skipped because their recipient email addresses are flagged in the Central Verification Hub as invalid or previously bounced (550).\n\n'
+            'Skipped addresses:\n• ${centrallyBlockedRecipients.take(5).join("\n• ")}${centrallyBlockedRecipients.length > 5 ? "\n...and ${centrallyBlockedRecipients.length - 5} more" : ""}\n\n'
+            'Delivery was prevented to protect your email sender score and domain reputation.',
+            style: const TextStyle(fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Understood'),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🚀 Successfully sent $sentCount job application email(s)!${failCount > 0 ? " ($failCount missing HR emails)" : ""}'),
+          content: Text('🚀 Successfully sent $sentCount job application email(s)!${failCount > 0 ? " ($failCount missing HR emails)" : ""}${centrallyBlockedCount > 0 ? " ($centrallyBlockedCount blocked centrally)" : ""}'),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 4),
         ),
@@ -3386,6 +3687,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         return const Text('Unified Applied Job History 📜', style: TextStyle(fontWeight: FontWeight.bold));
       case 6:
         return const Text('Remote Tech Directory 🌐', style: TextStyle(fontWeight: FontWeight.bold));
+      case 7:
+        return const Text('WFH Remote Job Hunter 🏠', style: TextStyle(fontWeight: FontWeight.bold));
       default:
         return const Text('AI Job Applicant 💼', style: TextStyle(fontWeight: FontWeight.bold));
     }
@@ -3418,6 +3721,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         return 'history';
       case 6:
         return 'remote_tech_directory';
+      case 7:
+        return 'wfh_remote';
       default:
         return '';
     }
@@ -3529,6 +3834,15 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         'isNew': true,
         'icon': Icons.travel_explore_rounded,
         'gradient': [const Color(0xFF06B6D4), const Color(0xFF0E7490)],
+      },
+      {
+        'key': 'wfh_remote',
+        'index': 7,
+        'title': 'WFH Remote Job Hunter 🏠',
+        'subtitle': 'Find & apply to Work-From-Home openings with your customized location preference',
+        'isNew': true,
+        'icon': Icons.home_work_rounded,
+        'gradient': [const Color(0xFF6366F1), const Color(0xFF4338CA)],
       },
     ];
 
@@ -3913,12 +4227,30 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     initialData: _service.cachedLeads,
                     stream: _networkingLeadsStream,
                     builder: (context, leadSnap) {
+                      final Set<String> seenAppReplies = {};
                       final appReplies = (appSnap.data ?? [])
-                          .where((a) => (a.status == 'reply_received' || a.isBounced) && !a.isReplyDismissed)
+                          .where((a) =>
+                              !a.replyDeleted &&
+                              !a.isBounced &&
+                              a.status == 'reply_received' &&
+                              a.responseType != 'bounced' &&
+                              a.responseType != 'address_not_found' &&
+                              !a.isReplyDismissed &&
+                              seenAppReplies.add('${a.companyName.toLowerCase().trim()}|${a.recipientEmail.toLowerCase().trim()}|${a.replySubject?.toLowerCase().trim()}'))
                           .length;
+
+                      final Set<String> seenLeadReplies = {};
                       final leadReplies = (leadSnap.data ?? [])
-                          .where((l) => (l.status == 'replied' || l.isBounced) && !l.isReplyDismissed)
+                          .where((l) =>
+                              !l.replyDeleted &&
+                              !l.isBounced &&
+                              l.status == 'replied' &&
+                              l.responseType != 'bounced' &&
+                              l.responseType != 'address_not_found' &&
+                              !l.isReplyDismissed &&
+                              seenLeadReplies.add('${l.companyName.toLowerCase().trim()}|${l.email?.toLowerCase().trim()}|${l.replySubject?.toLowerCase().trim()}'))
                           .length;
+
                       final totalReplies = appReplies + leadReplies;
 
                       if (totalReplies > 0) {
@@ -3984,6 +4316,11 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                     child: _isSubFeatureEnabled('remote_tech_directory')
                         ? _buildRemoteTechDirectoryTab()
                         : _buildFeatureLockedView('Remote Tech Directory 🌐'),
+                  ),
+                  _KeepAliveTabWrapper(
+                    child: _isSubFeatureEnabled('wfh_remote')
+                        ? _buildWFHRemoteTab()
+                        : _buildFeatureLockedView('WFH Remote Job Hunter 🏠'),
                   ),
                 ],
               ),
@@ -7500,6 +7837,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
 
     final currentEmail = emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : app.recipientEmail;
     final duplicateApp = _findExistingApplication(currentEmail, app.jobTitle, app.companyName);
+    final cachedCentral = _centralBlockedEmailsCache[currentEmail.toLowerCase().trim()];
+    if (cachedCentral == null && currentEmail.contains('@')) {
+      _checkAndCacheCentralBlockedEmail(currentEmail);
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -7585,6 +7926,33 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
               keyboardType: TextInputType.emailAddress,
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textColor),
             ),
+            if (cachedCentral != null) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade400.withValues(alpha: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.shield_outlined, size: 16, color: Colors.red.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Flagged in Central Hub: Address previously bounced or is invalid. Delivery is blocked to safeguard your email account.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.red.shade300 : Colors.red.shade800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
 
             // Email Subject Field
@@ -7700,10 +8068,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: cachedCentral != null ? Colors.amber.shade800 : Colors.green.shade700,
+                    foregroundColor: Colors.white,
+                  ),
                   onPressed: () => _sendApplicationEmail(app, index),
-                  icon: const Icon(Icons.send, size: 16),
-                  label: const Text('Send Email Now'),
+                  icon: Icon(cachedCentral != null ? Icons.shield_outlined : Icons.send, size: 16),
+                  label: Text(cachedCentral != null ? 'Blocked (Central Hub)' : 'Send Email Now'),
                 ),
               ],
             ),
@@ -7732,12 +8103,17 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
         a.id.startsWith('cp_');
   }
 
+  bool _isWfhRemoteApp(JobApplication a) {
+    return a.source == 'wfh_remote' ||
+        a.sourcePlatform?.toLowerCase().contains('wfh') == true;
+  }
+
   bool _isAutoApplyApp(JobApplication a) {
-    return a.isAutoApplied && !_isLinkedInApp(a);
+    return a.isAutoApplied && !_isLinkedInApp(a) && !_isWfhRemoteApp(a);
   }
 
   bool _isManualScanApp(JobApplication a) {
-    return !a.isAutoApplied && !_isCareerPortalApp(a) && !_isLinkedInApp(a);
+    return !a.isAutoApplied && !_isCareerPortalApp(a) && !_isLinkedInApp(a) && !_isWfhRemoteApp(a);
   }
 
   Future<void> _confirmDeleteJobApplication(JobApplication app) async {
@@ -7760,11 +8136,151 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       ),
     );
     if (confirm == true) {
-      await _service.deleteJobApplication(app.id);
+      final idsToDelete = _historyDuplicateDocIds[app.id] ?? [app.id];
+      for (final docId in idsToDelete) {
+        await _service.deleteJobApplication(docId);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Removed ${app.companyName} from applied history.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _downloadJobTailoredPdf(JobApplication app) async {
+    try {
+      final b64 = app.tailoredResumePdfBase64;
+      if (b64 != null && b64.isNotEmpty) {
+        final cleanB64 = b64.replaceFirst(RegExp(r'^data:application\/pdf;base64,'), '');
+        final bytes = base64Decode(cleanB64);
+        final applicantName = _applicantNameController.text.trim().isNotEmpty
+            ? _applicantNameController.text.trim()
+            : (FirebaseAuth.instance.currentUser?.displayName?.trim().isNotEmpty == true
+                ? FirebaseAuth.instance.currentUser!.displayName!.trim()
+                : 'Candidate');
+        final safeApplicant = applicantName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+        final safeRole = app.jobTitle.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+        final fileName = '${safeApplicant}_${safeRole}_Resume.pdf';
+
+        if (kIsWeb) {
+          UrlLauncherHelper.downloadBase64(cleanB64, fileName);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Downloading $fileName for ${app.companyName}...'),
+                backgroundColor: const Color(0xFF10B981),
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+          return;
+        }
+
+        final result = await FileDownloadService.saveFile(
+          bytes: bytes,
+          fileName: fileName,
+          mimeType: 'application/pdf',
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          if (result.isSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✓ Saved $fileName to Downloads!'),
+                backgroundColor: const Color(0xFF10B981),
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
+                action: SnackBarAction(
+                  label: 'OPEN',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => FullscreenFileViewer(
+                          fileBytes: bytes,
+                          title: fileName,
+                          isPdf: true,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to save to Downloads: ${result.errorMessage}'),
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      } else if (app.tailoredResumePdfUrl != null && app.tailoredResumePdfUrl!.isNotEmpty) {
+        await UrlLauncherHelper.openInNewTabOrExternal(app.tailoredResumePdfUrl!);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error downloading tailored resume: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
+  }
+
+  Future<void> _generateTailoredResumeForApp(JobApplication app) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🤖 Tailoring customized ATS resume with BYOK Gemini key...'),
+        backgroundColor: Color(0xFF6366F1),
+        duration: Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    try {
+      final res = await _service.tailorResumeForJob(
+        jobTitle: app.jobTitle,
+        companyName: app.companyName,
+        jobDescription: app.generatedCoverLetter.isNotEmpty ? app.generatedCoverLetter : app.postExcerpt,
+        jobId: app.id,
+      );
+
+      final pdfB64 = res['tailoredResumePdfBase64']?.toString();
+      final pdfUrl = res['tailoredResumePdfUrl']?.toString();
+
+      if (pdfB64 != null && pdfB64.isNotEmpty) {
+        await _service.saveJobApplication(app.copyWith(
+          tailoredResumePdfBase64: pdfB64,
+          tailoredResumePdfUrl: pdfUrl,
+        ));
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Tailored ATS resume generated successfully!'),
+            backgroundColor: Color(0xFF10B981),
+            duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not tailor resume: $e'),
+            backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -8124,6 +8640,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
     final bool isAuto = _isAutoApplyApp(app);
     final bool isPortal = _isCareerPortalApp(app);
     final bool isLinkedIn = _isLinkedInApp(app);
+    final bool isWfh = _isWfhRemoteApp(app);
 
     final Color badgeColor;
     final IconData leadingIcon;
@@ -8137,6 +8654,10 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
       badgeColor = const Color(0xFF10B981);
       leadingIcon = Icons.mark_email_unread_rounded;
       sourceLabel = 'Reply Received';
+    } else if (isWfh) {
+      badgeColor = const Color(0xFF6366F1);
+      leadingIcon = Icons.home_work_rounded;
+      sourceLabel = '🏠 WFH Remote';
     } else if (isAuto) {
       badgeColor = const Color(0xFFF59E0B);
       leadingIcon = Icons.bolt_rounded;
@@ -8509,6 +9030,40 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             ),
             const SizedBox(height: 10),
           ],
+          // Customized ATS Resume Action (BYOK tailored PDF)
+          if ((app.tailoredResumePdfBase64 != null && app.tailoredResumePdfBase64!.isNotEmpty) ||
+              (app.tailoredResumePdfUrl != null && app.tailoredResumePdfUrl!.isNotEmpty)) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 10),
+              child: ElevatedButton.icon(
+                onPressed: () => _downloadJobTailoredPdf(app),
+                icon: const Icon(Icons.picture_as_pdf_rounded, size: 16),
+                label: const Text('Download Tailored ATS Resume PDF', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+          ] else if (_isLinkedInApp(app) || app.recipientEmail.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 10),
+              child: OutlinedButton.icon(
+                onPressed: () => _generateTailoredResumeForApp(app),
+                icon: const Icon(Icons.auto_awesome_rounded, size: 15, color: Color(0xFF6366F1)),
+                label: const Text('Generate Customized ATS Resume (BYOK)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF6366F1))),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFF6366F1)),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+          ],
           // Extracted Skills
           if (app.extractedSkills.isNotEmpty) ...[
             Wrap(
@@ -8616,10 +9171,53 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             final rawApps = appSnap.data ?? [];
             final portalJobs = portalSnap.data ?? [];
 
-            // Combine into unified map keyed by doc ID or portal URL for deduplication
+            // Combine into unified map keyed by doc ID or portal URL with smart deduplication
+            _historyDuplicateDocIds.clear();
             final Map<String, JobApplication> unifiedMap = {};
+
             for (final app in rawApps) {
-              unifiedMap[app.id] = app;
+              final normComp = app.companyName.toLowerCase().trim();
+              final normTitle = app.jobTitle.toLowerCase().trim();
+              final normEmail = app.recipientEmail.toLowerCase().trim();
+
+              String? matchKey;
+              for (final key in unifiedMap.keys) {
+                final existing = unifiedMap[key]!;
+                final exComp = existing.companyName.toLowerCase().trim();
+                final exTitle = existing.jobTitle.toLowerCase().trim();
+                final exEmail = existing.recipientEmail.toLowerCase().trim();
+
+                final isSameTarget = normComp.isNotEmpty &&
+                    exComp == normComp &&
+                    (normTitle == exTitle || normTitle.contains(exTitle) || exTitle.contains(normTitle)) &&
+                    (normEmail.isEmpty || exEmail.isEmpty || normEmail == exEmail);
+
+                if (isSameTarget) {
+                  final timeDiff = existing.appliedAt.difference(app.appliedAt).abs();
+                  if (timeDiff.inHours < 24) {
+                    matchKey = key;
+                    break;
+                  }
+                }
+              }
+
+              if (matchKey != null) {
+                final k = matchKey;
+                _historyDuplicateDocIds.putIfAbsent(k, () => [k]).add(app.id);
+                final existing = unifiedMap[k]!;
+
+                final preferApp = (app.isBounced && !existing.isBounced) ||
+                    (app.status == 'bounced' && existing.status != 'bounced') ||
+                    (app.tailoredResumePdfBase64 != null && existing.tailoredResumePdfBase64 == null) ||
+                    ((app.errorMessage?.isNotEmpty ?? false) && (existing.errorMessage?.isEmpty ?? true));
+
+                if (preferApp) {
+                  unifiedMap[k] = app.copyWith(id: k);
+                }
+              } else {
+                unifiedMap[app.id] = app;
+                _historyDuplicateDocIds[app.id] = [app.id];
+              }
             }
 
             for (final pj in portalJobs) {
@@ -8673,6 +9271,7 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
             final countAuto = activePool.where((a) => _isAutoApplyApp(a)).length;
             final countPortals = activePool.where((a) => _isCareerPortalApp(a)).length;
             final countLinkedIn = activePool.where((a) => _isLinkedInApp(a)).length;
+            final countWfh = activePool.where((a) => _isWfhRemoteApp(a)).length;
             final countManual = activePool.where((a) => _isManualScanApp(a)).length;
             final countReplies = activePool.where((a) => a.status == 'reply_received').length;
             final countFake = activePool.where((a) => a.isFake).length;
@@ -8686,6 +9285,8 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                   return _isCareerPortalApp(a);
                 case 'linkedin':
                   return _isLinkedInApp(a);
+                case 'wfh_remote':
+                  return _isWfhRemoteApp(a);
                 case 'manual':
                   return _isManualScanApp(a);
                 case 'replies':
@@ -8838,6 +9439,13 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
                           key: 'linkedin',
                           label: '💼 LinkedIn ($countLinkedIn)',
                           color: const Color(0xFF0A66C2),
+                          isDark: isDark,
+                        ),
+                        const SizedBox(width: 8),
+                        _buildUnifiedFilterChip(
+                          key: 'wfh_remote',
+                          label: '🏠 WFH Remote ($countWfh)',
+                          color: const Color(0xFF6366F1),
                           isDark: isDark,
                         ),
                         const SizedBox(width: 8),
@@ -11153,6 +11761,520 @@ class _JobAssistantScreenState extends State<JobAssistantScreen> with SingleTick
           ),
         ],
       ),
+    );
+  }
+
+  // ============================================================================
+  // TAB 7: WORK FROM HOME (WFH) REMOTE JOB HUNTER 🏠
+  // ============================================================================
+
+  Future<void> _runWFHJobDiscovery() async {
+    final location = _wfhLocationController.text.trim();
+    if (location.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter your preferred location for WFH jobs (e.g. India, United States).'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    await _service.saveWFHLocationPreference(location);
+
+    setState(() {
+      _isDiscoveringWFH = true;
+      _wfhStatusMessage = 'Searching verified remote jobs in "$location" via Tavily...';
+    });
+
+    try {
+      final res = await _service.triggerWFHJobDiscovery(
+        customLocation: location,
+      );
+
+      final count = res['appliedCount'] as int? ?? 0;
+      final msg = res['message'] as String? ?? 'Discovered and applied to $count WFH jobs.';
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.home_work_rounded, color: Color(0xFF6366F1)),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text('WFH Remote Hunter', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ),
+              ],
+            ),
+            content: Text(msg, style: const TextStyle(fontSize: 14)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('WFH Discovery Error: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDiscoveringWFH = false;
+          _wfhStatusMessage = '';
+        });
+      }
+    }
+  }
+
+  Widget _buildWFHRemoteTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subtextColor = isDark ? Colors.white70 : Colors.black54;
+
+    final presetLocations = [
+      'India 🇮🇳',
+      'United States 🇺🇸',
+      'United Kingdom 🇬🇧',
+      'Worldwide / Anywhere 🌍',
+      'Canada 🇨🇦',
+      'Germany 🇩🇪',
+      'Singapore 🇸🇬',
+      'Dubai / UAE 🇦🇪',
+      'Australia 🇦🇺',
+      'Europe 🇪🇺',
+    ];
+
+    final targetRolesDisplay = _targetRolesController.text.trim().isNotEmpty
+        ? _targetRolesController.text.trim()
+        : 'Software Engineer (default)';
+
+    final expDisplay = '${_minExpController.text.trim().isEmpty ? '0' : _minExpController.text.trim()} - ${_maxExpController.text.trim().isEmpty ? '3' : _maxExpController.text.trim()} yrs';
+
+    final resumeDisplay = _resumeFileName.isNotEmpty
+        ? _resumeFileName
+        : (_hasResume ? 'Master Resume PDF' : 'No Resume Uploaded (Please upload)');
+
+    final emailDisplay = _userEmail.isNotEmpty ? _userEmail : 'Gmail not configured';
+
+    return Scrollbar(
+      controller: _wfhScrollController,
+      child: SingleChildScrollView(
+        controller: _wfhScrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header Banner
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: isDark
+                      ? [const Color(0xFF1E1B4B), const Color(0xFF312E81)]
+                      : [const Color(0xFFEEF2FF), const Color(0xFFE0E7FF)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.home_work_rounded, color: Color(0xFF6366F1), size: 26),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'WFH Remote Job Hunter 🏠',
+                          style: GoogleFonts.outfit(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 17,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Discover verified remote & work-from-home openings matching your customized location. Candidate roles, experience, and resume are fetched automatically from your General Settings.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.grey[300] : Colors.grey[800],
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Location Preference Card
+            Card(
+              color: cardBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: isDark ? Colors.blueGrey.shade800 : Colors.grey.shade300),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_rounded, size: 20, color: Color(0xFF6366F1)),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Customized Location Preference',
+                          style: GoogleFonts.outfit(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Enter your desired location for remote openings (e.g. India, Bengaluru, United States, Worldwide):',
+                      style: TextStyle(fontSize: 12, color: subtextColor),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _wfhLocationController,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. India, United States, Bengaluru, Worldwide',
+                        hintStyle: TextStyle(fontSize: 13, color: isDark ? Colors.grey[500] : Colors.grey[400]),
+                        prefixIcon: const Icon(Icons.travel_explore_rounded, size: 20, color: Color(0xFF6366F1)),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.check_circle_outline_rounded, size: 20, color: Color(0xFF10B981)),
+                          tooltip: 'Save location preference',
+                          onPressed: () {
+                            final loc = _wfhLocationController.text.trim();
+                            _service.saveWFHLocationPreference(loc);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Saved location preference: "$loc"'),
+                                duration: const Duration(seconds: 2),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                        ),
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF0F172A) : Colors.grey.shade50,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: isDark ? Colors.blueGrey.shade800 : Colors.grey.shade300),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      onChanged: (val) {
+                        _service.saveWFHLocationPreference(val);
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Quick presets:',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: subtextColor),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: presetLocations.map((loc) {
+                        final cleanLoc = loc.replaceAll(RegExp(r'[\u{1F1E6}-\u{1F1FF}]{2}|[\u{1F300}-\u{1F5FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]', unicode: true), '').trim();
+                        final isSelected = _wfhLocationController.text.trim().toLowerCase() == cleanLoc.toLowerCase() ||
+                            _wfhLocationController.text.trim().toLowerCase() == loc.toLowerCase();
+                        return ActionChip(
+                          label: Text(
+                            loc,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                            ),
+                          ),
+                          backgroundColor: isSelected
+                              ? const Color(0xFF6366F1)
+                              : (isDark ? const Color(0xFF0F172A) : Colors.grey.shade100),
+                          side: BorderSide(
+                            color: isSelected ? const Color(0xFF6366F1) : (isDark ? Colors.blueGrey.shade800 : Colors.grey.shade300),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _wfhLocationController.text = cleanLoc;
+                            });
+                            _service.saveWFHLocationPreference(cleanLoc);
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Inherited Profile & General Settings Card
+            Card(
+              color: cardBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: isDark ? Colors.blueGrey.shade800 : Colors.grey.shade300),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.settings_suggest_rounded, size: 20, color: Color(0xFF6366F1)),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Inherited Settings',
+                              style: GoogleFonts.outfit(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: textColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                        TextButton.icon(
+                          onPressed: _showJobAssistantSettingsDialog,
+                          icon: const Icon(Icons.tune_rounded, size: 14),
+                          label: const Text('Edit in Settings', style: TextStyle(fontSize: 12)),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF6366F1),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _buildSettingsRow(
+                      icon: Icons.work_outline_rounded,
+                      label: 'Target Roles',
+                      value: targetRolesDisplay,
+                      textColor: textColor,
+                      subtextColor: subtextColor,
+                    ),
+                    const SizedBox(height: 6),
+                    _buildSettingsRow(
+                      icon: Icons.timelapse_rounded,
+                      label: 'Experience Tier',
+                      value: expDisplay,
+                      textColor: textColor,
+                      subtextColor: subtextColor,
+                    ),
+                    const SizedBox(height: 6),
+                    _buildSettingsRow(
+                      icon: Icons.description_outlined,
+                      label: 'Resume Attachment',
+                      value: resumeDisplay,
+                      textColor: textColor,
+                      subtextColor: subtextColor,
+                      isWarning: !_hasResume && _resumeFileName.isEmpty,
+                    ),
+                    const SizedBox(height: 6),
+                    _buildSettingsRow(
+                      icon: Icons.alternate_email_rounded,
+                      label: 'Gmail Outreach',
+                      value: emailDisplay,
+                      textColor: textColor,
+                      subtextColor: subtextColor,
+                      isWarning: _userEmail.isEmpty,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Run Button
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6366F1),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 2,
+                ),
+                onPressed: _isDiscoveringWFH ? null : _runWFHJobDiscovery,
+                icon: _isDiscoveringWFH
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                      )
+                    : const Icon(Icons.rocket_launch_rounded, size: 20),
+                label: Text(
+                  _isDiscoveringWFH
+                      ? 'Searching & Applying...'
+                      : 'Find & Apply to WFH Jobs in ${_wfhLocationController.text.trim().isEmpty ? 'Selected Location' : _wfhLocationController.text.trim()} 🚀',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            if (_isDiscoveringWFH && _wfhStatusMessage.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  _wfhStatusMessage,
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF6366F1), fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+
+            // Applications History Section
+            Row(
+              children: [
+                const Icon(Icons.history_rounded, size: 18, color: Color(0xFF6366F1)),
+                const SizedBox(width: 8),
+                Text(
+                  'WFH Applied History',
+                  style: GoogleFonts.outfit(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            StreamBuilder<List<JobApplication>>(
+              stream: _applicationsStream,
+              builder: (context, snapshot) {
+                final allApps = snapshot.data ?? [];
+                final wfhApps = allApps.where((a) => _isWfhRemoteApp(a)).toList();
+                wfhApps.sort((a, b) => b.appliedAt.compareTo(a.appliedAt));
+
+                if (wfhApps.isEmpty) {
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(28),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: isDark ? Colors.blueGrey.shade800 : Colors.grey.shade300),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.home_work_outlined, size: 48, color: subtextColor),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No WFH Applications Sent Yet',
+                          style: GoogleFonts.outfit(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Pick your preferred location above and tap "Find & Apply to WFH Jobs" to discover openings and dispatch personalized emails with your resume.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 12, color: subtextColor, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: wfhApps.length,
+                  itemBuilder: (context, index) {
+                    final app = wfhApps[index];
+                    return _buildUnifiedHistoryCard(app, isDark, cardBg, textColor, subtextColor);
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color textColor,
+    required Color subtextColor,
+    bool isWarning = false,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: isWarning ? Colors.orangeAccent : const Color(0xFF6366F1)),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 110,
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: subtextColor),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isWarning ? Colors.orangeAccent : textColor,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

@@ -60,7 +60,7 @@ function isForeignOnsite(detectedLocation, targetLocations, isRemote, postConten
  * fit with Gemini, and auto-applies via Gmail.
  */
 async function processLinkedInAutoApplyForUser(uid, options) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
     const isManual = (_a = options === null || options === void 0 ? void 0 : options.isManual) !== null && _a !== void 0 ? _a : false;
     const scheduledSlot = isManual ? "Manual Run" : "Scheduled Run (Apify)";
     try {
@@ -456,7 +456,7 @@ async function processLinkedInAutoApplyForUser(uid, options) {
                 const authUser = await firebase_1.admin.auth().getUser(uid);
                 applicantName = authUser.displayName || ((_t = authUser.email) === null || _t === void 0 ? void 0 : _t.split('@')[0]) || "Applicant";
             }
-            catch (_v) {
+            catch (_w) {
                 applicantName = "Applicant";
             }
         }
@@ -695,6 +695,29 @@ Respond ONLY with valid JSON:
             }
             catch (mailErr) {
                 console.error(`[LinkedInAutoApply] Error sending email to ${recipientEmail}:`, mailErr);
+                const errStr = (mailErr.message || '').toLowerCase();
+                if (errStr.includes("550") ||
+                    errStr.includes("5.1.1") ||
+                    errStr.includes("user unknown") ||
+                    errStr.includes("address not found") ||
+                    errStr.includes("mailbox unavailable") ||
+                    errStr.includes("recipient rejected") ||
+                    errStr.includes("invalid recipient")) {
+                    try {
+                        const cleanRecip = recipientEmail.toLowerCase().trim();
+                        await firebase_1.db.collection("system_bounced_emails").doc(encodeURIComponent(cleanRecip)).set({
+                            email: cleanRecip,
+                            companyName: finalCompany || "",
+                            bouncedAt: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
+                            reason: ((_u = mailErr.message) === null || _u === void 0 ? void 0 : _u.substring(0, 300)) || "Invalid recipient / 550 bounce",
+                            reportedByUid: uid,
+                            source: "linkedin_auto_apply_smtp_failure"
+                        }, { merge: true });
+                    }
+                    catch (bErr) {
+                        console.warn("[LinkedInAutoApply] Failed to record bounced email in blacklist:", bErr.message);
+                    }
+                }
             }
         }
         // 10. Update User Document Timestamps
@@ -712,7 +735,7 @@ Respond ONLY with valid JSON:
             try {
                 const userTokenDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
                 if (!userTokenDoc.empty) {
-                    const fcmToken = (_u = userTokenDoc.docs[0].data()) === null || _u === void 0 ? void 0 : _u.fcmToken;
+                    const fcmToken = (_v = userTokenDoc.docs[0].data()) === null || _v === void 0 ? void 0 : _v.fcmToken;
                     if (fcmToken) {
                         const compNames = successfullyApplied.map(j => j.companyName).slice(0, 3).join(', ');
                         const notifTitle = `⚡ Auto-Applied to ${successfullyApplied.length} LinkedIn Post${successfullyApplied.length > 1 ? 's' : ''}!`;

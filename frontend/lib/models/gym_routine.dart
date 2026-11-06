@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'gym_workout.dart';
 
 /// Template for an exercise inside a user's custom workout routine
 class GymRoutineExercise {
@@ -9,6 +10,8 @@ class GymRoutineExercise {
   final int defaultSets;
   final int restSeconds;
   final String? videoUrl;
+  final List<String> videoUrls;
+  final List<GymWorkoutSet>? sets;
 
   const GymRoutineExercise({
     required this.exerciseId,
@@ -18,9 +21,15 @@ class GymRoutineExercise {
     this.defaultSets = 3,
     this.restSeconds = 90,
     this.videoUrl,
+    this.videoUrls = const [],
+    this.sets,
   });
 
   Map<String, dynamic> toMap() {
+    final resolvedUrls = videoUrls.isNotEmpty
+        ? videoUrls
+        : (videoUrl != null && videoUrl!.trim().isNotEmpty ? [videoUrl!.trim()] : <String>[]);
+
     return {
       'exerciseId': exerciseId,
       'exerciseName': exerciseName,
@@ -28,11 +37,22 @@ class GymRoutineExercise {
       'targetMuscle': targetMuscle,
       'defaultSets': defaultSets,
       'restSeconds': restSeconds,
-      if (videoUrl != null && videoUrl!.trim().isNotEmpty) 'videoUrl': videoUrl!.trim(),
+      if (resolvedUrls.isNotEmpty) 'videoUrl': resolvedUrls.first,
+      if (resolvedUrls.isNotEmpty) 'videoUrls': resolvedUrls,
+      if (sets != null && sets!.isNotEmpty) 'sets': sets!.map((s) => s.toMap()).toList(),
     };
   }
 
   factory GymRoutineExercise.fromMap(Map<String, dynamic> map) {
+    final rawList = (map['videoUrls'] as List<dynamic>?)
+            ?.map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList() ??
+        [];
+    if (rawList.isEmpty && map['videoUrl'] != null && map['videoUrl'].toString().trim().isNotEmpty) {
+      rawList.add(map['videoUrl'].toString().trim());
+    }
+
     return GymRoutineExercise(
       exerciseId: map['exerciseId']?.toString() ?? '',
       exerciseName: map['exerciseName']?.toString() ?? '',
@@ -40,7 +60,11 @@ class GymRoutineExercise {
       targetMuscle: map['targetMuscle']?.toString() ?? '',
       defaultSets: (map['defaultSets'] as num?)?.toInt() ?? 3,
       restSeconds: (map['restSeconds'] as num?)?.toInt() ?? 90,
-      videoUrl: map['videoUrl']?.toString(),
+      videoUrl: rawList.isNotEmpty ? rawList.first : null,
+      videoUrls: rawList,
+      sets: (map['sets'] as List<dynamic>?)
+          ?.map((s) => GymWorkoutSet.fromMap(Map<String, dynamic>.from(s)))
+          .toList(),
     );
   }
 
@@ -52,7 +76,10 @@ class GymRoutineExercise {
     int? defaultSets,
     int? restSeconds,
     String? videoUrl,
+    List<String>? videoUrls,
+    List<GymWorkoutSet>? sets,
   }) {
+    final updatedUrls = videoUrls ?? this.videoUrls;
     return GymRoutineExercise(
       exerciseId: exerciseId ?? this.exerciseId,
       exerciseName: exerciseName ?? this.exerciseName,
@@ -60,7 +87,9 @@ class GymRoutineExercise {
       targetMuscle: targetMuscle ?? this.targetMuscle,
       defaultSets: defaultSets ?? this.defaultSets,
       restSeconds: restSeconds ?? this.restSeconds,
-      videoUrl: videoUrl ?? this.videoUrl,
+      videoUrl: videoUrl ?? (updatedUrls.isNotEmpty ? updatedUrls.first : this.videoUrl),
+      videoUrls: updatedUrls,
+      sets: sets ?? this.sets,
     );
   }
 }

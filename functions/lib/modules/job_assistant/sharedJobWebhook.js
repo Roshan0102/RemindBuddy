@@ -9,6 +9,8 @@ const emailFormatter_1 = require("../../utils/emailFormatter");
 const nodemailer = require("nodemailer");
 const axios_1 = require("axios");
 const cheerio = require("cheerio");
+const pdfResumeGenerator_1 = require("../../utils/pdfResumeGenerator");
+const resumeParser_1 = require("../../utils/resumeParser");
 /**
  * HTTP Webhook specifically designed for Apple Shortcuts and external share targets.
  * Enables 1-tap background sharing of LinkedIn jobs, post URLs, or text from iOS iPhones
@@ -18,7 +20,7 @@ exports.importSharedJob = functions.runWith({
     timeoutSeconds: 300,
     memory: "1GB"
 }).https.onRequest(async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
     // 1. Enable CORS
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -119,15 +121,26 @@ exports.importSharedJob = functions.runWith({
         const geminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
         const groqKey = (userApiKeys.groqApiKey || userData.groqApiKey || "").trim();
         const candidateName = (userData.applicantName || userData.displayName || userData.fullName || "Candidate").trim();
+        // 6.5 Resolve Candidate Resume Ground Truth for ATS Tailoring
+        let groundTruth = null;
+        if (cleanResumeB64) {
+            try {
+                groundTruth = await (0, resumeParser_1.ensureUserResumeParsed)(targetUid, userData, cleanResumeB64, geminiKey, groqKey, (_m = userData.masterResume) === null || _m === void 0 ? void 0 : _m.fileName);
+            }
+            catch (gtErr) {
+                console.warn(`[SharedJobWebhook] Ground truth parsing note: ${gtErr.message}`);
+            }
+        }
         // 7. Parse with Gemini AI
         const prompt = `You are an elite Executive Recruiter and ATS Application Specialist.
-A user shared a job post or hiring update from iOS Share Sheet:
+A user shared a job post or hiring update:
 
 --- SHARED CONTENT ---
 ${extractedBodyText.slice(0, 5000)}
 ----------------------
 
 CANDIDATE NAME: "${candidateName}"
+${groundTruth ? `\nCANDIDATE BASE RESUME GROUND TRUTH (VERIFIED):\n${JSON.stringify(groundTruth, null, 2)}\n` : ''}
 
 TASK:
 1. Identify the Company Name and Job Title. If company cannot be identified with certainty, use the most plausible employer or poster name.
@@ -148,6 +161,8 @@ TASK:
 ${candidateName}"
    - Ground all skills and accomplishments SOLELY on the candidate's attached resume. NEVER hallucinate.
    - Universal Generalization: Must work seamlessly for ANY user, ANY profession, and ANY role.
+6. TAILORED ATS RESUME:
+   Tailor candidate's verified resume skills, accomplishments, and summary to optimize for ATS match against this specific job.
 
 OUTPUT STRICT JSON FORMAT ONLY:
 {
@@ -157,7 +172,40 @@ OUTPUT STRICT JSON FORMAT ONLY:
   "extractedSkills": ["Skill 1", "Skill 2", "Skill 3"],
   "location": "Location or Remote",
   "generatedSubject": "Application for [Job Title] - ${candidateName}",
-  "generatedCoverLetter": "Dear [Name],\\n\\n[Paragraph 1 - approx 2 lines]\\n\\n[Paragraph 2 - approx 2 to 3 lines]\\n\\nSincerely,\\n${candidateName}"
+  "generatedCoverLetter": "Dear [Name],\\n\\n[Paragraph 1 - approx 2 lines]\\n\\n[Paragraph 2 - approx 2 to 3 lines]\\n\\nSincerely,\\n${candidateName}",
+  "tailoredResume": {
+    "fullName": "${candidateName}",
+    "contactLine": "City, Country | Phone | Email | LinkedIn | Portfolio",
+    "professionalSummary": "Results-driven...",
+    "skills": [
+      { "category": "Technical Skills", "items": "Relevant candidate skills" }
+    ],
+    "experience": [
+      {
+        "company": "Company",
+        "role": "Role",
+        "period": "Period",
+        "location": "Location",
+        "bulletPoints": ["Point 1", "Point 2", "Point 3"]
+      }
+    ],
+    "projects": [
+      {
+        "title": "Project Title",
+        "techStack": "Tech Stack",
+        "bulletPoints": ["Point 1"]
+      }
+    ],
+    "education": [
+      {
+        "degree": "Degree",
+        "institution": "University",
+        "period": "Period",
+        "location": "Location"
+      }
+    ],
+    "certifications": ["Certifications"]
+  }
 }`;
         const inlineParts = [];
         if (cleanResumeB64) {
@@ -192,7 +240,7 @@ OUTPUT STRICT JSON FORMAT ONLY:
         try {
             parsed = JSON.parse(cleanedJson);
         }
-        catch (_o) {
+        catch (_q) {
             parsed = {
                 companyName: pageTitle || "Target Company",
                 jobTitle: "Open Position",
@@ -212,6 +260,43 @@ OUTPUT STRICT JSON FORMAT ONLY:
         const emailConfig = userData.emailConfig || {};
         const userEmail = (emailConfig.email || "").toString().trim();
         const appPassword = (emailConfig.appPassword || "").toString().trim();
+        // 7.5 Generate Tailored ATS Resume PDF using BYOK Gemini output
+        let tailoredResumePdfBase64 = "";
+        let tailoredResumePdfUrl = "";
+        if (parsed.tailoredResume) {
+            try {
+                const tailoredResumeData = parsed.tailoredResume;
+                if (tailoredResumeData.contactLine) {
+                    const segs = tailoredResumeData.contactLine.split(/[|•]/).map((s) => s.trim()).filter(Boolean);
+                    const userLinks = userData.profileLinks || userData.links || {};
+                    const cleanedSegs = segs.map((seg) => {
+                        const isBare = /^(portfolio|website|personal website)$/i.test(seg);
+                        if (isBare)
+                            return userLinks.portfolio || userLinks.github || "";
+                        return seg;
+                    }).filter(Boolean);
+                    tailoredResumeData.contactLine = cleanedSegs.join(" | ");
+                }
+                const pdfBuf = await (0, pdfResumeGenerator_1.generateAtsResumePdf)(tailoredResumeData);
+                tailoredResumePdfBase64 = pdfBuf.toString("base64");
+                try {
+                    const bucket = firebase_1.admin.storage().bucket();
+                    const file = bucket.file(`users/${targetUid}/tailored_resumes/shared_${Date.now()}.pdf`);
+                    await file.save(pdfBuf, { metadata: { contentType: "application/pdf" } });
+                    const [signedUrl] = await file.getSignedUrl({
+                        action: "read",
+                        expires: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                    });
+                    tailoredResumePdfUrl = signedUrl;
+                }
+                catch (stErr) {
+                    console.log(`[SharedJobWebhook] Storage upload note: ${stErr.message}`);
+                }
+            }
+            catch (pdfErr) {
+                console.warn(`[SharedJobWebhook] Failed to generate tailored ATS PDF: ${pdfErr.message}`);
+            }
+        }
         // 8. Auto-send email application if recruiter email and user Gmail are configured
         let isSent = false;
         let emailMessageId = null;
@@ -256,10 +341,11 @@ OUTPUT STRICT JSON FORMAT ONLY:
                     }
                 });
                 const attachments = [];
-                if (cleanResumeB64) {
+                const attachmentB64 = tailoredResumePdfBase64 || cleanResumeB64;
+                if (attachmentB64) {
                     attachments.push({
-                        filename: `${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}_Resume.pdf`,
-                        content: Buffer.from(cleanResumeB64, "base64"),
+                        filename: `${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}_${jobTitle.replace(/[^a-zA-Z0-9]/g, "_")}_Resume.pdf`,
+                        content: Buffer.from(attachmentB64, "base64"),
                         contentType: "application/pdf"
                     });
                 }
@@ -280,6 +366,30 @@ OUTPUT STRICT JSON FORMAT ONLY:
             catch (err) {
                 console.error(`[SharedJobWebhook] Failed to send email to ${recipientEmail}:`, err);
                 emailSendError = err.message || "Failed to deliver email.";
+                const errStr = (err.message || '').toLowerCase();
+                if (errStr.includes("550") ||
+                    errStr.includes("5.1.1") ||
+                    errStr.includes("user unknown") ||
+                    errStr.includes("address not found") ||
+                    errStr.includes("mailbox unavailable") ||
+                    errStr.includes("recipient rejected") ||
+                    errStr.includes("invalid recipient")) {
+                    try {
+                        const cleanRecip = recipientEmail.toLowerCase().trim();
+                        await firebase_1.db.collection("system_bounced_emails").doc(encodeURIComponent(cleanRecip)).set({
+                            email: cleanRecip,
+                            companyName: companyName || "",
+                            bouncedAt: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
+                            reason: ((_o = err.message) === null || _o === void 0 ? void 0 : _o.substring(0, 300)) || "Invalid recipient / 550 bounce",
+                            reportedByUid: targetUid,
+                            source: "ios_share_smtp_failure"
+                        }, { merge: true });
+                        console.log(`[SharedJobWebhook] Auto-added '${cleanRecip}' to system_bounced_emails after SMTP failure.`);
+                    }
+                    catch (bErr) {
+                        console.warn("[SharedJobWebhook] Failed to record bounced email in blacklist:", bErr.message);
+                    }
+                }
             }
         }
         // 9. Save into Firestore
@@ -305,6 +415,9 @@ OUTPUT STRICT JSON FORMAT ONLY:
             generatedSubject,
             generatedCoverLetter,
             status,
+            tailoredResumePdfBase64: tailoredResumePdfBase64 || null,
+            tailoredResumePdfUrl: tailoredResumePdfUrl || null,
+            tailoredResumeData: parsed.tailoredResume || null,
             isFake: isPermanentlyBlockedFake,
             isBounced: isCentralBouncedBlocked,
             bounceReason: isCentralBouncedBlocked ? "address_not_found" : null,
@@ -341,7 +454,7 @@ OUTPUT STRICT JSON FORMAT ONLY:
         try {
             const userTokenDoc = await firebase_1.db.collection("usernames").where("uid", "==", targetUid).limit(1).get();
             if (!userTokenDoc.empty) {
-                const fcmToken = (_m = userTokenDoc.docs[0].data()) === null || _m === void 0 ? void 0 : _m.fcmToken;
+                const fcmToken = (_p = userTokenDoc.docs[0].data()) === null || _p === void 0 ? void 0 : _p.fcmToken;
                 if (fcmToken) {
                     const notifTitle = isSent
                         ? `🚀 Application Sent: ${jobTitle} at ${companyName}`

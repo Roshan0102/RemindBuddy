@@ -76,7 +76,8 @@ export {
 
 // Job Assistant
 export {
-    parseJobPostersWithAI
+    parseJobPostersWithAI,
+    tailorResumeForJob
 } from "./modules/job_assistant/jobPosterAI";
 
 export {
@@ -119,6 +120,10 @@ export {
 export {
     parseUserResumeCallable
 } from "./utils/resumeParser";
+
+export {
+    runWFHJobDiscoveryCallable
+} from "./modules/job_assistant/wfhJobDiscovery";
 
 // Finance & Expense Tracking
 export {

@@ -315,6 +315,35 @@ async function checkUserJobReplies(uid) {
                         }
                     }
                     if (!matchedApp) {
+                        // Even if unmatched, if this is an automated bounce daemon notification, extract recipient and centrally blacklist
+                        if (isPotentialBounce && cleanBodySnippet) {
+                            const matches = cleanBodySnippet.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+                            if (matches && matches.length > 0) {
+                                for (const m of matches) {
+                                    const low = m.toLowerCase().trim();
+                                    if (!low.includes("mailer-daemon") && !low.includes("postmaster") && !low.includes("google.com") && low !== userEmail.toLowerCase().trim()) {
+                                        const fullBounce = `${subject} ${cleanBodySnippet}`.toLowerCase();
+                                        if (fullBounce.includes("550") || fullBounce.includes("5.1.1") || fullBounce.includes("address not found") || fullBounce.includes("user unknown") || fullBounce.includes("couldn't be found") || fullBounce.includes("mailbox unavailable") || fullBounce.includes("does not exist") || fullBounce.includes("invalid recipient")) {
+                                            try {
+                                                await firebase_1.db.collection("system_bounced_emails").doc(encodeURIComponent(low)).set({
+                                                    email: low,
+                                                    bouncedAt: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
+                                                    reason: "Address Not Found (550 / mailbox unavailable)",
+                                                    details: cleanBodySnippet.substring(0, 300),
+                                                    reportedByUid: uid,
+                                                    source: "reply_tracker_unmatched_bounce"
+                                                }, { merge: true });
+                                                console.log(`[ReplyTracker] Centrally blacklisted bounced email from unlinked bounce notification: ${low}`);
+                                            }
+                                            catch (e) {
+                                                console.warn("[ReplyTracker] Error recording unlinked bounce:", e.message);
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                         continue;
                     }
                     // Check if this is a Mail Delivery Subsystem / Bounce / Failure notice
@@ -413,16 +442,31 @@ async function checkUserJobReplies(uid) {
                                 }
                             }
                         }
-                        if (specificResponseType === "address_not_found" && bouncedEmail && bouncedEmail.includes("@")) {
+                        const isInvalidAddressBounce = specificResponseType === "address_not_found" ||
+                            fullBounceContext.includes("550") ||
+                            fullBounceContext.includes("5.1.1") ||
+                            fullBounceContext.includes("user unknown") ||
+                            fullBounceContext.includes("user does not exist") ||
+                            fullBounceContext.includes("does not exist") ||
+                            fullBounceContext.includes("address not found") ||
+                            fullBounceContext.includes("address couldn't be found") ||
+                            fullBounceContext.includes("address could not be found") ||
+                            fullBounceContext.includes("no such user") ||
+                            fullBounceContext.includes("mailbox unavailable") ||
+                            fullBounceContext.includes("recipient rejected") ||
+                            fullBounceContext.includes("invalid recipient");
+                        if (isInvalidAddressBounce && bouncedEmail && bouncedEmail.includes("@")) {
                             try {
                                 await firebase_1.db.collection("system_bounced_emails").doc(encodeURIComponent(bouncedEmail)).set({
                                     email: bouncedEmail,
                                     companyName: matchedApp.companyName || "",
                                     bouncedAt: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
-                                    reason: cleanBodySnippet.substring(0, 300),
-                                    reportedByUid: uid
+                                    reason: specificSnippet || cleanBodySnippet.substring(0, 300) || "Address Not Found / 550 bounce",
+                                    details: cleanBodySnippet.substring(0, 300),
+                                    reportedByUid: uid,
+                                    source: "reply_tracker_bounce_daemon"
                                 }, { merge: true });
-                                console.log(`[ReplyTracker] Added '${bouncedEmail}' to global system_bounced_emails blacklist.`);
+                                console.log(`[ReplyTracker] Auto-added '${bouncedEmail}' to global system_bounced_emails blacklist.`);
                             }
                             catch (blErr) {
                                 console.warn("[ReplyTracker] Failed to record bounced email in blacklist:", blErr.message);

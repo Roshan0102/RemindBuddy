@@ -129,6 +129,34 @@ class AssistantService {
         return;
       }
 
+      // Check if query is asking for Workout/Gym
+      if (queryLower.contains('workout') || queryLower.contains('gym') || queryLower.contains('exercise')) {
+        onNavigateToFeature('gym');
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const GymActiveWorkoutScreen(initialTitle: 'Quick Workout'),
+          ),
+        );
+        await _tts.speak('Starting your gym workout session.');
+        return;
+      }
+
+      // Check if query is asking for Reminders
+      if (queryLower.startsWith('remind me') || queryLower.contains('create reminder') || queryLower.contains('add reminder')) {
+        final reminderTitle = query
+            .replaceAll(RegExp(r'^(remind me to|create reminder to|add reminder to|remind me|create reminder|add reminder)\s*', caseSensitive: false), '')
+            .trim();
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AddTaskScreen(initialTitle: reminderTitle.isNotEmpty ? reminderTitle : null),
+          ),
+        );
+        await _tts.speak(reminderTitle.isNotEmpty ? 'Adding reminder for $reminderTitle.' : 'Add your reminder on SmartBuddy.');
+        return;
+      }
+
       // Route all other questions to SmartBuddy Voice AI Screen with query
       Navigator.push(
         context,
@@ -168,10 +196,10 @@ class AssistantService {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const AddTaskScreen(),
+              builder: (_) => AddTaskScreen(initialTitle: query.isNotEmpty ? query : null),
             ),
           );
-          await _tts.speak('Add your reminder on SmartBuddy.');
+          await _tts.speak(query.isNotEmpty ? 'Adding reminder for $query.' : 'Add your reminder on SmartBuddy.');
         } else {
           onNavigateToFeature('reminders');
           await _tts.speak('Opening reminders on SmartBuddy.');

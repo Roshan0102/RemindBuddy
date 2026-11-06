@@ -11,6 +11,75 @@ import '../models/resume_profile.dart';
 import '../models/career_portal_job.dart';
 import 'email_verification_service.dart';
 
+/// Metadata for an email blocked centrally across all users in system_bounced_emails
+class CentralBlockedEmailInfo {
+  final String email;
+  final String? companyName;
+  final String reason;
+  final bool isFake;
+  final DateTime? bouncedAt;
+  final String? source;
+  final String? reportedByUid;
+
+  const CentralBlockedEmailInfo({
+    required this.email,
+    this.companyName,
+    required this.reason,
+    this.isFake = false,
+    this.bouncedAt,
+    this.source,
+    this.reportedByUid,
+  });
+
+  factory CentralBlockedEmailInfo.fromMap(Map<String, dynamic> data, String email) {
+    DateTime? parsedDate;
+    final bAt = data['bouncedAt'] ?? data['blockedAt'] ?? data['flaggedAt'];
+    if (bAt is Timestamp) {
+      parsedDate = bAt.toDate();
+    } else if (bAt is String) {
+      parsedDate = DateTime.tryParse(bAt);
+    }
+    return CentralBlockedEmailInfo(
+      email: email,
+      companyName: data['companyName'] as String?,
+      reason: (data['reason'] as String?)?.isNotEmpty == true
+          ? data['reason'] as String
+          : (data['isFake'] == true
+              ? 'Flagged as fraudulent recruiter / agency'
+              : 'Invalid recipient mailbox / 550 delivery bounce'),
+      isFake: data['isFake'] == true,
+      bouncedAt: parsedDate,
+      source: data['source'] as String?,
+      reportedByUid: data['reportedByUid'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'email': email,
+        if (companyName != null) 'companyName': companyName,
+        'reason': reason,
+        'isFake': isFake,
+        if (bouncedAt != null) 'bouncedAt': bouncedAt!.toIso8601String(),
+        if (source != null) 'source': source,
+        if (reportedByUid != null) 'reportedByUid': reportedByUid,
+      };
+}
+
+/// Thrown when an email send is blocked because the recipient is flagged in the Central Verification Hub
+class CentrallyBlockedEmailException implements Exception {
+  final String email;
+  final CentralBlockedEmailInfo info;
+
+  const CentrallyBlockedEmailException({
+    required this.email,
+    required this.info,
+  });
+
+  @override
+  String toString() =>
+      'CentrallyBlockedEmailException: Recipient "$email" is blocked in Central Hub (${info.reason}). Delivery prevented to protect sender reputation.';
+}
+
 class JobAssistantService {
   static final JobAssistantService _instance = JobAssistantService._internal();
   factory JobAssistantService() => _instance;
@@ -781,6 +850,54 @@ class JobAssistantService {
   }
 
   // ============================================================================
+  // WORK FROM HOME (WFH) REMOTE JOB DISCOVERY
+  // ============================================================================
+
+  Future<Map<String, dynamic>> triggerWFHJobDiscovery({
+    required String customLocation,
+    int maxApplications = 4,
+  }) async {
+    final callable = _functions.httpsCallable(
+      'runWFHJobDiscoveryCallable',
+      options: HttpsCallableOptions(timeout: const Duration(minutes: 9)),
+    );
+    final response = await callable.call({
+      'customLocation': customLocation.trim(),
+      'maxApplications': maxApplications,
+    });
+
+    final resData = response.data;
+    if (resData == null || resData['success'] != true) {
+      throw Exception(resData?['message'] ?? 'Failed to discover and apply to WFH jobs.');
+    }
+
+    return Map<String, dynamic>.from(resData);
+  }
+
+  Future<String> getWFHLocationPreference() async {
+    final uid = _uid;
+    if (uid == null) return 'India';
+    try {
+      final doc = await _db.collection('users').doc(uid).get();
+      final val = doc.data()?['wfhLocationPreference'];
+      if (val != null && val.toString().trim().isNotEmpty) {
+        return val.toString().trim();
+      }
+    } catch (_) {}
+    return 'India';
+  }
+
+  Future<void> saveWFHLocationPreference(String location) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await _db.collection('users').doc(uid).set({
+        'wfhLocationPreference': location.trim(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
+  // ============================================================================
   // JOB APPLICATIONS CRUD
   // ============================================================================
 
@@ -884,36 +1001,7 @@ class JobAssistantService {
             ? app.id
             : 'app_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}');
 
-    final newApp = JobApplication(
-      id: resolvedId,
-      jobTitle: app.jobTitle,
-      companyName: app.companyName,
-      recipientEmail: app.recipientEmail,
-      extractedSkills: app.extractedSkills,
-      generatedSubject: app.generatedSubject,
-      generatedCoverLetter: app.generatedCoverLetter,
-      status: app.status,
-      appliedAt: app.appliedAt,
-      posterImageUrls: app.posterImageUrls,
-      errorMessage: app.errorMessage,
-      isAutoApplied: app.isAutoApplied,
-      location: app.location,
-      experienceRequired: app.experienceRequired,
-      sourcePlatform: app.sourcePlatform,
-      modelUsed: app.modelUsed,
-      responseType: app.responseType,
-      replyReceivedAt: app.replyReceivedAt,
-      replySender: app.replySender,
-      replySubject: app.replySubject,
-      replySnippet: app.replySnippet,
-      replyBodyPreview: app.replyBodyPreview,
-      actionRequired: app.actionRequired,
-      resumeProfileName: app.resumeProfileName,
-      sourceUrl: app.sourceUrl,
-      source: app.source,
-      authorName: app.authorName,
-      postExcerpt: app.postExcerpt,
-    );
+    final newApp = app.copyWith(id: resolvedId);
 
     final existingIndex = _cachedApplications.indexWhere((a) => a.id == newApp.id);
     if (existingIndex >= 0) {
@@ -1015,6 +1103,16 @@ class JobAssistantService {
         'reason': reason ?? 'Marked as fake/scam by user',
         'originalJobId': app.id,
       }, SetOptions(merge: true));
+
+      // Also record in central system_bounced_emails collection so all users benefit
+      await recordBouncedEmailCentrally(
+        email: cleanEmail,
+        companyName: app.companyName,
+        originalJobId: app.id,
+        reason: reason ?? 'Flagged as fraudulent / fake recruiter by user',
+        isFake: true,
+        source: 'user_mark_fake',
+      );
     }
 
     // 3. Update in-memory cached applications
@@ -1048,6 +1146,20 @@ class JobAssistantService {
     // 2. Remove from blocked_fake_jobs
     if (cleanEmail.isNotEmpty) {
       await doc.collection('blocked_fake_jobs').doc(Uri.encodeComponent(cleanEmail)).delete();
+
+      // If reported by this user centrally as fake, remove from system_bounced_emails
+      try {
+        final centralDoc = await _db.collection('system_bounced_emails').doc(Uri.encodeComponent(cleanEmail)).get();
+        if (centralDoc.exists) {
+          final data = centralDoc.data();
+          if (data?['reportedByUid'] == doc.id && data?['isFake'] == true) {
+            await _db.collection('system_bounced_emails').doc(Uri.encodeComponent(cleanEmail)).delete();
+            debugPrint('[JobAssistantService] Unmarked $cleanEmail from system_bounced_emails.');
+          }
+        }
+      } catch (e) {
+        debugPrint('[JobAssistantService] Notice checking system_bounced_emails on unmark: $e');
+      }
     }
 
     // 3. Update in-memory cached applications
@@ -1229,6 +1341,8 @@ class JobAssistantService {
         generatedCoverLetter: map['generatedCoverLetter'] ?? '',
         status: 'extracted',
         appliedAt: DateTime.now(),
+        tailoredResumePdfBase64: map['tailoredResumePdfBase64']?.toString(),
+        tailoredResumePdfUrl: map['tailoredResumePdfUrl']?.toString(),
       ));
     }
 
@@ -1335,21 +1449,81 @@ class JobAssistantService {
     };
   }
 
-  /// Checks whether an email is centrally blacklisted due to delivery bounces (Address Not Found / 550)
+  /// Checks whether an email is centrally blacklisted due to delivery bounces (Address Not Found / 550) or fraud
   Future<bool> isEmailBouncedBlacklisted(String email) async {
+    final info = await checkCentralBlockedEmail(email);
+    return info != null;
+  }
+
+  /// Checks whether an email is centrally blacklisted in system_bounced_emails and returns its detailed metadata
+  Future<CentralBlockedEmailInfo?> checkCentralBlockedEmail(String email) async {
     final clean = email.toLowerCase().trim();
-    if (clean.isEmpty || !clean.contains('@')) return false;
+    if (clean.isEmpty || !clean.contains('@')) return null;
     try {
       final doc = await _db.collection('system_bounced_emails').doc(Uri.encodeComponent(clean)).get();
-      return doc.exists;
+      if (doc.exists && doc.data() != null) {
+        return CentralBlockedEmailInfo.fromMap(doc.data()!, clean);
+      }
     } catch (e) {
-      debugPrint('Error checking system_bounced_emails: $e');
-      return false;
+      debugPrint('[JobAssistantService] Notice checking system_bounced_emails: $e');
+    }
+    return null;
+  }
+
+  /// Centrally records an invalid, bounced, or fraudulent recruiter email address into system_bounced_emails
+  /// so that all RemindBuddy users are protected from sending to dead-end or toxic mailboxes.
+  Future<void> recordBouncedEmailCentrally({
+    required String email,
+    String? companyName,
+    String? reason,
+    String? originalJobId,
+    bool isFake = false,
+    String? source,
+  }) async {
+    final clean = email.toLowerCase().trim();
+    if (clean.isEmpty || !clean.contains('@')) return;
+
+    try {
+      final docRef = _db.collection('system_bounced_emails').doc(Uri.encodeComponent(clean));
+      await docRef.set({
+        'email': clean,
+        if (companyName != null && companyName.isNotEmpty) 'companyName': companyName,
+        'bouncedAt': FieldValue.serverTimestamp(),
+        'reason': reason ?? (isFake ? 'Flagged as fraudulent recruiter / scam by user' : 'Invalid email address / 550 delivery bounce'),
+        'isFake': isFake,
+        'reportedByUid': _userDoc?.id ?? 'system',
+        if (source != null) 'source': source,
+        if (originalJobId != null) 'originalJobId': originalJobId,
+      }, SetOptions(merge: true));
+      debugPrint('[JobAssistantService] Centrally recorded bounced/blocked email in system_bounced_emails: $clean');
+    } catch (e) {
+      debugPrint('[JobAssistantService] Warning: Could not record to system_bounced_emails: $e');
     }
   }
 
   Future<void> sendJobApplicationEmail(JobApplication app) async {
     final cleanEmail = app.recipientEmail.toLowerCase().trim();
+
+    final resolvedApp = app.id.isNotEmpty
+        ? app
+        : app.copyWith(
+            id: 'app_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}',
+          );
+
+    // 0. Check Central Verification Hub (system_bounced_emails) before attempting network or email operations
+    final centralInfo = await checkCentralBlockedEmail(cleanEmail);
+    if (centralInfo != null) {
+      final msg = 'Blocked by Central Verification Hub: Recipient email is flagged as undeliverable (${centralInfo.reason}). Delivery prevented to protect sender reputation.';
+      await saveJobApplication(resolvedApp.copyWith(
+        status: 'bounced',
+        isBounced: true,
+        errorMessage: msg,
+      ));
+      throw CentrallyBlockedEmailException(
+        email: cleanEmail,
+        info: centralInfo,
+      );
+    }
 
     // Cascading 4-Tier Email Verification Check (Blacklist -> QuickEmailVerification -> Reoon -> In-House MX)
     final verification = await EmailVerificationService().verifyEmail(cleanEmail);
@@ -1358,52 +1532,100 @@ class JobAssistantService {
           ? '${verification.reason} (Did you mean: ${verification.suggestedEmail}?)'
           : verification.reason;
 
+      // Automatically add to central system_bounced_emails so all users are protected!
+      await recordBouncedEmailCentrally(
+        email: cleanEmail,
+        companyName: resolvedApp.companyName,
+        originalJobId: resolvedApp.id,
+        reason: 'Verification failed (${verification.tierUsed}): $reasonMsg',
+        source: 'pre_send_verification_${verification.tierUsed}',
+      );
+
       // Mark application as bounced / undeliverable in Firestore
-      await saveJobApplication(app.copyWith(
+      await saveJobApplication(resolvedApp.copyWith(
         status: 'bounced',
         isBounced: true,
         errorMessage: 'Email Verification Failed (${verification.tierUsed}): $reasonMsg. Delivery blocked to protect sender reputation.',
       ));
-      throw Exception('Cannot send application: Recipient email "${app.recipientEmail}" is undeliverable ($reasonMsg). Delivery blocked centrally to protect your email deliverability.');
+      throw Exception('Cannot send application: Recipient email "${resolvedApp.recipientEmail}" is undeliverable ($reasonMsg). Delivery blocked centrally to protect your email deliverability.');
     }
 
     final masterResume = await getMasterResume();
 
+    // Use customized BYOK tailored ATS resume if available, otherwise master base resume
+    final hasTailored = (resolvedApp.tailoredResumePdfBase64 != null && resolvedApp.tailoredResumePdfBase64!.trim().isNotEmpty);
+    final resumeB64ToSend = hasTailored ? resolvedApp.tailoredResumePdfBase64! : masterResume['base64'];
+    final safeRole = resolvedApp.jobTitle.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+    final safeName = (resolvedApp.resumeProfileName ?? 'Candidate').replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+    final resumeFileNameToSend = hasTailored ? '${safeName}_${safeRole}_Resume.pdf' : masterResume['fileName'];
+
     final callable = _functions.httpsCallable('sendJobApplicationEmail');
-    final response = await callable.call({
-      'recipientEmail': app.recipientEmail,
-      'subject': app.generatedSubject,
-      'body': app.generatedCoverLetter,
-      'resumeBase64': masterResume['base64'],
-      'resumeFileName': masterResume['fileName'],
-    });
+    try {
+      final response = await callable.call({
+        'recipientEmail': resolvedApp.recipientEmail,
+        'subject': resolvedApp.generatedSubject,
+        'body': resolvedApp.generatedCoverLetter,
+        'resumeBase64': resumeB64ToSend,
+        'resumeFileName': resumeFileNameToSend,
+      });
 
-    final resData = response.data;
-    if (resData == null || resData['success'] != true) {
-      throw Exception('Failed to send application email.');
+      final resData = response.data;
+      if (resData == null || resData['success'] != true) {
+        throw Exception('Failed to send application email.');
+      }
+
+      // Mark application as sent in Firestore
+      await saveJobApplication(resolvedApp.copyWith(
+        status: 'sent',
+        appliedAt: DateTime.now(),
+      ));
+    } catch (e) {
+      final errLower = e.toString().toLowerCase();
+      // If delivery failed due to an invalid mailbox / 550 bounce
+      if (errLower.contains('550') ||
+          errLower.contains('5.1.1') ||
+          errLower.contains('address not found') ||
+          errLower.contains('user unknown') ||
+          errLower.contains('undeliverable') ||
+          errLower.contains('mailbox unavailable') ||
+          errLower.contains('recipient rejected') ||
+          errLower.contains('does not exist') ||
+          errLower.contains('central_blocked')) {
+        await recordBouncedEmailCentrally(
+          email: cleanEmail,
+          companyName: resolvedApp.companyName,
+          originalJobId: resolvedApp.id,
+          reason: 'Delivery bounce (550 / Address Not Found): $e',
+          source: 'smtp_delivery_bounce',
+        );
+        await saveJobApplication(resolvedApp.copyWith(
+          status: 'bounced',
+          isBounced: true,
+          errorMessage: 'Delivery Failed (550 / Address Not Found). Recorded in Central Hub to protect email score.',
+        ));
+      }
+      rethrow;
     }
+  }
 
-    // Mark application as sent in Firestore
-    await saveJobApplication(JobApplication(
-      id: app.id,
-      jobTitle: app.jobTitle,
-      companyName: app.companyName,
-      recipientEmail: app.recipientEmail,
-      extractedSkills: app.extractedSkills,
-      generatedSubject: app.generatedSubject,
-      generatedCoverLetter: app.generatedCoverLetter,
-      status: 'sent',
-      appliedAt: DateTime.now(),
-      posterImageUrls: app.posterImageUrls,
-      sourcePlatform: app.sourcePlatform,
-      source: app.source,
-      sourceUrl: app.sourceUrl,
-      authorName: app.authorName,
-      postExcerpt: app.postExcerpt,
-      modelUsed: app.modelUsed,
-      resumeProfileName: app.resumeProfileName,
-      isAutoApplied: app.isAutoApplied,
-    ));
+  Future<Map<String, dynamic>> tailorResumeForJob({
+    required String jobTitle,
+    required String companyName,
+    String? jobDescription,
+    String? jobId,
+  }) async {
+    final callable = _functions.httpsCallable(
+      'tailorResumeForJob',
+      options: HttpsCallableOptions(timeout: const Duration(minutes: 4)),
+    );
+    final response = await callable.call({
+      'jobTitle': jobTitle,
+      'companyName': companyName,
+      if (jobDescription != null && jobDescription.isNotEmpty) 'jobDescription': jobDescription,
+      if (jobId != null && jobId.isNotEmpty) 'jobId': jobId,
+    });
+    final data = Map<String, dynamic>.from(response.data ?? {});
+    return data;
   }
 
   // ============================================================================

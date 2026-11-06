@@ -33,6 +33,10 @@ class JobApplication {
   final String? authorName;
   final String? postExcerpt;
   final bool isFake;
+  final bool isRemote;
+  final String? wfhLocation;
+  final String? tailoredResumePdfBase64;
+  final String? tailoredResumePdfUrl;
 
   JobApplication({
     required this.id,
@@ -67,6 +71,10 @@ class JobApplication {
     this.authorName,
     this.postExcerpt,
     this.isFake = false,
+    this.isRemote = false,
+    this.wfhLocation,
+    this.tailoredResumePdfBase64,
+    this.tailoredResumePdfUrl,
   });
 
   JobApplication copyWith({
@@ -102,6 +110,10 @@ class JobApplication {
     String? authorName,
     String? postExcerpt,
     bool? isFake,
+    bool? isRemote,
+    String? wfhLocation,
+    String? tailoredResumePdfBase64,
+    String? tailoredResumePdfUrl,
   }) {
     return JobApplication(
       id: id ?? this.id,
@@ -136,6 +148,10 @@ class JobApplication {
       authorName: authorName ?? this.authorName,
       postExcerpt: postExcerpt ?? this.postExcerpt,
       isFake: isFake ?? this.isFake,
+      isRemote: isRemote ?? this.isRemote,
+      wfhLocation: wfhLocation ?? this.wfhLocation,
+      tailoredResumePdfBase64: tailoredResumePdfBase64 ?? this.tailoredResumePdfBase64,
+      tailoredResumePdfUrl: tailoredResumePdfUrl ?? this.tailoredResumePdfUrl,
     );
   }
 
@@ -171,11 +187,15 @@ class JobApplication {
       'replyDismissed': isReplyDismissed,
       'isBounced': isBounced,
       'isFake': isFake,
+      'isRemote': isRemote,
+      'wfhLocation': wfhLocation,
       'replyDeleted': replyDeleted,
       'sourceUrl': sourceUrl,
       'source': source,
       'authorName': authorName,
       'postExcerpt': postExcerpt,
+      'tailoredResumePdfBase64': tailoredResumePdfBase64,
+      'tailoredResumePdfUrl': tailoredResumePdfUrl,
     };
   }
 
@@ -266,6 +286,10 @@ class JobApplication {
       authorName: map['authorName'] as String?,
       postExcerpt: (map['postExcerpt'] ?? map['postContentExcerpt']) as String?,
       isFake: map['isFake'] == true || map['status'] == 'fake' || map['status'] == 'marked_fake',
+      isRemote: map['isRemote'] == true || (map['location']?.toString().toLowerCase().contains('remote') ?? false),
+      wfhLocation: map['wfhLocation']?.toString(),
+      tailoredResumePdfBase64: map['tailoredResumePdfBase64']?.toString(),
+      tailoredResumePdfUrl: map['tailoredResumePdfUrl']?.toString(),
     );
   }
 }

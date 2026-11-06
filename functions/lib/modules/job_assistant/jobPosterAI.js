@@ -1,9 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.parseJobPostersWithAI = void 0;
+exports.tailorResumeForJob = exports.parseJobPostersWithAI = void 0;
 const functions = require("firebase-functions");
 const firebase_1 = require("../../config/firebase");
 const geminiHelper_1 = require("../../utils/geminiHelper");
+const pdfResumeGenerator_1 = require("../../utils/pdfResumeGenerator");
+const resumeParser_1 = require("../../utils/resumeParser");
 exports.parseJobPostersWithAI = functions.runWith({ timeoutSeconds: 540, memory: "1GB" }).https.onCall(async (data, context) => {
     var _a, _b, _c;
     if (!context.auth) {
@@ -233,6 +235,43 @@ Respond ONLY with a JSON object matching this schema:
             let body = (j.generatedCoverLetter || '').replace(/\[Your Name\]/gi, promptName).replace(/\[Applicant Name\]/gi, promptName).replace(/\[Name\]/gi, promptName);
             return Object.assign(Object.assign({}, j), { generatedSubject: subj, generatedCoverLetter: body });
         });
+        // Generate tailored ATS Resume PDFs using BYOK Gemini output if present
+        for (const j of cleanedJobs) {
+            if (j.tailoredResume) {
+                try {
+                    const tailoredResumeData = j.tailoredResume;
+                    if (tailoredResumeData.contactLine) {
+                        const segs = tailoredResumeData.contactLine.split(/[|•]/).map((s) => s.trim()).filter(Boolean);
+                        const userLinks = uData.profileLinks || uData.links || {};
+                        const cleanedSegs = segs.map((seg) => {
+                            const isBare = /^(portfolio|website|personal website)$/i.test(seg);
+                            if (isBare)
+                                return userLinks.portfolio || userLinks.github || "";
+                            return seg;
+                        }).filter(Boolean);
+                        tailoredResumeData.contactLine = cleanedSegs.join(" | ");
+                    }
+                    const pdfBuf = await (0, pdfResumeGenerator_1.generateAtsResumePdf)(tailoredResumeData);
+                    j.tailoredResumePdfBase64 = pdfBuf.toString("base64");
+                    try {
+                        const bucket = firebase_1.admin.storage().bucket();
+                        const file = bucket.file(`users/${uid}/tailored_resumes/post_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.pdf`);
+                        await file.save(pdfBuf, { metadata: { contentType: "application/pdf" } });
+                        const [signedUrl] = await file.getSignedUrl({
+                            action: "read",
+                            expires: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                        });
+                        j.tailoredResumePdfUrl = signedUrl;
+                    }
+                    catch (stErr) {
+                        console.log(`[JobPosterAI] Storage upload note: ${stErr.message}`);
+                    }
+                }
+                catch (pdfErr) {
+                    console.warn(`[JobPosterAI] Failed to generate ATS PDF for ${j.jobTitle}: ${pdfErr.message}`);
+                }
+            }
+        }
         return {
             success: true,
             jobs: cleanedJobs
@@ -242,5 +281,161 @@ Respond ONLY with a JSON object matching this schema:
         console.error("Error in parseJobPostersWithAI:", error);
         throw new functions.https.HttpsError('internal', error.message || 'Failed to analyze job poster image(s).');
     }
+});
+exports.tailorResumeForJob = functions.runWith({ timeoutSeconds: 300, memory: "1GB" }).https.onCall(async (data, context) => {
+    var _a, _b, _c;
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
+    }
+    const uid = context.auth.uid;
+    const { jobTitle, companyName, jobDescription, jobId } = data;
+    if (!jobTitle || !companyName) {
+        throw new functions.https.HttpsError('invalid-argument', 'Job title and company name are required.');
+    }
+    const userDoc = await firebase_1.db.collection("users").doc(uid).get();
+    if (!userDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'User profile not found.');
+    }
+    const userData = userDoc.data() || {};
+    const userApiKeys = userData.userApiKeys || {};
+    const geminiKey = (userApiKeys.geminiApiKey || userData.geminiApiKey || "").trim();
+    const groqKey = (userApiKeys.groqApiKey || userData.groqApiKey || "").trim();
+    let resumePdfBase64 = (((_a = userData.masterResume) === null || _a === void 0 ? void 0 : _a.base64) || ((_b = userData.masterResume) === null || _b === void 0 ? void 0 : _b.base64Data) || "").toString().trim();
+    if (!resumePdfBase64) {
+        const pSnap = await firebase_1.db.collection("users").doc(uid).collection("resume_profiles").limit(1).get();
+        if (!pSnap.empty) {
+            resumePdfBase64 = (pSnap.docs[0].data().base64 || "").toString().trim();
+        }
+    }
+    const cleanResumeB64 = resumePdfBase64.replace(/^data:application\/pdf;base64,/, "");
+    if (!cleanResumeB64) {
+        throw new functions.https.HttpsError('failed-precondition', 'Please upload your base resume PDF in Job Assistant settings before generating a tailored resume.');
+    }
+    const groundTruth = await (0, resumeParser_1.ensureUserResumeParsed)(uid, userData, cleanResumeB64, geminiKey, groqKey, (_c = userData.masterResume) === null || _c === void 0 ? void 0 : _c.fileName);
+    const candidateName = (userData.applicantName || userData.displayName || userData.fullName || "Candidate").trim();
+    const prompt = `You are an elite Executive ATS Resume Specialist.
+Tailor the candidate's verified resume specifically for the following job opportunity:
+COMPANY: "${companyName}"
+JOB TITLE: "${jobTitle}"
+${jobDescription ? `JOB DESCRIPTION / CONTEXT:\n"""\n${jobDescription.slice(0, 4000)}\n"""` : ''}
+
+CANDIDATE BASE RESUME GROUND TRUTH:
+${groundTruth ? JSON.stringify(groundTruth, null, 2) : "Use candidate experience from PDF"}
+
+TASK:
+1. Align candidate's real accomplishments and technical skills to match the role requirements.
+2. Produce a polished, ATS-optimized resume structure matching this schema:
+{
+  "tailoredResume": {
+    "fullName": "${candidateName}",
+    "contactLine": "City, Country | Phone | Email | LinkedIn | GitHub / Portfolio",
+    "professionalSummary": "Results-driven...",
+    "skills": [
+      { "category": "Technical Skills", "items": "..." }
+    ],
+    "experience": [
+      {
+        "company": "...",
+        "role": "...",
+        "period": "...",
+        "location": "...",
+        "bulletPoints": ["..."]
+      }
+    ],
+    "projects": [
+      {
+        "title": "...",
+        "techStack": "...",
+        "bulletPoints": ["..."]
+      }
+    ],
+    "education": [
+      {
+        "degree": "...",
+        "institution": "...",
+        "period": "...",
+        "location": "..."
+      }
+    ],
+    "certifications": ["..."]
+  }
+}
+STRICT RULE: Ground all skills SOLELY on candidate's verified background. NEVER hallucinate experience.`;
+    const inlineParts = [];
+    if (cleanResumeB64) {
+        inlineParts.push({
+            inlineData: {
+                mimeType: "application/pdf",
+                data: cleanResumeB64
+            }
+        });
+    }
+    const payload = {
+        contents: [
+            {
+                parts: [
+                    { text: prompt },
+                    ...inlineParts
+                ]
+            }
+        ],
+        generationConfig: {
+            temperature: 0.2,
+            responseMimeType: "application/json"
+        }
+    };
+    const res = await (0, geminiHelper_1.callGeminiAPI)(payload, { apiKey: geminiKey, groqApiKey: groqKey, timeout: 35000 });
+    const raw = res.text || "{}";
+    const parsed = JSON.parse(raw.replace(/```json/g, "").replace(/```/g, "").trim());
+    const tailoredResumeData = parsed.tailoredResume || {
+        fullName: candidateName,
+        contactLine: "Email | Phone"
+    };
+    if (tailoredResumeData.contactLine) {
+        const segs = tailoredResumeData.contactLine.split(/[|•]/).map((s) => s.trim()).filter(Boolean);
+        const userLinks = userData.profileLinks || userData.links || {};
+        const cleanedSegs = segs.map((seg) => {
+            const isBare = /^(portfolio|website|personal website)$/i.test(seg);
+            if (isBare)
+                return userLinks.portfolio || userLinks.github || "";
+            return seg;
+        }).filter(Boolean);
+        tailoredResumeData.contactLine = cleanedSegs.join(" | ");
+    }
+    const pdfBuf = await (0, pdfResumeGenerator_1.generateAtsResumePdf)(tailoredResumeData);
+    const tailoredResumePdfBase64 = pdfBuf.toString("base64");
+    let tailoredResumePdfUrl = "";
+    try {
+        const bucket = firebase_1.admin.storage().bucket();
+        const fileId = jobId ? Buffer.from(jobId).toString("base64url").slice(0, 32) : Date.now().toString();
+        const file = bucket.file(`users/${uid}/tailored_resumes/${fileId}.pdf`);
+        await file.save(pdfBuf, { metadata: { contentType: "application/pdf" } });
+        const [signedUrl] = await file.getSignedUrl({
+            action: "read",
+            expires: Date.now() + (365 * 24 * 60 * 60 * 1000)
+        });
+        tailoredResumePdfUrl = signedUrl;
+    }
+    catch (stErr) {
+        console.log(`[JobPosterAI] Storage upload note: ${stErr.message}`);
+    }
+    if (jobId) {
+        try {
+            await firebase_1.db.collection("users").doc(uid).collection("job_applications").doc(jobId).set({
+                tailoredResumePdfBase64,
+                tailoredResumePdfUrl: tailoredResumePdfUrl || null,
+                tailoredResumeData
+            }, { merge: true });
+        }
+        catch (dbErr) {
+            console.warn(`[JobPosterAI] Firestore update note: ${dbErr.message}`);
+        }
+    }
+    return {
+        success: true,
+        tailoredResumePdfBase64,
+        tailoredResumePdfUrl: tailoredResumePdfUrl || null,
+        tailoredResumeData
+    };
 });
 //# sourceMappingURL=jobPosterAI.js.map

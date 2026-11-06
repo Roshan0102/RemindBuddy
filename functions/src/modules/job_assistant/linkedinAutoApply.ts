@@ -748,6 +748,30 @@ Respond ONLY with valid JSON:
                 });
             } catch (mailErr: any) {
                 console.error(`[LinkedInAutoApply] Error sending email to ${recipientEmail}:`, mailErr);
+                const errStr = (mailErr.message || '').toLowerCase();
+                if (
+                    errStr.includes("550") ||
+                    errStr.includes("5.1.1") ||
+                    errStr.includes("user unknown") ||
+                    errStr.includes("address not found") ||
+                    errStr.includes("mailbox unavailable") ||
+                    errStr.includes("recipient rejected") ||
+                    errStr.includes("invalid recipient")
+                ) {
+                    try {
+                        const cleanRecip = recipientEmail.toLowerCase().trim();
+                        await db.collection("system_bounced_emails").doc(encodeURIComponent(cleanRecip)).set({
+                            email: cleanRecip,
+                            companyName: finalCompany || "",
+                            bouncedAt: admin.firestore.FieldValue.serverTimestamp(),
+                            reason: mailErr.message?.substring(0, 300) || "Invalid recipient / 550 bounce",
+                            reportedByUid: uid,
+                            source: "linkedin_auto_apply_smtp_failure"
+                        }, { merge: true });
+                    } catch (bErr: any) {
+                        console.warn("[LinkedInAutoApply] Failed to record bounced email in blacklist:", bErr.message);
+                    }
+                }
             }
         }
 

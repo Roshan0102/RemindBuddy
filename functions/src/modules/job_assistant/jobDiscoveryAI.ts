@@ -872,6 +872,30 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             });
         } catch (mailErr: any) {
             console.error(`[JobDiscovery] Failed sending email to ${job.recipientEmail}:`, mailErr);
+            const errStr = (mailErr.message || '').toLowerCase();
+            if (
+                errStr.includes("550") ||
+                errStr.includes("5.1.1") ||
+                errStr.includes("user unknown") ||
+                errStr.includes("address not found") ||
+                errStr.includes("mailbox unavailable") ||
+                errStr.includes("recipient rejected") ||
+                errStr.includes("invalid recipient")
+            ) {
+                try {
+                    const cleanRecip = job.recipientEmail.toLowerCase().trim();
+                    await db.collection("system_bounced_emails").doc(encodeURIComponent(cleanRecip)).set({
+                        email: cleanRecip,
+                        companyName: job.companyName || "",
+                        bouncedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        reason: mailErr.message?.substring(0, 300) || "Invalid recipient / 550 bounce",
+                        reportedByUid: uid,
+                        source: "job_discovery_smtp_failure"
+                    }, { merge: true });
+                } catch (bErr: any) {
+                    console.warn("[JobDiscovery] Failed to record bounced email in blacklist:", bErr.message);
+                }
+            }
         }
     }
 

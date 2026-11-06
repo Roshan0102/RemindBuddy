@@ -152,8 +152,11 @@ class SharedIntentService {
       }
 
       for (final rawJob in parsedJobs) {
+        final assignedId = rawJob.id.isNotEmpty
+            ? rawJob.id
+            : 'share_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
         final job = JobApplication(
-          id: rawJob.id,
+          id: assignedId,
           jobTitle: rawJob.jobTitle,
           companyName: rawJob.companyName,
           recipientEmail: rawJob.recipientEmail,
@@ -167,6 +170,8 @@ class SharedIntentService {
           errorMessage: rawJob.recipientEmail.trim().isNotEmpty
               ? null
               : 'No recruiter email found in screenshot flyer. Saved in History drafts.',
+          tailoredResumePdfBase64: rawJob.tailoredResumePdfBase64,
+          tailoredResumePdfUrl: rawJob.tailoredResumePdfUrl,
         );
 
         if (job.recipientEmail.trim().isNotEmpty) {
@@ -255,8 +260,11 @@ class SharedIntentService {
       final parsed = await jobService.parseJobTextWithAI(text);
       if (parsed.isNotEmpty) {
         final rawJob = parsed.first;
+        final assignedId = rawJob.id.isNotEmpty
+            ? rawJob.id
+            : 'share_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
         final job = JobApplication(
-          id: rawJob.id,
+          id: assignedId,
           jobTitle: rawJob.jobTitle,
           companyName: rawJob.companyName,
           recipientEmail: rawJob.recipientEmail,
@@ -269,6 +277,8 @@ class SharedIntentService {
           source: sourceUrl.contains('linkedin') ? 'linkedin_share' : 'shared_text',
           sourceUrl: sourceUrl,
           errorMessage: rawJob.recipientEmail.trim().isEmpty ? 'No recruiter email found. Saved in Drafts.' : null,
+          tailoredResumePdfBase64: rawJob.tailoredResumePdfBase64,
+          tailoredResumePdfUrl: rawJob.tailoredResumePdfUrl,
         );
 
         if (job.recipientEmail.isNotEmpty) {
@@ -436,8 +446,11 @@ class SharedIntentService {
             if (parsed.isNotEmpty) {
               successfullyParsed = true;
               final rawJob = parsed.first;
+              final assignedId = rawJob.id.isNotEmpty
+                  ? rawJob.id
+                  : 'share_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
               final job = JobApplication(
-                id: rawJob.id,
+                id: assignedId,
                 jobTitle: rawJob.jobTitle,
                 companyName: rawJob.companyName,
                 recipientEmail: rawJob.recipientEmail,
@@ -452,6 +465,8 @@ class SharedIntentService {
                 posterImageUrls: [imgUrl],
                 postExcerpt: ogDescription != null && ogDescription.length > 200 ? '${ogDescription.substring(0, 200)}...' : ogDescription,
                 errorMessage: rawJob.recipientEmail.trim().isEmpty ? 'No direct recruiter email found in flyer. Saved in History drafts.' : null,
+                tailoredResumePdfBase64: rawJob.tailoredResumePdfBase64,
+                tailoredResumePdfUrl: rawJob.tailoredResumePdfUrl,
               );
 
               if (job.recipientEmail.isNotEmpty) {
@@ -502,8 +517,11 @@ class SharedIntentService {
           if (parsed.isNotEmpty) {
             successfullyParsed = true;
             final rawJob = parsed.first;
+            final assignedId = rawJob.id.isNotEmpty
+                ? rawJob.id
+                : 'share_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
             final job = JobApplication(
-              id: rawJob.id,
+              id: assignedId,
               jobTitle: rawJob.jobTitle,
               companyName: rawJob.companyName,
               recipientEmail: rawJob.recipientEmail,
@@ -517,6 +535,8 @@ class SharedIntentService {
               sourceUrl: expandedUrl,
               postExcerpt: descText.length > 200 ? '${descText.substring(0, 200)}...' : descText,
               errorMessage: rawJob.recipientEmail.trim().isEmpty ? 'No direct recruiter email found in post. Saved in History drafts.' : null,
+              tailoredResumePdfBase64: rawJob.tailoredResumePdfBase64,
+              tailoredResumePdfUrl: rawJob.tailoredResumePdfUrl,
             );
 
             if (job.recipientEmail.isNotEmpty) {
@@ -647,8 +667,11 @@ class SharedIntentService {
       final parsed = await jobService.parseJobTextWithAI(text);
       if (parsed.isNotEmpty) {
         final rawJob = parsed.first;
+        final assignedId = rawJob.id.isNotEmpty
+            ? rawJob.id
+            : 'share_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
         final job = JobApplication(
-          id: rawJob.id,
+          id: assignedId,
           jobTitle: rawJob.jobTitle,
           companyName: rawJob.companyName,
           recipientEmail: rawJob.recipientEmail,
@@ -660,6 +683,8 @@ class SharedIntentService {
           sourcePlatform: 'Shared Text',
           source: 'shared_text',
           errorMessage: rawJob.recipientEmail.trim().isEmpty ? 'No recruiter email found in text. Saved in Drafts.' : null,
+          tailoredResumePdfBase64: rawJob.tailoredResumePdfBase64,
+          tailoredResumePdfUrl: rawJob.tailoredResumePdfUrl,
         );
 
         if (job.recipientEmail.isNotEmpty) {
@@ -816,8 +841,11 @@ class SharedIntentService {
 
                 if (parsedJobs.isNotEmpty) {
                   final rawJob = parsedJobs.first;
+                  final assignedId = rawJob.id.isNotEmpty
+                      ? rawJob.id
+                      : 'share_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
                   final job = JobApplication(
-                    id: rawJob.id,
+                    id: assignedId,
                     jobTitle: rawJob.jobTitle,
                     companyName: rawJob.companyName,
                     recipientEmail: rawJob.recipientEmail,
@@ -832,6 +860,8 @@ class SharedIntentService {
                     authorName: authorName.isNotEmpty ? authorName : null,
                     postExcerpt: postText.length > 200 ? '${postText.substring(0, 200)}...' : postText,
                     errorMessage: rawJob.recipientEmail.trim().isEmpty ? 'No recruiter email found in post. Saved in Drafts.' : null,
+                    tailoredResumePdfBase64: rawJob.tailoredResumePdfBase64,
+                    tailoredResumePdfUrl: rawJob.tailoredResumePdfUrl,
                   );
 
                   if (job.recipientEmail.isNotEmpty) {
@@ -926,12 +956,17 @@ class SharedIntentService {
     JobApplication job, {
     required String contextLabel,
   }) async {
+    final effectiveId = job.id.isNotEmpty
+        ? job.id
+        : 'share_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
+    final resolvedJob = job.copyWith(id: effectiveId);
+
     try {
-      await jobService.sendJobApplicationEmail(job);
+      await jobService.sendJobApplicationEmail(resolvedJob);
       await NotificationService().showNotification(
         id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        title: '🎯 1-Click Applied: ${job.jobTitle}',
-        body: 'Applied to ${job.companyName} (${job.recipientEmail}) $contextLabel.',
+        title: '🎯 1-Click Applied: ${resolvedJob.jobTitle}',
+        body: 'Applied to ${resolvedJob.companyName} (${resolvedJob.recipientEmail}) $contextLabel.',
         channelId: 'job_assistant_share_channel',
         channelName: 'Job Assistant Auto-Apply',
         payload: 'JOB_APPLICATION',
@@ -946,22 +981,23 @@ class SharedIntentService {
           errStr.contains('Verification Failed') ||
           errStr.contains('blocked');
 
-      await jobService.saveJobApplication(job.copyWith(
+      // Update the existing document with the failure reason without creating a duplicate record
+      await jobService.saveJobApplication(resolvedJob.copyWith(
         status: isBounce ? 'bounced' : 'needs_review',
         isBounced: isBounce,
         errorMessage: isBounce
-            ? 'Recruiter email (${job.recipientEmail}) failed deliverability check: $sendErr'
+            ? 'Recruiter email (${resolvedJob.recipientEmail}) failed deliverability check: $sendErr'
             : 'Email send error: $sendErr. Saved in Drafts.',
       ));
 
       await NotificationService().showNotification(
         id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
         title: isBounce
-            ? '⚠️ Invalid Email (Address Not Found): ${job.jobTitle}'
-            : '⚠️ Could Not Send Email: ${job.jobTitle}',
+            ? '⚠️ Invalid Email (Address Not Found): ${resolvedJob.jobTitle}'
+            : '⚠️ Could Not Send Email: ${resolvedJob.jobTitle}',
         body: isBounce
-            ? 'The email (${job.recipientEmail}) has bounced in our system (Address Not Found). Application aborted.'
-            : 'Extracted for ${job.companyName}, but email sending failed: $sendErr. Saved in Drafts.',
+            ? 'The email (${resolvedJob.recipientEmail}) has bounced in our system (Address Not Found). Application aborted.'
+            : 'Extracted for ${resolvedJob.companyName}, but email sending failed: $sendErr. Saved in Drafts.',
         channelId: 'job_assistant_share_channel',
         channelName: 'Job Assistant Auto-Apply',
         payload: 'JOB_APPLICATION',

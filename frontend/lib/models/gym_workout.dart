@@ -9,6 +9,8 @@ class GymWorkoutSet {
   final bool isDropSet;
   final bool isCompleted;
   final double? rpe; // Rate of Perceived Exertion (1 to 10)
+  final double? previousWeightKg;
+  final int? previousReps;
 
   const GymWorkoutSet({
     required this.setNumber,
@@ -18,6 +20,8 @@ class GymWorkoutSet {
     this.isDropSet = false,
     this.isCompleted = true,
     this.rpe,
+    this.previousWeightKg,
+    this.previousReps,
   });
 
   /// Computed volume for this set in kg
@@ -32,6 +36,8 @@ class GymWorkoutSet {
       'isDropSet': isDropSet,
       'isCompleted': isCompleted,
       if (rpe != null) 'rpe': rpe,
+      if (previousWeightKg != null) 'previousWeightKg': previousWeightKg,
+      if (previousReps != null) 'previousReps': previousReps,
     };
   }
 
@@ -44,6 +50,8 @@ class GymWorkoutSet {
       isDropSet: map['isDropSet'] == true,
       isCompleted: map['isCompleted'] != false,
       rpe: (map['rpe'] as num?)?.toDouble(),
+      previousWeightKg: (map['previousWeightKg'] as num?)?.toDouble(),
+      previousReps: (map['previousReps'] as num?)?.toInt(),
     );
   }
 
@@ -55,6 +63,8 @@ class GymWorkoutSet {
     bool? isDropSet,
     bool? isCompleted,
     double? rpe,
+    double? previousWeightKg,
+    int? previousReps,
   }) {
     return GymWorkoutSet(
       setNumber: setNumber ?? this.setNumber,
@@ -64,6 +74,8 @@ class GymWorkoutSet {
       isDropSet: isDropSet ?? this.isDropSet,
       isCompleted: isCompleted ?? this.isCompleted,
       rpe: rpe ?? this.rpe,
+      previousWeightKg: previousWeightKg ?? this.previousWeightKg,
+      previousReps: previousReps ?? this.previousReps,
     );
   }
 }
@@ -77,7 +89,8 @@ class GymWorkoutExercise {
   final List<GymWorkoutSet> sets;
   final int restSeconds; // e.g. 60, 90, 120
   final String? notes;
-  final String? videoUrl; // Custom exercise form video link (YouTube, Instagram Reel, Web URL)
+  final String? videoUrl; // Custom exercise form video link (primary or first video)
+  final List<String> videoUrls; // Multiple exercise form video links
 
   const GymWorkoutExercise({
     required this.exerciseId,
@@ -88,6 +101,7 @@ class GymWorkoutExercise {
     this.restSeconds = 90,
     this.notes,
     this.videoUrl,
+    this.videoUrls = const [],
   });
 
   /// Total volume across all completed sets in kg
@@ -102,6 +116,10 @@ class GymWorkoutExercise {
   }
 
   Map<String, dynamic> toMap() {
+    final resolvedUrls = videoUrls.isNotEmpty
+        ? videoUrls
+        : (videoUrl != null && videoUrl!.trim().isNotEmpty ? [videoUrl!.trim()] : <String>[]);
+
     return {
       'exerciseId': exerciseId,
       'exerciseName': exerciseName,
@@ -110,11 +128,21 @@ class GymWorkoutExercise {
       'sets': sets.map((s) => s.toMap()).toList(),
       'restSeconds': restSeconds,
       if (notes != null) 'notes': notes,
-      if (videoUrl != null && videoUrl!.trim().isNotEmpty) 'videoUrl': videoUrl!.trim(),
+      if (resolvedUrls.isNotEmpty) 'videoUrl': resolvedUrls.first,
+      if (resolvedUrls.isNotEmpty) 'videoUrls': resolvedUrls,
     };
   }
 
   factory GymWorkoutExercise.fromMap(Map<String, dynamic> map) {
+    final rawList = (map['videoUrls'] as List<dynamic>?)
+            ?.map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList() ??
+        [];
+    if (rawList.isEmpty && map['videoUrl'] != null && map['videoUrl'].toString().trim().isNotEmpty) {
+      rawList.add(map['videoUrl'].toString().trim());
+    }
+
     return GymWorkoutExercise(
       exerciseId: map['exerciseId']?.toString() ?? '',
       exerciseName: map['exerciseName']?.toString() ?? '',
@@ -126,7 +154,8 @@ class GymWorkoutExercise {
           [],
       restSeconds: (map['restSeconds'] as num?)?.toInt() ?? 90,
       notes: map['notes']?.toString(),
-      videoUrl: map['videoUrl']?.toString(),
+      videoUrl: rawList.isNotEmpty ? rawList.first : null,
+      videoUrls: rawList,
     );
   }
 
@@ -139,7 +168,9 @@ class GymWorkoutExercise {
     int? restSeconds,
     String? notes,
     String? videoUrl,
+    List<String>? videoUrls,
   }) {
+    final updatedUrls = videoUrls ?? this.videoUrls;
     return GymWorkoutExercise(
       exerciseId: exerciseId ?? this.exerciseId,
       exerciseName: exerciseName ?? this.exerciseName,
@@ -148,7 +179,8 @@ class GymWorkoutExercise {
       sets: sets ?? this.sets,
       restSeconds: restSeconds ?? this.restSeconds,
       notes: notes ?? this.notes,
-      videoUrl: videoUrl ?? this.videoUrl,
+      videoUrl: videoUrl ?? (updatedUrls.isNotEmpty ? updatedUrls.first : this.videoUrl),
+      videoUrls: updatedUrls,
     );
   }
 }

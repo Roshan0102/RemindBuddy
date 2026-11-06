@@ -340,53 +340,75 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
               final allApps = appSnap.data ?? [];
               final allLeads = leadSnap.data ?? [];
 
-              // Filter to items that have received replies or bounced (excluding deleted ones)
-              final appReplies = allApps.where((a) => !a.replyDeleted && (a.status == 'reply_received' || a.isBounced)).toList();
-              final leadReplies = allLeads.where((l) => !l.replyDeleted && (l.status == 'replied' || l.isBounced)).toList();
+              // Exclude bounced / invalid address / delivery failure notices from recruiter replies
+              final appReplies = allApps.where((a) {
+                if (a.replyDeleted || a.isBounced) return false;
+                if (a.status != 'reply_received') return false;
+                if (a.responseType == 'bounced' || a.responseType == 'address_not_found') return false;
+                if (_isDeliveryBounce(a.replySender ?? '', a.replySubject ?? '', a.replySnippet ?? '', a.responseType)) return false;
+                return true;
+              }).toList();
 
-              // Unified reply list
+              final leadReplies = allLeads.where((l) {
+                if (l.replyDeleted || l.isBounced) return false;
+                if (l.status != 'replied') return false;
+                if (l.responseType == 'bounced' || l.responseType == 'address_not_found') return false;
+                if (_isDeliveryBounce(l.replySender ?? '', l.replySubject ?? '', l.replySnippet ?? '', l.responseType)) return false;
+                return true;
+              }).toList();
+
+              // Unified reply list with smart deduplication
+              final Set<String> seenReplyKeys = {};
               final List<UnifiedReplyItem> unifiedReplies = [];
 
               for (final a in appReplies) {
-                final isBounced = a.isBounced || _isDeliveryBounce(a.replySender ?? '', a.replySubject ?? '', a.replySnippet ?? '', a.responseType);
-                unifiedReplies.add(UnifiedReplyItem(
-                  id: a.id,
-                  isStartupLead: false,
-                  companyName: a.companyName,
-                  roleOrTitle: a.jobTitle,
-                  recipientEmail: a.recipientEmail,
-                  senderNameOrEmail: a.replySender ?? a.recipientEmail,
-                  subject: a.replySubject ?? a.generatedSubject,
-                  responseType: isBounced ? (a.responseType ?? 'bounced') : (a.responseType ?? 'hr_query'),
-                  summary: a.replySnippet ?? (isBounced ? 'Mail delivery failure.' : 'Recruiter replied to your application.'),
-                  bodyPreview: a.replyBodyPreview ?? '',
-                  actionRequired: isBounced ? 'Check recipient email or find company careers contact' : (a.actionRequired ?? 'Check your email'),
-                  receivedAt: a.replyReceivedAt ?? a.appliedAt,
-                  isDismissed: a.isReplyDismissed,
-                  isBounced: isBounced,
-                ));
+                final dateKey = a.replyReceivedAt != null ? '${a.replyReceivedAt!.year}-${a.replyReceivedAt!.month}-${a.replyReceivedAt!.day}' : '';
+                final key = '${a.companyName.toLowerCase().trim()}|${a.recipientEmail.toLowerCase().trim()}|$dateKey|${(a.replySubject ?? a.generatedSubject).toLowerCase().trim()}';
+                if (!seenReplyKeys.contains(key)) {
+                  seenReplyKeys.add(key);
+                  unifiedReplies.add(UnifiedReplyItem(
+                    id: a.id,
+                    isStartupLead: false,
+                    companyName: a.companyName,
+                    roleOrTitle: a.jobTitle,
+                    recipientEmail: a.recipientEmail,
+                    senderNameOrEmail: a.replySender ?? a.recipientEmail,
+                    subject: a.replySubject ?? a.generatedSubject,
+                    responseType: a.responseType ?? 'hr_query',
+                    summary: a.replySnippet ?? 'Recruiter replied to your application.',
+                    bodyPreview: a.replyBodyPreview ?? '',
+                    actionRequired: a.actionRequired ?? 'Check your email',
+                    receivedAt: a.replyReceivedAt ?? a.appliedAt,
+                    isDismissed: a.isReplyDismissed,
+                    isBounced: false,
+                  ));
+                }
               }
 
               for (final l in leadReplies) {
-                final isBounced = l.isBounced || _isDeliveryBounce(l.replySender ?? '', l.replySubject ?? '', l.replySnippet ?? '', l.responseType);
-                unifiedReplies.add(UnifiedReplyItem(
-                  id: l.id,
-                  isStartupLead: true,
-                  companyName: l.companyName,
-                  roleOrTitle: l.currentRole,
-                  recipientEmail: l.email ?? '',
-                  senderNameOrEmail: l.replySender ?? l.name,
-                  subject: l.replySubject ?? l.emailSubject ?? 'Re: Pitch',
-                  responseType: isBounced ? (l.responseType ?? 'bounced') : (l.responseType ?? 'founder_chat'),
-                  summary: l.replySnippet ?? (isBounced ? 'Mail delivery failure.' : 'Founder replied to your pitch.'),
-                  bodyPreview: l.replyBodyPreview ?? '',
-                  actionRequired: isBounced ? 'Connect directly on LinkedIn using pre-written note' : (l.actionRequired ?? 'Reply via email'),
-                  receivedAt: l.replyReceivedAt ?? l.discoveredAt,
-                  linkedinUrl: l.linkedinUrl,
-                  connectionNote: l.connectionNote,
-                  isDismissed: l.isReplyDismissed,
-                  isBounced: isBounced,
-                ));
+                final dateKey = l.replyReceivedAt != null ? '${l.replyReceivedAt!.year}-${l.replyReceivedAt!.month}-${l.replyReceivedAt!.day}' : '';
+                final key = '${l.companyName.toLowerCase().trim()}|${(l.email ?? '').toLowerCase().trim()}|$dateKey|${(l.replySubject ?? l.emailSubject ?? '').toLowerCase().trim()}';
+                if (!seenReplyKeys.contains(key)) {
+                  seenReplyKeys.add(key);
+                  unifiedReplies.add(UnifiedReplyItem(
+                    id: l.id,
+                    isStartupLead: true,
+                    companyName: l.companyName,
+                    roleOrTitle: l.currentRole,
+                    recipientEmail: l.email ?? '',
+                    senderNameOrEmail: l.replySender ?? l.name,
+                    subject: l.replySubject ?? l.emailSubject ?? 'Re: Pitch',
+                    responseType: l.responseType ?? 'founder_chat',
+                    summary: l.replySnippet ?? 'Founder replied to your pitch.',
+                    bodyPreview: l.replyBodyPreview ?? '',
+                    actionRequired: l.actionRequired ?? 'Reply via email',
+                    receivedAt: l.replyReceivedAt ?? l.discoveredAt,
+                    linkedinUrl: l.linkedinUrl,
+                    connectionNote: l.connectionNote,
+                    isDismissed: l.isReplyDismissed,
+                    isBounced: false,
+                  ));
+                }
               }
 
               // Sort by received time descending
@@ -468,7 +490,7 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
               final interviewCount = unifiedReplies.where((r) => r.responseType == 'interview_invite').length;
               final founderCount = unifiedReplies.where((r) => r.responseType == 'founder_chat').length;
               final assessmentCount = unifiedReplies.where((r) => r.responseType == 'assessment').length;
-              final bouncedCount = unifiedReplies.where((r) => r.isBounced).length;
+              final hrCount = unifiedReplies.where((r) => r.responseType == 'hr_query').length;
               final dismissedCount = unifiedReplies.where((r) => r.isDismissed).length;
               final activeCount = unifiedReplies.where((r) => !r.isDismissed).length;
 
@@ -516,7 +538,7 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '$interviewCount Invites • $founderCount Founders • $assessmentCount Assessments${bouncedCount > 0 ? ' • $bouncedCount Bounces' : ''}',
+                                  '$interviewCount Invites • $founderCount Founders • $assessmentCount Assessments${hrCount > 0 ? ' • $hrCount Inquiries' : ''}',
                                   style: TextStyle(
                                     fontSize: 11.5,
                                     color: isDark ? Colors.white70 : Colors.green.shade900,
@@ -579,10 +601,6 @@ class _JobRepliesScreenState extends State<JobRepliesScreen> {
                       child: Row(
                         children: [
                           _buildFilterChip('all', 'All (${_showDismissed ? unifiedReplies.length : activeCount})'),
-                          if (bouncedCount > 0) ...[
-                            const SizedBox(width: 8),
-                            _buildFilterChip('bounced', 'Delivery Alerts ⚠️ ($bouncedCount)'),
-                          ],
                           const SizedBox(width: 8),
                           _buildFilterChip('interview_invite', 'Interview Invites 🎯 ($interviewCount)'),
                           const SizedBox(width: 8),

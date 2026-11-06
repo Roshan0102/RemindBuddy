@@ -1,4 +1,5 @@
 import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
 import * as nodemailer from "nodemailer";
 import { db } from "../../config/firebase";
 import { formatEmailContent } from "../../utils/emailFormatter";
@@ -15,8 +16,9 @@ export const sendJobApplicationEmail = functions.runWith({ timeoutSeconds: 60, m
         throw new functions.https.HttpsError('invalid-argument', 'Missing recipientEmail, subject, or body.');
     }
 
+    const cleanRecipient = recipientEmail.toLowerCase().trim();
+
     try {
-        const cleanRecipient = recipientEmail.toLowerCase().trim();
         // Check central bounced / undeliverable blacklist to protect user reputation
         const bouncedDoc = await db.collection("system_bounced_emails").doc(encodeURIComponent(cleanRecipient)).get();
         if (bouncedDoc.exists) {
@@ -25,7 +27,7 @@ export const sendJobApplicationEmail = functions.runWith({ timeoutSeconds: 60, m
             console.warn(`[EmailSender] Blocked email to ${cleanRecipient} - centrally blacklisted (${reason})`);
             throw new functions.https.HttpsError(
                 'failed-precondition',
-                `Recipient email "${recipientEmail}" is an invalid address ("Address Not Found" previously). Delivery blocked to protect your email deliverability.`
+                `CENTRAL_BLOCKED: Recipient email "${recipientEmail}" is flagged in the Central Verification Hub (${reason}). Delivery prevented to protect sender reputation.`
             );
         }
 
@@ -93,6 +95,31 @@ export const sendJobApplicationEmail = functions.runWith({ timeoutSeconds: 60, m
         };
     } catch (error: any) {
         console.error(`Failed to send job application email for user ${uid}:`, error);
+        const errStr = (error.message || '').toLowerCase();
+        if (
+            errStr.includes("550") ||
+            errStr.includes("5.1.1") ||
+            errStr.includes("user unknown") ||
+            errStr.includes("address not found") ||
+            errStr.includes("mailbox unavailable") ||
+            errStr.includes("recipient rejected") ||
+            errStr.includes("invalid recipient") ||
+            errStr.includes("does not exist") ||
+            errStr.includes("no such user")
+        ) {
+            try {
+                await db.collection("system_bounced_emails").doc(encodeURIComponent(cleanRecipient)).set({
+                    email: cleanRecipient,
+                    bouncedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    reason: error.message?.substring(0, 300) || "Address Not Found (550 / invalid recipient)",
+                    reportedByUid: uid,
+                    source: "smtp_delivery_error"
+                }, { merge: true });
+                console.log(`[EmailSender] Centrally blacklisted '${cleanRecipient}' in system_bounced_emails after SMTP failure.`);
+            } catch (bErr: any) {
+                console.warn("[EmailSender] Failed to record bounced email in blacklist:", bErr.message);
+            }
+        }
         throw new functions.https.HttpsError('internal', error.message || 'Failed to send email.');
     }
 });

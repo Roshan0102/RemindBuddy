@@ -384,7 +384,7 @@ class GymService {
     data['userId'] = uid;
     data['updatedAt'] = FieldValue.serverTimestamp();
 
-    await docRef.set(data, SetOptions(merge: true));
+    await docRef.set(data);
     return docRef.id;
   }
 
@@ -401,32 +401,52 @@ class GymService {
 
   /// Saves or updates the user's custom form video link for a specific exercise
   Future<void> saveCustomExerciseVideoUrl(String exerciseId, String videoUrl) async {
+    await saveCustomExerciseVideoUrls(exerciseId, [videoUrl]);
+  }
+
+  /// Saves or updates multiple custom form video links for a specific exercise
+  Future<void> saveCustomExerciseVideoUrls(String exerciseId, List<String> videoUrls) async {
     final ref = _exerciseLinksRef;
     final uid = currentUserId;
     if (ref == null || uid == null || exerciseId.trim().isEmpty) return;
 
+    final cleanedUrls = videoUrls.map((u) => u.trim()).where((u) => u.isNotEmpty).toList();
+
     await ref.doc(exerciseId.trim()).set({
       'exerciseId': exerciseId.trim(),
-      'videoUrl': videoUrl.trim(),
+      'videoUrl': cleanedUrls.isNotEmpty ? cleanedUrls.first : '',
+      'videoUrls': cleanedUrls,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 
   /// Retrieves the user's custom video URL for a specific exercise (if previously saved)
   Future<String?> getCustomExerciseVideoUrl(String exerciseId) async {
+    final urls = await getCustomExerciseVideoUrls(exerciseId);
+    return urls.isNotEmpty ? urls.first : null;
+  }
+
+  /// Retrieves all custom video URLs saved for a specific exercise
+  Future<List<String>> getCustomExerciseVideoUrls(String exerciseId) async {
     final ref = _exerciseLinksRef;
-    if (ref == null || exerciseId.trim().isEmpty) return null;
+    if (ref == null || exerciseId.trim().isEmpty) return [];
 
     try {
       final doc = await ref.doc(exerciseId.trim()).get();
       if (doc.exists && doc.data() != null) {
+        final list = (doc.data()!['videoUrls'] as List<dynamic>?)
+            ?.map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+        if (list != null && list.isNotEmpty) return list;
+
         final url = doc.data()!['videoUrl']?.toString();
         if (url != null && url.trim().isNotEmpty) {
-          return url.trim();
+          return [url.trim()];
         }
       }
     } catch (_) {}
-    return null;
+    return [];
   }
 
   /// Retrieves a map of all custom exercise video URLs for the user { exerciseId: videoUrl }

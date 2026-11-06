@@ -22,8 +22,9 @@ import '../widgets/saved_places_sheet.dart';
 class AddTaskScreen extends StatefulWidget {
   final DateTime? selectedDate;
   final CalendarReminder? existingReminder;
+  final String? initialTitle;
 
-  const AddTaskScreen({super.key, this.selectedDate, this.existingReminder});
+  const AddTaskScreen({super.key, this.selectedDate, this.existingReminder, this.initialTitle});
 
   @override
   State<AddTaskScreen> createState() => _AddTaskScreenState();
@@ -127,6 +128,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _isSticky = false;
       if (_myUid != null) {
         _selectedRecipients.add(_myUid!);
+      }
+      if (widget.initialTitle != null && widget.initialTitle!.isNotEmpty) {
+        _titleController.text = widget.initialTitle!;
       }
     }
     _loadBuddies();

@@ -129,7 +129,7 @@ function getBestMatchingResumeProfile(jobTitle, keySkills, profiles) {
     return bestProfile;
 }
 async function discoverAndApplyForUser(uid, options) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
     const userDoc = await firebase_1.db.collection("users").doc(uid).get();
     if (!userDoc.exists) {
         return { success: false, appliedCount: 0, jobs: [], message: "User not found" };
@@ -788,6 +788,29 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         }
         catch (mailErr) {
             console.error(`[JobDiscovery] Failed sending email to ${job.recipientEmail}:`, mailErr);
+            const errStr = (mailErr.message || '').toLowerCase();
+            if (errStr.includes("550") ||
+                errStr.includes("5.1.1") ||
+                errStr.includes("user unknown") ||
+                errStr.includes("address not found") ||
+                errStr.includes("mailbox unavailable") ||
+                errStr.includes("recipient rejected") ||
+                errStr.includes("invalid recipient")) {
+                try {
+                    const cleanRecip = job.recipientEmail.toLowerCase().trim();
+                    await firebase_1.db.collection("system_bounced_emails").doc(encodeURIComponent(cleanRecip)).set({
+                        email: cleanRecip,
+                        companyName: job.companyName || "",
+                        bouncedAt: firebase_1.admin.firestore.FieldValue.serverTimestamp(),
+                        reason: ((_m = mailErr.message) === null || _m === void 0 ? void 0 : _m.substring(0, 300)) || "Invalid recipient / 550 bounce",
+                        reportedByUid: uid,
+                        source: "job_discovery_smtp_failure"
+                    }, { merge: true });
+                }
+                catch (bErr) {
+                    console.warn("[JobDiscovery] Failed to record bounced email in blacklist:", bErr.message);
+                }
+            }
         }
     }
     // Record jobsLastRan and jobsLastApplied on user document
@@ -803,7 +826,7 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
         try {
             const userTokenDoc = await firebase_1.db.collection("usernames").where("uid", "==", uid).limit(1).get();
             if (!userTokenDoc.empty) {
-                const fcmToken = (_m = userTokenDoc.docs[0].data()) === null || _m === void 0 ? void 0 : _m.fcmToken;
+                const fcmToken = (_o = userTokenDoc.docs[0].data()) === null || _o === void 0 ? void 0 : _o.fcmToken;
                 if (fcmToken) {
                     const compNames = successfullyAppliedJobs.map(j => j.companyName).filter(Boolean).slice(0, 3).join(', ');
                     const notifTitle = `🚀 Auto-Applied to ${successfullyAppliedJobs.length} New Job${successfullyAppliedJobs.length > 1 ? 's' : ''}!`;
@@ -893,7 +916,7 @@ If no matching jobs with verified emails and ${minExp}-${maxExp} years experienc
             ? `Auto-applied to ${successfullyAppliedJobs.length} job(s): ${appliedDetails.slice(0, 3).join(', ')}`
             : '0 matching jobs applied for this run.',
         details: appliedDetails,
-        isManual: (_o = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _o !== void 0 ? _o : false
+        isManual: (_p = options === null || options === void 0 ? void 0 : options.isManualTrigger) !== null && _p !== void 0 ? _p : false
     });
     return {
         success: true,

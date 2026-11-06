@@ -12,52 +12,54 @@
                 android:name="feature"
                 android:key="feature" />
         </intent>
+        <parameter name="feature">
+            <entity-set-reference android:entitySetId="FeatureEntitySet" />
+        </parameter>
     </capability>
 
-    <!-- 2. Built-in Intent: Create Reminder -->
+    <!-- 2. Built-in Intent: Start Exercise / Workout ("Hey Google, start workout on SmartBuddy") -->
+    <capability android:name="actions.intent.START_EXERCISE">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity">
+            <url-template android:value="smartbuddy://assistant?feature=gym&amp;action=start_workout&amp;exercise={exercise}" />
+            <parameter
+                android:name="exercise.name"
+                android:key="exercise" />
+        </intent>
+    </capability>
+
+    <!-- 3. Built-in Intent: Create Reminder ("Hey Google, create a reminder on SmartBuddy") -->
     <capability android:name="actions.intent.CREATE_REMINDER">
         <intent
             android:action="android.intent.action.VIEW"
             android:targetPackage="com.remindbuddy.remindbuddy"
             android:targetClass="com.remindbuddy.remindbuddy.MainActivity">
-            <url-template android:value="smartbuddy://assistant?feature=reminders&amp;action=create" />
-        </intent>
-    </capability>
-
-    <!-- 3. Custom Intent: Check Gold Price ("Hey Google, check gold price on SmartBuddy") -->
-    <capability android:name="custom.actions.intent.CHECK_GOLD_PRICE">
-        <intent
-            android:action="android.intent.action.VIEW"
-            android:targetPackage="com.remindbuddy.remindbuddy"
-            android:targetClass="com.remindbuddy.remindbuddy.MainActivity">
-            <url-template android:value="smartbuddy://assistant?feature=gold&amp;query=today+gold+rate" />
-        </intent>
-    </capability>
-
-    <!-- 4. Custom Intent: Start Gym Workout ("Hey Google, start workout on SmartBuddy") -->
-    <capability android:name="custom.actions.intent.START_WORKOUT">
-        <intent
-            android:action="android.intent.action.VIEW"
-            android:targetPackage="com.remindbuddy.remindbuddy"
-            android:targetClass="com.remindbuddy.remindbuddy.MainActivity">
-            <url-template android:value="smartbuddy://assistant?feature=gym&amp;action=start_workout" />
-        </intent>
-    </capability>
-
-    <!-- 5. Custom Intent: Ask SmartBuddy Voice AI ("Hey Google, ask SmartBuddy...") -->
-    <capability android:name="custom.actions.intent.ASK_SMARTBUDDY">
-        <intent
-            android:action="android.intent.action.VIEW"
-            android:targetPackage="com.remindbuddy.remindbuddy"
-            android:targetClass="com.remindbuddy.remindbuddy.MainActivity">
-            <url-template android:value="smartbuddy://assistant?query={query}" />
+            <url-template android:value="smartbuddy://assistant?feature=reminders&amp;action=create&amp;query={text}" />
             <parameter
-                android:name="query"
-                android:key="query" />
+                android:name="reminder.text"
+                android:key="text" />
         </intent>
     </capability>
 
-    <!-- Static Shortcuts for Assistant & Launcher Menu -->
+    <!-- 4. Built-in Intent: Get Thing / Check Rate ("Hey Google, check gold on SmartBuddy") -->
+    <capability android:name="actions.intent.GET_THING">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity">
+            <url-template android:value="smartbuddy://assistant?feature={thing}&amp;query={thing}" />
+            <parameter
+                android:name="thing.name"
+                android:key="thing" />
+        </intent>
+        <parameter name="thing.name">
+            <entity-set-reference android:entitySetId="FeatureEntitySet" />
+        </parameter>
+    </capability>
+
+    <!-- Static Shortcuts for Launcher Long-Press & Google Assistant -->
     <shortcut
         android:shortcutId="shortcut_gold_rates"
         android:enabled="true"
@@ -74,6 +76,11 @@
                 android:key="feature"
                 android:value="gold" />
         </capability-binding>
+        <capability-binding android:key="actions.intent.GET_THING">
+            <parameter-binding
+                android:key="thing.name"
+                android:value="gold" />
+        </capability-binding>
     </shortcut>
 
     <shortcut
@@ -87,6 +94,11 @@
             android:targetPackage="com.remindbuddy.remindbuddy"
             android:targetClass="com.remindbuddy.remindbuddy.MainActivity"
             android:data="smartbuddy://assistant?feature=gym&amp;action=start_workout" />
+        <capability-binding android:key="actions.intent.START_EXERCISE">
+            <parameter-binding
+                android:key="exercise.name"
+                android:value="@string/feature_gym_name" />
+        </capability-binding>
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding
                 android:key="feature"
@@ -106,6 +118,11 @@
             android:targetClass="com.remindbuddy.remindbuddy.MainActivity"
             android:data="smartbuddy://assistant?feature=reminders&amp;action=create" />
         <capability-binding android:key="actions.intent.CREATE_REMINDER" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="reminders" />
+        </capability-binding>
     </shortcut>
 
     <shortcut
@@ -125,5 +142,37 @@
                 android:value="voice_assistant" />
         </capability-binding>
     </shortcut>
+
+    <!-- Entity Set for Open App Feature and Get Thing BIIs -->
+    <entity-set android:entitySetId="FeatureEntitySet">
+        <entity
+            android:identifier="gold"
+            android:name="@string/feature_gold_name"
+            android:alternateName="@array/feature_gold_synonyms" />
+        <entity
+            android:identifier="gym"
+            android:name="@string/feature_gym_name"
+            android:alternateName="@array/feature_gym_synonyms" />
+        <entity
+            android:identifier="reminders"
+            android:name="@string/feature_reminders_name"
+            android:alternateName="@array/feature_reminders_synonyms" />
+        <entity
+            android:identifier="job_assistant"
+            android:name="@string/feature_jobs_name"
+            android:alternateName="@array/feature_jobs_synonyms" />
+        <entity
+            android:identifier="notes"
+            android:name="@string/feature_notes_name"
+            android:alternateName="@array/feature_notes_synonyms" />
+        <entity
+            android:identifier="shifts"
+            android:name="@string/feature_shifts_name"
+            android:alternateName="@array/feature_shifts_synonyms" />
+        <entity
+            android:identifier="voice_assistant"
+            android:name="@string/feature_voice_name"
+            android:alternateName="@array/feature_voice_synonyms" />
+    </entity-set>
 
 </shortcuts>

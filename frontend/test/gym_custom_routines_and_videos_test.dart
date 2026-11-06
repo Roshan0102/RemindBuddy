@@ -113,5 +113,78 @@ void main() {
         'Watch Form Video',
       );
     });
+
+    test('GymRoutineExercise preserves and deserializes custom sets with weights and reps', () {
+      const exercise = GymRoutineExercise(
+        exerciseId: '0025',
+        exerciseName: 'Barbell Bench Press',
+        bodyPart: 'chest',
+        targetMuscle: 'pectorals',
+        defaultSets: 3,
+        videoUrl: 'https://youtu.be/bench123',
+        sets: [
+          GymWorkoutSet(setNumber: 1, weightKg: 70, reps: 10, isCompleted: true),
+          GymWorkoutSet(setNumber: 2, weightKg: 80, reps: 8, isCompleted: true),
+          GymWorkoutSet(setNumber: 3, weightKg: 90, reps: 5, isCompleted: false),
+        ],
+      );
+
+      final map = exercise.toMap();
+      expect(map['videoUrl'], 'https://youtu.be/bench123');
+      expect((map['sets'] as List).length, 3);
+      expect((map['sets'] as List)[1]['weightKg'], 80.0);
+      expect((map['sets'] as List)[1]['reps'], 8);
+
+      final restored = GymRoutineExercise.fromMap(map);
+      expect(restored.exerciseName, 'Barbell Bench Press');
+      expect(restored.videoUrl, 'https://youtu.be/bench123');
+      expect(restored.sets, isNotNull);
+      expect(restored.sets!.length, 3);
+      expect(restored.sets![0].weightKg, 70.0);
+      expect(restored.sets![1].weightKg, 80.0);
+      expect(restored.sets![2].weightKg, 90.0);
+      expect(restored.sets![0].isCompleted, isTrue);
+      expect(restored.sets![2].isCompleted, isFalse);
+    });
+
+    test('GymWorkoutSet preserves previousWeightKg for progressive tracking', () {
+      const set = GymWorkoutSet(
+        setNumber: 1,
+        weightKg: 85.0,
+        reps: 8,
+        previousWeightKg: 80.0,
+        isCompleted: true,
+      );
+
+      final map = set.toMap();
+      expect(map['weightKg'], 85.0);
+      expect(map['previousWeightKg'], 80.0);
+
+      final revived = GymWorkoutSet.fromMap(map);
+      expect(revived.weightKg, 85.0);
+      expect(revived.previousWeightKg, 80.0);
+    });
+
+    test('GymRoutineExercise supports multiple video URLs and preserves them', () {
+      const exercise = GymRoutineExercise(
+        exerciseId: '0025',
+        exerciseName: 'Barbell Bench Press',
+        bodyPart: 'chest',
+        videoUrls: [
+          'https://youtu.be/bench_form_101',
+          'https://instagram.com/reel/incline_tips_456',
+        ],
+      );
+
+      final map = exercise.toMap();
+      expect((map['videoUrls'] as List).length, 2);
+      expect(map['videoUrl'], 'https://youtu.be/bench_form_101');
+
+      final revived = GymRoutineExercise.fromMap(map);
+      expect(revived.videoUrls.length, 2);
+      expect(revived.videoUrls[0], 'https://youtu.be/bench_form_101');
+      expect(revived.videoUrls[1], 'https://instagram.com/reel/incline_tips_456');
+      expect(revived.videoUrl, 'https://youtu.be/bench_form_101');
+    });
   });
 }

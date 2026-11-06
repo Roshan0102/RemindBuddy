@@ -7,7 +7,7 @@
     <string name="widget_shift_calendar_description">Displays the full monthly shift roster calendar heatmap on your home screen.</string>
     <string name="widget_note_checklist_description">Displays your pinned checklist on your home screen with interactive item checking and 1-tap reset.</string>
 
-    <!-- Google Assistant App Actions & Launcher Shortcuts -->
+    <!-- Google Assistant App Actions & Launcher Shortcuts Labels -->
     <string name="shortcut_gold_short">Gold Rates</string>
     <string name="shortcut_gold_long">Check today\'s gold and silver rates</string>
     <string name="shortcut_gym_short">Start Workout</string>
@@ -16,4 +16,94 @@
     <string name="shortcut_reminder_long">Create a new task or calendar reminder</string>
     <string name="shortcut_voice_short">Voice Assistant</string>
     <string name="shortcut_voice_long">Ask SmartBuddy AI Voice Assistant</string>
+
+    <!-- Google Assistant Built-in Intent (BII) Entity Names -->
+    <string name="feature_gold_name">Gold Rates</string>
+    <string name="feature_gym_name">Gym Workout</string>
+    <string name="feature_reminders_name">Reminders</string>
+    <string name="feature_jobs_name">Job Assistant</string>
+    <string name="feature_notes_name">Notes</string>
+    <string name="feature_shifts_name">Work Shifts</string>
+    <string name="feature_voice_name">Voice Assistant</string>
+
+    <!-- Google Assistant Built-in Intent Synonyms Arrays for Entity Set -->
+    <string-array name="feature_gold_synonyms">
+        <item>Gold</item>
+        <item>Gold Rate</item>
+        <item>Gold Rates</item>
+        <item>Gold Price</item>
+        <item>Today Gold Price</item>
+        <item>Today Gold Rate</item>
+        <item>Gold Market</item>
+        <item>22K Gold</item>
+        <item>24K Gold</item>
+        <item>Check Gold</item>
+        <item>Check Gold Rate</item>
+    </string-array>
+
+    <string-array name="feature_gym_synonyms">
+        <item>Gym</item>
+        <item>Workout</item>
+        <item>Workout Tracker</item>
+        <item>Gym Tracker</item>
+        <item>Gym Routine</item>
+        <item>Fitness</item>
+        <item>Exercise</item>
+        <item>Training</item>
+        <item>Start Workout</item>
+    </string-array>
+
+    <string-array name="feature_reminders_synonyms">
+        <item>Reminders</item>
+        <item>Reminder</item>
+        <item>Tasks</item>
+        <item>Task</item>
+        <item>To Do</item>
+        <item>Todo List</item>
+        <item>Alerts</item>
+        <item>Calendar</item>
+        <item>Add Reminder</item>
+        <item>New Task</item>
+    </string-array>
+
+    <string-array name="feature_jobs_synonyms">
+        <item>Jobs</item>
+        <item>Job Assistant</item>
+        <item>Job Applications</item>
+        <item>Careers</item>
+        <item>Apply Jobs</item>
+        <item>Job Hub</item>
+    </string-array>
+
+    <string-array name="feature_notes_synonyms">
+        <item>Notes</item>
+        <item>Notebook</item>
+        <item>Memo</item>
+        <item>Checklists</item>
+        <item>Checklist</item>
+    </string-array>
+
+    <string-array name="feature_shifts_synonyms">
+        <item>Shifts</item>
+        <item>Work Shifts</item>
+        <item>Shift Calendar</item>
+        <item>Duty Schedule</item>
+        <item>Roster</item>
+    </string-array>
+
+    <string-array name="feature_voice_synonyms">
+        <item>Voice Assistant</item>
+        <item>SmartBuddy Voice</item>
+        <item>AI Voice</item>
+        <item>Talk to SmartBuddy</item>
+        <item>Ask SmartBuddy</item>
+    </string-array>
+
+    <string-array name="exercise_gym_synonyms">
+        <item>Gym</item>
+        <item>Workout</item>
+        <item>Weightlifting</item>
+        <item>Exercise</item>
+        <item>Training</item>
+    </string-array>
 </resources>
