@@ -12,9 +12,6 @@
                 android:name="feature"
                 android:key="feature" />
         </intent>
-        <parameter name="feature">
-            <entity-set-reference android:entitySetId="FeatureEntitySet" />
-        </parameter>
     </capability>
 
     <!-- 2. Built-in Intent: Start Exercise / Workout ("Hey Google, start workout on SmartBuddy") -->
@@ -54,9 +51,6 @@
                 android:name="thing.name"
                 android:key="thing" />
         </intent>
-        <parameter name="thing.name">
-            <entity-set-reference android:entitySetId="FeatureEntitySet" />
-        </parameter>
     </capability>
 
     <!-- Static Shortcuts for Launcher Long-Press & Google Assistant -->
@@ -143,36 +137,40 @@
         </capability-binding>
     </shortcut>
 
-    <!-- Entity Set for Open App Feature and Get Thing BIIs -->
-    <entity-set android:entitySetId="FeatureEntitySet">
-        <entity
-            android:identifier="gold"
-            android:name="@string/feature_gold_name"
-            android:alternateName="@array/feature_gold_synonyms" />
-        <entity
-            android:identifier="gym"
-            android:name="@string/feature_gym_name"
-            android:alternateName="@array/feature_gym_synonyms" />
-        <entity
-            android:identifier="reminders"
-            android:name="@string/feature_reminders_name"
-            android:alternateName="@array/feature_reminders_synonyms" />
-        <entity
-            android:identifier="job_assistant"
-            android:name="@string/feature_jobs_name"
-            android:alternateName="@array/feature_jobs_synonyms" />
-        <entity
-            android:identifier="notes"
-            android:name="@string/feature_notes_name"
-            android:alternateName="@array/feature_notes_synonyms" />
-        <entity
-            android:identifier="shifts"
-            android:name="@string/feature_shifts_name"
-            android:alternateName="@array/feature_shifts_synonyms" />
-        <entity
-            android:identifier="voice_assistant"
-            android:name="@string/feature_voice_name"
-            android:alternateName="@array/feature_voice_synonyms" />
-    </entity-set>
+    <shortcut
+        android:shortcutId="shortcut_job_assistant"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/feature_jobs_name"
+        android:shortcutLongLabel="@string/feature_jobs_name">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity"
+            android:data="smartbuddy://assistant?feature=job_assistant" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="job_assistant" />
+        </capability-binding>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_notes"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/feature_notes_name"
+        android:shortcutLongLabel="@string/feature_notes_name">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.remindbuddy.remindbuddy"
+            android:targetClass="com.remindbuddy.remindbuddy.MainActivity"
+            android:data="smartbuddy://assistant?feature=notes" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="notes" />
+        </capability-binding>
+    </shortcut>
 
 </shortcuts>
